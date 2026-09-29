@@ -42,4 +42,46 @@ export class ServiciosService {
       })
     );
   }
+
+  crearServicio(dto: any): Observable<Servicio> {
+    this.isLoading.set(true);
+    return this.http.post<Servicio>(this.apiUrl, dto).pipe(
+      tap(() => {
+        this.cargarServicios().subscribe(); // Recargar tras crear
+      }),
+      catchError(err => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.message || 'Error al crear servicio');
+        throw err;
+      })
+    );
+  }
+
+  actualizarServicio(id: string, dto: any): Observable<Servicio> {
+    this.isLoading.set(true);
+    return this.http.patch<Servicio>(`${this.apiUrl}/${id}`, dto).pipe(
+      tap(() => {
+        this.cargarServicios().subscribe();
+      }),
+      catchError(err => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.message || 'Error al actualizar servicio');
+        throw err;
+      })
+    );
+  }
+
+  eliminarServicio(id: string): Observable<void> {
+    this.isLoading.set(true);
+    return this.http.delete<void>(`${this.apiUrl}/${id}`).pipe(
+      tap(() => {
+        this.cargarServicios().subscribe();
+      }),
+      catchError(err => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.message || 'Error al eliminar servicio');
+        throw err;
+      })
+    );
+  }
 }

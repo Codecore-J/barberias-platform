@@ -47,6 +47,12 @@ export const routes: Routes = [
         canActivate: [tenantGuard],
         loadComponent: () =>
           import('./features/catalogo/catalogo.component').then((m) => m.CatalogoComponent),
+      },
+      {
+        path: 'admin/servicios',
+        canActivate: [tenantGuard],
+        loadComponent: () =>
+          import('./features/admin/admin-servicios.component').then((m) => m.AdminServiciosComponent),
       }
     ],
   },

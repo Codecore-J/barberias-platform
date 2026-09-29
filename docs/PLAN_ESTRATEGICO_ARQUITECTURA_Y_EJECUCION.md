@@ -309,7 +309,7 @@ src/app/
 
 * **ÉPICA F2: Catálogo de Servicios y Combos**
   - **[x] T-F2.1: Grid interactivo 3D de servicios para clientes con precios, duraciones y botón de selección rápida (Completado)**
-  - **T-F2.2:** Panel administrativo de catálogo (CRUD con cálculo de margen y detección de ciclos).
+  - **[x] T-F2.2: Panel administrativo de catálogo (CRUD con cálculo de margen y detección de ciclos) (Completado)**
 
 * **ÉPICA F3: Wizard de Agendamiento Interactivo en 3D**
   - **T-F3.1:** `ReservaWizardComponent` multi-paso con transición espacial en profundidad:
