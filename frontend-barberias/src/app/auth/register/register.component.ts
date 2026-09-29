@@ -155,7 +155,12 @@ export class RegisterComponent {
         ...this.registerForm.value
       } as RegisterDto;
 
-      this.authService.register(data).subscribe();
+      this.authService.register(data).subscribe({
+        next: () => {},
+        error: () => {
+          // El error se muestra en la interfaz a través de authService.authState().error
+        }
+      });
     }
   }
 }

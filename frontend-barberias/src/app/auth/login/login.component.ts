@@ -137,7 +137,12 @@ export class LoginComponent {
 
   onSubmit() {
     if (this.loginForm.valid) {
-      this.authService.login(this.loginForm.value as any).subscribe();
+      this.authService.login(this.loginForm.value as any).subscribe({
+        next: () => {},
+        error: () => {
+          // El error se muestra en la interfaz a través de authService.authState().error
+        }
+      });
     }
   }
 }
