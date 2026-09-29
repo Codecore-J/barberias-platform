@@ -30,7 +30,7 @@ export class NotificationService {
       tap((items) => {
         const list = Array.isArray(items) ? items : (items as any).data || [];
         this.notificaciones.set(list);
-        this.noLeidasCount.set(list.filter((n) => !n.leido).length);
+        this.noLeidasCount.set(list.filter((n: NotificacionItem) => !n.leido).length);
         this.isLoading.set(false);
       }),
       catchError(() => {
@@ -43,11 +43,11 @@ export class NotificationService {
   marcarComoLeida(id: string): Observable<any> {
     return this.http.patch(`${this.apiUrl}/${id}/leida`, {}).pipe(
       tap(() => {
-        const actualizadas = this.notificaciones().map(n => 
+        const actualizadas = this.notificaciones().map((n: NotificacionItem) => 
           n.id === id ? { ...n, leido: true } : n
         );
         this.notificaciones.set(actualizadas);
-        this.noLeidasCount.set(actualizadas.filter(n => !n.leido).length);
+        this.noLeidasCount.set(actualizadas.filter((n: NotificacionItem) => !n.leido).length);
       })
     );
   }
@@ -55,7 +55,7 @@ export class NotificationService {
   marcarTodasComoLeidas(): Observable<any> {
     return this.http.post(`${this.apiUrl}/marcar-todas-leidas`, {}).pipe(
       tap(() => {
-        const actualizadas = this.notificaciones().map(n => ({ ...n, leido: true }));
+        const actualizadas = this.notificaciones().map((n: NotificacionItem) => ({ ...n, leido: true }));
         this.notificaciones.set(actualizadas);
         this.noLeidasCount.set(0);
       })

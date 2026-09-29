@@ -26,13 +26,13 @@ export class NotificacionesService {
 
   constructor() {
     // Iniciar polling solo si hay usuario logueado
-    if (this.authService.isLoggedIn()) {
+    if (this.authService.authState().isAuthenticated) {
       this.cargarNotificaciones().subscribe();
       
       // Polling cada 30 segundos para simular tiempo real
       interval(30000).pipe(
         switchMap(() => {
-          if (this.authService.isLoggedIn()) {
+          if (this.authService.authState().isAuthenticated) {
             return this.cargarNotificaciones();
           }
           return of([]);
@@ -46,7 +46,7 @@ export class NotificacionesService {
       tap(data => {
         const dataArr = Array.isArray(data) ? data : (data as any).data || [];
         this.notificaciones.set(dataArr);
-        this.unreadCount.set(dataArr.filter(n => !n.leida).length);
+        this.unreadCount.set(dataArr.filter((n: Notificacion) => !n.leida).length);
       }),
       catchError(() => of([]))
     );
@@ -56,11 +56,11 @@ export class NotificacionesService {
     return this.http.patch(`${this.apiUrl}/${id}/leida`, {}).pipe(
       tap(() => {
         // Actualizar estado localmente
-        const actualizadas = this.notificaciones().map(n => 
+        const actualizadas = this.notificaciones().map((n: Notificacion) => 
           n.id === id ? { ...n, leida: true } : n
         );
         this.notificaciones.set(actualizadas);
-        this.unreadCount.set(actualizadas.filter(n => !n.leida).length);
+        this.unreadCount.set(actualizadas.filter((n: Notificacion) => !n.leida).length);
       })
     );
   }
@@ -69,7 +69,7 @@ export class NotificacionesService {
     return this.http.post(`${this.apiUrl}/marcar-todas-leidas`, {}).pipe(
       tap(() => {
         // Actualizar estado localmente
-        const actualizadas = this.notificaciones().map(n => ({ ...n, leida: true }));
+        const actualizadas = this.notificaciones().map((n: Notificacion) => ({ ...n, leida: true }));
         this.notificaciones.set(actualizadas);
         this.unreadCount.set(0);
       })

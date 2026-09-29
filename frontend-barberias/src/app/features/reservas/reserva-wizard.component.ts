@@ -9,7 +9,7 @@ import { FormsModule } from '@angular/forms';
 @Component({
   selector: 'app-reserva-wizard',
   standalone: true,
-  imports: [CommonModule, RouterLink, CurrencyPipe, DatePipe, FormsModule],
+  imports: [CommonModule, CurrencyPipe, DatePipe, FormsModule],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-5xl mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
       

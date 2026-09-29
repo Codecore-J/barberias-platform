@@ -149,7 +149,7 @@ export class HomeComponent {
   mouseX = signal<number>(0);
   mouseY = signal<number>(0);
 
-  @HostListener('window:scroll', ['$event'])
+  @HostListener('window:scroll')
   onScroll() {
     this.scrollY.set(window.scrollY);
   }
