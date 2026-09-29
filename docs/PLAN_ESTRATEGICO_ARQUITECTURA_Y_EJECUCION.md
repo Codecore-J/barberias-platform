@@ -299,8 +299,8 @@ src/app/
     - Centro de notificaciones con campana y conteo de no leídas sincronizado con `NotificationService`.
     - Menú lateral responsivo para dispositivos móviles y tablets.
     - Página principal `HomeComponent` con Hero 3D, cards con profundidad Z y accesos directos de agendamiento.
-  - **T-F0.2:** Motor de scroll 3D e interactividad de profundidad (`ScrollDepthDirective` / canvas de partículas reactivas).
-  - **T-F0.3:** Guardias de navegación reactivas (`AuthGuard` y `TenantGuard` para exigir barbería activa).
+  - **[x] T-F0.2: Motor de scroll 3D e interactividad de profundidad (Completado)**
+  - **[x] T-F0.3: Guardias de navegación reactivas (AuthGuard y TenantGuard) (Completado)**
 
 * **ÉPICA F1: Tenant Hub y Gestión de Barberías**
   - **T-F1.1:** Pantalla `BarberiasComponent`: Grid de barberías con efecto 3D tilt, badge de activa y selección en un clic (`PATCH /barberias/:id/seleccionar`).

@@ -1,5 +1,8 @@
 import { Routes } from '@angular/router';
 
+import { authGuard } from './core/guards/auth.guard';
+import { tenantGuard } from './core/guards/tenant.guard';
+
 export const routes: Routes = [
   {
     path: 'auth/login',
@@ -13,12 +16,31 @@ export const routes: Routes = [
     path: '',
     loadComponent: () =>
       import('./shared/layout/app-layout.component').then((m) => m.AppLayoutComponent),
+    canActivate: [authGuard],
     children: [
       {
         path: '',
         loadComponent: () =>
           import('./features/home/home.component').then((m) => m.HomeComponent),
       },
+      // Estas rutas se crearán en las siguientes épicas, pero ya las dejamos protegidas
+      {
+        path: 'barberias',
+        loadComponent: () =>
+          import('./features/home/home.component').then((m) => m.HomeComponent), // Placeholder temporal
+      },
+      {
+        path: 'reservas/nueva',
+        canActivate: [tenantGuard],
+        loadComponent: () =>
+          import('./features/home/home.component').then((m) => m.HomeComponent), // Placeholder temporal
+      },
+      {
+        path: 'catalogo',
+        canActivate: [tenantGuard],
+        loadComponent: () =>
+          import('./features/home/home.component').then((m) => m.HomeComponent), // Placeholder temporal
+      }
     ],
   },
   { path: '**', redirectTo: '' },
