@@ -2,11 +2,12 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { TenantService, BarberiaResumen } from '../../core/services/tenant.service';
+import { VincularModalComponent } from './components/vincular-modal/vincular-modal.component';
 
 @Component({
   selector: 'app-barberias',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, VincularModalComponent],
   template: `
     <div class="space-y-12 py-8 perspective-1200 bg-ambient-mesh min-h-screen">
       
@@ -95,14 +96,31 @@ import { TenantService, BarberiaResumen } from '../../core/services/tenant.servi
             Para comenzar a agendar turnos o gestionar una barbería, necesitas vincularte a una utilizando un código de acceso o crear la tuya propia.
           </p>
           <div class="flex justify-center gap-4 pt-4">
-            <button class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:scale-105 transition-transform">
+            <button (click)="showVincularModal.set(true)" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:scale-105 transition-transform flex items-center">
               <i class="pi pi-link mr-2"></i>Vincular con Código
             </button>
-            <button class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 glass-card hover:text-amber-400 transition-colors">
+            <button class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 glass-card hover:text-amber-400 transition-colors flex items-center">
               <i class="pi pi-plus mr-2"></i>Crear Barbería
             </button>
           </div>
         </div>
+      }
+
+      <!-- Acciones de Grid (Cuando ya hay barberías) -->
+      @if (!tenantService.isLoading() && tenantService.barberiasVinculadas().length > 0) {
+        <div class="max-w-6xl mx-auto px-4 pt-12 flex justify-center gap-4 transform translate-z-12">
+          <button (click)="showVincularModal.set(true)" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 bg-zinc-800 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center">
+            <i class="pi pi-link mr-2"></i>Vincular otra Barbería
+          </button>
+          <button class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 glass-card hover:text-amber-400 transition-colors flex items-center">
+            <i class="pi pi-plus mr-2"></i>Nueva Barbería
+          </button>
+        </div>
+      }
+
+      <!-- Modal de Vinculación -->
+      @if (showVincularModal()) {
+        <app-vincular-modal (close)="showVincularModal.set(false)"></app-vincular-modal>
       }
 
     </div>
@@ -111,6 +129,8 @@ import { TenantService, BarberiaResumen } from '../../core/services/tenant.servi
 export class BarberiasComponent implements OnInit {
   protected readonly tenantService = inject(TenantService);
   
+  showVincularModal = signal(false);
+
   ngOnInit() {
     this.tenantService.cargarBarberias().subscribe();
   }

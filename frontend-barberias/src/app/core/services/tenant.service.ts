@@ -107,6 +107,24 @@ export class TenantService {
     );
   }
 
+  /**
+   * Vincula al usuario con una barbería usando un código de acceso de 8 caracteres.
+   */
+  vincularBarberia(codigoAcceso: string): Observable<any> {
+    this.isLoading.set(true);
+    return this.http.post(`${this.apiUrl}/vincular`, { codigoAcceso }).pipe(
+      tap(() => {
+        // Al vincular exitosamente, recargamos la lista
+        this.cargarBarberias().subscribe();
+      }),
+      catchError((err) => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.message || 'Código inválido o error al vincular');
+        throw err;
+      }),
+    );
+  }
+
   setBarberiaActiva(barberia: BarberiaResumen | null) {
     this.barberiaActiva.set(barberia);
     if (barberia) {
