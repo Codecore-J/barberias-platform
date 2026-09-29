@@ -209,13 +209,22 @@ Se sometió la plataforma a una batería completa de pruebas de rendimiento, con
 ---
 
 ### HALLAZGO 08: Inexistencia de Endpoint de Salud (`/health`) con Probes de Dependencias
-- **Módulo / Ruta afectada:** `Monitoreo / Disponibilidad` ➔ `GET /health`
+- **Módulo / Ruta afectada:** `Monitoreo / Disponibilidad` ➔ `GET /health` y `GET /api/v1/health`
 - **Tipo:** Configuración / Observabilidad
 - **Severidad:** 🟡 **MEDIO**
 - **Pasos exactos para reproducir:**
-  1. Consultar `GET /api/v1/health`.
-- **Resultado esperado:** HTTP 200 con JSON de estado: `{"status":"ok","db":"up","redis":"up","storage":"up"}` usando `@nestjs/terminus`.
-- **Resultado real:** HTTP 404 Not Found. El único endpoint disponible es `GET /` que retorna el string plano `"Hello World!"` sin verificar si Neon o Redis están operacionales.
+  1. Consultar `GET /api/v1/health` o `GET /health`.
+- **Resultado esperado:** HTTP 200 con JSON de estado de salud y probes activos de dependencias (`status`, `database`, `redis`, `memory_heap`) usando `@nestjs/terminus`.
+- **Resultado real:** HTTP 404 Not Found. El único endpoint disponible era `GET /` que retornaba el string plano `"Hello World!"` sin verificar si Neon o Redis estaban operacionales.
+- **Estado:** ✅ **RESUELTO (29/09/2026)**
+  - Se instaló e integró `@nestjs/terminus` (v12.1.0) mediante un módulo desacoplado `HealthModule` y `HealthController`.
+  - Se implementaron probes activos en tiempo real:
+    - **PostgreSQL / Neon:** `PrismaHealthIndicator` ejecutando ping SQL nativo.
+    - **Redis / Upstash:** Probe asíncrono con comando `PING` / `PONG`.
+    - **Memoria Heap:** `MemoryHealthIndicator` con umbral máximo de 300 MB.
+  - Se expusieron las rutas tanto en `/health` (excluido del prefijo global para probes directos de infraestructura Render / Kubernetes) como en `/api/v1/health` para clientes frontend.
+  - Marcado con `@Public()` y `@SkipThrottle()` para permitir monitoreo continuo sin penalizaciones de autenticación ni rate limiting.
+  - Batería de pruebas automatizada (`test/health.e2e-spec.ts`): **3 de 3 casos de prueba E2E aprobados**.
 
 ---
 
@@ -271,9 +280,12 @@ Se sometió la plataforma a una batería completa de pruebas de rendimiento, con
 - **Tipo:** Configuración
 - **Severidad:** 🟢 **BAJO**
 - **Pasos exactos para reproducir:**
-  1. Acceder mediante navegador o curl a `https://barberias-api.onrender.com/api/v1`.
-- **Resultado esperado:** Retornar metadata de la API (`{"name": "Barberias Platform API", "version": "1.0.0", "status": "online"}`) o redirigir a la documentación Swagger.
-- **Resultado real:** Retorna el string por defecto de boilerplate de NestJS: `"Hello World!"`.
+  1. Acceder mediante navegador o curl a `https://barberias-api.onrender.com/api/v1` o `/`.
+- **Resultado esperado:** Retornar metadata de la API (`{"name": "Barberias Platform API", "version": "1.0.0", "status": "online"}`).
+- **Resultado real:** Retornaba el string por defecto de boilerplate de NestJS: `"Hello World!"`.
+- **Estado:** ✅ **RESUELTO (29/09/2026)**
+  - Se actualizó `AppController` y `AppService` para exponer un payload estructurado JSON con metadatos descriptivos de la plataforma, versión, entorno y enlace al endpoint de healthcheck.
+  - Pruebas unitarias y E2E sincronizadas y aprobadas.
 
 ---
 

@@ -13,8 +13,10 @@ async function bootstrap() {
   // Confianza en proxy inverso (Render / Cloudflare) para resolución de IP real (SEC-02)
   app.set('trust proxy', 1);
 
-  // Prefijo global de API — todas las rutas serán /api/v1/...
-  app.setGlobalPrefix('api/v1');
+  // Prefijo global de API — todas las rutas serán /api/v1/..., excluyendo healthchecks de infraestructura (MON-01)
+  app.setGlobalPrefix('api/v1', {
+    exclude: ['health', 'api/v1/health'],
+  });
 
   // Configuración estricta de CORS (CONF-01):
   // Solo se permiten orígenes autorizados del frontend oficial y entornos locales de desarrollo.

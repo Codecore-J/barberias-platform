@@ -16,11 +16,13 @@ import { PagoModule } from './pago/infrastructure/pago.module.js';
 import { AntecedenteModule } from './antecedente/infrastructure/antecedente.module.js';
 import { NotificacionModule } from './notificacion/infrastructure/notificacion.module.js';
 import { AuditoriaModule } from './auditoria/infrastructure/auditoria.module.js';
+import { HealthModule } from './health/health.module.js';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import Redis from 'ioredis';
 
 @Module({
   imports: [
+    HealthModule,
     ThrottlerModule.forRoot({
       throttlers: [
         {
