@@ -26,8 +26,9 @@ export const routes: Routes = [
       // Estas rutas se crearán en las siguientes épicas, pero ya las dejamos protegidas
       {
         path: 'barberias',
+        canActivate: [authGuard],
         loadComponent: () =>
-          import('./features/home/home.component').then((m) => m.HomeComponent), // Placeholder temporal
+          import('./features/barberias/barberias.component').then((m) => m.BarberiasComponent),
       },
       {
         path: 'reservas/nueva',
