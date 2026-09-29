@@ -3,11 +3,15 @@ process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '16';
 
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
 import { PrismaExceptionFilter } from './shared/filters/prisma-exception.filter.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Confianza en proxy inverso (Render / Cloudflare) para resolución de IP real (SEC-02)
+  app.set('trust proxy', 1);
 
   // Prefijo global de API — todas las rutas serán /api/v1/...
   app.setGlobalPrefix('api/v1');

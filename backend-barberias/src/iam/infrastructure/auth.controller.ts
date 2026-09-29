@@ -16,6 +16,7 @@ import { UsuarioResponseDto } from '../application/dto/usuario-response.dto.js';
 import { Public } from './public.decorator.js';
 import { CurrentUser } from './current-user.decorator.js';
 import type { UsuarioAutenticado } from '../domain/jwt.interface.js';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('auth')
 export class AuthController {
@@ -23,10 +24,10 @@ export class AuthController {
 
   /**
    * Registro de un nuevo usuario en la plataforma.
-   * Endpoint público: asigna rol CLIENTE por defecto y retorna el usuario creado
-   * (con passwordHash excluido automáticamente).
+   * Rate Limit (SEC-02): Máximo 5 registros por minuto por IP para evitar spam masivo.
    */
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   async register(@Body() dto: RegisterDto): Promise<UsuarioResponseDto> {
@@ -35,9 +36,10 @@ export class AuthController {
 
   /**
    * Autenticación de un usuario con credenciales (correo y contraseña).
-   * Endpoint público: retorna el JWT de acceso y los datos de perfil del usuario.
+   * Rate Limit (SEC-02): Máximo 10 intentos de login por minuto por IP para mitigar fuerza bruta.
    */
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(
@@ -60,9 +62,10 @@ export class AuthController {
 
   /**
    * Solicita el restablecimiento de contraseña para un correo dado.
-   * Endpoint público (SEC-01). Retorna 200 genérico.
+   * Rate Limit (SEC-02): Máximo 5 solicitudes por minuto por IP para prevenir abuso y enumeración.
    */
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   async forgotPassword(
@@ -73,9 +76,10 @@ export class AuthController {
 
   /**
    * Restablece la contraseña utilizando un token válido.
-   * Endpoint público (SEC-01).
+   * Rate Limit (SEC-02): Máximo 5 intentos por minuto por IP para mitigar fuerza bruta de tokens.
    */
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   async resetPassword(

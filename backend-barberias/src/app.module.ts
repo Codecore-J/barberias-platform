@@ -16,10 +16,21 @@ import { PagoModule } from './pago/infrastructure/pago.module.js';
 import { AntecedenteModule } from './antecedente/infrastructure/antecedente.module.js';
 import { NotificacionModule } from './notificacion/infrastructure/notificacion.module.js';
 import { AuditoriaModule } from './auditoria/infrastructure/auditoria.module.js';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import Redis from 'ioredis';
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          name: 'default',
+          ttl: 60000, // 1 minuto
+          limit: 120, // 120 peticiones/min para tráfico estándar
+        },
+      ],
+      errorMessage: 'Demasiadas solicitudes desde esta dirección IP. Por favor espere antes de reintentar.',
+    }),
     BullModule.forRoot({
       connection: process.env.REDIS_URL
         ? new Redis.default(process.env.REDIS_URL, { maxRetriesPerRequest: null })
@@ -43,6 +54,11 @@ import Redis from 'ioredis';
   controllers: [AppController],
   providers: [
     AppService,
+    // Guard de Rate Limiting global (SEC-02): intercepta ráfagas abusivas antes de procesar peticiones
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     // Guard global: todos los endpoints requieren JWT salvo los marcados @Public()
     {
       provide: APP_GUARD,

@@ -145,6 +145,16 @@ Se sometió la plataforma a una batería completa de pruebas de rendimiento, con
   ```text
   50 logins secuenciales ejecutados sin restricción ni header de rate limit.
   ```
+- **Estado:** ✅ **RESUELTO (29/09/2026)**
+  - Se instaló e integró `@nestjs/throttler` (v6.7.1) en `AppModule` con `ThrottlerGuard` registrado como `APP_GUARD` de primera línea defensiva.
+  - Se configuró `app.set('trust proxy', 1)` en `main.ts` para extraer con fidelidad la dirección IP real del cliente desde la cabecera `X-Forwarded-For` a través del reverse proxy de Render.
+  - Se aplicaron límites estrictos por IP en los endpoints críticos de IAM:
+    - `POST /api/v1/auth/login`: Máximo 10 intentos por minuto (`@Throttle({ default: { limit: 10, ttl: 60000 } })`).
+    - `POST /api/v1/auth/register`: Máximo 5 registros por minuto (`@Throttle({ default: { limit: 5, ttl: 60000 } })`).
+    - `POST /api/v1/auth/forgot-password`: Máximo 5 solicitudes por minuto (`@Throttle({ default: { limit: 5, ttl: 60000 } })`).
+    - `POST /api/v1/auth/reset-password`: Máximo 5 intentos por minuto (`@Throttle({ default: { limit: 5, ttl: 60000 } })`).
+  - Al superar el umbral, la API responde con **HTTP 429 Too Many Requests**, payload explicativo `"Demasiadas solicitudes desde esta dirección IP. Por favor espere antes de reintentar."` y cabeceras estándar RFC (`Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`).
+  - Batería de pruebas automatizada (`test/throttler-rate-limit.e2e-spec.ts`): **2 de 2 casos de prueba E2E aprobados**.
 
 ---
 
