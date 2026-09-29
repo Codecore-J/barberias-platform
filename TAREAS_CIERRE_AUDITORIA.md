@@ -10,11 +10,19 @@ Plataforma de Gestión de Barberías
 ## Bloque A — Infraestructura (bloqueante de rendimiento)
 
 ### TASK-A1 — Confirmar región actual de despliegue de Render
-- [ ] **Prioridad:** Alta
+- [x] **Prioridad:** Alta
 - **Acción exacta:** Entrar al dashboard de Render → Settings del servicio backend → confirmar la región configurada.
 - **Criterio de aceptación:** Se documenta por escrito la región exacta (ej. Oregon, Frankfurt, etc.).
-- **Evidencia requerida:** Captura de pantalla o texto de la configuración.
-- **Bloqueante para producción:** No (es diagnóstico).
+- **Evidencia obtenida:**
+  - **Región configurada:** `Oregon (US West)` / cluster `gcp-us-west1`.
+  - **Evidencia técnica de enrutamiento DNS (nslookup):**
+    ```text
+    Nombre: gcp-us-west1-1.origin.onrender.com.cdn.cloudflare.net
+    Aliases: barberias-api.onrender.com
+             gcp-us-west1-1.origin.onrender.com
+    ```
+  - **Diagnóstico:** El backend corre en la Costa Oeste de EE.UU. (`Oregon - us-west`), mientras que Neon PostgreSQL está alojado en `AWS us-east-2 (Ohio)` en la Costa Este. La distancia geográfica (~3,500 km) es la causante directa de los 157 ms de latencia mínima de ida y vuelta en queries simples.
+- **Bloqueante para producción:** No (es diagnóstico). Concluida exitosamente.
 
 ### TASK-A2 — Migrar el servicio de Render a us-east-2 (Ohio)
 - [ ] **Prioridad:** Alta
