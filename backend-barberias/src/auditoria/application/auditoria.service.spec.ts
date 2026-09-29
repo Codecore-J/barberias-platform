@@ -10,9 +10,11 @@ describe('AuditoriaService & Processor (T8.2)', () => {
 
   const mockPrismaService = {
     auditoria: {
+      create: vi.fn(),
       deleteMany: vi.fn(),
       count: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
     },
   };
 
@@ -43,6 +45,82 @@ describe('AuditoriaService & Processor (T8.2)', () => {
   });
 
   describe('AuditoriaService', () => {
+    it('debe registrar un evento de auditoría correctamente (AUDIT-01)', async () => {
+      const dto = {
+        usuarioId: 'user-1',
+        accion: 'REGISTRO_PAGO_EN_PERSONA',
+        entidad: 'PAGO',
+        entidadId: 'pago-1',
+        contexto: { monto: 50, metodo: 'EFECTIVO' },
+      };
+
+      const mockCreated = { id: 'audit-1', ...dto, creadoAt: new Date() };
+      mockPrismaService.auditoria.create.mockResolvedValue(mockCreated);
+
+      const result = await service.registrarEvento(dto);
+
+      expect(mockPrismaService.auditoria.create).toHaveBeenCalledWith({
+        data: {
+          usuarioId: dto.usuarioId,
+          accion: dto.accion,
+          entidad: dto.entidad,
+          entidadId: dto.entidadId,
+          contexto: dto.contexto,
+        },
+      });
+      expect(result).toEqual(mockCreated);
+    });
+
+    it('debe registrar un evento usando una transacción proporcionada', async () => {
+      const mockTx = {
+        auditoria: {
+          create: vi.fn().mockResolvedValue({ id: 'audit-tx-1' }),
+        },
+      };
+
+      const dto = {
+        accion: 'REGISTRO_PAGO_EN_PERSONA',
+        entidad: 'PAGO',
+      };
+
+      await service.registrarEvento(dto, mockTx as any);
+
+      expect(mockTx.auditoria.create).toHaveBeenCalled();
+      expect(mockPrismaService.auditoria.create).not.toHaveBeenCalled();
+    });
+
+    it('debe consultar registros de auditoría filtrados con paginación', async () => {
+      mockPrismaService.auditoria.count.mockResolvedValue(1);
+      mockPrismaService.auditoria.findMany.mockResolvedValue([
+        {
+          id: 'audit-1',
+          accion: 'REGISTRO_PAGO_EN_PERSONA',
+          entidad: 'PAGO',
+          usuario: { id: 'user-1', nombreCompleto: 'Test User', correo: 'test@barberia.com' },
+        },
+      ]);
+
+      const res = await service.consultarAuditorias({
+        entidad: 'PAGO',
+        barberiaId: 'barberia-1',
+        limite: 10,
+        offset: 0,
+      });
+
+      expect(res.total).toBe(1);
+      expect(res.registros).toHaveLength(1);
+      expect(mockPrismaService.auditoria.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            entidad: 'PAGO',
+            contexto: { path: ['barberiaId'], equals: 'barberia-1' },
+          }),
+          take: 10,
+          skip: 0,
+        }),
+      );
+    });
+
     it('debe programar el cron diario de purga a las 03:00 AM en BullMQ', async () => {
       await service.configurarJobRecurrente();
 

@@ -254,6 +254,14 @@ Se sometió la plataforma a una batería completa de pruebas de rendimiento, con
   2. Consultar la tabla `auditoria` en la base de datos.
 - **Resultado esperado:** Debe persistirse un registro inmutable en `auditoria` indicando el usuario cajero/barbero que cobró, el monto, la fecha exacta y el método.
 - **Resultado real:** El cambio de estado en la reserva y la creación del pago se ejecutan, pero no se emite el evento correspondiente al servicio de `AuditoriaService`.
+- **Estado:** ✅ **RESUELTO (29/09/2026)**
+  - Se extendió `AuditoriaService` ([`auditoria.service.ts`](file:///c:/Users/Magnurys%20J/.gemini/antigravity/scratch/barberias-platform/backend-barberias/src/auditoria/application/auditoria.service.ts)) implementando `registrarEvento(dto, tx?)` y `consultarAuditorias(filtros)` para centralizar la auditoría inmutable de la plataforma con soporte para transacciones serializables.
+  - Se integró `AuditoriaModule` en `PagoModule` ([`pago.module.ts`](file:///c:/Users/Magnurys%20J/.gemini/antigravity/scratch/barberias-platform/backend-barberias/src/pago/infrastructure/pago.module.ts)) e inyectó `AuditoriaService` en `PagoService` ([`pago.service.ts`](file:///c:/Users/Magnurys%20J/.gemini/antigravity/scratch/barberias-platform/backend-barberias/src/pago/application/pago.service.ts)).
+  - En `registrarPagoEnPersona`, la auditoría se delega formalmente al servicio especializado registrando: cajero/usuario cobrador, monto, método de pago, cliente, barbería, timestamp ISO, estado previo (`PENDIENTE_DE_PAGO`) y nuevo estado (`PAGADA`).
+  - Se habilitaron endpoints de consulta:
+    - `GET /api/v1/auditoria`: Consulta global de eventos filtrable por `entidad`, `accion`, `usuarioId` y `barberiaId` (para administradores).
+    - `GET /api/v1/barberias/:barberiaId/pagos/auditoria`: Consulta de auditoría de cobros específicos de la barbería.
+  - Batería de pruebas unitarias sincronizada y aprobada en `auditoria.service.spec.ts`, `auditoria.controller.spec.ts` y `pago.service.spec.ts` (21 de 21 pruebas aprobadas).
 
 ---
 

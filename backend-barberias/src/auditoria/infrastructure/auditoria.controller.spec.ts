@@ -10,6 +10,7 @@ describe('AuditoriaController (T8.2)', () => {
   const mockAuditoriaService = {
     obtenerEstadisticas: vi.fn(),
     purgarAuditoriasAntiguas: vi.fn(),
+    consultarAuditorias: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -69,6 +70,31 @@ describe('AuditoriaController (T8.2)', () => {
       const result = await controller.ejecutarPurgaManual('180');
 
       expect(mockAuditoriaService.purgarAuditoriasAntiguas).toHaveBeenCalledWith(180);
+      expect(result).toEqual(mockResult);
+    });
+  });
+
+  describe('consultarAuditorias', () => {
+    it('debe delegar en auditoriaService.consultarAuditorias() con los filtros pasados', async () => {
+      const mockResult = {
+        total: 1,
+        limite: 20,
+        offset: 0,
+        registros: [{ id: 'audit-1', accion: 'REGISTRO_PAGO_EN_PERSONA' }],
+      };
+      mockAuditoriaService.consultarAuditorias.mockResolvedValue(mockResult);
+
+      const result = await controller.consultarAuditorias('PAGO', 'pago-1', 'REGISTRO_PAGO_EN_PERSONA', 'user-1', 'barberia-1', '20', '0');
+
+      expect(mockAuditoriaService.consultarAuditorias).toHaveBeenCalledWith({
+        entidad: 'PAGO',
+        entidadId: 'pago-1',
+        accion: 'REGISTRO_PAGO_EN_PERSONA',
+        usuarioId: 'user-1',
+        barberiaId: 'barberia-1',
+        limite: 20,
+        offset: 0,
+      });
       expect(result).toEqual(mockResult);
     });
   });

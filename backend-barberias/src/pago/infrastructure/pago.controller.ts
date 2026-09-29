@@ -1,8 +1,10 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   Param,
+  Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { PagoService } from '../application/pago.service.js';
@@ -21,5 +23,20 @@ export class PagoController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.pagoService.registrarPagoEnPersona(user.id, barberiaId, dto);
+  }
+
+  @Get('auditoria')
+  obtenerAuditoriaPagos(
+    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+    @Query('limite') limite?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.pagoService.obtenerAuditoriaPagos(
+      user.id,
+      barberiaId,
+      limite ? parseInt(limite, 10) : 50,
+      offset ? parseInt(offset, 10) : 0,
+    );
   }
 }

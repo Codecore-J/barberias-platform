@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PagoService } from './pago.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import {
   NotFoundException,
   ForbiddenException,
@@ -20,6 +21,11 @@ describe('PagoService', () => {
     $transaction: vi.fn(async (cb) => cb(mockPrismaService)),
   };
 
+  const mockAuditoriaService = {
+    registrarEvento: vi.fn().mockResolvedValue({ id: 'uuid-audit' }),
+    consultarAuditorias: vi.fn(),
+  };
+
   beforeEach(async () => {
     vi.clearAllMocks();
 
@@ -27,6 +33,7 @@ describe('PagoService', () => {
       providers: [
         PagoService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: AuditoriaService, useValue: mockAuditoriaService },
       ],
     }).compile();
 
@@ -75,9 +82,6 @@ describe('PagoService', () => {
       };
       mockPrismaService.reserva.update.mockResolvedValue(mockReservaCompletada);
 
-      // 5. Auditoria
-      mockPrismaService.auditoria.create.mockResolvedValue({ id: 'uuid-audit' });
-
       const result = await service.registrarPagoEnPersona(usuarioId, barberiaId, {
         reservaId,
         monto: 25.0,
@@ -101,13 +105,15 @@ describe('PagoService', () => {
         where: { id: reservaId },
         data: { estado: 'COMPLETADA' },
       });
-      expect(mockPrismaService.auditoria.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
+      expect(mockAuditoriaService.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({
           usuarioId,
           accion: 'REGISTRO_PAGO_EN_PERSONA',
           entidad: 'PAGO',
+          entidadId: mockPago.id,
         }),
-      });
+        expect.anything(),
+      );
     });
 
     it('debe tomar totalPagar de la reserva si no se especifica monto en el DTO', async () => {
@@ -209,6 +215,43 @@ describe('PagoService', () => {
           reservaId,
         }),
       ).rejects.toThrowError(ConflictException);
+    });
+  });
+
+  describe('obtenerAuditoriaPagos', () => {
+    const usuarioId = 'uuid-responsable';
+    const barberiaId = 'uuid-barberia';
+
+    it('debe validar permisos y retornar los registros de auditoría de pagos', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({
+        responsableId: usuarioId,
+      });
+
+      const mockAuditorias = {
+        total: 1,
+        limite: 50,
+        offset: 0,
+        registros: [
+          {
+            id: 'audit-1',
+            accion: 'REGISTRO_PAGO_EN_PERSONA',
+            entidad: 'PAGO',
+            entidadId: 'pago-1',
+          },
+        ],
+      };
+      mockAuditoriaService.consultarAuditorias.mockResolvedValue(mockAuditorias);
+
+      const result = await service.obtenerAuditoriaPagos(usuarioId, barberiaId, 50, 0);
+
+      expect(result).toEqual(mockAuditorias);
+      expect(mockAuditoriaService.consultarAuditorias).toHaveBeenCalledWith({
+        entidad: 'PAGO',
+        accion: 'REGISTRO_PAGO_EN_PERSONA',
+        barberiaId,
+        limite: 50,
+        offset: 0,
+      });
     });
   });
 });

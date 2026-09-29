@@ -9,12 +9,16 @@ import {
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
 import { RegistrarPagoDto } from './dto/registrar-pago.dto.js';
+import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 
 @Injectable()
 export class PagoService {
   private readonly logger = new Logger(PagoService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditoriaService: AuditoriaService,
+  ) {}
 
   private async validateAccess(usuarioId: string, barberiaId: string) {
     const barberia = await this.prisma.barberia.findUnique({
@@ -121,9 +125,9 @@ export class PagoService {
         data: { estado: 'COMPLETADA' },
       });
 
-      // 3. Auditoría obligatoria
-      await tx.auditoria.create({
-        data: {
+      // 3. Auditoría obligatoria delegada formalmente a AuditoriaService (AUDIT-01 / T6.1)
+      await this.auditoriaService.registrarEvento(
+        {
           usuarioId,
           accion: 'REGISTRO_PAGO_EN_PERSONA',
           entidad: 'PAGO',
@@ -134,9 +138,14 @@ export class PagoService {
             metodo: dto.metodoPago ?? 'EN_PERSONA',
             clienteId: reserva.clienteId,
             barberiaId,
+            fechaPago: new Date().toISOString(),
+            estadoPrevioPago: reserva.pago?.estadoPago ?? 'PENDIENTE_DE_PAGO',
+            nuevoEstadoPago: 'PAGADA',
+            estadoReserva: 'COMPLETADA',
           },
         },
-      });
+        tx,
+      );
 
       this.logger.log(
         `Pago ${pago.id} registrado para reserva ${reserva.id} por usuario ${usuarioId} (Monto: $${montoFinal})`,
@@ -146,6 +155,26 @@ export class PagoService {
         pago,
         reserva: reservaActualizada,
       };
+    });
+  }
+
+  /**
+   * Consulta los registros de auditoría de pagos para una barbería específica.
+   */
+  async obtenerAuditoriaPagos(
+    usuarioId: string,
+    barberiaId: string,
+    limite = 50,
+    offset = 0,
+  ) {
+    await this.validateAccess(usuarioId, barberiaId);
+
+    return this.auditoriaService.consultarAuditorias({
+      entidad: 'PAGO',
+      accion: 'REGISTRO_PAGO_EN_PERSONA',
+      barberiaId,
+      limite,
+      offset,
     });
   }
 }
