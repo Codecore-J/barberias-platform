@@ -2,7 +2,7 @@
   "name": "frontend-barberias",
   "version": "0.0.0",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=20.0.0"
   },
   "scripts": {
     "ng": "ng",
@@ -12,7 +12,6 @@
     "test": "ng test"
   },
   "private": true,
-  "packageManager": "npm@11.19.0",
   "dependencies": {
     "@angular/animations": "^22.1.7",
     "@angular/common": "^22.1.0",

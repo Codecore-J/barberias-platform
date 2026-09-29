@@ -29,5 +29,15 @@
   "dependencies": {
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "lmdb": true,
+    "msgpackr-extract": true,
+    "@parcel/watcher": true,
+    "bcrypt": true,
+    "prisma": true,
+    "@prisma/engines": true,
+    "@prisma/client": true
   }
 }
