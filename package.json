@@ -1,0 +1,33 @@
+{
+  "name": "barberias-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plataforma de gestión de barberías — monorepo (backend NestJS + frontend Angular)",
+  "workspaces": [
+    "backend-barberias",
+    "frontend-barberias"
+  ],
+  "scripts": {
+    "start": "npm run start:frontend",
+    "start:frontend": "npm start --workspace=frontend-barberias",
+    "start:backend": "npm run start:dev --workspace=backend-barberias",
+    "start:all": "start cmd /k \"cd backend-barberias && npm run start:dev\" && start cmd /k \"cd frontend-barberias && npm start\"",
+    "build": "npm run build --workspace=backend-barberias && npm run build --workspace=frontend-barberias",
+    "build:backend": "npm run build --workspace=backend-barberias",
+    "build:frontend": "npm run build --workspace=frontend-barberias",
+    "test": "npm run test --workspace=backend-barberias",
+    "test:e2e": "npm run test:e2e --workspace=backend-barberias",
+    "lint": "npm run lint --workspace=backend-barberias",
+    "format": "npm run format --workspace=backend-barberias",
+    "db:migrate": "npm run prisma:migrate --workspace=backend-barberias",
+    "db:studio": "npm run prisma:studio --workspace=backend-barberias"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "dependencies": {
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1"
+  }
+}

@@ -1,0 +1,81 @@
+/* You can add global styles to this file, and also import other style files */
+@import "tailwindcss";
+@import "primeicons/primeicons.css";
+
+/* Luxury Barbershop & 3D Depth Utilities */
+:root {
+  --color-gold-300: #fde047;
+  --color-gold-400: #facc15;
+  --color-gold-500: #d4af37;
+  --color-gold-600: #b45309;
+  --color-obsidian: #09090b;
+  --color-charcoal: #121215;
+  --color-surface: #18181c;
+}
+
+/* 3D Perspective & Spatial Tokens */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.perspective-1200 {
+  perspective: 1200px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+/* Glassmorphism Styles */
+.glass-panel {
+  background: rgba(18, 18, 22, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+
+.glass-card {
+  background: rgba(24, 24, 30, 0.65);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(212, 175, 55, 0.35);
+  box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(212, 175, 55, 0.15);
+}
+
+/* Luxury Typography & Gradients */
+.font-display {
+  font-family: 'Outfit', sans-serif;
+}
+
+.gold-gradient-text {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef08a 25%, #d4af37 60%, #b45309 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-gradient-bg {
+  background: linear-gradient(135deg, #d4af37 0%, #f59e0b 100%);
+}
+
+.gold-border-glow {
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.15);
+}
+
+/* Ambient 3D Grid */
+.bg-ambient-mesh {
+  background-image: 
+    radial-gradient(ellipse at 50% -20%, rgba(212, 175, 55, 0.12) 0%, transparent 60%),
+    radial-gradient(circle at 100% 50%, rgba(245, 158, 11, 0.05) 0%, transparent 40%),
+    radial-gradient(circle at 0% 80%, rgba(212, 175, 55, 0.05) 0%, transparent 40%);
+}
