@@ -30,6 +30,18 @@
   backface-visibility: hidden;
 }
 
+.translate-z-8 {
+  transform: translateZ(8px);
+}
+
+.translate-z-12 {
+  transform: translateZ(12px);
+}
+
+.translate-z-24 {
+  transform: translateZ(24px);
+}
+
 /* Glassmorphism Styles */
 .glass-panel {
   background: rgba(18, 18, 22, 0.75);
