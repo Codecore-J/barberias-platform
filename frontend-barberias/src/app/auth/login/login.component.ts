@@ -38,7 +38,7 @@ import { CommonModule } from '@angular/common';
               <label for="correo" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Correo Electrónico</label>
               <div class="relative group">
                 <i class="pi pi-envelope absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
-                <input id="correo" name="correo" type="email" formControlName="correo" placeholder="tu@correo.com"
+                <input id="correo" name="correo" type="email" autocomplete="email" formControlName="correo" placeholder="tu@correo.com"
                        class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3.5 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
               </div>
             </div>
@@ -47,9 +47,9 @@ import { CommonModule } from '@angular/common';
               <label for="password" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Contraseña</label>
               <div class="relative group">
                 <i class="pi pi-lock absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
-                <input id="password" name="password" [type]="showPassword() ? 'text' : 'password'" formControlName="password" placeholder="••••••••"
+                <input id="password" name="password" [type]="showPassword() ? 'text' : 'password'" autocomplete="current-password" formControlName="password" placeholder="••••••••"
                        class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3.5 pl-12 pr-12 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
-                <button type="button" (click)="togglePassword()" class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-amber-400 focus:outline-none">
+                <button type="button" (click)="togglePassword()" aria-label="Mostrar u ocultar contraseña" class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-amber-400 focus:outline-none">
                   <i class="pi" [ngClass]="showPassword() ? 'pi-eye-slash' : 'pi-eye'"></i>
                 </button>
               </div>
@@ -62,7 +62,7 @@ import { CommonModule } from '@angular/common';
             }
 
             <button type="submit" [disabled]="loginForm.invalid || authService.authState().isLoading"
-                    class="w-full py-4 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_10px_30px_rgba(212,175,55,0.3)] hover:shadow-[0_15px_40px_rgba(212,175,55,0.5)] disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-1 transition-all flex items-center justify-center gap-2">
+                    class="w-full py-4 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_10px_30px_rgba(212,175,55,0.3)] hover:shadow-[0_15px_40px_rgba(212,175,55,0.5)] disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-1 transition-all flex items-center justify-center gap-2 cursor-pointer">
               @if (authService.authState().isLoading) {
                 <i class="pi pi-spin pi-spinner text-lg"></i> Ingresando...
               } @else {
@@ -72,7 +72,23 @@ import { CommonModule } from '@angular/common';
             
           </form>
 
-          <div class="mt-8 text-center transform translate-z-8">
+          <!-- Acceso Rápido Demo -->
+          <div class="mt-6 pt-5 border-t border-zinc-800/80 text-center transform translate-z-8">
+            <p class="text-[11px] font-semibold text-zinc-500 uppercase tracking-widest mb-2.5">Acceso Rápido Demo</p>
+            <div class="flex flex-wrap items-center justify-center gap-2">
+              <button type="button" (click)="fillDemo('cliente@demo.com')" class="px-2.5 py-1 text-xs rounded-lg bg-zinc-800/80 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-400 border border-zinc-700/60 hover:border-amber-500/40 transition-colors cursor-pointer">
+                👤 Cliente
+              </button>
+              <button type="button" (click)="fillDemo('barbero@demo.com')" class="px-2.5 py-1 text-xs rounded-lg bg-zinc-800/80 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-400 border border-zinc-700/60 hover:border-amber-500/40 transition-colors cursor-pointer">
+                ✂️ Barbero
+              </button>
+              <button type="button" (click)="fillDemo('admin@demo.com')" class="px-2.5 py-1 text-xs rounded-lg bg-zinc-800/80 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-400 border border-zinc-700/60 hover:border-amber-500/40 transition-colors cursor-pointer">
+                ⚡ Admin
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-6 text-center transform translate-z-8">
             <p class="text-zinc-500 text-sm">
               ¿No tienes una cuenta? 
               <a routerLink="/auth/register" class="text-amber-400 font-bold hover:text-amber-300 hover:underline underline-offset-4 ml-1 transition-colors">
@@ -110,6 +126,10 @@ export class LoginComponent {
     correo: ['', [Validators.required, Validators.email]],
     password: ['', [Validators.required, Validators.minLength(6)]],
   });
+
+  fillDemo(correo: string, pass: string = 'Password123!') {
+    this.loginForm.patchValue({ correo, password: pass });
+  }
 
   togglePassword() {
     this.showPassword.update(v => !v);
