@@ -79,4 +79,38 @@ export class ReservasService {
       })
     );
   }
+
+  /**
+   * Obtiene la agenda de reservas de una barbería para una fecha específica (Para barberos/admins)
+   */
+  obtenerAgendaDiaria(fecha: string): Observable<any[]> {
+    this.isLoading.set(true);
+    this.error.set(null);
+
+    return this.http.get<any>(`${this.apiUrl}/reservas/agenda?fecha=${fecha}`).pipe(
+      tap(() => this.isLoading.set(false)),
+      catchError(err => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.message || 'Error al obtener la agenda');
+        return of([]);
+      })
+    );
+  }
+
+  /**
+   * Cambia el estado de una reserva (Ej: COMPLETADA, NO_ASISTIO)
+   */
+  cambiarEstado(reservaId: string, estado: string): Observable<any> {
+    this.isLoading.set(true);
+    this.error.set(null);
+
+    return this.http.patch(`${this.apiUrl}/reservas/${reservaId}/estado`, { estado }).pipe(
+      tap(() => this.isLoading.set(false)),
+      catchError(err => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.message || 'Error al cambiar estado de la reserva');
+        return throwError(() => err);
+      })
+    );
+  }
 }

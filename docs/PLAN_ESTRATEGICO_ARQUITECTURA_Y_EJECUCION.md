@@ -320,7 +320,7 @@ src/app/
 
 * **ÉPICA F4: Mis Citas y Agenda de Barberos**
   - **[x] T-F4.1: Timeline 3D de citas del cliente (`MisReservasComponent`) con estados en vivo (Completado)**
-  - **T-F4.2:** Agenda diaria del barbero (`AgendaBarberoComponent`) con acciones rápidas (Iniciar, Completar, Inasistencia).
+  - **[x] T-F4.2: Agenda diaria del barbero (`AgendaBarberoComponent`) con acciones rápidas (Iniciar, Completar, Inasistencia) (Completado)**
 
 * **ÉPICA F5: Cobros y Punto de Venta (POS)**
   - **T-F5.1:** Modal de cobro en persona (`CobroModalComponent`) con selección de método de pago y confirmación atómica.
