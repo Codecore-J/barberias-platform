@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: barberias-api
+    runtime: node
+    region: ohio # Co-localizado en AWS us-east-2 con Neon PostgreSQL
+    plan: free
+    rootDir: backend-barberias
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://barberias-platform-git-main-developerstem.vercel.app,https://barberias-platform.vercel.app
