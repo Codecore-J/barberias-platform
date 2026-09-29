@@ -274,6 +274,13 @@ Se sometió la plataforma a una batería completa de pruebas de rendimiento, con
 - **Resultado esperado:** PostgreSQL debe rechazar la inserción mediante un índice único parcial:  
   `CREATE UNIQUE INDEX idx_cliente_barberia_activa ON cliente_barberias (usuario_id) WHERE es_barberia_activa = true;`
 - **Resultado real:** La regla solo se valida en la capa de software de NestJS (`barberia.service.ts`). La base de datos permite tener múltiples barberías activas simultáneas si se interactúa directamente con ella.
+- **Estado:** ✅ **RESUELTO (29/09/2026)**
+  - Se generó y aplicó la migración de base de datos `20260929184500_add_unique_partial_index_cliente_barberia_activa` ([`migration.sql`](file:///c:/Users/Magnurys%20J/.gemini/antigravity/scratch/barberias-platform/backend-barberias/prisma/migrations/20260929184500_add_unique_partial_index_cliente_barberia_activa/migration.sql)).
+  - Se creó formalmente el índice único parcial en PostgreSQL:
+    `CREATE UNIQUE INDEX "idx_cliente_barberia_activa" ON "cliente_barberias"("usuario_id") WHERE "es_barberia_activa" = true;`
+  - Se ejecutó `npx prisma migrate deploy` en Neon PostgreSQL con éxito registrando la migración en `_prisma_migrations`.
+  - Verificado experimentalmente: la base de datos rechaza de manera nativa e inquebrantable cualquier intento de asignar `es_barberia_activa = true` a dos barberías para un mismo usuario (`SQLSTATE 23505 unique_violation`).
+  - Suite de pruebas E2E de multitenancy aprobada al 100% sin regresiones.
 
 ---
 
