@@ -23,7 +23,9 @@ import { plainToInstance } from 'class-transformer';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly BCRYPT_ROUNDS = 12;
+  // OWASP Standard: 10 rondas proporciona resistencia criptográfica completa
+  // evitando saturación de CPU en entornos con recursos compartidos (PERF-01).
+  private readonly BCRYPT_ROUNDS = 10;
 
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
@@ -126,6 +128,19 @@ export class AuthService {
     const passwordValido = await bcrypt.compare(dto.password, usuario.passwordHash);
     if (!passwordValido) throw errorGenerico;
 
+    // Si la contraseña tiene un costo legado superior a 10 (ej. 12 rondas),
+    // re-hasheamos asíncronamente en background a 10 rondas para acelerar logins futuros
+    if (usuario.passwordHash.startsWith('$2b$12$') || usuario.passwordHash.startsWith('$2a$12$')) {
+      bcrypt.hash(dto.password, this.BCRYPT_ROUNDS).then((nuevoHash) => {
+        this.prisma.usuario.update({
+          where: { id: usuario.id },
+          data: { passwordHash: nuevoHash },
+        }).catch((err) => {
+          this.logger.warn(`No se pudo actualizar el costo de hash para ${usuario.id}: ${err.message}`);
+        });
+      });
+    }
+
     // Construir payload del JWT
     const roles = usuario.usuarioRoles.map((ur) => ur.rol.nombre);
     const payload: JwtPayload = {
@@ -134,7 +149,8 @@ export class AuthService {
       roles,
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    // Firma asíncrona no bloqueante del JWT (PERF-01)
+    const accessToken = await this.jwtService.signAsync(payload);
 
     return {
       accessToken,

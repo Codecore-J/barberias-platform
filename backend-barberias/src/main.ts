@@ -1,3 +1,6 @@
+// Optimización de concurrencia libuv (PERF-01): aumentar pool de hilos para criptografía (Bcrypt)
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '16';
+
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
 import { AppModule } from './app.module.js';

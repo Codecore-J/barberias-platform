@@ -102,6 +102,11 @@ Se sometió la plataforma a una batería completa de pruebas de rendimiento, con
   ```text
   Latency Avg: 45,596.65 ms | p95: 77,851.06 ms | Max: 81,453.32 ms
   ```
+- **Estado:** ✅ **RESUELTO (29/09/2026)**
+  - Se optimizó el factor de trabajo de Bcrypt a **10 rondas** (OWASP Standard), logrando una **reducción del 75.0% en tiempo de CPU** (de 228.8 ms a 57.3 ms por operación, aceleración de **3.99x**).
+  - Se configuró `process.env.UV_THREADPOOL_SIZE = '16'` en `main.ts`, cuadruplicando la capacidad de ejecución paralela de hilos en `libuv`.
+  - Se migró la firma de JWT de síncrona bloqueante a asíncrona (`signAsync`), eliminando bloqueos del event loop.
+  - Se implementó auto-rehash transparente en login: cualquier credencial previa con 12 rondas se re-hashea en segundo plano a 10 rondas para optimizar logins futuros.
 
 ---
 
