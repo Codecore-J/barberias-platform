@@ -16,14 +16,17 @@ import { PagoModule } from './pago/infrastructure/pago.module.js';
 import { AntecedenteModule } from './antecedente/infrastructure/antecedente.module.js';
 import { NotificacionModule } from './notificacion/infrastructure/notificacion.module.js';
 import { AuditoriaModule } from './auditoria/infrastructure/auditoria.module.js';
+import Redis from 'ioredis';
 
 @Module({
   imports: [
     BullModule.forRoot({
-      connection: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379', 10),
-      },
+      connection: process.env.REDIS_URL
+        ? new Redis.default(process.env.REDIS_URL, { maxRetriesPerRequest: null })
+        : {
+            host: process.env.REDIS_HOST || 'localhost',
+            port: parseInt(process.env.REDIS_PORT || '6379', 10),
+          },
     }),
     SharedModule,
     IamModule,
