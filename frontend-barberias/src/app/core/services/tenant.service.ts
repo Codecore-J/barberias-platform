@@ -16,12 +16,14 @@ export interface BarberiaResumen {
   estadoVinculacion?: 'ACTIVO' | 'PENDIENTE';
 }
 
+import { API_URL } from '../constants/api.constants.js';
+
 @Injectable({
   providedIn: 'root',
 })
 export class TenantService {
   private readonly http = inject(HttpClient);
-  private readonly apiUrl = 'http://localhost:3000/api/v1/barberias';
+  private readonly apiUrl = `${API_URL}/barberias`;
   private readonly storageKey = 'active_barberia_id';
 
   // Signals reactivos para el tenant

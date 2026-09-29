@@ -11,12 +11,14 @@ export interface NotificacionItem {
   creadoAt: string;
 }
 
+import { API_URL } from '../constants/api.constants.js';
+
 @Injectable({
   providedIn: 'root',
 })
 export class NotificationService {
   private readonly http = inject(HttpClient);
-  private readonly apiUrl = 'http://localhost:3000/api/v1/notificaciones';
+  private readonly apiUrl = `${API_URL}/notificaciones`;
 
   readonly notificaciones = signal<NotificacionItem[]>([]);
   readonly noLeidasCount = signal<number>(0);

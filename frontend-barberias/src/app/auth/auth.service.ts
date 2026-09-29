@@ -16,13 +16,15 @@ export interface AuthState {
   error: string | null;
 }
 
+import { API_URL } from '../core/constants/api.constants.js';
+
 @Injectable({
   providedIn: 'root'
 })
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
-  private readonly apiUrl = 'http://localhost:3000/api/v1/auth';
+  private readonly apiUrl = `${API_URL}/auth`;
   private readonly tokenKey = 'access_token';
 
   // Reactive state using Angular Signals
