@@ -3,11 +3,12 @@ import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ReservasService } from '../../core/services/reservas.service';
 import { TenantService } from '../../core/services/tenant.service';
+import { CobroModalComponent } from './components/cobro-modal/cobro-modal.component';
 
 @Component({
   selector: 'app-agenda-barbero',
   standalone: true,
-  imports: [CommonModule, FormsModule, CurrencyPipe, DatePipe],
+  imports: [CommonModule, FormsModule, CurrencyPipe, DatePipe, CobroModalComponent],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
       
@@ -85,8 +86,8 @@ import { TenantService } from '../../core/services/tenant.service';
                 <!-- Botones de Acción (Solo si está pendiente) -->
                 @if (turno.estado === 'PENDIENTE') {
                   <div class="flex items-center gap-2">
-                    <button (click)="cambiarEstado(turno.id, 'COMPLETADA')" class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all shadow-lg flex items-center justify-center" title="Marcar como Completada">
-                      <i class="pi pi-check"></i>
+                    <button (click)="iniciarCobro(turno)" class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all shadow-lg flex items-center justify-center" title="Cobrar y Completar Cita">
+                      <i class="pi pi-dollar"></i>
                     </button>
                     <button (click)="cambiarEstado(turno.id, 'NO_ASISTIO')" class="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-all shadow-lg flex items-center justify-center" title="Marcar como No Asistió">
                       <i class="pi pi-user-minus"></i>
@@ -119,6 +120,15 @@ import { TenantService } from '../../core/services/tenant.service';
         </div>
       }
 
+      <!-- Modal de Cobro -->
+      @if (turnoACobrar()) {
+        <app-cobro-modal 
+          [turno]="turnoACobrar()" 
+          (close)="turnoACobrar.set(null)"
+          (cobroExitoso)="onCobroExitoso()">
+        </app-cobro-modal>
+      }
+
     </div>
   `
 })
@@ -128,6 +138,7 @@ export class AgendaBarberoComponent implements OnInit {
 
   fechaFiltro: string = new Date().toISOString().split('T')[0];
   turnos = signal<any[]>([]);
+  turnoACobrar = signal<any | null>(null);
 
   ngOnInit() {
     this.cargarAgenda();
@@ -148,5 +159,14 @@ export class AgendaBarberoComponent implements OnInit {
         this.cargarAgenda(); // Recargar la vista
       });
     }
+  }
+
+  iniciarCobro(turno: any) {
+    this.turnoACobrar.set(turno);
+  }
+
+  onCobroExitoso() {
+    this.turnoACobrar.set(null);
+    this.cargarAgenda(); // Recargamos para ver el turno ya completado
   }
 }

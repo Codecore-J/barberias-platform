@@ -323,7 +323,7 @@ src/app/
   - **[x] T-F4.2: Agenda diaria del barbero (`AgendaBarberoComponent`) con acciones rápidas (Iniciar, Completar, Inasistencia) (Completado)**
 
 * **ÉPICA F5: Cobros y Punto de Venta (POS)**
-  - **T-F5.1:** Modal de cobro en persona (`CobroModalComponent`) con selección de método de pago y confirmación atómica.
+  - **[x] T-F5.1: Modal de cobro en persona (`CobroModalComponent`) con selección de método de pago y confirmación atómica (Completado)**
 
 * **ÉPICA F6: Ficha de Antecedentes y Notificaciones en Vivo**
   - **T-F6.1:** Drawer de ficha técnica del cliente con anonimización inter-barberías.

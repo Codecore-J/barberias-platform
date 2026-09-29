@@ -98,7 +98,7 @@ export class ReservasService {
   }
 
   /**
-   * Cambia el estado de una reserva (Ej: COMPLETADA, NO_ASISTIO)
+   * Cambia el estado de una reserva (Ej: NO_ASISTIO, CANCELADA)
    */
   cambiarEstado(reservaId: string, estado: string): Observable<any> {
     this.isLoading.set(true);
@@ -109,6 +109,23 @@ export class ReservasService {
       catchError(err => {
         this.isLoading.set(false);
         this.error.set(err.error?.message || 'Error al cambiar estado de la reserva');
+        return throwError(() => err);
+      })
+    );
+  }
+
+  /**
+   * Registra el cobro de una reserva y la marca como COMPLETADA
+   */
+  registrarCobro(reservaId: string, metodoPago: string): Observable<any> {
+    this.isLoading.set(true);
+    this.error.set(null);
+
+    return this.http.post(`${this.apiUrl}/cobros`, { reservaId, metodoPago }).pipe(
+      tap(() => this.isLoading.set(false)),
+      catchError(err => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.message || 'Error al procesar el cobro');
         return throwError(() => err);
       })
     );
