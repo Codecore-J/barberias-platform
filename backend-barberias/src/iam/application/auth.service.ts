@@ -1,5 +1,7 @@
 import {
+  BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -7,10 +9,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'node:crypto';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { UsuarioResponseDto } from './dto/usuario-response.dto.js';
 import { JwtPayload } from '../domain/jwt.interface.js';
 import { plainToInstance } from 'class-transformer';
@@ -21,8 +26,8 @@ export class AuthService {
   private readonly BCRYPT_ROUNDS = 12;
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly jwtService: JwtService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(JwtService) private readonly jwtService: JwtService,
   ) {}
 
   /**
@@ -165,4 +170,142 @@ export class AuthService {
       roles,
     });
   }
+
+  /**
+   * Genera un token seguro para recuperación de contraseña (SEC-01).
+   * Reglas de Seguridad:
+   * - Retorno genérico e idéntico sin importar si el usuario existe (previene enumeración).
+   * - Token criptográfico SHA-256 de un solo uso con expiración de 15 minutos.
+   * - Invalida tokens previos pendientes del usuario.
+   */
+  async forgotPassword(
+    dto: ForgotPasswordDto,
+  ): Promise<{ message: string; debugToken?: string }> {
+    const genericResponse = {
+      message:
+        'Si el correo electrónico está registrado, recibirás un enlace con instrucciones para restablecer tu contraseña.',
+    };
+
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { correo: dto.correo.toLowerCase().trim() },
+    });
+
+    if (!usuario || usuario.estadoCuenta !== 'ACTIVO') {
+      return genericResponse;
+    }
+
+    // Invalidar tokens previos no utilizados para este usuario
+    await this.prisma.tokenRecuperacion.updateMany({
+      where: { usuarioId: usuario.id, usado: false },
+      data: { usado: true },
+    });
+
+    // Generar token seguro criptográfico
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiraAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
+
+    await this.prisma.tokenRecuperacion.create({
+      data: {
+        usuarioId: usuario.id,
+        tokenHash,
+        expiraAt,
+        usado: false,
+      },
+    });
+
+    // Registrar notificación en la base de datos
+    await this.prisma.notificacion.create({
+      data: {
+        usuarioId: usuario.id,
+        canal: 'EMAIL',
+        tipo: 'RECUPERACION_PASSWORD',
+        contenido: `Has solicitado restablecer tu contraseña. Utiliza el siguiente token en los próximos 15 minutos: ${rawToken}`,
+        estado: 'PENDIENTE',
+      },
+    });
+
+    this.logger.log(
+      `Solicitud de recuperación de contraseña generada para usuario ${usuario.id} (${usuario.correo})`,
+    );
+
+    return {
+      ...genericResponse,
+      ...(process.env.NODE_ENV !== 'production' && { debugToken: rawToken }),
+    };
+  }
+
+  /**
+   * Valida el token de recuperación y actualiza la contraseña del usuario (SEC-01).
+   * Reglas de Seguridad:
+   * - Valida hash SHA-256 del token, expiración y uso previo.
+   * - Transacción atómica que actualiza la contraseña, quema el token y registra auditoría.
+   */
+  async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
+    const tokenHash = crypto
+      .createHash('sha256')
+      .update(dto.token.trim())
+      .digest('hex');
+
+    const tokenRecord = await this.prisma.tokenRecuperacion.findUnique({
+      where: { tokenHash },
+      include: { usuario: true },
+    });
+
+    if (!tokenRecord || tokenRecord.usado) {
+      throw new BadRequestException(
+        'El enlace de recuperación es inválido o ya ha sido utilizado.',
+      );
+    }
+
+    if (tokenRecord.expiraAt < new Date()) {
+      throw new BadRequestException(
+        'El enlace de recuperación ha expirado. Por favor solicita uno nuevo.',
+      );
+    }
+
+    if (tokenRecord.usuario.estadoCuenta !== 'ACTIVO') {
+      throw new BadRequestException('La cuenta de usuario asociada no está activa.');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, this.BCRYPT_ROUNDS);
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Actualizar contraseña del usuario
+      await tx.usuario.update({
+        where: { id: tokenRecord.usuarioId },
+        data: { passwordHash },
+      });
+
+      // 2. Marcar token como consumido
+      await tx.tokenRecuperacion.update({
+        where: { id: tokenRecord.id },
+        data: { usado: true },
+      });
+
+      // 3. Registrar auditoría de seguridad
+      await tx.auditoria.create({
+        data: {
+          usuarioId: tokenRecord.usuarioId,
+          accion: 'RECUPERACION_PASSWORD_EXITOSA',
+          entidad: 'Usuario',
+          entidadId: tokenRecord.usuarioId,
+          contexto: {
+            tokenId: tokenRecord.id,
+            fecha: new Date().toISOString(),
+          },
+        },
+      });
+    });
+
+    this.logger.log(
+      `Contraseña restablecida exitosamente para el usuario ${tokenRecord.usuarioId}`,
+    );
+
+    return {
+      message:
+        'Tu contraseña ha sido restablecida exitosamente. Ya puedes iniciar sesión con tu nueva credencial.',
+    };
+  }
 }
+

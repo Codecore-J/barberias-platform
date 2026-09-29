@@ -130,4 +130,12 @@ export class AuthService {
       })
     ).subscribe();
   }
+
+  forgotPassword(correo: string): Observable<{ message: string; debugToken?: string }> {
+    return this.http.post<{ message: string; debugToken?: string }>(`${this.apiUrl}/forgot-password`, { correo });
+  }
+
+  resetPassword(token: string, newPassword: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.apiUrl}/reset-password`, { token, newPassword });
+  }
 }

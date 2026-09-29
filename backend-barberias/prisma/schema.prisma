@@ -26,6 +26,7 @@ model Usuario {
   notificaciones  Notificacion[]
   auditoria       Auditoria[]
   bloqueosCreados BloqueosAgenda[]  @relation("BloqueoCreador")
+  tokensRecuperacion TokenRecuperacion[]
 
   @@map("usuarios")
 }
@@ -361,3 +362,18 @@ model ConfiguracionBarberia {
 
   @@map("configuracion_barberia")
 }
+
+model TokenRecuperacion {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId String    @map("usuario_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.VarChar(64)
+  usado     Boolean   @default(false)
+  expiraAt  DateTime  @map("expira_at") @db.Timestamptz
+  creadoAt  DateTime? @default(now()) @map("creado_at") @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash], name: "idx_tokens_recuperacion_hash")
+  @@map("tokens_recuperacion")
+}
+

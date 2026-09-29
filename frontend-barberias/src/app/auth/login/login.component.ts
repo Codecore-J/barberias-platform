@@ -55,6 +55,12 @@ import { CommonModule } from '@angular/common';
               </div>
             </div>
 
+            <div class="flex items-center justify-end -mt-1">
+              <button type="button" (click)="openRecoveryModal()" class="text-xs text-amber-400/90 hover:text-amber-300 hover:underline underline-offset-2 transition-colors cursor-pointer">
+                ¿Olvidaste tu contraseña?
+              </button>
+            </div>
+
             @if (authService.authState().error) {
               <div class="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl p-3 animate-shake flex items-center gap-2">
                 <i class="pi pi-exclamation-circle"></i> {{ authService.authState().error }}
@@ -98,6 +104,100 @@ import { CommonModule } from '@angular/common';
           </div>
 
         </div>
+
+        <!-- Modal de Recuperación de Contraseña (SEC-01) -->
+        @if (showRecoveryModal()) {
+          <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in-up">
+            <div class="relative w-full max-w-md bg-zinc-950/95 border border-amber-500/40 rounded-3xl p-6 sm:p-8 shadow-[0_25px_60px_rgba(0,0,0,0.8)]">
+              
+              <button type="button" (click)="closeRecoveryModal()" class="absolute top-5 right-5 text-zinc-400 hover:text-white transition-colors cursor-pointer">
+                <i class="pi pi-times text-lg"></i>
+              </button>
+
+              <div class="text-center mb-6">
+                <div class="w-12 h-12 mx-auto rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-3">
+                  <i class="pi pi-key text-amber-400 text-xl"></i>
+                </div>
+                <h2 class="text-xl font-display font-bold text-white">Recuperar Contraseña</h2>
+                <p class="text-xs text-zinc-400 mt-1">
+                  @if (recoveryStep() === 1) {
+                    Ingresa tu correo para recibir un enlace/token de restablecimiento.
+                  } @else {
+                    Ingresa el token recibido y tu nueva contraseña.
+                  }
+                </p>
+              </div>
+
+              @if (recoverySuccessMsg()) {
+                <div class="mb-4 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 flex items-center gap-2">
+                  <i class="pi pi-check-circle text-base"></i> {{ recoverySuccessMsg() }}
+                </div>
+              }
+
+              @if (recoveryErrorMsg()) {
+                <div class="mb-4 text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center gap-2">
+                  <i class="pi pi-exclamation-triangle text-base"></i> {{ recoveryErrorMsg() }}
+                </div>
+              }
+
+              @if (recoveryStep() === 1) {
+                <form [formGroup]="forgotForm" (ngSubmit)="onForgotSubmit()" class="space-y-4">
+                  <div class="space-y-1.5">
+                    <label for="recoveryEmail" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Correo Electrónico</label>
+                    <input id="recoveryEmail" type="email" formControlName="correo" placeholder="tu@correo.com"
+                           class="w-full bg-zinc-900 border border-zinc-700 rounded-xl py-3 px-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors shadow-inner text-sm">
+                  </div>
+
+                  <button type="submit" [disabled]="forgotForm.invalid || isRecoveryLoading()"
+                          class="w-full py-3.5 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-md hover:shadow-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2">
+                    @if (isRecoveryLoading()) {
+                      <i class="pi pi-spin pi-spinner"></i> Enviando...
+                    } @else {
+                      Enviar Instrucciones <i class="pi pi-arrow-right"></i>
+                    }
+                  </button>
+
+                  <div class="text-center pt-2">
+                    <button type="button" (click)="goToStep(2)" class="text-xs text-zinc-400 hover:text-amber-400 transition-colors cursor-pointer">
+                      ¿Ya tienes un token de recuperación? Ingresar aquí
+                    </button>
+                  </div>
+                </form>
+              } @else {
+                <form [formGroup]="resetForm" (ngSubmit)="onResetSubmit()" class="space-y-4">
+                  <div class="space-y-1.5">
+                    <label for="recoveryToken" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Token de Recuperación</label>
+                    <input id="recoveryToken" type="text" formControlName="token" placeholder="Pega el token aquí"
+                           class="w-full bg-zinc-900 border border-zinc-700 rounded-xl py-3 px-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors shadow-inner text-sm font-mono">
+                  </div>
+
+                  <div class="space-y-1.5">
+                    <label for="recoveryNewPassword" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Nueva Contraseña (mín. 8 caracteres)</label>
+                    <input id="recoveryNewPassword" type="password" formControlName="newPassword" placeholder="••••••••"
+                           class="w-full bg-zinc-900 border border-zinc-700 rounded-xl py-3 px-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors shadow-inner text-sm">
+                  </div>
+
+                  <button type="submit" [disabled]="resetForm.invalid || isRecoveryLoading()"
+                          class="w-full py-3.5 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-md hover:shadow-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2">
+                    @if (isRecoveryLoading()) {
+                      <i class="pi pi-spin pi-spinner"></i> Actualizando...
+                    } @else {
+                      Restablecer Contraseña <i class="pi pi-check"></i>
+                    }
+                  </button>
+
+                  <div class="text-center pt-2">
+                    <button type="button" (click)="goToStep(1)" class="text-xs text-zinc-400 hover:text-amber-400 transition-colors cursor-pointer">
+                      ← Volver a solicitar token
+                    </button>
+                  </div>
+                </form>
+              }
+
+            </div>
+          </div>
+        }
+
       </div>
     </div>
   `,
@@ -121,10 +221,24 @@ export class LoginComponent {
   authService = inject(AuthService);
   
   showPassword = signal(false);
+  showRecoveryModal = signal(false);
+  recoveryStep = signal<1 | 2>(1);
+  isRecoveryLoading = signal(false);
+  recoverySuccessMsg = signal<string | null>(null);
+  recoveryErrorMsg = signal<string | null>(null);
 
   loginForm = this.fb.group({
     correo: ['', [Validators.required, Validators.email]],
     password: ['', [Validators.required, Validators.minLength(6)]],
+  });
+
+  forgotForm = this.fb.group({
+    correo: ['', [Validators.required, Validators.email]],
+  });
+
+  resetForm = this.fb.group({
+    token: ['', [Validators.required, Validators.minLength(10)]],
+    newPassword: ['', [Validators.required, Validators.minLength(8)]],
   });
 
   fillDemo(correo: string, pass: string = 'Password123!') {
@@ -135,14 +249,82 @@ export class LoginComponent {
     this.showPassword.update(v => !v);
   }
 
+  openRecoveryModal() {
+    this.recoveryStep.set(1);
+    this.recoverySuccessMsg.set(null);
+    this.recoveryErrorMsg.set(null);
+    this.forgotForm.reset({ correo: this.loginForm.value.correo || '' });
+    this.showRecoveryModal.set(true);
+  }
+
+  closeRecoveryModal() {
+    this.showRecoveryModal.set(false);
+    this.recoverySuccessMsg.set(null);
+    this.recoveryErrorMsg.set(null);
+  }
+
+  goToStep(step: 1 | 2) {
+    this.recoveryStep.set(step);
+    this.recoverySuccessMsg.set(null);
+    this.recoveryErrorMsg.set(null);
+  }
+
+  onForgotSubmit() {
+    if (this.forgotForm.invalid) return;
+    this.isRecoveryLoading.set(true);
+    this.recoveryErrorMsg.set(null);
+    this.recoverySuccessMsg.set(null);
+
+    const email = this.forgotForm.value.correo!;
+    this.authService.forgotPassword(email).subscribe({
+      next: (res) => {
+        this.isRecoveryLoading.set(false);
+        this.recoverySuccessMsg.set(res.message);
+        // Si en desarrollo/demo devuelve debugToken, lo pre-cargamos para facilitar la prueba
+        if (res.debugToken) {
+          this.resetForm.patchValue({ token: res.debugToken });
+        }
+        setTimeout(() => {
+          this.recoveryStep.set(2);
+        }, 1500);
+      },
+      error: (err) => {
+        this.isRecoveryLoading.set(false);
+        this.recoveryErrorMsg.set(err.error?.message || 'Error al procesar la solicitud.');
+      }
+    });
+  }
+
+  onResetSubmit() {
+    if (this.resetForm.invalid) return;
+    this.isRecoveryLoading.set(true);
+    this.recoveryErrorMsg.set(null);
+    this.recoverySuccessMsg.set(null);
+
+    const { token, newPassword } = this.resetForm.value;
+    this.authService.resetPassword(token!, newPassword!).subscribe({
+      next: (res) => {
+        this.isRecoveryLoading.set(false);
+        this.recoverySuccessMsg.set(res.message);
+        setTimeout(() => {
+          this.closeRecoveryModal();
+          this.loginForm.patchValue({ password: newPassword });
+        }, 2000);
+      },
+      error: (err) => {
+        this.isRecoveryLoading.set(false);
+        this.recoveryErrorMsg.set(err.error?.message || 'El token es inválido o ha expirado.');
+      }
+    });
+  }
+
   onSubmit() {
     if (this.loginForm.valid) {
       this.authService.login(this.loginForm.value as any).subscribe({
         next: () => {},
-        error: () => {
-          // El error se muestra en la interfaz a través de authService.authState().error
-        }
+        error: () => {}
       });
     }
   }
 }
+
