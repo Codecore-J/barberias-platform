@@ -62,4 +62,21 @@ export class ReservasService {
       })
     );
   }
+
+  /**
+   * Obtiene las reservas del cliente actual
+   */
+  obtenerMisReservas(): Observable<any[]> {
+    this.isLoading.set(true);
+    this.error.set(null);
+
+    return this.http.get<any>(`${this.apiUrl}/reservas/mis-reservas`).pipe(
+      tap(() => this.isLoading.set(false)),
+      catchError(err => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.message || 'Error al obtener tus reservas');
+        return of([]);
+      })
+    );
+  }
 }

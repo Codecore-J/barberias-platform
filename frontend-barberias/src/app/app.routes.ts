@@ -43,6 +43,12 @@ export const routes: Routes = [
           import('./features/reservas/reserva-wizard.component').then((m) => m.ReservaWizardComponent),
       },
       {
+        path: 'reservas/mis-reservas',
+        canActivate: [authGuard],
+        loadComponent: () =>
+          import('./features/reservas/mis-reservas.component').then((m) => m.MisReservasComponent),
+      },
+      {
         path: 'catalogo',
         canActivate: [tenantGuard],
         loadComponent: () =>

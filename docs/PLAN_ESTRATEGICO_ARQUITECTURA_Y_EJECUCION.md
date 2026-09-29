@@ -319,7 +319,7 @@ src/app/
     - *Paso 4:* Confirmación con snapshot de precio congelado y creación atómica `SERIALIZABLE`.
 
 * **ÉPICA F4: Mis Citas y Agenda de Barberos**
-  - **T-F4.1:** Timeline 3D de citas del cliente (`MisReservasComponent`) con estados en vivo.
+  - **[x] T-F4.1: Timeline 3D de citas del cliente (`MisReservasComponent`) con estados en vivo (Completado)**
   - **T-F4.2:** Agenda diaria del barbero (`AgendaBarberoComponent`) con acciones rápidas (Iniciar, Completar, Inasistencia).
 
 * **ÉPICA F5: Cobros y Punto de Venta (POS)**
