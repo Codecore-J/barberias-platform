@@ -40,7 +40,7 @@ export const routes: Routes = [
         path: 'reservas/nueva',
         canActivate: [tenantGuard],
         loadComponent: () =>
-          import('./features/home/home.component').then((m) => m.HomeComponent), // Placeholder temporal
+          import('./features/reservas/reserva-wizard.component').then((m) => m.ReservaWizardComponent),
       },
       {
         path: 'catalogo',

@@ -312,7 +312,7 @@ src/app/
   - **[x] T-F2.2: Panel administrativo de catálogo (CRUD con cálculo de margen y detección de ciclos) (Completado)**
 
 * **ÉPICA F3: Wizard de Agendamiento Interactivo en 3D**
-  - **T-F3.1:** `ReservaWizardComponent` multi-paso con transición espacial en profundidad:
+  - **[x] T-F3.1: `ReservaWizardComponent` multi-paso con transición espacial en profundidad (Completado):**
     - *Paso 1:* Selección de servicios/combos.
     - *Paso 2:* Calendario y barbero.
     - *Paso 3:* Selector de slots de disponibilidad en tiempo real (`/agenda/disponibilidad`).
