@@ -326,5 +326,5 @@ src/app/
   - **[x] T-F5.1: Modal de cobro en persona (`CobroModalComponent`) con selección de método de pago y confirmación atómica (Completado)**
 
 * **ÉPICA F6: Ficha de Antecedentes y Notificaciones en Vivo**
-  - **T-F6.1:** Drawer de ficha técnica del cliente con anonimización inter-barberías.
+  - **[x] T-F6.1: Drawer de ficha técnica del cliente con anonimización inter-barberías (Completado)**
   - **T-F6.2:** Centro de notificaciones desplegable en Navbar conectado a la cola asíncrona.

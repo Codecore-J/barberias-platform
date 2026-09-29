@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { ReservasService } from '../../core/services/reservas.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { CobroModalComponent } from './components/cobro-modal/cobro-modal.component';
+import { FichaClienteDrawerComponent } from '../clientes/components/ficha-cliente-drawer/ficha-cliente-drawer.component';
 
 @Component({
   selector: 'app-agenda-barbero',
   standalone: true,
-  imports: [CommonModule, FormsModule, CurrencyPipe, DatePipe, CobroModalComponent],
+  imports: [CommonModule, FormsModule, CurrencyPipe, DatePipe, CobroModalComponent, FichaClienteDrawerComponent],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
       
@@ -63,7 +64,10 @@ import { CobroModalComponent } from './components/cobro-modal/cobro-modal.compon
                 <div>
                   <h3 class="text-lg font-bold text-white flex items-center gap-2">
                     {{ turno.cliente.nombre }}
-                    <span class="text-xs font-normal text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-full">{{ turno.cliente.telefono }}</span>
+                    <button (click)="abrirFicha(turno.cliente)" class="text-amber-500 hover:text-amber-400 transition-colors" title="Ver Ficha Técnica">
+                      <i class="pi pi-info-circle text-sm"></i>
+                    </button>
+                    <span class="text-xs font-normal text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-full ml-2">{{ turno.cliente.telefono }}</span>
                   </h3>
                   
                   <div class="text-sm text-zinc-400 mt-1 flex flex-wrap gap-x-3 gap-y-1">
@@ -129,6 +133,15 @@ import { CobroModalComponent } from './components/cobro-modal/cobro-modal.compon
         </app-cobro-modal>
       }
 
+      <!-- Drawer de Ficha de Cliente -->
+      @if (clienteSeleccionado()) {
+        <app-ficha-cliente-drawer
+          [clienteId]="clienteSeleccionado()!.id"
+          [clienteNombre]="clienteSeleccionado()!.nombre"
+          (close)="clienteSeleccionado.set(null)">
+        </app-ficha-cliente-drawer>
+      }
+
     </div>
   `
 })
@@ -139,6 +152,7 @@ export class AgendaBarberoComponent implements OnInit {
   fechaFiltro: string = new Date().toISOString().split('T')[0];
   turnos = signal<any[]>([]);
   turnoACobrar = signal<any | null>(null);
+  clienteSeleccionado = signal<any | null>(null);
 
   ngOnInit() {
     this.cargarAgenda();
@@ -168,5 +182,9 @@ export class AgendaBarberoComponent implements OnInit {
   onCobroExitoso() {
     this.turnoACobrar.set(null);
     this.cargarAgenda(); // Recargamos para ver el turno ya completado
+  }
+
+  abrirFicha(cliente: any) {
+    this.clienteSeleccionado.set(cliente);
   }
 }
