@@ -63,12 +63,14 @@ export class ServiciosService {
       return servicio;
     }
 
-    // T3.1: Regla de desactivación protegida
-    // Buscar si existen reservas futuras PENDIENTE o CONFIRMADA con este servicio
-    const reservasFuturas = await this.prisma.reserva.findMany({
+    // T3.1 / FUNC-01: Regla de desactivación protegida
+    // Bloquear la desactivación si hay solicitudes PENDIENTES.
+    // Se PERMITE si solo existen reservas CONFIRMADAS, ya que cuentan con un snapshot
+    // inmutable congelado en participanteServicio (precioHistorico, duracionHistorica, margenHistorico).
+    const reservasPendientes = await this.prisma.reserva.findMany({
       where: {
         barberiaId,
-        estado: { in: ['PENDIENTE', 'CONFIRMADA'] },
+        estado: 'PENDIENTE',
         fechaCita: { gte: new Date() }, // Futuras o de hoy
         participantes: {
           some: {
@@ -87,12 +89,12 @@ export class ServiciosService {
       },
     });
 
-    if (reservasFuturas.length > 0) {
-      const citasDesc = reservasFuturas
+    if (reservasPendientes.length > 0) {
+      const citasDesc = reservasPendientes
         .map((r) => `${r.fechaCita.toISOString().split('T')[0]} a las ${r.horaInicio.toISOString().split('T')[1].substring(0, 5)}`)
         .join(', ');
       throw new BadRequestException(
-        `No se puede desactivar el servicio porque tiene ${reservasFuturas.length} reserva(s) futura(s) activa(s): ${citasDesc}`
+        `No se puede desactivar el servicio porque tiene ${reservasPendientes.length} solicitud(es) de reserva pendiente(s) por confirmar: ${citasDesc}`
       );
     }
 

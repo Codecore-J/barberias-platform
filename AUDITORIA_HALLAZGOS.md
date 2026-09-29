@@ -236,6 +236,12 @@ Se sometió la plataforma a una batería completa de pruebas de rendimiento, con
   1. Intentar desactivar un servicio que tiene asociadas citas en estado `CONFIRMADA`.
 - **Resultado esperado:** La regla de negocio estipula: *"Bloquear la desactivación si hay solicitudes PENDIENTES, pero PERMITIR si solo existen reservas CONFIRMADAS (respetando su snapshot inmutable)"*.
 - **Resultado real:** En `servicios.service.ts` línea 71: `estado: { in: ['PENDIENTE', 'CONFIRMADA'] }` bloquea indistintamente ambas, impidiendo que el barbero desactive del catálogo un servicio viejo si ya tiene citas confirmadas pactadas.
+- **Estado:** ✅ **RESUELTO (29/09/2026)**
+  - Se corrigió la regla de negocio en `ServiciosService.deactivate` ([`servicios.service.ts`](file:///c:/Users/Magnurys%20J/.gemini/antigravity/scratch/barberias-platform/backend-barberias/src/catalogo/application/servicios.service.ts)).
+  - La consulta a `prisma.reserva.findMany` ahora filtra exclusivamente reservas futuras con `estado: 'PENDIENTE'`, bloqueando la desactivación únicamente cuando hay solicitudes que requieren confirmación del barbero.
+  - Las citas en estado `CONFIRMADA` ya no bloquean la desactivación, protegiendo la inmutabilidad de los compromisos adquiridos mediante el snapshot histórico (`precioHistorico`, `duracionHistorica`, `margenHistorico`) almacenado en `ParticipanteServicio`.
+  - Se actualizó el mensaje de error para clarificar que el bloqueo es por solicitudes pendientes por confirmar.
+  - Batería de pruebas unitarias completa creada en [`servicios.service.spec.ts`](file:///c:/Users/Magnurys%20J/.gemini/antigravity/scratch/barberias-platform/backend-barberias/src/catalogo/application/servicios.service.spec.ts) (8 de 8 pruebas aprobadas).
 
 ---
 
