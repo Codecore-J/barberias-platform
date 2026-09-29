@@ -6,11 +6,13 @@ import { JwtStrategy } from './infrastructure/jwt.strategy.js';
 import { RolesGuard } from './infrastructure/roles.guard.js';
 import { AuthController } from './infrastructure/auth.controller.js';
 
+import { getJwtSecret } from './iam.config.js';
+
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
-      secret: process.env.JWT_SECRET ?? 'default-secret-change-in-production',
+      secret: getJwtSecret(),
       signOptions: {
         expiresIn: '24h', // Los tokens expiran en 24 horas
       },

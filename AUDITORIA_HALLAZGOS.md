@@ -165,20 +165,33 @@ Se sometió la plataforma a una batería completa de pruebas de rendimiento, con
 - **Pasos exactos para reproducir:**
   1. Inspeccionar `.env` en el backend: `JWT_SECRET="super-secret-barberia-jwt-key"`.
   2. Inspeccionar `iam.module.ts`: `secret: process.env.JWT_SECRET ?? 'default-secret-change-in-production'`.
-- **Resultado esperado:** `JWT_SECRET` debe ser un string criptográfico de alta entropía (mínimo 256 bits / 64 caracteres hex) cargado estrictamente desde el secret manager del proveedor de hosting.
-- **Resultado real:** Se utiliza un valor trivial predecible, permitiendo potencialmente falsificación de tokens si un atacante conoce el valor público del repositorio.
+- **Log / Stack Trace:**
+  ```text
+  Clave trivial 'super-secret-barberia-jwt-key' expuesta en .env y fallback inseguro en código fuente.
+  ```
+- **Estado:** ✅ **RESUELTO (29/09/2026)**
+  - Se implementó el módulo de configuración `getJwtSecret()` en `iam.config.ts` con validación estricta de entropía (mínimo 32 caracteres / 256 bits) y mecanismo fail-fast en producción.
+  - Si en producción se detecta una clave por defecto, ausente o con longitud inferior a 256 bits, el proceso se aborta inmediatamente con un error explícito.
+  - Se generó y asignó en `.env` un secreto criptográfico de 256 bits (64 caracteres hexadecimales).
+  - Se unificó el consumo de `getJwtSecret()` en `IamModule` y `JwtStrategy`.
+  - Pruebas unitarias automatizadas (`test/conf01-security.spec.ts`): **6 de 6 casos de validación de secretos aprobados**.
 
 ---
 
 ### HALLAZGO 06: Configuración de CORS Totalmente Abierta (`*`)
 - **Módulo / Ruta afectada:** `Infraestructura Global` ➔ `main.ts`
 - **Tipo:** Seguridad / Configuración
-- **Severidad:** 🟡 **MEDIO**
+- **Severidad:** 🟡 **MEDIO** (Resuelto conjuntamente con CONF-01)
 - **Pasos exactos para reproducir:**
   1. Revisar `main.ts` línea 11: `app.enableCors();`.
   2. Enviar petición con cabecera `Origin: https://malicious-site.com`.
 - **Resultado esperado:** Cabecera `Access-Control-Allow-Origin` restringida exclusivamente a los dominios del frontend oficial (`https://barberias-platform-git-main-developerstem.vercel.app` y `http://localhost:4200`).
-- **Resultado real:** El servidor responde con `access-control-allow-origin: *`, permitiendo que scripts de sitios web arbitrarios interactúen con la API en nombre de un usuario si hay credenciales involucradas.
+- **Resultado real:** El servidor respondía con `access-control-allow-origin: *`, permitiendo que scripts de sitios web arbitrarios interactuaran con la API.
+- **Estado:** ✅ **RESUELTO (29/09/2026)**
+  - Se eliminó el wildcard abierto `*` en `main.ts` y se implementó una función validadora de origen basada en lista blanca estricta (`allowedOrigins`).
+  - Orígenes explícitamente autorizados: dominio principal de Vercel (`barberias-platform.vercel.app`), dominio de rama principal (`barberias-platform-git-main-developerstem.vercel.app`), previews dinámicos del equipo mediante regex (`/^https:\/\/barberias-platform.*-developerstem\.vercel\.app$/`), y entornos locales autorizados (`localhost:4200`, `127.0.0.1:4200`, `localhost:3000`, `localhost:5173`).
+  - Se configuró `credentials: true`, cabeceras expuestas para rate limiting, y cache de preflight OPTIONS por 24 horas (`maxAge: 86400`).
+  - Pruebas automatizadas de validación de orígenes (`test/conf01-security.spec.ts`): **5 de 5 casos de prueba de CORS aprobados**.
 
 ---
 

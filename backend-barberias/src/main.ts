@@ -15,7 +15,67 @@ async function bootstrap() {
 
   // Prefijo global de API — todas las rutas serán /api/v1/...
   app.setGlobalPrefix('api/v1');
-  app.enableCors();
+
+  // Configuración estricta de CORS (CONF-01):
+  // Solo se permiten orígenes autorizados del frontend oficial y entornos locales de desarrollo.
+  const allowedOrigins = [
+    'https://barberias-platform-git-main-developerstem.vercel.app',
+    'https://barberias-platform.vercel.app',
+    'http://localhost:4200',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:4200',
+  ];
+
+  if (process.env.FRONTEND_URL) {
+    allowedOrigins.push(
+      ...process.env.FRONTEND_URL.split(',').map((u) => u.trim()),
+    );
+  }
+
+  app.enableCors({
+    origin: (origin, callback) => {
+      // Permitir peticiones sin origen (curl, pruebas locales, postman, llamadas servidor a servidor)
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      // Validar si está en la lista blanca de orígenes
+      const isAllowed = allowedOrigins.includes(origin);
+
+      // Permitir previsualizaciones dinámicas de Vercel del equipo
+      const isVercelPreview = /^https:\/\/barberias-platform.*-developerstem\.vercel\.app$/.test(origin);
+
+      if (isAllowed || isVercelPreview) {
+        return callback(null, true);
+      }
+
+      return callback(
+        new Error(`Política de CORS: El origen ${origin} no está autorizado para acceder a esta API.`),
+        false,
+      );
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Origin',
+      'X-Requested-With',
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'X-RateLimit-Limit',
+      'X-RateLimit-Remaining',
+      'X-RateLimit-Reset',
+      'Retry-After',
+    ],
+    exposedHeaders: [
+      'X-RateLimit-Limit',
+      'X-RateLimit-Remaining',
+      'X-RateLimit-Reset',
+      'Retry-After',
+    ],
+    credentials: true,
+    maxAge: 86400, // Cache de preflight por 24 horas
+  });
 
   // Filtro global de excepciones Prisma:
   // - Postgres 40001 / Prisma P2034 (concurrencia) → HTTP 409 Conflict
