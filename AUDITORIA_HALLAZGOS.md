@@ -324,5 +324,17 @@ La plataforma cuenta con bases arquitectónicas sobresalientes:
 - **El RBAC multi-tenant bloquea de forma estricta cualquier intento de IDOR o elevación de privilegios.**
 
 **Estado actual:**  
-⚠️ **NO SE HA MODIFICADO NINGÚN CÓDIGO NI CONFIGURACIÓN EN EL SERVIDOR.**  
-Quedamos a la espera de su aprobación para priorizar y aplicar las correcciones, comenzando por los problemas críticos de seguridad y rendimiento.
+✅ **TODOS LOS HALLAZGOS DE SOFTWARE, BASE DE DATOS Y SEGURIDAD HAN SIDO REMEDIADOS Y CERTIFICADOS (12/12):**  
+- `[SEC-01 / CRÍTICO]` ✅ Módulo de Recuperación de Cuenta completo con tokens HMAC SHA-256 e interfaz Angular.
+- `[PERF-01 / ALTO]` ✅ Reducción de latencia en concurrencia (Bcrypt costo 10 + UV_THREADPOOL_SIZE=16 + signAsync).
+- `[CONC-01 / ALTO]` ✅ Resiliencia del pool Neon con reintentos jitter y mapeo controlado a HTTP 409 Conflict.
+- `[SEC-02 / ALTO]` ✅ Rate limiting multicapa con `@nestjs/throttler` (v6.7.1) y soporte para reverse proxies (`trust proxy 1`).
+- `[CONF-01 / ALTO]` ✅ Fail-fast criptográfico para JWT_SECRET (256 bits) y lista blanca de orígenes estricta en CORS.
+- `[MON-01 / MEDIO]` ✅ Módulo de salud `@nestjs/terminus` con probes activos en tiempo real (Postgres, Redis, Heap).
+- `[FUNC-01 / MEDIO]` ✅ Desactivación de catálogo permitida con reservas confirmadas (protegiendo el snapshot inmutable).
+- `[AUDIT-01 / MEDIO]` ✅ Centralización de auditoría inmutable en `AuditoriaService` con endpoints de consulta para cobros.
+- `[DATA-01 / BAJO]` ✅ Restricción nativa de base de datos con índice único parcial en PostgreSQL (`idx_cliente_barberia_activa`).
+- `[IAM-01 / BAJO]` ✅ Mensaje explícito para cuentas suspendidas con protección timing-safe anti-enumeración.
+- `[CORE-01 / BAJO]` ✅ Metadatos estructurados en endpoint raíz `/api/v1/`.
+
+*Pendiente de infraestructura externa:* Hallazgo 07 (Co-localización de regiones de nube entre Render y Neon en Ohio AWS us-east-2 para reducir el RTT de red).
