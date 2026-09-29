@@ -125,6 +125,26 @@ export class TenantService {
     );
   }
 
+  /**
+   * Crea una nueva barbería y el usuario actual queda como Dueño/Responsable
+   */
+  crearBarberia(dto: { nombre: string; ubicacion: string; telefono: string; descripcion?: string }): Observable<any> {
+    this.isLoading.set(true);
+    return this.http.post(this.apiUrl, dto).pipe(
+      tap((nuevaBarberia) => {
+        // Recargar la lista y seleccionarla
+        this.cargarBarberias().subscribe(() => {
+           this.seleccionarBarberia((nuevaBarberia as any).id || (nuevaBarberia as any).data?.id).subscribe();
+        });
+      }),
+      catchError((err) => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.message || 'Error al crear la barbería');
+        throw err;
+      })
+    );
+  }
+
   setBarberiaActiva(barberia: BarberiaResumen | null) {
     this.barberiaActiva.set(barberia);
     if (barberia) {

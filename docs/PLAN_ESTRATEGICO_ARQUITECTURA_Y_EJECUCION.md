@@ -305,7 +305,7 @@ src/app/
 * **ÉPICA F1: Tenant Hub y Gestión de Barberías**
   - **[x] T-F1.1: Pantalla `BarberiasComponent`: Grid de barberías con efecto 3D tilt, badge de activa y selección en un clic (Completado)**
   - **[x] T-F1.2: Modal de Vinculación por Código: Input de 8 caracteres con validación visual inmediata (Completado)**
-  - **T-F1.3:** Formulario de Creación de Barbería para dueños/responsables (`POST /barberias`).
+  - **[x] T-F1.3: Formulario de Creación de Barbería para dueños/responsables (Completado)**
 
 * **ÉPICA F2: Catálogo de Servicios y Combos**
   - **T-F2.1:** Grid interactivo 3D de servicios para clientes con precios, duraciones y botón de selección rápida.

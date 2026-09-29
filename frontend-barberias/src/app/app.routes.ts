@@ -31,6 +31,12 @@ export const routes: Routes = [
           import('./features/barberias/barberias.component').then((m) => m.BarberiasComponent),
       },
       {
+        path: 'barberias/nueva',
+        canActivate: [authGuard],
+        loadComponent: () =>
+          import('./features/barberias/crear-barberia.component').then((m) => m.CrearBarberiaComponent),
+      },
+      {
         path: 'reservas/nueva',
         canActivate: [tenantGuard],
         loadComponent: () =>

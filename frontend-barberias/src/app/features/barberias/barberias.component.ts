@@ -99,7 +99,7 @@ import { VincularModalComponent } from './components/vincular-modal/vincular-mod
             <button (click)="showVincularModal.set(true)" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:scale-105 transition-transform flex items-center">
               <i class="pi pi-link mr-2"></i>Vincular con Código
             </button>
-            <button class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 glass-card hover:text-amber-400 transition-colors flex items-center">
+            <button routerLink="/barberias/nueva" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 glass-card hover:text-amber-400 transition-colors flex items-center">
               <i class="pi pi-plus mr-2"></i>Crear Barbería
             </button>
           </div>
@@ -112,7 +112,7 @@ import { VincularModalComponent } from './components/vincular-modal/vincular-mod
           <button (click)="showVincularModal.set(true)" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 bg-zinc-800 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center">
             <i class="pi pi-link mr-2"></i>Vincular otra Barbería
           </button>
-          <button class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 glass-card hover:text-amber-400 transition-colors flex items-center">
+          <button routerLink="/barberias/nueva" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 glass-card hover:text-amber-400 transition-colors flex items-center">
             <i class="pi pi-plus mr-2"></i>Nueva Barbería
           </button>
         </div>
