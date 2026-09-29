@@ -308,7 +308,7 @@ src/app/
   - **[x] T-F1.3: Formulario de Creación de Barbería para dueños/responsables (Completado)**
 
 * **ÉPICA F2: Catálogo de Servicios y Combos**
-  - **T-F2.1:** Grid interactivo 3D de servicios para clientes con precios, duraciones y botón de selección rápida.
+  - **[x] T-F2.1: Grid interactivo 3D de servicios para clientes con precios, duraciones y botón de selección rápida (Completado)**
   - **T-F2.2:** Panel administrativo de catálogo (CRUD con cálculo de margen y detección de ciclos).
 
 * **ÉPICA F3: Wizard de Agendamiento Interactivo en 3D**

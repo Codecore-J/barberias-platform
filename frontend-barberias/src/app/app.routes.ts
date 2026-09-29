@@ -46,7 +46,7 @@ export const routes: Routes = [
         path: 'catalogo',
         canActivate: [tenantGuard],
         loadComponent: () =>
-          import('./features/home/home.component').then((m) => m.HomeComponent), // Placeholder temporal
+          import('./features/catalogo/catalogo.component').then((m) => m.CatalogoComponent),
       }
     ],
   },
