@@ -109,7 +109,9 @@ import { NotificationService } from '../../core/services/notification.service';
                 <div class="absolute right-0 mt-3 w-80 sm:w-96 glass-panel rounded-2xl p-4 border border-amber-500/30 shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                   <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
                     <span class="font-display font-semibold text-sm text-zinc-200">Notificaciones</span>
-                    <span class="text-[11px] text-amber-400 font-medium">En vivo</span>
+                    <button (click)="marcarTodasComoLeidas()" class="text-[11px] text-amber-400 hover:text-amber-300 font-medium cursor-pointer">
+                      Marcar todo leído
+                    </button>
                   </div>
                   <div class="mt-3 max-h-64 overflow-y-auto space-y-2">
                     @if (notificationService.notificaciones().length === 0) {
@@ -119,9 +121,16 @@ import { NotificationService } from '../../core/services/notification.service';
                       </div>
                     } @else {
                       @for (item of notificationService.notificaciones(); track item.id) {
-                        <div class="p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 hover:border-amber-500/20 transition-all text-xs">
-                          <p class="font-semibold text-amber-300">{{ item.titulo }}</p>
-                          <p class="text-zinc-300 text-[11px] mt-0.5">{{ item.mensaje }}</p>
+                        <div (click)="marcarComoLeida(item)" 
+                             class="p-2.5 rounded-xl border transition-all text-xs cursor-pointer"
+                             [ngClass]="item.leido ? 'bg-zinc-900/40 border-zinc-800/50 opacity-70' : 'bg-zinc-900/80 border-amber-500/30 hover:bg-zinc-800'">
+                          <p class="font-semibold" [ngClass]="item.leido ? 'text-zinc-400' : 'text-amber-300'">
+                            {{ item.titulo }}
+                            @if (!item.leido) {
+                              <span class="inline-block w-2 h-2 bg-amber-500 rounded-full ml-1"></span>
+                            }
+                          </p>
+                          <p class="text-[11px] mt-0.5" [ngClass]="item.leido ? 'text-zinc-500' : 'text-zinc-300'">{{ item.mensaje }}</p>
                         </div>
                       }
                     }
@@ -295,6 +304,15 @@ export class AppLayoutComponent implements OnInit {
       return (parts[0][0] + parts[1][0]).toUpperCase();
     }
     return name.slice(0, 2).toUpperCase();
+  }
+
+  marcarComoLeida(item: any) {
+    if (item.leido) return; // Ya está leída
+    this.notificationService.marcarComoLeida(item.id).subscribe();
+  }
+
+  marcarTodasComoLeidas() {
+    this.notificationService.marcarTodasComoLeidas().subscribe();
   }
 
   onLogout() {
