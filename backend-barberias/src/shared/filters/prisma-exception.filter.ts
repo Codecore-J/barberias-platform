@@ -20,6 +20,8 @@ import { Response } from 'express';
   Prisma.PrismaClientKnownRequestError,
   Prisma.PrismaClientValidationError,
   Prisma.PrismaClientUnknownRequestError,
+  Prisma.PrismaClientInitializationError,
+  Prisma.PrismaClientRustPanicError,
 )
 export class PrismaExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(PrismaExceptionFilter.name);
@@ -28,7 +30,9 @@ export class PrismaExceptionFilter implements ExceptionFilter {
     exception:
       | Prisma.PrismaClientKnownRequestError
       | Prisma.PrismaClientValidationError
-      | Prisma.PrismaClientUnknownRequestError,
+      | Prisma.PrismaClientUnknownRequestError
+      | Prisma.PrismaClientInitializationError
+      | Prisma.PrismaClientRustPanicError,
     host: ArgumentsHost,
   ) {
     const ctx = host.switchToHttp();
@@ -49,7 +53,19 @@ export class PrismaExceptionFilter implements ExceptionFilter {
       });
     }
 
-    // 3. Error desconocido de Prisma (puede incluir fallos directos de PostgreSQL como 40001)
+    // 3. Error de inicialización / conexión de cliente Prisma
+    if (exception instanceof Prisma.PrismaClientInitializationError) {
+      this.logger.error(`Error de inicialización de conexión Prisma: ${exception.message}`);
+      return response.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+        error: 'Service Unavailable',
+        code: 'DATABASE_UNAVAILABLE',
+        message:
+          'El servicio de base de datos no se encuentra disponible temporalmente. Por favor, reintente en unos momentos.',
+      });
+    }
+
+    // 4. Error desconocido o pánico de Prisma (puede incluir fallos directos de PostgreSQL como 40001, 40P01, etc.)
     return this.handleUnknownError(exception, response);
   }
 
@@ -57,11 +73,21 @@ export class PrismaExceptionFilter implements ExceptionFilter {
     error: Prisma.PrismaClientKnownRequestError,
     response: Response,
   ) {
-    // Código PostgreSQL 40001 (Serialization Failure) o P2034 (Transaction failed due to write conflict)
+    const errorMsg = error.message ?? '';
+    const metaCode = (error.meta as any)?.code;
+
+    // Código PostgreSQL 40001 (Serialization Failure), 40P01 (Deadlock), 55P03 (Lock not available)
+    // o P2034 (Transaction failed due to write conflict)
     const isSerializationConflict =
       error.code === 'P2034' ||
-      error.message?.includes('40001') ||
-      (error.meta as any)?.code === '40001';
+      errorMsg.includes('40001') ||
+      metaCode === '40001' ||
+      errorMsg.includes('40P01') ||
+      metaCode === '40P01' ||
+      errorMsg.includes('55P03') ||
+      metaCode === '55P03' ||
+      errorMsg.includes('could not serialize') ||
+      errorMsg.includes('deadlock detected');
 
     if (isSerializationConflict) {
       this.logger.warn(
@@ -77,6 +103,34 @@ export class PrismaExceptionFilter implements ExceptionFilter {
     }
 
     switch (error.code) {
+      // P2024: Timed out fetching a new connection from the connection pool
+      case 'P2024': {
+        this.logger.warn(
+          `[P2024] Saturación del pool de conexiones Prisma: ${error.message}`,
+        );
+        return response.status(HttpStatus.CONFLICT).json({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'Conflict',
+          code: 'CONCURRENCY_POOL_TIMEOUT',
+          message:
+            'El servicio se encuentra bajo alta demanda simultánea. Por favor, reintente en unos segundos.',
+        });
+      }
+
+      // P2028: Transaction API error (Transaction already closed / timeout)
+      case 'P2028': {
+        this.logger.warn(
+          `[P2028] Timeout o cierre de transacción por concurrencia: ${error.message}`,
+        );
+        return response.status(HttpStatus.CONFLICT).json({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'Conflict',
+          code: 'TRANSACTION_TIMEOUT_CONFLICT',
+          message:
+            'La operación no pudo completarse a tiempo debido a alta contención concurrente. Por favor, intente nuevamente.',
+        });
+      }
+
       // P2002: Unique constraint failed
       case 'P2002': {
         const target = (error.meta?.target as string[] | undefined)?.join(', ') ?? 'datos duplicados';
@@ -120,21 +174,35 @@ export class PrismaExceptionFilter implements ExceptionFilter {
   }
 
   private handleUnknownError(
-    error: Prisma.PrismaClientUnknownRequestError,
+    error: Prisma.PrismaClientUnknownRequestError | Prisma.PrismaClientRustPanicError,
     response: Response,
   ) {
-    if (error.message?.includes('40001')) {
-      this.logger.warn(`Postgres 40001 interceptado en UnknownRequestError: ${error.message}`);
+    const msg = error.message ?? '';
+    const isConcurrency =
+      msg.includes('40001') ||
+      msg.includes('40P01') ||
+      msg.includes('55P03') ||
+      msg.includes('57014') ||
+      msg.includes('deadlock') ||
+      msg.includes('could not serialize') ||
+      msg.includes('lock timeout') ||
+      msg.includes('statement timeout') ||
+      msg.includes('connection pool') ||
+      msg.includes('Transaction already closed') ||
+      msg.includes('Transaction timed out');
+
+    if (isConcurrency) {
+      this.logger.warn(`Conflicto de concurrencia interceptado en UnknownRequestError: ${msg}`);
       return response.status(HttpStatus.CONFLICT).json({
         statusCode: HttpStatus.CONFLICT,
         error: 'Conflict',
         code: 'CONCURRENCY_CONFLICT',
         message:
-          'Conflicto de concurrencia detectado. La transacción no pudo serializarse. Por favor, intente nuevamente.',
+          'Conflicto de concurrencia detectado. La transacción no pudo completarse por contención simultánea. Por favor, intente nuevamente.',
       });
     }
 
-    this.logger.error(`Error desconocido de Prisma: ${error.message}`);
+    this.logger.error(`Error desconocido de Prisma: ${msg}`);
     return response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       error: 'Internal Server Error',

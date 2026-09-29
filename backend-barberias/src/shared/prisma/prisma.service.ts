@@ -6,8 +6,16 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
+    const dbUrl = process.env.DATABASE_URL;
+    let urlWithPool = dbUrl;
+    if (dbUrl && !dbUrl.includes('connection_limit=')) {
+      const separator = dbUrl.includes('?') ? '&' : '?';
+      urlWithPool = `${dbUrl}${separator}connection_limit=25&pool_timeout=20`;
+    }
+
     super({
-      log: ['query', 'warn', 'error'],
+      datasources: urlWithPool ? { db: { url: urlWithPool } } : undefined,
+      log: process.env.DEBUG_PRISMA === 'true' ? ['query', 'warn', 'error'] : ['warn', 'error'],
     });
   }
 

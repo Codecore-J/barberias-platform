@@ -27,6 +27,7 @@ describe('AuthService', () => {
 
     mockJwtService = {
       sign: vi.fn().mockReturnValue('signed-jwt-token'),
+      signAsync: vi.fn().mockResolvedValue('signed-jwt-token'),
     };
 
     service = new AuthService(mockPrisma, mockJwtService);

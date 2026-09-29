@@ -124,6 +124,12 @@ Se sometió la plataforma a una batería completa de pruebas de rendimiento, con
   Req #2: HTTP 500 (5526 ms) - Error interno en la capa de persistencia.
   Causa: Prisma Client P2024 (Timed out fetching a new connection from the connection pool) o P2028 no mapeado en PrismaExceptionFilter.
   ```
+- **Estado:** ✅ **RESUELTO (29/09/2026)**
+  - Se optimizó el pool de conexiones en `PrismaService` y `.env` con `connection_limit=25&pool_timeout=20`, adaptando el cliente al pooler PgBouncer de Neon y previniendo la inanición prematura de hilos.
+  - Se extendió `withSerializableTransaction` para soportar reintentos con backoff exponencial y jitter ante errores de contención y pool (`P2024`, `P2028`, `P2034`, `40001`, `40P01`, `55P03`, `57014`), configurando `maxWait: 8000ms` y `timeout: 15000ms`.
+  - Si se agotan los reintentos bajo saturación extrema, `withSerializableTransaction` genera directamente un `ConflictException` (HTTP 409) con mensaje de dominio controlado, impidiendo la propagación de excepciones sin capturar.
+  - Se normalizó `PrismaExceptionFilter` para interceptar `P2024` (`CONCURRENCY_POOL_TIMEOUT`), `P2028` (`TRANSACTION_TIMEOUT_CONFLICT`), deadlocks (`40P01`) y fallos temporales de conexión (`PrismaClientInitializationError` ➔ 503).
+  - Verificación automatizada con 20 solicitudes concurrentes simultáneas: **1x 201 (Confirmada), 19x 409 (Conflicto controlado), 0x 500**. Tasa de Overbooking: **0.00%**.
 
 ---
 
