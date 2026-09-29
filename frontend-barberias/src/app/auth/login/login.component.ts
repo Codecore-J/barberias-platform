@@ -35,19 +35,19 @@ import { CommonModule } from '@angular/common';
           <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="space-y-6 transform translate-z-12">
             
             <div class="space-y-2">
-              <label class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Correo Electrónico</label>
+              <label for="correo" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Correo Electrónico</label>
               <div class="relative group">
                 <i class="pi pi-envelope absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
-                <input type="email" formControlName="correo" placeholder="tu@correo.com"
+                <input id="correo" name="correo" type="email" formControlName="correo" placeholder="tu@correo.com"
                        class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3.5 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
               </div>
             </div>
 
             <div class="space-y-2">
-              <label class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Contraseña</label>
+              <label for="password" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Contraseña</label>
               <div class="relative group">
                 <i class="pi pi-lock absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
-                <input [type]="showPassword() ? 'text' : 'password'" formControlName="password" placeholder="••••••••"
+                <input id="password" name="password" [type]="showPassword() ? 'text' : 'password'" formControlName="password" placeholder="••••••••"
                        class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3.5 pl-12 pr-12 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
                 <button type="button" (click)="togglePassword()" class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-amber-400 focus:outline-none">
                   <i class="pi" [ngClass]="showPassword() ? 'pi-eye-slash' : 'pi-eye'"></i>

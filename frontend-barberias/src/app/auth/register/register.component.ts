@@ -36,10 +36,10 @@ import { RegisterDto } from '../interfaces/auth.interface';
           <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" class="space-y-5 transform translate-z-12">
             
             <div class="space-y-2">
-              <label class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Nombre Completo</label>
+              <label for="nombreCompleto" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Nombre Completo</label>
               <div class="relative group">
                 <i class="pi pi-user absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
-                <input type="text" formControlName="nombreCompleto" placeholder="Ej. Juan Pérez"
+                <input id="nombreCompleto" name="nombreCompleto" type="text" formControlName="nombreCompleto" placeholder="Ej. Juan Pérez"
                        class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner"
                        [ngClass]="{'border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50': registerForm.get('nombreCompleto')?.invalid && registerForm.get('nombreCompleto')?.touched}">
               </div>
@@ -47,20 +47,20 @@ import { RegisterDto } from '../interfaces/auth.interface';
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div class="space-y-2">
-                <label class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Correo Electrónico</label>
+                <label for="correo" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Correo Electrónico</label>
                 <div class="relative group">
                   <i class="pi pi-envelope absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
-                  <input type="email" formControlName="correo" placeholder="tu@correo.com"
+                  <input id="correo" name="correo" type="email" formControlName="correo" placeholder="tu@correo.com"
                          class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner"
                          [ngClass]="{'border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50': registerForm.get('correo')?.invalid && registerForm.get('correo')?.touched}">
                 </div>
               </div>
 
               <div class="space-y-2">
-                <label class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Teléfono</label>
+                <label for="telefono" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Teléfono</label>
                 <div class="relative group">
                   <i class="pi pi-phone absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
-                  <input type="tel" formControlName="telefono" placeholder="+123456789"
+                  <input id="telefono" name="telefono" type="tel" formControlName="telefono" placeholder="+123456789"
                          class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner"
                          [ngClass]="{'border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50': registerForm.get('telefono')?.invalid && registerForm.get('telefono')?.touched}">
                 </div>
@@ -68,10 +68,10 @@ import { RegisterDto } from '../interfaces/auth.interface';
             </div>
 
             <div class="space-y-2">
-              <label class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Contraseña</label>
+              <label for="password" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Contraseña</label>
               <div class="relative group">
                 <i class="pi pi-lock absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
-                <input [type]="showPassword() ? 'text' : 'password'" formControlName="password" placeholder="••••••••"
+                <input id="password" name="password" [type]="showPassword() ? 'text' : 'password'" formControlName="password" placeholder="••••••••"
                        class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-12 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner"
                        [ngClass]="{'border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50': registerForm.get('password')?.invalid && registerForm.get('password')?.touched}">
                 <button type="button" (click)="togglePassword()" class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-amber-400 focus:outline-none">
