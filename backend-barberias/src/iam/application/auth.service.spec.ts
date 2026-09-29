@@ -125,7 +125,7 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('debe lanzar UnauthorizedException si la cuenta está INACTIVA', async () => {
+    it('debe lanzar UnauthorizedException con mensaje descriptivo si la cuenta está SUSPENDIDA (IAM-01)', async () => {
       const hash = await bcrypt.hash('Password123', 10);
 
       mockPrisma.usuario.findUnique.mockResolvedValue({
@@ -141,7 +141,26 @@ describe('AuthService', () => {
           correo: 'juan@example.com',
           password: 'Password123',
         }),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toThrow('Su cuenta se encuentra suspendida. Contacte al administrador.');
+    });
+
+    it('debe lanzar mensaje genérico si la contraseña es incorrecta incluso si la cuenta está SUSPENDIDA', async () => {
+      const hash = await bcrypt.hash('Password123', 10);
+
+      mockPrisma.usuario.findUnique.mockResolvedValue({
+        id: 'user-1',
+        correo: 'juan@example.com',
+        estadoCuenta: 'SUSPENDIDO',
+        passwordHash: hash,
+        usuarioRoles: [],
+      });
+
+      await expect(
+        service.login({
+          correo: 'juan@example.com',
+          password: 'PasswordIncorrecta',
+        }),
+      ).rejects.toThrow('Credenciales inválidas.');
     });
   });
 

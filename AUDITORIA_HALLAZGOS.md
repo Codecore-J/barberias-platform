@@ -286,6 +286,12 @@ Se sometió la plataforma a una batería completa de pruebas de rendimiento, con
   2. Intentar iniciar sesión con sus credenciales correctas.
 - **Resultado esperado:** HTTP 403 Forbidden o 401 con mensaje informativo: `"Su cuenta se encuentra suspendida. Contacte al administrador."`
 - **Resultado real:** HTTP 401 Unauthorized con mensaje `"Credenciales inválidas."`, impidiendo que el usuario sepa si olvidó su contraseña o si su cuenta fue inhabilitada.
+- **Estado:** ✅ **RESUELTO (29/09/2026)**
+  - Se optimizó el flujo de autenticación en `AuthService.login` ([`auth.service.ts`](file:///c:/Users/Magnurys%20J/.gemini/antigravity/scratch/barberias-platform/backend-barberias/src/iam/application/auth.service.ts)).
+  - La verificación criptográfica del hash con `bcrypt.compare` se ejecuta primero de forma timing-safe para prevenir ataques de enumeración o recolección de correos.
+  - Una vez validadas las credenciales legítimas, si la cuenta tiene `estadoCuenta === 'SUSPENDIDO'`, el sistema responde con `UnauthorizedException`: `"Su cuenta se encuentra suspendida. Contacte al administrador."` (o `"Su cuenta no se encuentra activa. Contacte al administrador."` para otros estados inactivos).
+  - El frontend en Angular (`frontend-barberias/src/app/auth/auth.service.ts`) captura este mensaje del payload de error y lo presenta directamente al usuario en el formulario de login.
+  - Pruebas unitarias actualizadas en [`auth.service.spec.ts`](file:///c:/Users/Magnurys%20J/.gemini/antigravity/scratch/barberias-platform/backend-barberias/src/iam/application/auth.service.spec.ts) verificando la respuesta descriptiva en cuentas suspendidas y el rechazo genérico si la contraseña no coincide.
 
 ---
 

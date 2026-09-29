@@ -104,7 +104,7 @@ export class AuthService {
    * Autentica un usuario y retorna un JWT firmado.
    * Reglas de seguridad:
    * - Se compara el hash con bcrypt.compare (timing-safe).
-   * - Si la cuenta no está ACTIVO → UnauthorizedException (mismo mensaje genérico).
+   * - Si la cuenta está SUSPENDIDA o no ACTIVA → UnauthorizedException con mensaje descriptivo (IAM-01).
    * - El JWT incluye: sub (UUID), correo, roles del usuario.
    */
   async login(dto: LoginDto): Promise<{ accessToken: string; usuario: UsuarioResponseDto }> {
@@ -122,11 +122,19 @@ export class AuthService {
     const errorGenerico = new UnauthorizedException('Credenciales inválidas.');
 
     if (!usuario) throw errorGenerico;
-    if (usuario.estadoCuenta !== 'ACTIVO') throw errorGenerico;
 
-    // Comparación timing-safe del hash
+    // Comparación timing-safe del hash primero para mitigar enumeración de cuentas
     const passwordValido = await bcrypt.compare(dto.password, usuario.passwordHash);
     if (!passwordValido) throw errorGenerico;
+
+    // Si las credenciales son válidas pero la cuenta está suspendida o inactiva (IAM-01)
+    if (usuario.estadoCuenta === 'SUSPENDIDO') {
+      throw new UnauthorizedException('Su cuenta se encuentra suspendida. Contacte al administrador.');
+    }
+
+    if (usuario.estadoCuenta !== 'ACTIVO') {
+      throw new UnauthorizedException('Su cuenta no se encuentra activa. Contacte al administrador.');
+    }
 
     // Si la contraseña tiene un costo legado superior a 10 (ej. 12 rondas),
     // re-hasheamos asíncronamente en background a 10 rondas para acelerar logins futuros
