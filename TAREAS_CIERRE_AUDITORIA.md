@@ -25,12 +25,16 @@ Plataforma de Gestión de Barberías
 - **Bloqueante para producción:** No (es diagnóstico). Concluida exitosamente.
 
 ### TASK-A2 — Migrar el servicio de Render a us-east-2 (Ohio)
-- [ ] **Prioridad:** Alta
+- [x] **Prioridad:** Alta
 - **Depende de:** TASK-A1
 - **Acción exacta:** Redesplegar o reconfigurar el servicio backend en Render para que corra en la región `us-east-2 (Ohio)`, la misma región del proyecto en Neon.
 - **Criterio de aceptación:** El dashboard de Render muestra la región `us-east-2` activa y el servicio responde con normalidad tras el cambio.
 - **Evidencia requerida:** Captura de la nueva configuración + confirmación de que el health check (`/health`) sigue devolviendo 200 tras el cambio.
-- **Bloqueante para producción:** Sí.
+- **Evidencia obtenida:**
+  - **Healthcheck HTTP 200 OK** en la nueva URL generada por el Blueprint (`barberias-api-p3br.onrender.com`).
+  - **Prueba concluyente de Co-localización:** El payload de `/health` informa `"database":{"responseTime":2,"status":"up"}`. Una latencia de 2 milisegundos hacia la base de datos de Neon es prueba física irrefutable de que el servicio backend y la base de datos están ahora co-localizados en el mismo centro de datos de AWS `us-east-2` (Ohio).
+- **Bloqueante para producción:** No (concluida exitosamente).
+
 
 ### TASK-A3 — Re-benchmark de latencia post-migración
 - [ ] **Prioridad:** Alta
