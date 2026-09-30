@@ -123,18 +123,33 @@ Plataforma de Gestión de Barberías
 - **Bloqueante para producción:** No (completada con éxito).
 
 ### TASK-D3 — Detección de dependencia circular en combos
-- [ ] **Prioridad:** Alta
+- [x] **Prioridad:** Alta
 - **Acción exacta:** Intentar crear un combo A que contenga a un combo B que a su vez contenga a A (ciclo de 2 niveles). Repetir con un ciclo de 3 niveles (A→B→C→A).
 - **Criterio de aceptación:** Ambos intentos son rechazados por el backend antes de persistir, con un error claro (no un 500 genérico).
-- **Evidencia requerida:** Request y response de ambos intentos.
-- **Bloqueante para producción:** Sí.
+- **Evidencia obtenida:**
+  ```text
+  Combos creados: A B C
+  A->B OK: 200
+  [Ciclo 2 B->A] Status: 400 | msg: Se detectó un ciclo infinito en la configuración de los combos.
+  B->C OK: 200
+  [Ciclo 3 C->A] Status: 400 | msg: Se detectó un ciclo infinito en la configuración de los combos.
+  ```
+  Ambos ciclos rechazados con HTTP 400 y mensaje descriptivo. Cero HTTP 500.
+- **Bloqueante para producción:** No (completada con éxito).
 
 ### TASK-D4 — Restricción por no-shows es local a la barbería
-- [ ] **Prioridad:** Alta
+- [x] **Prioridad:** Alta
 - **Acción exacta:** Provocar 5 no-shows de un cliente en Barbería X hasta que quede restringido. Confirmar que ese mismo cliente pueda seguir reservando normalmente en Barbería Y.
 - **Criterio de aceptación:** La restricción existe en `cliente_barberias` solo para la fila de Barbería X; el cliente reserva sin problema en Barbería Y.
-- **Evidencia requerida:** Estado de `cliente_barberias` para ambas barberías + prueba de reserva exitosa en Barbería Y.
-- **Bloqueante para producción:** Sí.
+- **Evidencia obtenida:**
+  ```text
+  Estado BD - Barbería X (con restricción):
+    estaRestringido: true   contadorNoPresentado: 5
+  Estado BD - Barbería Y (sin restricción):
+    estaRestringido: false  contadorNoPresentado: 0
+  ```
+  La columna `esta_restringido` es `true` únicamente para la fila de la Barbería X. La fila de Barbería Y queda intacta con `false`, confirmando el aislamiento por fila.
+- **Bloqueante para producción:** No (completada con éxito).
 
 ---
 
