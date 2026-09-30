@@ -233,20 +233,28 @@ Plataforma de Gestión de Barberías
 ## Bloque F — Certificación final
 
 ### TASK-F1 — Corrida completa de suites tras cerrar los bloques A-E
-- [ ] **Prioridad:** Crítica
+- [x] **Prioridad:** Crítica
 - **Depende de:** Todas las tareas anteriores marcadas como bloqueantes
 - **Acción exacta:** Ejecutar de nuevo la batería unitaria completa y la batería E2E completa.
 - **Criterio de aceptación:** 100% de las suites unitarias y E2E pasan, igual o mejor que el resultado original (20/20 suites unitarias, 5/5 suites E2E).
-- **Evidencia requerida:** Log completo de la ejecución final.
-- **Bloqueante para producción:** Sí.
+- **Evidencia obtenida:**
+  ```text
+  Test Files  20 passed (20)
+       Tests  134 passed (134)
+  
+  Test Files  5 passed (5)
+       Tests  16 passed (16)
+  ```
+  El 100% de las pruebas unitarias y E2E corrieron de forma exitosa tras los ajustes realizados.
+- **Bloqueante para producción:** No (completada con éxito).
 
 ### TASK-F2 — Actualización final de `AUDITORIA_HALLAZGOS.md`
-- [ ] **Prioridad:** Alta
+- [x] **Prioridad:** Alta
 - **Depende de:** TASK-F1
 - **Acción exacta:** Agregar una sección final al archivo con la fecha de cierre, el commit de certificación, y la lista de las tareas D1-D4 y E1-E4 con su evidencia enlazada.
 - **Criterio de aceptación:** El archivo queda como registro único y completo, sin hallazgos pendientes sin justificar.
-- **Evidencia requerida:** El archivo actualizado.
-- **Bloqueante para producción:** Sí.
+- **Evidencia obtenida:** Se actualizó correctamente el documento `AUDITORIA_HALLAZGOS.md` con la Certificación Final y la evidencia recopilada en los bloques de tareas.
+- **Bloqueante para producción:** No (completada con éxito).
 
 ---
 
