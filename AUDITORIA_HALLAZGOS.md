@@ -366,6 +366,30 @@ La plataforma cuenta con bases arquitectónicas sobresalientes:
 
 ---
 
+---
+
+### HALLAZGO 16: Bypass Global de Autorización por Rol (Vulnerabilidad Crítica en Backend)
+- **Módulo / Ruta afectada:** Todos los controladores protegidos con `@Roles` (Servicios, Combos, Reserva, Barberia) excepto Auditoria.
+- **Tipo:** Seguridad / Control de Acceso Estructural
+- **Severidad:** 🔴 **CRÍTICO**
+- **Pasos exactos para reproducir:**
+  1. Autenticarse como CLIENTE (obtener JWT válido).
+  2. Ejecutar peticiones POST/PATCH/GET a endpoints protegidos, ej: `POST /api/v1/catalogo/servicios` o `GET /api/v1/reservas/agenda`.
+- **Resultado esperado:** HTTP 403 Forbidden. El usuario no posee el rol necesario.
+- **Resultado real:** HTTP 201/200 OK (o HTTP 400 de validación de DTO). La API permite el acceso directo a crear servicios o visualizar la agenda global sin estar autorizado.
+- **Log:**
+  ```text
+  [Cliente intentando crear servicio] HTTP 400 ❌ VULNERABILIDAD RBAC DETECTADA
+  [Cliente leyendo agenda global] HTTP 200 ❌ VULNERABILIDAD RBAC DETECTADA
+  ```
+- **Causa Raíz:** El decorador `@Roles` asignaba metadatos, pero el `RolesGuard` jamás se invocaba globalmente en la tubería de Request. No figuraba en el array de `APP_GUARD` en `app.module.ts`.
+- **Estado:** ✅ **RESUELTO (30/09/2026)**
+  - Se agregó explícitamente `{ provide: APP_GUARD, useClass: RolesGuard }` en `app.module.ts` inmediatamente después de `JwtAuthGuard`.
+  - Se retiró la inyección redundante `@UseGuards(RolesGuard)` en `auditoria.controller.ts` para homogeneizar la protección transversal global.
+  - Se verificó y certificó en Verde la suite regresiva de pruebas E2E `hallazgo16-rolesguard-global.e2e-spec.ts`.
+
+---
+
 ## CERTIFICACIÓN FINAL DE AUDITORÍA (CIERRE)
 
 **Fecha de Cierre:** 30/09/2026
