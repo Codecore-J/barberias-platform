@@ -11,7 +11,13 @@ export class CreateServicioDto {
 
   @IsNumber()
   @IsPositive()
-  duracionEstimada: number;
+  @IsOptional()
+  duracionEstimada?: number;
+
+  @IsNumber()
+  @IsPositive()
+  @IsOptional()
+  duracionMinutos?: number;
 
   @IsNumber()
   @Min(0)

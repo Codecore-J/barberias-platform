@@ -30,7 +30,13 @@ export class ServiciosService {
     this.error.set(null);
 
     return this.http.get<any>(this.apiUrl).pipe(
-      map(res => Array.isArray(res) ? res : (res.data || [])),
+      map(res => {
+        const raw = Array.isArray(res) ? res : (res.data || []);
+        return raw.map((s: any) => ({
+          ...s,
+          duracionMinutos: s.duracionMinutos ?? s.duracionEstimada ?? 30,
+        }));
+      }),
       tap((data: Servicio[]) => {
         this.servicios.set(data);
         this.isLoading.set(false);
@@ -45,7 +51,11 @@ export class ServiciosService {
 
   crearServicio(dto: any): Observable<Servicio> {
     this.isLoading.set(true);
-    return this.http.post<Servicio>(this.apiUrl, dto).pipe(
+    const payload = {
+      ...dto,
+      duracionEstimada: dto.duracionEstimada ?? dto.duracionMinutos ?? 30,
+    };
+    return this.http.post<Servicio>(this.apiUrl, payload).pipe(
       tap(() => {
         this.cargarServicios().subscribe(); // Recargar tras crear
       }),
@@ -59,7 +69,11 @@ export class ServiciosService {
 
   actualizarServicio(id: string, dto: any): Observable<Servicio> {
     this.isLoading.set(true);
-    return this.http.patch<Servicio>(`${this.apiUrl}/${id}`, dto).pipe(
+    const payload = {
+      ...dto,
+      duracionEstimada: dto.duracionEstimada ?? dto.duracionMinutos ?? 30,
+    };
+    return this.http.patch<Servicio>(`${this.apiUrl}/${id}`, payload).pipe(
       tap(() => {
         this.cargarServicios().subscribe();
       }),

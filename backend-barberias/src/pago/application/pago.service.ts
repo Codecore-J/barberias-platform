@@ -70,14 +70,28 @@ export class PagoService {
     barberiaId: string,
     dto: RegistrarPagoDto,
   ) {
-    await this.validateAccess(usuarioId, barberiaId);
+    let targetBarberiaId = barberiaId;
+    if (!targetBarberiaId) {
+      const reservaPrevia = await this.prisma.reserva.findUnique({
+        where: { id: dto.reservaId },
+        select: { barberiaId: true },
+      });
+      if (!reservaPrevia) {
+        throw new NotFoundException(
+          `Reserva con ID ${dto.reservaId} no encontrada`,
+        );
+      }
+      targetBarberiaId = reservaPrevia.barberiaId;
+    }
+
+    await this.validateAccess(usuarioId, targetBarberiaId);
 
     return withSerializableTransaction(this.prisma, async (tx) => {
       // Bloqueo pesimista para evitar que dos cajeros cobren la misma reserva simultáneamente
       const reserva = await tx.reserva.findFirst({
         where: {
           id: dto.reservaId,
-          barberiaId,
+          barberiaId: targetBarberiaId,
         },
         include: {
           pago: true,

@@ -16,7 +16,7 @@ import { UpdateServicioDto } from '../application/dto/update-servicio.dto.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 
-@Controller('catalogo/servicios')
+@Controller(['catalogo/servicios', 'servicios'])
 export class ServiciosController {
   constructor(private readonly serviciosService: ServiciosService) {}
 
@@ -32,7 +32,7 @@ export class ServiciosController {
 
   @Get()
   @Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE')
-  findAll(@CurrentBarberiaId() barberiaId: string) {
+  findAll(@CurrentBarberiaId() barberiaId?: string) {
     return this.serviciosService.findAll(barberiaId);
   }
 

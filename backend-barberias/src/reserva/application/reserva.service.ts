@@ -349,4 +349,165 @@ export class ReservaService {
       return { success: true, contadorNoPresentado: nuevoContador, estaRestringido };
     });
   }
+
+  async obtenerAgendaDiaria(barberiaId: string, fechaStr: string, user: UsuarioAutenticado) {
+    if (!barberiaId) {
+      throw new BadRequestException('ID de barbería es requerido');
+    }
+
+    const rolesEnBarberia = user.rolesDetallados?.filter(
+      (r) => r.barberiaId === barberiaId || r.ambito === 'GLOBAL'
+    ) || [];
+
+    if (rolesEnBarberia.length === 0) {
+      throw new ForbiddenException('No tienes acceso a la agenda de esta barbería.');
+    }
+
+    const startOfDay = new Date(`${fechaStr}T00:00:00.000Z`);
+    const endOfDay = new Date(`${fechaStr}T23:59:59.999Z`);
+
+    const reservas = await this.prisma.reserva.findMany({
+      where: {
+        barberiaId,
+        fechaCita: {
+          gte: startOfDay,
+          lte: endOfDay,
+        },
+      },
+      include: {
+        cliente: {
+          select: {
+            id: true,
+            nombreCompleto: true,
+            correo: true,
+            telefono: true,
+          },
+        },
+        participantes: {
+          include: {
+            participanteServicios: {
+              include: {
+                servicio: {
+                  select: {
+                    id: true,
+                    nombre: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        horaInicio: 'asc',
+      },
+    });
+
+    return reservas.map((r) => {
+      const fechaPart = r.fechaCita instanceof Date ? r.fechaCita.toISOString().split('T')[0] : fechaStr;
+      const horaPart = r.horaInicio instanceof Date
+        ? r.horaInicio.toISOString().split('T')[1].substring(0, 5)
+        : '00:00';
+
+      return {
+        id: r.id,
+        estado: r.estado,
+        fechaHoraInicio: `${fechaPart}T${horaPart}:00`,
+        precioTotalHist: Number(r.totalPagar),
+        cliente: {
+          id: r.cliente?.id,
+          nombre: r.cliente?.nombreCompleto || 'Cliente',
+          correo: r.cliente?.correo || '',
+          telefono: r.cliente?.telefono || 'Sin teléfono',
+        },
+        detalles: (r.participantes || []).flatMap((p) =>
+          (p.participanteServicios || []).map((ps) => ({
+            id: ps.id,
+            nombreServicioHist: ps.servicio?.nombre || 'Servicio',
+            duracionMinutosHist: ps.duracionHistorica,
+            precioHistorico: Number(ps.precioHistorico),
+          }))
+        ),
+      };
+    });
+  }
+
+  async obtenerMisReservas(clienteId: string) {
+    const reservas = await this.prisma.reserva.findMany({
+      where: {
+        clienteId,
+      },
+      include: {
+        barberia: {
+          select: {
+            id: true,
+            nombre: true,
+          },
+        },
+        participantes: {
+          include: {
+            participanteServicios: {
+              include: {
+                servicio: {
+                  select: {
+                    id: true,
+                    nombre: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        fechaCita: 'desc',
+      },
+    });
+
+    return reservas.map((r) => {
+      const fechaPart = r.fechaCita instanceof Date ? r.fechaCita.toISOString().split('T')[0] : '';
+      const horaPart = r.horaInicio instanceof Date
+        ? r.horaInicio.toISOString().split('T')[1].substring(0, 5)
+        : '00:00';
+
+      return {
+        id: r.id,
+        estado: r.estado,
+        fechaHoraInicio: `${fechaPart}T${horaPart}:00`,
+        precioTotalHist: Number(r.totalPagar),
+        barberiaNombre: r.barberia?.nombre || 'Barbería',
+        detalles: (r.participantes || []).flatMap((p) =>
+          (p.participanteServicios || []).map((ps) => ({
+            id: ps.id,
+            nombreServicioHist: ps.servicio?.nombre || 'Servicio',
+            duracionMinutosHist: ps.duracionHistorica,
+            precioHistorico: Number(ps.precioHistorico),
+          }))
+        ),
+      };
+    });
+  }
+
+  async cambiarEstado(barberiaId: string, reservaId: string, nuevoEstado: string, user: UsuarioAutenticado) {
+    const reserva = await this.prisma.reserva.findUnique({
+      where: { id: reservaId },
+    });
+
+    if (!reserva) {
+      throw new NotFoundException('Reserva no encontrada');
+    }
+
+    const bId = barberiaId || reserva.barberiaId;
+
+    if (nuevoEstado === 'NO_ASISTIO') {
+      return this.marcarInasistencia(bId, reservaId, user.id);
+    }
+
+    const updated = await this.prisma.reserva.update({
+      where: { id: reservaId },
+      data: { estado: nuevoEstado },
+    });
+
+    return updated;
+  }
 }

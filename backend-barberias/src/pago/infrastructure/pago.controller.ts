@@ -3,22 +3,21 @@ import {
   Post,
   Get,
   Body,
-  Param,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { PagoService } from '../application/pago.service.js';
 import { RegistrarPagoDto } from '../application/dto/registrar-pago.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
+import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
-@Controller('barberias/:barberiaId/pagos')
+@Controller(['barberias/:barberiaId/pagos', 'cobros', 'pagos'])
 export class PagoController {
   constructor(private readonly pagoService: PagoService) {}
 
-  @Post('en-persona')
+  @Post(['en-persona', ''])
   registrarPagoEnPersona(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @CurrentBarberiaId() barberiaId: string,
     @Body() dto: RegistrarPagoDto,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
@@ -27,7 +26,7 @@ export class PagoController {
 
   @Get('auditoria')
   obtenerAuditoriaPagos(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @CurrentBarberiaId() barberiaId: string,
     @CurrentUser() user: UsuarioAutenticado,
     @Query('limite') limite?: string,
     @Query('offset') offset?: string,

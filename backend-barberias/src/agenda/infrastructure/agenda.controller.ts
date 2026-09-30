@@ -1,17 +1,36 @@
-import { Controller, Post, Get, Delete, Param, Body, Query, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Param, Body, Query, ParseUUIDPipe, BadRequestException } from '@nestjs/common';
 import { AgendaService } from '../application/agenda.service.js';
 import { DisponibilidadService } from '../application/disponibilidad.service.js';
 import { CreateBloqueoDto } from '../application/dto/create-bloqueo.dto.js';
 import { ConsultarDisponibilidadDto } from '../application/dto/consultar-disponibilidad.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
+import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
-@Controller('barberias/:barberiaId/agenda')
+@Controller(['barberias/:barberiaId/agenda', 'agenda'])
 export class AgendaController {
   constructor(
     private readonly agendaService: AgendaService,
     private readonly disponibilidadService: DisponibilidadService
   ) {}
+
+  @Get('disponibilidad')
+  async consultarDisponibilidadGet(
+    @CurrentBarberiaId() barberiaId: string,
+    @Query('fecha') fecha: string,
+    @Query('duracionMinutos') duracionMinutos?: string,
+  ) {
+    if (!barberiaId) {
+      throw new BadRequestException('ID de barbería es requerido');
+    }
+    const duracion = duracionMinutos ? parseInt(duracionMinutos, 10) : 30;
+    return this.disponibilidadService.calcularDisponibilidad({
+      barberiaId,
+      fecha: new Date(fecha || new Date()),
+      duracionTotal: duracion,
+      margenRequerido: 0,
+    });
+  }
 
   @Post('bloqueos')
   crearBloqueo(

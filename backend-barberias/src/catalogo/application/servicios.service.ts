@@ -15,12 +15,13 @@ export class ServiciosService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(barberiaId: string, dto: CreateServicioDto) {
+    const duracion = dto.duracionEstimada ?? dto.duracionMinutos ?? 30;
     const servicio = await this.prisma.servicio.create({
       data: {
         barberiaId,
         nombre: dto.nombre,
         precio: dto.precio,
-        duracionEstimada: dto.duracionEstimada,
+        duracionEstimada: duracion,
         margenOperativo: dto.margenOperativo ?? 0,
         destacado: dto.destacado ?? false,
         estado: 'ACTIVO',
@@ -30,9 +31,13 @@ export class ServiciosService {
     return servicio;
   }
 
-  async findAll(barberiaId: string) {
+  async findAll(barberiaId?: string) {
+    const where: any = { estado: 'ACTIVO' };
+    if (barberiaId) {
+      where.barberiaId = barberiaId;
+    }
     return this.prisma.servicio.findMany({
-      where: { barberiaId, estado: 'ACTIVO' },
+      where,
       orderBy: { nombre: 'asc' },
     });
   }
