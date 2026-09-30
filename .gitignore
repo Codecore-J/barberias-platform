@@ -30,3 +30,10 @@ prisma/migrations/*.sql.bak
 
 # Angular
 .angular/
+
+# Test coverage & scratch
+coverage/
+**/coverage/
+scratch/
+endpoints.json
+*.tsbuildinfo

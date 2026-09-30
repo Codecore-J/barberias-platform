@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 
 import { authGuard } from './core/guards/auth.guard';
 import { tenantGuard } from './core/guards/tenant.guard';
+import { roleGuard } from './core/guards/role.guard';
 
 export const routes: Routes = [
   {
@@ -23,7 +24,6 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/home/home.component').then((m) => m.HomeComponent),
       },
-      // Estas rutas se crearán en las siguientes épicas, pero ya las dejamos protegidas
       {
         path: 'barberias',
         canActivate: [authGuard],
@@ -32,7 +32,7 @@ export const routes: Routes = [
       },
       {
         path: 'barberias/nueva',
-        canActivate: [authGuard],
+        canActivate: [authGuard, roleGuard(['ADMIN'])],
         loadComponent: () =>
           import('./features/barberias/crear-barberia.component').then((m) => m.CrearBarberiaComponent),
       },
@@ -44,7 +44,7 @@ export const routes: Routes = [
       },
       {
         path: 'admin/agenda',
-        canActivate: [tenantGuard],
+        canActivate: [tenantGuard, roleGuard(['ADMIN', 'BARBERO'])],
         loadComponent: () =>
           import('./features/agenda/agenda-barbero.component').then((m) => m.AgendaBarberoComponent),
       },
@@ -62,7 +62,7 @@ export const routes: Routes = [
       },
       {
         path: 'admin/servicios',
-        canActivate: [tenantGuard],
+        canActivate: [tenantGuard, roleGuard(['ADMIN'])],
         loadComponent: () =>
           import('./features/admin/admin-servicios.component').then((m) => m.AdminServiciosComponent),
       }

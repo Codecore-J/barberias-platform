@@ -12,5 +12,5 @@ export const tenantGuard: CanActivateFn = () => {
   }
 
   // Si no tiene barbería seleccionada, lo enviamos al hub de barberías
-  return router.parseUrl('/barberias');
+  return router.createUrlTree(['/barberias']);
 };

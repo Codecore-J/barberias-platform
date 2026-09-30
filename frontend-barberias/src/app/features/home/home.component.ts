@@ -24,41 +24,120 @@ import { AuthService } from '../../auth/auth.service';
       <div class="relative z-10 space-y-24 py-12 transform-style-3d transition-transform duration-300 ease-out"
            [style.transform]="'rotateX(' + (mouseY() * -5) + 'deg) rotateY(' + (mouseX() * 5) + 'deg)'">
         
-        <!-- HERO 3D SECTION -->
+        <!-- HERO 3D SECTION SEGÚN ROL -->
         <section class="relative text-center max-w-4xl mx-auto pt-16 pb-8 space-y-6 transform-style-3d"
                  [style.transform]="'translateZ(' + (scrollY() * 0.2) + 'px)'">
           
-          <!-- Badge Superior Flotante -->
-          <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold uppercase tracking-wider backdrop-blur-md shadow-[0_0_20px_rgba(212,175,55,0.2)] hover:scale-110 hover:shadow-[0_0_30px_rgba(212,175,55,0.4)] transition-all duration-500 transform translate-z-12">
-            <i class="pi pi-crown text-amber-400"></i>
-            <span>Plataforma de Barberías Premium</span>
-          </div>
+          <!-- ROL: CLIENTE -->
+          @if (userRole() === 'CLIENTE') {
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold uppercase tracking-wider backdrop-blur-md shadow-[0_0_20px_rgba(212,175,55,0.2)] hover:scale-110 hover:shadow-[0_0_30px_rgba(212,175,55,0.4)] transition-all duration-500 transform translate-z-12">
+              <i class="pi pi-crown text-amber-400"></i>
+              <span>Plataforma de Barberías Premium</span>
+            </div>
 
-          <!-- Título Principal -->
-          <h1 class="text-5xl sm:text-7xl lg:text-8xl font-display font-extrabold tracking-tight text-white leading-[1.1] transform translate-z-24 drop-shadow-2xl">
-            La Experiencia Suprema en
-            <span class="block gold-gradient-text drop-shadow-[0_0_30px_rgba(212,175,55,0.3)]">Corte, Cuidado y Estilo</span>
-          </h1>
+            <h1 class="text-5xl sm:text-7xl lg:text-8xl font-display font-extrabold tracking-tight text-white leading-[1.1] transform translate-z-24 drop-shadow-2xl">
+              La Experiencia Suprema en
+              <span class="block gold-gradient-text drop-shadow-[0_0_30px_rgba(212,175,55,0.3)]">Corte, Cuidado y Estilo</span>
+            </h1>
 
-          <!-- Subtítulo -->
-          <p class="text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto leading-relaxed transform translate-z-12">
-            Agenda tus turnos en tiempo real con precisión milimétrica, consulta el catálogo de servicios de tu barbería favorita y accede a tu ficha técnica personalizada.
-          </p>
+            <p class="text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto leading-relaxed transform translate-z-12">
+              Agenda tus turnos en tiempo real con precisión milimétrica, consulta el catálogo de servicios de tu barbería favorita y accede a tu ficha técnica personalizada.
+            </p>
 
-          <!-- Botones de Acción Rápida 3D -->
-          <div class="flex flex-wrap items-center justify-center gap-6 pt-8 transform translate-z-24">
-            <a routerLink="/reservas/nueva"
-               class="px-8 py-4 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_10px_40px_rgba(212,175,55,0.3)] hover:shadow-[0_20px_60px_rgba(212,175,55,0.5)] hover:-translate-y-2 hover:scale-105 transition-all duration-500 flex items-center gap-2.5">
-              <i class="pi pi-calendar-plus text-base"></i>
-              <span>Agendar Cita Ahora</span>
-            </a>
+            <div class="flex flex-wrap items-center justify-center gap-4 sm:gap-6 pt-8 transform translate-z-24">
+              <a routerLink="/reservas/nueva"
+                 class="px-8 py-4 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_10px_40px_rgba(212,175,55,0.3)] hover:shadow-[0_20px_60px_rgba(212,175,55,0.5)] hover:-translate-y-2 hover:scale-105 transition-all duration-500 flex items-center gap-2.5">
+                <i class="pi pi-calendar-plus text-base"></i>
+                <span>Agendar Cita Ahora</span>
+              </a>
 
-            <a routerLink="/barberias"
-               class="px-7 py-4 rounded-xl font-semibold text-sm text-zinc-200 glass-card hover:text-amber-400 hover:border-amber-500/50 hover:-translate-y-2 hover:shadow-[0_10px_30px_rgba(0,0,0,0.8)] transition-all duration-500 flex items-center gap-2.5">
-              <i class="pi pi-building text-amber-400"></i>
-              <span>Explorar Barberías</span>
-            </a>
-          </div>
+              <a routerLink="/reservas/mis-reservas"
+                 class="px-7 py-4 rounded-xl font-semibold text-sm text-zinc-200 glass-card hover:text-amber-400 hover:border-amber-500/50 hover:-translate-y-2 hover:shadow-[0_10px_30px_rgba(0,0,0,0.8)] transition-all duration-500 flex items-center gap-2.5">
+                <i class="pi pi-history text-amber-400"></i>
+                <span>Mis Citas</span>
+              </a>
+
+              <a routerLink="/barberias"
+                 class="px-7 py-4 rounded-xl font-semibold text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2">
+                <i class="pi pi-building text-xs"></i>
+                <span>Barberías</span>
+              </a>
+            </div>
+          }
+
+          <!-- ROL: BARBERO -->
+          @if (userRole() === 'BARBERO') {
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs font-semibold uppercase tracking-wider backdrop-blur-md shadow-[0_0_20px_rgba(59,130,246,0.2)] hover:scale-110 transition-all duration-500 transform translate-z-12">
+              <i class="pi pi-id-card text-blue-400"></i>
+              <span>Panel Profesional del Barbero</span>
+            </div>
+
+            <h1 class="text-5xl sm:text-7xl lg:text-8xl font-display font-extrabold tracking-tight text-white leading-[1.1] transform translate-z-24 drop-shadow-2xl">
+              Tu Estación de Trabajo &
+              <span class="block gold-gradient-text drop-shadow-[0_0_30px_rgba(212,175,55,0.3)]">Agenda en Tiempo Real</span>
+            </h1>
+
+            <p class="text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto leading-relaxed transform translate-z-12">
+              Supervisa las reservas del día, actualiza el estado de los turnos en vivo, gestiona cobros presenciales y consulta el catálogo de cortes de tu sede.
+            </p>
+
+            <div class="flex flex-wrap items-center justify-center gap-4 sm:gap-6 pt-8 transform translate-z-24">
+              <a routerLink="/admin/agenda"
+                 class="px-8 py-4 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_10px_40px_rgba(212,175,55,0.3)] hover:shadow-[0_20px_60px_rgba(212,175,55,0.5)] hover:-translate-y-2 hover:scale-105 transition-all duration-500 flex items-center gap-2.5">
+                <i class="pi pi-calendar text-base"></i>
+                <span>Abrir Mi Agenda de Turnos</span>
+              </a>
+
+              <a routerLink="/catalogo"
+                 class="px-7 py-4 rounded-xl font-semibold text-sm text-zinc-200 glass-card hover:text-amber-400 hover:border-amber-500/50 hover:-translate-y-2 transition-all duration-500 flex items-center gap-2.5">
+                <i class="pi pi-list text-amber-400"></i>
+                <span>Catálogo de Cortes</span>
+              </a>
+
+              <a routerLink="/barberias"
+                 class="px-7 py-4 rounded-xl font-semibold text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2">
+                <i class="pi pi-building text-xs"></i>
+                <span>Mi Barbería</span>
+              </a>
+            </div>
+          }
+
+          <!-- ROL: ADMIN / SUPER ADMIN -->
+          @if (userRole() === 'ADMIN' || userRole() === 'SUPER ADMIN') {
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold uppercase tracking-wider backdrop-blur-md shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:scale-110 transition-all duration-500 transform translate-z-12">
+              <i class="pi pi-shield text-emerald-400"></i>
+              <span>Centro de Control Administrativo</span>
+            </div>
+
+            <h1 class="text-5xl sm:text-7xl lg:text-8xl font-display font-extrabold tracking-tight text-white leading-[1.1] transform translate-z-24 drop-shadow-2xl">
+              Gestión Integral de
+              <span class="block gold-gradient-text drop-shadow-[0_0_30px_rgba(212,175,55,0.3)]">Servicios, Sedes & Precios</span>
+            </h1>
+
+            <p class="text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto leading-relaxed transform translate-z-12">
+              Modifica tarifas y combos, supervisa la agenda global de barberos, administra sedes y mantén el control operativo con integridad multi-tenant garantizada.
+            </p>
+
+            <div class="flex flex-wrap items-center justify-center gap-4 sm:gap-6 pt-8 transform translate-z-24">
+              <a routerLink="/admin/servicios"
+                 class="px-8 py-4 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_10px_40px_rgba(212,175,55,0.3)] hover:shadow-[0_20px_60px_rgba(212,175,55,0.5)] hover:-translate-y-2 hover:scale-105 transition-all duration-500 flex items-center gap-2.5">
+                <i class="pi pi-cog text-base"></i>
+                <span>Gestión de Servicios & Precios</span>
+              </a>
+
+              <a routerLink="/admin/agenda"
+                 class="px-7 py-4 rounded-xl font-semibold text-sm text-zinc-200 glass-card hover:text-amber-400 hover:border-amber-500/50 hover:-translate-y-2 transition-all duration-500 flex items-center gap-2.5">
+                <i class="pi pi-calendar text-amber-400"></i>
+                <span>Agenda de Turnos</span>
+              </a>
+
+              <a routerLink="/barberias"
+                 class="px-7 py-4 rounded-xl font-semibold text-sm text-zinc-300 glass-card hover:text-white transition-all flex items-center gap-2">
+                <i class="pi pi-building text-amber-400"></i>
+                <span>Gestionar Barberías</span>
+              </a>
+            </div>
+          }
         </section>
 
         <!-- BARBERÍA ACTIVA HIGHLIGHT BANNER -->
@@ -84,56 +163,144 @@ import { AuthService } from '../../auth/auth.service';
                 </div>
 
                 <div class="flex items-center gap-4 transform translate-z-24">
-                  <a routerLink="/catalogo" class="px-5 py-3 rounded-xl text-sm font-bold text-zinc-200 bg-zinc-800/80 hover:bg-zinc-700/80 hover:text-amber-400 border border-zinc-600/50 hover:border-amber-500/50 transition-all duration-300 flex items-center gap-2 hover:-translate-y-1 shadow-lg">
-                    <i class="pi pi-list"></i>Ver Servicios
-                  </a>
-                  <a routerLink="/reservas/nueva" class="px-6 py-3 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-[0_10px_20px_rgba(212,175,55,0.2)] hover:shadow-[0_15px_30px_rgba(212,175,55,0.4)] hover:-translate-y-1 hover:scale-105 transition-all duration-300 flex items-center gap-2">
-                    <i class="pi pi-bolt"></i>Reservar Turno
-                  </a>
+                  @if (userRole() === 'ADMIN' || userRole() === 'SUPER ADMIN') {
+                    <a routerLink="/admin/servicios" class="px-5 py-3 rounded-xl text-sm font-bold text-zinc-200 bg-zinc-800/80 hover:bg-zinc-700/80 hover:text-amber-400 border border-zinc-600/50 hover:border-amber-500/50 transition-all duration-300 flex items-center gap-2 hover:-translate-y-1 shadow-lg">
+                      <i class="pi pi-cog"></i>Servicios
+                    </a>
+                    <a routerLink="/admin/agenda" class="px-6 py-3 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-[0_10px_20px_rgba(212,175,55,0.2)] hover:shadow-[0_15px_30px_rgba(212,175,55,0.4)] hover:-translate-y-1 hover:scale-105 transition-all duration-300 flex items-center gap-2">
+                      <i class="pi pi-calendar"></i>Ver Agenda
+                    </a>
+                  } @else if (userRole() === 'BARBERO') {
+                    <a routerLink="/catalogo" class="px-5 py-3 rounded-xl text-sm font-bold text-zinc-200 bg-zinc-800/80 hover:bg-zinc-700/80 hover:text-amber-400 border border-zinc-600/50 hover:border-amber-500/50 transition-all duration-300 flex items-center gap-2 hover:-translate-y-1 shadow-lg">
+                      <i class="pi pi-list"></i>Catálogo
+                    </a>
+                    <a routerLink="/admin/agenda" class="px-6 py-3 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-[0_10px_20px_rgba(212,175,55,0.2)] hover:shadow-[0_15px_30px_rgba(212,175,55,0.4)] hover:-translate-y-1 hover:scale-105 transition-all duration-300 flex items-center gap-2">
+                      <i class="pi pi-calendar"></i>Mi Agenda
+                    </a>
+                  } @else {
+                    <a routerLink="/catalogo" class="px-5 py-3 rounded-xl text-sm font-bold text-zinc-200 bg-zinc-800/80 hover:bg-zinc-700/80 hover:text-amber-400 border border-zinc-600/50 hover:border-amber-500/50 transition-all duration-300 flex items-center gap-2 hover:-translate-y-1 shadow-lg">
+                      <i class="pi pi-list"></i>Ver Servicios
+                    </a>
+                    <a routerLink="/reservas/nueva" class="px-6 py-3 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-[0_10px_20px_rgba(212,175,55,0.2)] hover:shadow-[0_15px_30px_rgba(212,175,55,0.4)] hover:-translate-y-1 hover:scale-105 transition-all duration-300 flex items-center gap-2">
+                      <i class="pi pi-bolt"></i>Reservar Turno
+                    </a>
+                  }
                 </div>
               </div>
             </div>
           </section>
         }
 
-        <!-- CARDS CON PROFUNDIDAD ESPACIAL 3D -->
+        <!-- CARDS CON PROFUNDIDAD ESPACIAL 3D ADAPTADAS AL ROL -->
         <section class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto pt-10 transform-style-3d">
           
-          <!-- Tarjeta 1 -->
-          <div class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-4 hover:rotate-y-6 hover:rotate-x-6 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d"
-               [style.transform]="'translateZ(' + (scrollY() > 200 ? 30 : 0) + 'px)'">
-            <div class="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl shadow-inner group-hover:bg-amber-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
-              <i class="pi pi-shield"></i>
-            </div>
-            <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-amber-300 transition-colors">Disponibilidad en Tiempo Real</h4>
-            <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
-              Motor de concurrencia con aislamiento transaccional estricto. Cero dobles reservas y cálculo de disponibilidad al instante.
-            </p>
-          </div>
+          <!-- ROL: CLIENTE -->
+          @if (userRole() === 'CLIENTE') {
+            <a routerLink="/reservas/nueva" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-4 hover:rotate-y-6 hover:rotate-x-6 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
+                 [style.transform]="'translateZ(' + (scrollY() > 200 ? 30 : 0) + 'px)'">
+              <div class="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl shadow-inner group-hover:bg-amber-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
+                <i class="pi pi-bolt"></i>
+              </div>
+              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-amber-300 transition-colors">Agendar Cita en Vivo</h4>
+              <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
+                Motor de concurrencia con aislamiento transaccional estricto. Cero dobles reservas y cálculo de disponibilidad al instante.
+              </p>
+            </a>
 
-          <!-- Tarjeta 2 -->
-          <div class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-6 hover:scale-105 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d"
-               [style.transform]="'translateZ(' + (scrollY() > 200 ? 60 : 0) + 'px)'">
-            <div class="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl shadow-inner group-hover:bg-amber-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
-              <i class="pi pi-sliders-h"></i>
-            </div>
-            <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-amber-300 transition-colors">Catálogo & Precios Congelados</h4>
-            <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
-              Servicios individuales y combos combinados con historial financiero congelado al momento del agendamiento.
-            </p>
-          </div>
+            <a routerLink="/catalogo" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-6 hover:scale-105 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
+                 [style.transform]="'translateZ(' + (scrollY() > 200 ? 60 : 0) + 'px)'">
+              <div class="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl shadow-inner group-hover:bg-amber-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
+                <i class="pi pi-list"></i>
+              </div>
+              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-amber-300 transition-colors">Catálogo & Precios Congelados</h4>
+              <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
+                Servicios individuales y combos combinados con historial financiero congelado al momento del agendamiento.
+              </p>
+            </a>
 
-          <!-- Tarjeta 3 -->
-          <div class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-4 hover:-rotate-y-6 hover:rotate-x-6 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d"
-               [style.transform]="'translateZ(' + (scrollY() > 200 ? 30 : 0) + 'px)'">
-            <div class="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl shadow-inner group-hover:bg-amber-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
-              <i class="pi pi-lock"></i>
-            </div>
-            <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-amber-300 transition-colors">Ficha Técnica & Privacidad</h4>
-            <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
-              Tus observaciones de corte y estilos quedan registrados bajo anonimización inter-barberías de estricta protección de datos personales.
-            </p>
-          </div>
+            <a routerLink="/reservas/mis-reservas" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-4 hover:rotate-y-6 hover:rotate-x-6 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
+                 [style.transform]="'translateZ(' + (scrollY() > 200 ? 30 : 0) + 'px)'">
+              <div class="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl shadow-inner group-hover:bg-amber-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
+                <i class="pi pi-history"></i>
+              </div>
+              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-amber-300 transition-colors">Mis Citas & Ficha Técnica</h4>
+              <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
+                Tus observaciones de corte y estilos quedan registrados bajo anonimización inter-barberías de estricta protección de datos personales.
+              </p>
+            </a>
+          }
+
+          <!-- ROL: BARBERO -->
+          @if (userRole() === 'BARBERO') {
+            <a routerLink="/admin/agenda" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-4 hover:rotate-y-6 hover:rotate-x-6 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
+                 [style.transform]="'translateZ(' + (scrollY() > 200 ? 30 : 0) + 'px)'">
+              <div class="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 text-2xl shadow-inner group-hover:bg-blue-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
+                <i class="pi pi-calendar"></i>
+              </div>
+              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-blue-300 transition-colors">Mi Agenda Diaria</h4>
+              <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
+                Consulta los turnos del día, filtra por fechas y cambia el estado de las citas en tiempo real (Pendiente, Completada, Cancelada).
+              </p>
+            </a>
+
+            <a routerLink="/admin/agenda" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-6 hover:scale-105 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
+                 [style.transform]="'translateZ(' + (scrollY() > 200 ? 60 : 0) + 'px)'">
+              <div class="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl shadow-inner group-hover:bg-amber-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
+                <i class="pi pi-dollar"></i>
+              </div>
+              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-amber-300 transition-colors">Cobros Presenciales</h4>
+              <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
+                Registra el pago de los turnos completados en efectivo o tarjeta con soporte de propina y cálculo automático.
+              </p>
+            </a>
+
+            <a routerLink="/catalogo" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-4 hover:rotate-y-6 hover:rotate-x-6 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
+                 [style.transform]="'translateZ(' + (scrollY() > 200 ? 30 : 0) + 'px)'">
+              <div class="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-2xl shadow-inner group-hover:bg-emerald-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
+                <i class="pi pi-list"></i>
+              </div>
+              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-emerald-300 transition-colors">Catálogo de Servicios</h4>
+              <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
+                Revisa los servicios y tiempos de duración asignados a tu sede para planificar tus cortes con exactitud.
+              </p>
+            </a>
+          }
+
+          <!-- ROL: ADMIN / SUPER ADMIN -->
+          @if (userRole() === 'ADMIN' || userRole() === 'SUPER ADMIN') {
+            <a routerLink="/admin/servicios" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-4 hover:rotate-y-6 hover:rotate-x-6 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
+                 [style.transform]="'translateZ(' + (scrollY() > 200 ? 30 : 0) + 'px)'">
+              <div class="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl shadow-inner group-hover:bg-amber-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
+                <i class="pi pi-cog"></i>
+              </div>
+              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-amber-300 transition-colors">Servicios & Tarifas</h4>
+              <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
+                Crea y edita servicios, combos promocionales y precios. Los precios se congelan automáticamente al momento de cada reserva.
+              </p>
+            </a>
+
+            <a routerLink="/admin/agenda" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-6 hover:scale-105 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
+                 [style.transform]="'translateZ(' + (scrollY() > 200 ? 60 : 0) + 'px)'">
+              <div class="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-2xl shadow-inner group-hover:bg-emerald-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
+                <i class="pi pi-calendar"></i>
+              </div>
+              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-emerald-300 transition-colors">Agenda General</h4>
+              <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
+                Supervisa todos los turnos del equipo de barberos, audita ingresos y verifica el flujo de clientes por fecha.
+              </p>
+            </a>
+
+            <a routerLink="/barberias" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-4 hover:rotate-y-6 hover:rotate-x-6 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
+                 [style.transform]="'translateZ(' + (scrollY() > 200 ? 30 : 0) + 'px)'">
+              <div class="w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 text-2xl shadow-inner group-hover:bg-purple-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
+                <i class="pi pi-building"></i>
+              </div>
+              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-purple-300 transition-colors">Gestión de Sedes</h4>
+              <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
+                Administra tus sedes, obtén códigos de acceso seguros para vincular clientes y barberos, o crea nuevas barberías.
+              </p>
+            </a>
+          }
 
         </section>
       </div>
@@ -148,6 +315,15 @@ export class HomeComponent {
   scrollY = signal<number>(0);
   mouseX = signal<number>(0);
   mouseY = signal<number>(0);
+
+  userRole(): string {
+    const roles = this.authService.authState().user?.roles;
+    if (!roles || roles.length === 0) return 'CLIENTE';
+    if (roles.includes('SUPER_ADMIN')) return 'SUPER ADMIN';
+    if (roles.includes('ADMIN_BARBERIA') || roles.includes('ADMINISTRADOR') || roles.includes('ADMIN')) return 'ADMIN';
+    if (roles.includes('BARBERO')) return 'BARBERO';
+    return 'CLIENTE';
+  }
 
   @HostListener('window:scroll')
   onScroll() {

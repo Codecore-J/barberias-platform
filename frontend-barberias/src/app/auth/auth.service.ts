@@ -17,6 +17,7 @@ export interface AuthState {
 }
 
 import { API_URL } from '../core/constants/api.constants.js';
+import { TenantService } from '../core/services/tenant.service';
 
 @Injectable({
   providedIn: 'root'
@@ -24,14 +25,15 @@ import { API_URL } from '../core/constants/api.constants.js';
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
+  private readonly tenantService = inject(TenantService);
   private readonly apiUrl = `${API_URL}/auth`;
   private readonly tokenKey = 'access_token';
 
   // Reactive state using Angular Signals
   readonly authState = signal<AuthState>({
     user: null,
-    isAuthenticated: false,
-    isLoading: true,
+    isAuthenticated: !!localStorage.getItem('access_token'),
+    isLoading: !!localStorage.getItem('access_token'),
     error: null
   });
 
@@ -89,10 +91,35 @@ export class AuthService {
         });
         
         const roles = response.usuario.roles || [];
-        if (roles.includes('ADMIN_BARBERIA') || roles.includes('SUPER_ADMIN')) {
-          this.router.navigate(['/barberias']);
-        } else if (roles.includes('BARBERO')) {
-          this.router.navigate(['/admin/agenda']);
+        const isAdmin =
+          roles.includes('ADMINISTRADOR') ||
+          roles.includes('ADMIN_BARBERIA') ||
+          roles.includes('SUPER_ADMIN') ||
+          roles.includes('ADMIN');
+        const isBarbero = roles.includes('BARBERO');
+
+        if (isAdmin) {
+          this.tenantService.cargarBarberias().subscribe({
+            next: (barberias) => {
+              if (barberias.length > 0) {
+                this.router.navigate(['/admin/servicios']);
+              } else {
+                this.router.navigate(['/barberias']);
+              }
+            },
+            error: () => this.router.navigate(['/barberias'])
+          });
+        } else if (isBarbero) {
+          this.tenantService.cargarBarberias().subscribe({
+            next: (barberias) => {
+              if (barberias.length > 0) {
+                this.router.navigate(['/admin/agenda']);
+              } else {
+                this.router.navigate(['/barberias']);
+              }
+            },
+            error: () => this.router.navigate(['/barberias'])
+          });
         } else {
           this.router.navigate(['/']); // Home cliente
         }
