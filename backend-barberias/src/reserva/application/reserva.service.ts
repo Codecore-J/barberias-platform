@@ -382,6 +382,13 @@ export class ReservaService {
             nombreCompleto: true,
             correo: true,
             telefono: true,
+            clienteBarberias: {
+              where: { barberiaId },
+              select: {
+                contadorNoPresentado: true,
+                estaRestringido: true,
+              }
+            }
           },
         },
         barbero: {
@@ -426,6 +433,8 @@ export class ReservaService {
           nombre: r.cliente?.nombreCompleto || 'Cliente',
           correo: r.cliente?.correo || '',
           telefono: r.cliente?.telefono || 'Sin teléfono',
+          contadorNoPresentado: r.cliente?.clienteBarberias?.[0]?.contadorNoPresentado || 0,
+          estaRestringido: r.cliente?.clienteBarberias?.[0]?.estaRestringido || false,
         },
         barbero: r.barbero ? {
           id: r.barbero.id,

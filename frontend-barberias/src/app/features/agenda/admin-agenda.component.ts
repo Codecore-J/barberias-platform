@@ -63,9 +63,10 @@ import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.c
               <!-- Contenedor scrolleable de Turnos -->
               <div class="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar">
                 @for (turno of turnosPorBarbero(barbero.id); track turno.id) {
-                  <div class="bg-zinc-900/80 p-4 rounded-2xl border-l-4 transition-all hover:bg-zinc-800/80 cursor-pointer shadow-md flex flex-col gap-2"
+                  <div class="bg-zinc-900/80 p-4 rounded-2xl border-l-4 transition-all hover:bg-zinc-800/80 cursor-pointer shadow-md flex flex-col gap-2 relative overflow-hidden"
                        [ngClass]="{
-                         'border-amber-500': turno.estado === 'PENDIENTE',
+                         'border-amber-500': turno.estado === 'PENDIENTE' && (!turno.cliente?.contadorNoPresentado || turno.cliente.contadorNoPresentado < 3),
+                         'border-red-500 bg-red-950/20 shadow-[0_0_15px_rgba(239,68,68,0.2)]': turno.estado === 'PENDIENTE' && turno.cliente?.contadorNoPresentado >= 3,
                          'border-emerald-500 opacity-60': turno.estado === 'COMPLETADA',
                          'border-red-500 opacity-50': turno.estado === 'CANCELADA' || turno.estado === 'NO_ASISTIO'
                        }">
@@ -88,8 +89,17 @@ import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.c
                     </div>
 
                     <div>
-                      <div class="text-sm text-zinc-300 font-medium flex items-center justify-between">
-                        {{ turno.cliente.nombre }}
+                      <div class="text-sm text-zinc-300 font-medium flex items-center justify-between relative z-10">
+                        <div class="flex items-center gap-2">
+                          {{ turno.cliente.nombre }}
+                          @if (turno.cliente?.contadorNoPresentado >= 3) {
+                            <i class="pi pi-exclamation-triangle text-red-500 animate-pulse" 
+                               [title]="'Advertencia: Cliente con ' + turno.cliente.contadorNoPresentado + ' inasistencias previas'"></i>
+                          }
+                          @if (turno.cliente?.estaRestringido) {
+                            <span class="text-[9px] bg-red-500 text-white px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Bloqueado</span>
+                          }
+                        </div>
                         <button (click)="abrirFicha(turno.cliente)" class="text-amber-500 hover:text-amber-400 transition-colors" title="Ficha del Cliente">
                           <i class="pi pi-id-card text-lg"></i>
                         </button>
