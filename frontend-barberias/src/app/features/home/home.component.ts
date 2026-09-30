@@ -300,6 +300,16 @@ import { AuthService } from '../../auth/auth.service';
                 Administra tus sedes, obtén códigos de acceso seguros para vincular clientes y barberos, o crea nuevas barberías.
               </p>
             </a>
+            <a class="glass-card rounded-3xl p-8 space-y-5 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block opacity-80 cursor-not-allowed"
+                 [style.transform]="'translateZ(' + (scrollY() > 200 ? 30 : 0) + 'px)'">
+              <div class="w-14 h-14 rounded-2xl bg-zinc-500/10 border border-zinc-500/30 flex items-center justify-center text-zinc-400 text-2xl shadow-inner transition-all duration-500 transform translate-z-12">
+                <i class="pi pi-users"></i>
+              </div>
+              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 transition-colors flex items-center gap-2">Gestión de Equipo <span class="text-[10px] bg-zinc-800 px-2 py-0.5 rounded-full">Próximamente</span></h4>
+              <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
+                Próximamente podrás invitar barberos, asignarles roles, horarios y permisos por sede de forma centralizada.
+              </p>
+            </a>
           }
 
         </section>

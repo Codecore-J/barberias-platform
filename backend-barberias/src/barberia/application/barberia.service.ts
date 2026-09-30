@@ -135,6 +135,37 @@ export class BarberiaService {
     });
   }
 
+  // ── LISTAR PERSONAL ────────────────────────────────────────────────────────
+  async findPersonal(barberiaId: string) {
+    const roles = await this.prisma.usuarioRol.findMany({
+      where: { barberiaId },
+      include: {
+        usuario: {
+          select: { id: true, nombreCompleto: true, correo: true, telefono: true, estadoCuenta: true }
+        },
+        rol: true
+      }
+    });
+
+    // Group by user since a user might have multiple roles in the same barberia
+    const userMap = new Map<string, any>();
+    for (const r of roles) {
+      if (!userMap.has(r.usuario.id)) {
+        userMap.set(r.usuario.id, {
+          id: r.usuario.id,
+          nombreCompleto: r.usuario.nombreCompleto,
+          correo: r.usuario.correo,
+          telefono: r.usuario.telefono,
+          estado: r.usuario.estadoCuenta,
+          roles: []
+        });
+      }
+      userMap.get(r.usuario.id).roles.push(r.rol.nombre);
+    }
+
+    return Array.from(userMap.values());
+  }
+
   // ── LISTAR (propias del responsable) ──────────────────────────────────────
 
   async findAllByResponsable(responsableId: string): Promise<BarberiaResponseDto[]> {

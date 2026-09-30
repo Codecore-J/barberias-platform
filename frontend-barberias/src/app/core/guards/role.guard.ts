@@ -35,16 +35,8 @@ export const roleGuard = (allowedRoles: string[]): CanActivateFn => {
     }
 
     // Redirección defensiva si el usuario no tiene permisos para esta ruta
-    if (userRoles.includes('BARBERO')) {
-      return router.createUrlTree(['/admin/agenda']);
-    }
-    if (
-      userRoles.includes('ADMINISTRADOR') ||
-      userRoles.includes('ADMIN_BARBERIA') ||
-      userRoles.includes('SUPER_ADMIN')
-    ) {
-      return router.createUrlTree(['/barberias']);
-    }
+    // Todos son enviados al Home que actuará como dashboard
+    return router.createUrlTree(['/']);
 
     return router.createUrlTree(['/']);
   };

@@ -102,7 +102,7 @@ export class AuthService {
           this.tenantService.cargarBarberias().subscribe({
             next: (barberias) => {
               if (barberias.length > 0) {
-                this.router.navigate(['/admin/servicios']);
+                this.router.navigate(['/']);
               } else {
                 this.router.navigate(['/barberias']);
               }
@@ -113,7 +113,7 @@ export class AuthService {
           this.tenantService.cargarBarberias().subscribe({
             next: (barberias) => {
               if (barberias.length > 0) {
-                this.router.navigate(['/admin/agenda']);
+                this.router.navigate(['/']);
               } else {
                 this.router.navigate(['/barberias']);
               }

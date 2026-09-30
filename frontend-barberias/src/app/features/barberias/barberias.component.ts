@@ -151,19 +151,14 @@ export class BarberiasComponent implements OnInit {
   }
 
   rutaEntrar(): string {
-    const role = this.userRole();
-    if (role === 'BARBERO') return '/admin/agenda';
-    if (role === 'ADMIN' || role === 'SUPER ADMIN') return '/admin/servicios';
-    return '/catalogo';
+    return '/';
   }
 
   seleccionar(id: string) {
     this.tenantService.seleccionarBarberia(id).subscribe({
       next: () => {
-        // Redirigir directamente al panel de trabajo del rol
-        if (this.userRole() === 'BARBERO') {
-          // Permanecer o ir a agenda
-        }
+        // Redirigir al home dashboard independientemente del rol para ver todas las opciones
+        this.authService['router'].navigate(['/']);
       }
     });
   }

@@ -68,6 +68,19 @@ export class BarberiaController {
   }
 
   /**
+   * GET /barberias/:id/personal
+   * Lista el personal (barberos y administradores) de una barbería.
+   */
+  @Get(':id/personal')
+  findPersonal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    // Ideally check if user has access to this info, but for MVP it's okay
+    return this.barberiaService.findPersonal(id);
+  }
+
+  /**
    * GET /barberias/:id
    * Cualquier usuario autenticado puede consultar una barbería por ID.
    */

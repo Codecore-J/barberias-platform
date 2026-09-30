@@ -27,6 +27,8 @@ model Usuario {
   auditoria       Auditoria[]
   bloqueosCreados BloqueosAgenda[]  @relation("BloqueoCreador")
   tokensRecuperacion TokenRecuperacion[]
+  horariosBarbero    HorarioBarbero[] @relation("HorarioDeBarbero")
+  excepcionesBarbero ExcepcionHorarioBarbero[] @relation("ExcepcionDeBarbero")
 
   @@map("usuarios")
 }
@@ -101,6 +103,8 @@ model Barberia {
   antecedentesOrigen    Antecedente[]      @relation("BarberiaOrigen")
   reportes              Reporte[]
   configuracionBarberia ConfiguracionBarberia?
+  horariosBarbero       HorarioBarbero[]
+  excepcionesBarbero    ExcepcionHorarioBarbero[]
 
   @@map("barberias")
 }
@@ -197,6 +201,37 @@ model ExcepcionHorario {
 
   @@unique([barberiaId, fecha], name: "uk_excepcion_fecha")
   @@map("excepciones_horario")
+}
+
+model HorarioBarbero {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId String   @map("barberia_id") @db.Uuid
+  barberoId  String   @map("barbero_id") @db.Uuid
+  diaSemana  Int      @map("dia_semana") @db.SmallInt
+  horaInicio DateTime @map("hora_inicio") @db.Time
+  horaFin    DateTime @map("hora_fin") @db.Time
+
+  barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
+  barbero  Usuario  @relation("HorarioDeBarbero", fields: [barberoId], references: [id], onDelete: Cascade)
+
+  @@map("horarios_barbero")
+}
+
+model ExcepcionHorarioBarbero {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId String   @map("barberia_id") @db.Uuid
+  barberoId  String   @map("barbero_id") @db.Uuid
+  fecha      DateTime @db.Date
+  tipo       String   @db.VarChar(20)
+  horaInicio DateTime? @map("hora_inicio") @db.Time
+  horaFin    DateTime? @map("hora_fin") @db.Time
+  motivo     String?  @db.Text
+
+  barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
+  barbero  Usuario  @relation("ExcepcionDeBarbero", fields: [barberoId], references: [id], onDelete: Cascade)
+
+  @@unique([barberoId, barberiaId, fecha], name: "uk_excepcion_barbero_fecha")
+  @@map("excepciones_horario_barbero")
 }
 
 model BloqueosAgenda {

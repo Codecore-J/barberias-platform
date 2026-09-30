@@ -42,4 +42,31 @@ export class HorarioController {
   ) {
     return this.horarioService.addException(user.id, barberiaId, dto);
   }
+
+  @Get('mi-horario')
+  findMyBarberSchedules(
+    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.horarioService.getBarberSchedules(barberiaId, user.id);
+  }
+
+  @Post('mi-horario')
+  configureMyBarberSchedules(
+    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Body(new ParseArrayPipe({ items: CreateHorarioDto })) dto: CreateHorarioDto[],
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.horarioService.configureBarberSchedules(user.id, barberiaId, dto);
+  }
+
+  @Post('barberos/:barberoId/excepciones')
+  addBarberException(
+    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('barberoId', ParseUUIDPipe) barberoId: string,
+    @Body() dto: CreateExcepcionHorarioDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.horarioService.addBarberException(user.id, barberiaId, barberoId, dto);
+  }
 }
