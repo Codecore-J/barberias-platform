@@ -9,9 +9,14 @@ export interface DisponibilidadSlot {
 }
 
 export interface CrearReservaDto {
-  servicioIds: string[];
+  fecha: string;
+  horaInicio: string;
+  horaFin: string;
+  serviciosIds: string[];
+  precioTotalEsperado: number;
+  margenGrupalHistorico?: number;
   barberoId?: string | null;
-  fechaHoraInicio: string;
+  nombreInvitado?: string;
 }
 
 @Injectable({

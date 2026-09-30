@@ -321,9 +321,23 @@ export class ReservaWizardComponent implements OnInit {
   confirmarReserva() {
     if (!this.slotSeleccionado()) return;
 
+    // Find the slot to get the end time
+    const slot = this.slotsDisponibles().find(s => s.inicio === this.slotSeleccionado());
+    if (!slot) return;
+
+    const fechaObj = new Date(this.slotSeleccionado()!);
+    const fechaStr = fechaObj.toISOString().split('T')[0];
+    const horaInicioStr = fechaObj.toTimeString().substring(0, 5); // HH:mm
+    
+    const fechaFinObj = new Date(slot.fin);
+    const horaFinStr = fechaFinObj.toTimeString().substring(0, 5); // HH:mm
+
     const dto = {
-      servicioIds: Array.from(this.selectedServicioIds()),
-      fechaHoraInicio: this.slotSeleccionado()!,
+      fecha: fechaStr,
+      horaInicio: horaInicioStr,
+      horaFin: horaFinStr,
+      serviciosIds: Array.from(this.selectedServicioIds()),
+      precioTotalEsperado: this.precioTotal(),
       // barberoId es opcional, lo dejamos null por ahora
     };
 
