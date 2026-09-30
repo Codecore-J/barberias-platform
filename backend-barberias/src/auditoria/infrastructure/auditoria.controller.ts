@@ -1,10 +1,8 @@
-import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Query } from '@nestjs/common';
 import { AuditoriaService } from '../application/auditoria.service.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
-import { RolesGuard } from '../../iam/infrastructure/roles.guard.js';
 
 @Controller('auditoria')
-@UseGuards(RolesGuard)
 export class AuditoriaController {
   constructor(private readonly auditoriaService: AuditoriaService) {}
 

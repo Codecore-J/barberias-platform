@@ -5,6 +5,7 @@ import { AppService } from './app.service.js';
 import { SharedModule } from './shared/shared.module.js';
 import { IamModule } from './iam/iam.module.js';
 import { JwtAuthGuard } from './iam/infrastructure/jwt-auth.guard.js';
+import { RolesGuard } from './iam/infrastructure/roles.guard.js';
 import { BarberiaModule } from './barberia/barberia.module.js';
 import { CatalogoModule } from './catalogo/catalogo.module.js';
 import { HorarioModule } from './horario/infrastructure/horario.module.js';
@@ -65,6 +66,11 @@ import Redis from 'ioredis';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    // Guard global: verifica acceso por roles después del JWT
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 })
