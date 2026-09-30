@@ -56,7 +56,7 @@ Plataforma de Gestión de Barberías
 ## Bloque B — Higiene del informe (no bloqueante, pero obligatorio antes de archivar)
 
 ### TASK-B1 — Resolver colisión de ID `CONF-01`
-- [ ] **Prioridad:** Media
+- [x] **Prioridad:** Media
 - **Acción exacta:** En `AUDITORIA_HALLAZGOS.md`, renombrar el hallazgo de CORS permisivo de `CONF-01` a `CONF-02`, dejando `CONF-01` únicamente para el secreto JWT débil. Actualizar cualquier referencia cruzada (commits, tickets, otros documentos) que mencione el ID viejo.
 - **Criterio de aceptación:** El archivo `AUDITORIA_HALLAZGOS.md` no contiene dos hallazgos con el mismo ID.
 - **Evidencia requerida:** Diff del commit que aplica el renombrado.

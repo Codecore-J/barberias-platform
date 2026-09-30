@@ -18,7 +18,7 @@ async function bootstrap() {
     exclude: ['health', 'api/v1/health'],
   });
 
-  // Configuración estricta de CORS (CONF-01):
+  // Configuración estricta de CORS (CONF-02):
   // Solo se permiten orígenes autorizados del frontend oficial y entornos locales de desarrollo.
   const allowedOrigins = [
     'https://barberias-platform-git-main-developerstem.vercel.app',

@@ -63,7 +63,7 @@ describe('CONF-01: Fortalecimiento de JWT_SECRET y Validación de Seguridad', ()
     });
   });
 
-  describe('Validación de Políticas de CORS (CONF-01)', () => {
+  describe('Validación de Políticas de CORS (CONF-02)', () => {
     const allowedOrigins = [
       'https://barberias-platform-git-main-developerstem.vercel.app',
       'https://barberias-platform.vercel.app',

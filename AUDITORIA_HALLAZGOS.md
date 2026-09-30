@@ -22,12 +22,13 @@ Se sometió la plataforma a una batería completa de pruebas de rendimiento, con
 | 🟢 **BAJO** | **3** | Endpoint `/` expone "Hello World!" genérico; Falta de índice parcial nativo en PostgreSQL para barbería activa; Mensaje genérico 401 en cuentas suspendidas. |
 | **TOTAL** | **13** | **Hallazgos identificados para remediación planificada.** |
 
-### 1.2 Los 5 Problemas Prioritarios a Corregir Primero
+### 1.2 Los Problemas Prioritarios a Corregir Primero
 1. **[SEC-01 / CRÍTICO] Implementar Módulo de Recuperación de Cuenta (`/api/v1/auth/forgot-password` y `/reset-password`):** El flujo está ausente en el backend; los usuarios que olviden su credencial quedan bloqueados permanentemente sin autoservicio.
 2. **[PERF-01 / ALTO] Optimización de Carga Concurrente de Login (Bcrypt Worker Pool / Costo 10):** El factor de trabajo 12 satura la CPU y el threadpool de Node.js en Render. Bajo 50 peticiones simultáneas, la latencia se dispara a 46 segundos. Reducir a costo 10 u optimizar hilos estabilizará la respuesta en sub-segundo.
 3. **[CONC-01 / ALTO] Manejo de Saturación del Pool de Conexiones de Neon en Reservas Concurrentes (Errores 500 a 409):** En la prueba de 20 solicitudes concurrentes con `FOR UPDATE`, se previno exitosamente el overbooking (0 reservas duplicadas), pero 8 solicitudes recibieron HTTP 500 en lugar de un HTTP 409 controlado por timeout del pool de Prisma.
 4. **[SEC-02 / ALTO] Implementación de Rate Limiting (`@nestjs/throttler`) en `/auth/login` y `/auth/register`:** Ausencia de limitación de tasa por IP, dejando la API expuesta a ataques de fuerza bruta y denegación de servicio.
-5. **[CONF-01 / ALTO] Fortalecimiento de `JWT_SECRET` y Restricción Estricta de CORS:** El secreto JWT en producción utiliza la cadena de desarrollo por defecto y CORS permite cualquier origen (`*`).
+5. **[CONF-01 / ALTO] Fortalecimiento de `JWT_SECRET`:** El secreto JWT en producción utiliza la cadena de desarrollo por defecto.
+6. **[CONF-02 / MEDIO] Restricción Estricta de CORS:** CORS permite cualquier origen (`*`).
 
 ---
 
@@ -181,7 +182,7 @@ Se sometió la plataforma a una batería completa de pruebas de rendimiento, con
 ### HALLAZGO 06: Configuración de CORS Totalmente Abierta (`*`)
 - **Módulo / Ruta afectada:** `Infraestructura Global` ➔ `main.ts`
 - **Tipo:** Seguridad / Configuración
-- **Severidad:** 🟡 **MEDIO** (Resuelto conjuntamente con CONF-01)
+- **Severidad:** 🟡 **MEDIO** (Asignado ID CONF-02)
 - **Pasos exactos para reproducir:**
   1. Revisar `main.ts` línea 11: `app.enableCors();`.
   2. Enviar petición con cabecera `Origin: https://malicious-site.com`.
@@ -329,7 +330,8 @@ La plataforma cuenta con bases arquitectónicas sobresalientes:
 - `[PERF-01 / ALTO]` ✅ Reducción de latencia en concurrencia (Bcrypt costo 10 + UV_THREADPOOL_SIZE=16 + signAsync).
 - `[CONC-01 / ALTO]` ✅ Resiliencia del pool Neon con reintentos jitter y mapeo controlado a HTTP 409 Conflict.
 - `[SEC-02 / ALTO]` ✅ Rate limiting multicapa con `@nestjs/throttler` (v6.7.1) y soporte para reverse proxies (`trust proxy 1`).
-- `[CONF-01 / ALTO]` ✅ Fail-fast criptográfico para JWT_SECRET (256 bits) y lista blanca de orígenes estricta en CORS.
+- `[CONF-01 / ALTO]` ✅ Fail-fast criptográfico para JWT_SECRET (256 bits).
+- `[CONF-02 / MEDIO]` ✅ Lista blanca de orígenes estricta en CORS.
 - `[MON-01 / MEDIO]` ✅ Módulo de salud `@nestjs/terminus` con probes activos en tiempo real (Postgres, Redis, Heap).
 - `[FUNC-01 / MEDIO]` ✅ Desactivación de catálogo permitida con reservas confirmadas (protegiendo el snapshot inmutable).
 - `[AUDIT-01 / MEDIO]` ✅ Centralización de auditoría inmutable en `AuditoriaService` con endpoints de consulta para cobros.
