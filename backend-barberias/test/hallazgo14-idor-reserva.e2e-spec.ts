@@ -123,15 +123,17 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    // Crear Horario
-    await prisma.horario.create({
-      data: {
-        barberiaId,
-        diaSemana: tomorrow.getDay(),
-        horaInicio: new Date('1970-01-01T00:00:00.000Z'),
-        horaFin: new Date('1970-01-01T23:59:00.000Z')
-      }
-    });
+    // Crear Horario para todos los dias de la semana para evitar problemas de UTC
+    for (let i = 0; i <= 6; i++) {
+      await prisma.horario.create({
+        data: {
+          barberiaId,
+          diaSemana: i,
+          horaInicio: new Date('1970-01-01T00:00:00.000Z'),
+          horaFin: new Date('1970-01-01T23:59:00.000Z')
+        }
+      });
+    }
 
     // Register Cliente A
     await request(app.getHttpServer()).post('/api/v1/auth/register').send({
