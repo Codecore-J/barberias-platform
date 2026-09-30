@@ -106,34 +106,51 @@ import { NotificationService } from '../../core/services/notification.service';
               </a>
             }
 
-            @if (userRole() === 'ADMIN' || userRole() === 'SUPER ADMIN') {
+            @if (userRole() === 'ADMIN_BARBERIA') {
+              <a routerLink="/admin/servicios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-cog mr-1.5 text-xs text-amber-400/80"></i>Mis Servicios
+              </a>
+              <a routerLink="/admin/agenda" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-calendar mr-1.5 text-xs text-amber-400/80"></i>Mi Agenda
+              </a>
+              <a routerLink="/admin/personal" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-users mr-1.5 text-xs text-amber-400/80"></i>Mi Personal
+              </a>
+              <!-- /admin/tickets es el endpoint de pagos/facturación -->
+              <a routerLink="/admin/tickets" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-receipt mr-1.5 text-xs text-amber-400/80"></i>Pagos
+              </a>
+            }
+
+            @if (userRole() === 'SUPER_ADMIN') {
               <a routerLink="/barberias" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-building mr-1.5 text-xs text-amber-400/80"></i>Barberías
               </a>
               <a routerLink="/admin/servicios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-cog mr-1.5 text-xs text-amber-400/80"></i>Servicios
+                <i class="pi pi-cog mr-1.5 text-xs text-amber-400/80"></i>Servicios Globales
               </a>
               <a routerLink="/admin/agenda" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-calendar mr-1.5 text-xs text-amber-400/80"></i>Agenda Turnos
+                <i class="pi pi-calendar mr-1.5 text-xs text-amber-400/80"></i>Agenda Global
               </a>
               <a routerLink="/admin/personal" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-users mr-1.5 text-xs text-amber-400/80"></i>Personal
+                <i class="pi pi-users mr-1.5 text-xs text-amber-400/80"></i>Personal Global
               </a>
               <a routerLink="/admin/antecedentes" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-shield mr-1.5 text-xs text-amber-400/80"></i>Antecedentes
               </a>
+              <!-- /admin/tickets es el endpoint de pagos/facturación -->
               <a routerLink="/admin/tickets" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-receipt mr-1.5 text-xs text-amber-400/80"></i>Pagos
-              </a>
-              <a routerLink="/catalogo" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
-                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo
+                <i class="pi pi-receipt mr-1.5 text-xs text-amber-400/80"></i>Auditoría Pagos
               </a>
             }
           </div>
@@ -271,27 +288,39 @@ import { NotificationService } from '../../core/services/notification.service';
                 </a>
               }
 
-              @if (userRole() === 'ADMIN' || userRole() === 'SUPER ADMIN') {
+              @if (userRole() === 'ADMIN_BARBERIA') {
+                <a routerLink="/admin/servicios" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-cog text-amber-400"></i>Mis Servicios
+                </a>
+                <a routerLink="/admin/agenda" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-calendar text-amber-400"></i>Mi Agenda
+                </a>
+                <a routerLink="/admin/personal" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-users text-amber-400"></i>Mi Personal
+                </a>
+                <a routerLink="/admin/tickets" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-receipt text-amber-400"></i>Pagos
+                </a>
+              }
+
+              @if (userRole() === 'SUPER_ADMIN') {
                 <a routerLink="/barberias" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-building text-amber-400"></i>Barberías
                 </a>
                 <a routerLink="/admin/servicios" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
-                  <i class="pi pi-cog text-amber-400"></i>Ver Servicios
+                  <i class="pi pi-cog text-amber-400"></i>Servicios Globales
                 </a>
                 <a routerLink="/admin/agenda" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
-                  <i class="pi pi-calendar text-amber-400"></i>Agenda de Turnos
+                  <i class="pi pi-calendar text-amber-400"></i>Agenda Global
                 </a>
                 <a routerLink="/admin/personal" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
-                  <i class="pi pi-users text-amber-400"></i>Personal
+                  <i class="pi pi-users text-amber-400"></i>Personal Global
                 </a>
                 <a routerLink="/admin/antecedentes" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-shield text-amber-400"></i>Aprobar Antecedentes
                 </a>
                 <a routerLink="/admin/tickets" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
-                  <i class="pi pi-receipt text-amber-400"></i>Historial de Pagos
-                </a>
-                <a routerLink="/catalogo" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
-                  <i class="pi pi-list text-amber-400"></i>Catálogo de Servicios
+                  <i class="pi pi-receipt text-amber-400"></i>Auditoría de Pagos
                 </a>
               }
             </div>
@@ -377,8 +406,8 @@ export class AppLayoutComponent implements OnInit {
   userRole(): string {
     const roles = this.authService.authState().user?.roles;
     if (!roles || roles.length === 0) return 'CLIENTE';
-    if (roles.includes('SUPER_ADMIN')) return 'SUPER ADMIN';
-    if (roles.includes('ADMIN_BARBERIA') || roles.includes('ADMINISTRADOR')) return 'ADMIN';
+    if (roles.includes('SUPER_ADMIN') || roles.includes('ADMINISTRADOR')) return 'SUPER_ADMIN';
+    if (roles.includes('ADMIN_BARBERIA')) return 'ADMIN_BARBERIA';
     if (roles.includes('BARBERO')) return 'BARBERO';
     return 'CLIENTE';
   }

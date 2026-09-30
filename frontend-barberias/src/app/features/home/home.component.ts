@@ -104,39 +104,70 @@ import { PagosService } from '../../core/services/pagos.service';
             </div>
           }
 
-          <!-- ROL: ADMIN / SUPER ADMIN -->
-          @if (userRole() === 'ADMIN' || userRole() === 'SUPER ADMIN') {
+          <!-- ROL: ADMIN_BARBERIA -->
+          @if (userRole() === 'ADMIN_BARBERIA') {
             <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold uppercase tracking-wider backdrop-blur-md shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:scale-110 transition-all duration-500 transform translate-z-12">
-              <i class="pi pi-shield text-emerald-400"></i>
-              <span>Centro de Control Administrativo</span>
+              <i class="pi pi-briefcase text-emerald-400"></i>
+              <span>Centro de Gestión de Barbería</span>
             </div>
 
             <h1 class="text-5xl sm:text-7xl lg:text-8xl font-display font-extrabold tracking-tight text-white leading-[1.1] transform translate-z-24 drop-shadow-2xl">
-              Gestión Integral de
-              <span class="block gold-gradient-text drop-shadow-[0_0_30px_rgba(212,175,55,0.3)]">Servicios, Sedes & Precios</span>
+              Gestión Integral de tu
+              <span class="block gold-gradient-text drop-shadow-[0_0_30px_rgba(212,175,55,0.3)]">Sede & Servicios</span>
             </h1>
 
             <p class="text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto leading-relaxed transform translate-z-12">
-              Modifica tarifas y combos, supervisa la agenda global de barberos, administra sedes y mantén el control operativo con integridad multi-tenant garantizada.
+              Modifica tarifas, administra tu personal local, supervisa la agenda de tu barbería y mantén el control operativo total de tu negocio.
             </p>
 
             <div class="flex flex-wrap items-center justify-center gap-4 sm:gap-6 pt-8 transform translate-z-24">
               <a routerLink="/admin/servicios"
                  class="px-8 py-4 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_10px_40px_rgba(212,175,55,0.3)] hover:shadow-[0_20px_60px_rgba(212,175,55,0.5)] hover:-translate-y-2 hover:scale-105 transition-all duration-500 flex items-center gap-2.5">
                 <i class="pi pi-cog text-base"></i>
-                <span>Gestión de Servicios & Precios</span>
+                <span>Mis Servicios & Precios</span>
               </a>
 
               <a routerLink="/admin/agenda"
                  class="px-7 py-4 rounded-xl font-semibold text-sm text-zinc-200 glass-card hover:text-amber-400 hover:border-amber-500/50 hover:-translate-y-2 transition-all duration-500 flex items-center gap-2.5">
                 <i class="pi pi-calendar text-amber-400"></i>
-                <span>Agenda de Turnos</span>
+                <span>Mi Agenda Local</span>
+              </a>
+            </div>
+          }
+
+          <!-- ROL: SUPER ADMIN -->
+          @if (userRole() === 'SUPER_ADMIN') {
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-semibold uppercase tracking-wider backdrop-blur-md shadow-[0_0_20px_rgba(168,85,247,0.2)] hover:scale-110 transition-all duration-500 transform translate-z-12">
+              <i class="pi pi-shield text-purple-400"></i>
+              <span>Centro de Control Administrativo (Plataforma)</span>
+            </div>
+
+            <h1 class="text-5xl sm:text-7xl lg:text-8xl font-display font-extrabold tracking-tight text-white leading-[1.1] transform translate-z-24 drop-shadow-2xl">
+              Gestión Integral de
+              <span class="block gold-gradient-text drop-shadow-[0_0_30px_rgba(212,175,55,0.3)]">Sedes, Servicios & Auditoría</span>
+            </h1>
+
+            <p class="text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto leading-relaxed transform translate-z-12">
+              Modifica tarifas globales, supervisa la agenda de todos los barberos, administra sedes y mantén el control operativo con integridad multi-tenant garantizada.
+            </p>
+
+            <div class="flex flex-wrap items-center justify-center gap-4 sm:gap-6 pt-8 transform translate-z-24">
+              <a routerLink="/admin/servicios"
+                 class="px-8 py-4 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_10px_40px_rgba(212,175,55,0.3)] hover:shadow-[0_20px_60px_rgba(212,175,55,0.5)] hover:-translate-y-2 hover:scale-105 transition-all duration-500 flex items-center gap-2.5">
+                <i class="pi pi-cog text-base"></i>
+                <span>Catálogo Global</span>
+              </a>
+
+              <a routerLink="/admin/agenda"
+                 class="px-7 py-4 rounded-xl font-semibold text-sm text-zinc-200 glass-card hover:text-amber-400 hover:border-amber-500/50 hover:-translate-y-2 transition-all duration-500 flex items-center gap-2.5">
+                <i class="pi pi-calendar text-amber-400"></i>
+                <span>Agenda Global</span>
               </a>
 
               <a routerLink="/barberias"
                  class="px-7 py-4 rounded-xl font-semibold text-sm text-zinc-300 glass-card hover:text-white transition-all flex items-center gap-2">
                 <i class="pi pi-building text-amber-400"></i>
-                <span>Gestionar Barberías</span>
+                <span>Gestionar Todas las Sedes</span>
               </a>
             </div>
           }
@@ -165,7 +196,7 @@ import { PagosService } from '../../core/services/pagos.service';
                 </div>
 
                 <div class="flex items-center gap-4 transform translate-z-24">
-                  @if (userRole() === 'ADMIN' || userRole() === 'SUPER ADMIN') {
+                  @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'SUPER_ADMIN') {
                     <a routerLink="/admin/servicios" class="px-5 py-3 rounded-xl text-sm font-bold text-zinc-200 bg-zinc-800/80 hover:bg-zinc-700/80 hover:text-amber-400 border border-zinc-600/50 hover:border-amber-500/50 transition-all duration-300 flex items-center gap-2 hover:-translate-y-1 shadow-lg">
                       <i class="pi pi-cog"></i>Servicios
                     </a>
@@ -194,7 +225,7 @@ import { PagosService } from '../../core/services/pagos.service';
         }
 
         <!-- DASHBOARD ADMIN: MÉTRICAS FINANCIERAS -->
-        @if (userRole() === 'ADMIN' || userRole() === 'SUPER ADMIN') {
+        @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'SUPER_ADMIN') {
           <section class="max-w-6xl mx-auto pt-4 pb-8 transform-style-3d"
                    [style.transform]="'translateZ(' + (scrollY() > 150 ? 40 : 0) + 'px)'">
             <h2 class="text-2xl font-display font-bold text-white mb-6 transform translate-z-12 flex items-center gap-3">
@@ -328,48 +359,54 @@ import { PagosService } from '../../core/services/pagos.service';
             </a>
           }
 
-          <!-- ROL: ADMIN / SUPER ADMIN -->
-          @if (userRole() === 'ADMIN' || userRole() === 'SUPER ADMIN') {
-            <a routerLink="/admin/servicios" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-4 hover:rotate-y-6 hover:rotate-x-6 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
+          <!-- ROL: ADMIN_BARBERIA -->
+          @if (userRole() === 'ADMIN_BARBERIA') {
+            <!-- Se han removido las cards redundantes de servicios y agenda que ya estaban en el hero -->
+            <a routerLink="/admin/personal" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-4 hover:rotate-y-6 hover:rotate-x-6 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
                  [style.transform]="'translateZ(' + (scrollY() > 200 ? 30 : 0) + 'px)'">
               <div class="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl shadow-inner group-hover:bg-amber-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
-                <i class="pi pi-cog"></i>
+                <i class="pi pi-users"></i>
               </div>
-              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-amber-300 transition-colors">Servicios & Tarifas</h4>
+              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-amber-300 transition-colors">Mi Personal Local</h4>
               <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
-                Crea y edita servicios, combos promocionales y precios. Los precios se congelan automáticamente al momento de cada reserva.
+                Administra a tus barberos en esta sede, cambia roles y coordina los horarios operativos.
               </p>
             </a>
 
-            <a routerLink="/admin/agenda" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-6 hover:scale-105 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
+            <a routerLink="/admin/tickets" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-6 hover:scale-105 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
                  [style.transform]="'translateZ(' + (scrollY() > 200 ? 60 : 0) + 'px)'">
               <div class="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-2xl shadow-inner group-hover:bg-emerald-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
-                <i class="pi pi-calendar"></i>
+                <i class="pi pi-receipt"></i>
               </div>
-              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-emerald-300 transition-colors">Agenda General</h4>
+              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-emerald-300 transition-colors">Pagos & Facturación</h4>
               <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
-                Supervisa todos los turnos del equipo de barberos, audita ingresos y verifica el flujo de clientes por fecha.
+                Revisa los ingresos generados en la caja de tu sede y obtén reportes detallados.
               </p>
             </a>
+          }
 
+          <!-- ROL: SUPER_ADMIN -->
+          @if (userRole() === 'SUPER_ADMIN') {
+            <!-- Se han removido las redundancias. Mantenemos opciones globales específicas -->
             <a routerLink="/barberias" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-4 hover:rotate-y-6 hover:rotate-x-6 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
                  [style.transform]="'translateZ(' + (scrollY() > 200 ? 30 : 0) + 'px)'">
               <div class="w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 text-2xl shadow-inner group-hover:bg-purple-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
                 <i class="pi pi-building"></i>
               </div>
-              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-purple-300 transition-colors">Gestión de Sedes</h4>
+              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-purple-300 transition-colors">Gestión Global de Sedes</h4>
               <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
-                Administra tus sedes, obtén códigos de acceso seguros para vincular clientes y barberos, o crea nuevas barberías.
+                Crea nuevas franquicias, supervisa códigos de acceso seguros e inspecciona la red completa.
               </p>
             </a>
-            <a class="glass-card rounded-3xl p-8 space-y-5 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block opacity-80 cursor-not-allowed"
-                 [style.transform]="'translateZ(' + (scrollY() > 200 ? 30 : 0) + 'px)'">
-              <div class="w-14 h-14 rounded-2xl bg-zinc-500/10 border border-zinc-500/30 flex items-center justify-center text-zinc-400 text-2xl shadow-inner transition-all duration-500 transform translate-z-12">
-                <i class="pi pi-users"></i>
+
+            <a routerLink="/admin/antecedentes" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-6 hover:scale-105 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
+                 [style.transform]="'translateZ(' + (scrollY() > 200 ? 60 : 0) + 'px)'">
+              <div class="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 text-2xl shadow-inner group-hover:bg-rose-500/20 group-hover:scale-110 transition-all duration-500 transform translate-z-12">
+                <i class="pi pi-shield"></i>
               </div>
-              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 transition-colors flex items-center gap-2">Gestión de Equipo <span class="text-[10px] bg-zinc-800 px-2 py-0.5 rounded-full">Próximamente</span></h4>
+              <h4 class="text-xl font-display font-bold text-white transform translate-z-12 group-hover:text-rose-300 transition-colors">Auditoría Antecedentes</h4>
               <p class="text-sm text-zinc-400 leading-relaxed transform translate-z-8">
-                Próximamente podrás invitar barberos, asignarles roles, horarios y permisos por sede de forma centralizada.
+                Panel global de seguridad. Revisa alertas y controla el estado de bloqueo de usuarios de toda la red.
               </p>
             </a>
           }
@@ -397,7 +434,7 @@ export class HomeComponent implements OnInit {
   barberoProductivo = signal<string>('N/A');
 
   ngOnInit() {
-    if (this.userRole() === 'ADMIN' || this.userRole() === 'SUPER ADMIN') {
+    if (this.userRole() === 'ADMIN_BARBERIA' || this.userRole() === 'SUPER_ADMIN') {
       this.cargarMetricas();
     }
   }
@@ -435,8 +472,8 @@ export class HomeComponent implements OnInit {
   userRole(): string {
     const roles = this.authService.authState().user?.roles;
     if (!roles || roles.length === 0) return 'CLIENTE';
-    if (roles.includes('SUPER_ADMIN')) return 'SUPER ADMIN';
-    if (roles.includes('ADMIN_BARBERIA') || roles.includes('ADMINISTRADOR') || roles.includes('ADMIN')) return 'ADMIN';
+    if (roles.includes('SUPER_ADMIN') || roles.includes('ADMINISTRADOR')) return 'SUPER_ADMIN';
+    if (roles.includes('ADMIN_BARBERIA')) return 'ADMIN_BARBERIA';
     if (roles.includes('BARBERO')) return 'BARBERO';
     return 'CLIENTE';
   }

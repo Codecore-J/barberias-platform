@@ -390,6 +390,29 @@ La plataforma cuenta con bases arquitectónicas sobresalientes:
 
 ---
 
+---
+
+### HALLAZGO 17: Ambigüedad y Solapamiento de Roles Administrativos en Frontend
+- **Módulo / Ruta afectada:** Frontend (`app-layout.component.ts`, `home.component.ts`, `barberias.component.ts`, `admin-servicios.component.ts`)
+- **Tipo:** UI/UX / Modelado de Roles
+- **Severidad:** 🟠 **MEDIA**
+- **Pasos exactos para reproducir:**
+  1. Iniciar sesión como un usuario con rol `ADMIN_BARBERIA` (Dueño de sede).
+  2. Navegar al dashboard principal (`/`).
+- **Resultado esperado:** La interfaz debe mostrar menús, textos y botones adaptados a la gestión de una única sede (singular). No deben existir duplicidades en la navegación.
+- **Resultado real:** El rol `ADMIN_BARBERIA` y `SUPER_ADMIN` se agruparon internamente bajo la etiqueta `ADMIN`. El dueño de una sede visualiza copys orientados a toda la plataforma ("Gestión Integral de Servicios, Sedes & Precios") y experimenta redundancia masiva de botones hacia `/admin/servicios` y `/admin/agenda`. El botón etiquetado "Pagos" apunta a `/admin/tickets`, causando confusión.
+- **Log/Captura simulada:**
+  - `home.component.ts`: 3 enlaces a "Servicios", 3 enlaces a "Agenda" simultáneos.
+  - `userRole() === 'ADMIN'`: Agrupaba `ADMINISTRADOR` y `ADMIN_BARBERIA` omitiendo la granularidad global vs local.
+- **Causa Raíz:** El método computado `userRole()` en componentes del frontend colapsó roles conceptualmente distintos.
+- **Estado:** ✅ **RESUELTO (30/09/2026)**
+  - Se desacopló la renderización para crear dos contextos distintos en el código: `@if (userRole() === 'ADMIN_BARBERIA')` y `@if (userRole() === 'SUPER_ADMIN')`.
+  - Se eliminó la triplicación de botones en el dashboard (Hero, Cards y Nav).
+  - Se ajustó el copy de `ADMIN_BARBERIA` para focalizarse en el ámbito local (ej. "Mi Personal Local", "Mi Agenda Local").
+  - Se corrigió la etiqueta del Navbar "Pagos" y se comentó que la ruta es `/admin/tickets`.
+
+---
+
 ## CERTIFICACIÓN FINAL DE AUDITORÍA (CIERRE)
 
 **Fecha de Cierre:** 30/09/2026
