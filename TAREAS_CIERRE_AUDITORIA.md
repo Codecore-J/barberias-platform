@@ -96,10 +96,10 @@ Plataforma de Gestión de Barberías
 - **Bloqueante para producción:** No (concluida exitosamente).
 
 ### TASK-C2 — Decisión de producto: 10 vs. 11 rondas de bcrypt
-- [ ] **Prioridad:** Media
+- [x] **Prioridad:** Media
 - **Acción exacta:** Esta es tu decisión, no del agente. Con el CPU disponible fuera de picos de login, evalúa si vale la pena subir de 10 a 11 rondas (menor riesgo ante una eventual filtración, costo de CPU moderadamente mayor). Documenta la decisión final y el motivo.
 - **Criterio de aceptación:** Una línea documentada en `AUDITORIA_HALLAZGOS.md`: "Se mantiene en 10 rondas por [motivo]" o "Se sube a 11 rondas por [motivo]".
-- **Evidencia requerida:** Ninguna técnica — solo la decisión documentada.
+- **Evidencia obtenida:** El usuario decidió mantener 10 rondas para maximizar la velocidad y reducir latencia. Documentado en `AUDITORIA_HALLAZGOS.md`.
 - **Bloqueante para producción:** No.
 
 ---

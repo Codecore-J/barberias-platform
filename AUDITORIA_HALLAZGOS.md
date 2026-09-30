@@ -108,6 +108,7 @@ Se sometió la plataforma a una batería completa de pruebas de rendimiento, con
   - Se configuró `process.env.UV_THREADPOOL_SIZE = '16'` en `main.ts`, cuadruplicando la capacidad de ejecución paralela de hilos en `libuv`.
   - Se migró la firma de JWT de síncrona bloqueante a asíncrona (`signAsync`), eliminando bloqueos del event loop.
   - Se implementó auto-rehash transparente en login: cualquier credencial previa con 12 rondas se re-hashea en segundo plano a 10 rondas para optimizar logins futuros.
+  - **Decisión de producto (TASK-C2)**: Se mantiene definitivamente el costo en 10 rondas para priorizar la máxima velocidad y escalabilidad bajo concurrencia, respetando el mínimo recomendado por OWASP.
 
 ---
 
