@@ -1,6 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, of } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { API_URL } from '../constants/api.constants';
 
 export interface PagoAuditoria {
@@ -36,7 +37,8 @@ export class PagosService {
     
     // Asumiendo que el backend alias de pagos/en-persona es cobros, para auditoría podría ser cobros/auditoria o pagos/auditoria
     // Revisando el PagoController: @Controller(['barberias/:barberiaId/pagos', 'cobros', 'pagos']) y @Get('auditoria')
-    return this.http.get<PagoAuditoria[]>(`${this.apiUrl}/cobros/auditoria?limite=${limite}&offset=${offset}`).pipe(
+    return this.http.get<any>(`${this.apiUrl}/cobros/auditoria?limite=${limite}&offset=${offset}`).pipe(
+      map(res => res.data || []),
       tap((data) => {
         this.pagos.set(data);
         this.isLoading.set(false);
