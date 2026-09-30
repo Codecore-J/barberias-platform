@@ -207,17 +207,7 @@ export class ReservaService {
     });
   }
 
-  async obtenerDetalleReserva(barberiaId: string, reservaId: string, user?: UsuarioAutenticado) {
-    // SEC-E2: Verificar que el usuario autenticado tenga rol en esta barbería (evitar IDOR)
-    if (user) {
-      const tieneRolEnBarberia = user.rolesDetallados?.some(
-        (r) => r.barberiaId === barberiaId || r.ambito === 'GLOBAL'
-      );
-      if (!tieneRolEnBarberia) {
-        throw new ForbiddenException('No tienes acceso a las reservas de esta barbería.');
-      }
-    }
-
+  async obtenerDetalleReserva(barberiaId: string, reservaId: string, user: UsuarioAutenticado) {
     const reserva = await this.prisma.reserva.findFirst({
       where: { id: reservaId, barberiaId },
       include: {
@@ -249,6 +239,24 @@ export class ReservaService {
 
     if (!reserva) {
       throw new NotFoundException('Reserva no encontrada');
+    }
+
+    // SEC-E2 y HALLAZGO-14: Verificar que el usuario autenticado tenga rol en esta barbería,
+    // y si SOLO es CLIENTE, verificar que la reserva sea suya.
+    const rolesEnBarberia = user.rolesDetallados?.filter(
+      (r) => r.barberiaId === barberiaId || r.ambito === 'GLOBAL'
+    ) || [];
+
+    if (rolesEnBarberia.length === 0) {
+      throw new ForbiddenException('No tienes acceso a las reservas de esta barbería.');
+    }
+
+    const isAdminOrBarbero = rolesEnBarberia.some(r => 
+      r.nombre === 'ADMINISTRADOR' || r.nombre === 'SUPER_ADMIN' || r.nombre === 'ADMIN_BARBERIA' || r.nombre === 'BARBERO'
+    );
+
+    if (!isAdminOrBarbero && reserva.clienteId !== user.id) {
+      throw new ForbiddenException('No tienes permisos para ver el detalle de esta reserva.');
     }
 
     return reserva;

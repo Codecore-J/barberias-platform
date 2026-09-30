@@ -232,6 +232,7 @@ describe('ReservaService', () => {
       const mockReserva = {
         id: 'uuid-reserva',
         barberiaId: 'uuid-barberia',
+        clienteId: 'uuid-cliente',
         totalPagar: 25.0,
         estado: 'COMPLETADA',
         participantes: [
@@ -250,9 +251,14 @@ describe('ReservaService', () => {
         pago: { estadoPago: 'PAGADA', monto: 25.0 },
       };
 
+      const mockUser = {
+        id: 'uuid-admin',
+        rolesDetallados: [{ barberiaId: 'uuid-barberia', nombre: 'ADMIN_BARBERIA' }]
+      };
+
       mockPrismaService.reserva.findFirst.mockResolvedValue(mockReserva);
 
-      const res = await service.obtenerDetalleReserva('uuid-barberia', 'uuid-reserva');
+      const res = await service.obtenerDetalleReserva('uuid-barberia', 'uuid-reserva', mockUser as any);
       expect(res).toEqual(mockReserva);
       expect(mockPrismaService.reserva.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -264,8 +270,13 @@ describe('ReservaService', () => {
     it('debe lanzar NotFoundException si la reserva no existe', async () => {
       mockPrismaService.reserva.findFirst.mockResolvedValue(null);
 
+      const mockUser = {
+        id: 'uuid-admin',
+        rolesDetallados: [{ barberiaId: 'uuid-barberia', nombre: 'ADMIN_BARBERIA' }]
+      };
+
       await expect(
-        service.obtenerDetalleReserva('uuid-barberia', 'uuid-inexistente'),
+        service.obtenerDetalleReserva('uuid-barberia', 'uuid-inexistente', mockUser as any),
       ).rejects.toThrowError(NotFoundException);
     });
   });
