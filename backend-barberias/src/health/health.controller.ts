@@ -85,29 +85,4 @@ export class HealthController implements OnModuleDestroy {
       () => this.memoryIndicator.checkHeap('memory_heap', 300 * 1024 * 1024),
     ]);
   }
-
-  @Public()
-  @SkipThrottle()
-  @Get('benchmark')
-  async benchmark() {
-    const t1 = performance.now();
-    await this.prisma.$queryRaw`SELECT 1`;
-    const selectTime = performance.now() - t1;
-
-    const t2 = performance.now();
-    await this.prisma.barberia.findFirst({
-      include: {
-        servicios: true,
-        horarios: true,
-        excepcionesHorario: true,
-        bloqueosAgenda: true,
-      }
-    });
-    const joinTime = performance.now() - t2;
-
-    return {
-      selectTimeMs: selectTime,
-      joinTimeMs: joinTime
-    };
-  }
 }
