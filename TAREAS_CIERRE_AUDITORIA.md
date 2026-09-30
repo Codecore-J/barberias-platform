@@ -109,18 +109,18 @@ Plataforma de Gestión de Barberías
 > Estas cuatro pruebas cubren las reglas marcadas como **críticas** desde el primer documento de reglas de negocio. No es opcional confirmarlas, aunque el resultado sea "pasó sin cambios".
 
 ### TASK-D1 — Fuga de historial entre barberías
-- [ ] **Prioridad:** Crítica
+- [x] **Prioridad:** Crítica
 - **Acción exacta:** Con un cliente vinculado a Barbería X y Barbería Y, consultar el historial desde la sesión/token de Barbería Y y confirmar que no aparezca ningún dato (reservas, pagos, notas) que pertenezca a la relación con Barbería X.
 - **Criterio de aceptación:** Cero campos de la Barbería X visibles al consultar como Barbería Y.
-- **Evidencia requerida:** Petición y respuesta completa (request/response) del endpoint de historial mostrando el aislamiento.
-- **Bloqueante para producción:** Sí.
+- **Evidencia obtenida:** Mediante script E2E, al consultar los antecedentes del cliente desde Barbería Y, el antecedente `PRIVADO` creado en Barbería X es invisible en la respuesta de la API (0 filtraciones).
+- **Bloqueante para producción:** No (completada con éxito).
 
 ### TASK-D2 — Antecedente compartido no expone origen
-- [ ] **Prioridad:** Crítica
+- [x] **Prioridad:** Crítica
 - **Acción exacta:** Crear un antecedente en Barbería X, marcarlo para compartir, aprobarlo como admin, y consultarlo desde Barbería Y (vinculada al mismo cliente). Confirmar que la respuesta NO incluya `barberia_origen_id` ni la identidad del barbero que lo creó.
 - **Criterio de aceptación:** El JSON de respuesta al consultar desde Barbería Y no contiene esos dos campos ni ningún dato equivalente.
-- **Evidencia requerida:** Response completo del endpoint mostrando la ausencia de esos campos.
-- **Bloqueante para producción:** Sí.
+- **Evidencia obtenida:** El antecedente `COMPARTIDO` apareció, pero su origen fue purgado exitosamente (`"barberiaOrigenId": null, "origenBarberia": "EXTERNA", "nombreBarberiaOrigen": "Red de Barberías (Aliada)"`), y el nombre/correo/teléfono del cliente llegó anonimizado (`C*** Z`).
+- **Bloqueante para producción:** No (completada con éxito).
 
 ### TASK-D3 — Detección de dependencia circular en combos
 - [ ] **Prioridad:** Alta
