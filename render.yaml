@@ -5,7 +5,7 @@ services:
     region: ohio # Co-localizado en AWS us-east-2 con Neon PostgreSQL
     plan: free
     rootDir: backend-barberias
-    buildCommand: npm install --include=dev && npm run build
+    buildCommand: rm -f ../package.json && npm install --include=dev && npm run build
     startCommand: npm run start:prod
     healthCheckPath: /health
     autoDeploy: true
