@@ -87,7 +87,15 @@ export class AuthService {
           isLoading: false,
           error: null
         });
-        this.router.navigate(['/']); // Redirect to dashboard or home
+        
+        const roles = response.usuario.roles || [];
+        if (roles.includes('ADMIN_BARBERIA') || roles.includes('SUPER_ADMIN')) {
+          this.router.navigate(['/barberias']);
+        } else if (roles.includes('BARBERO')) {
+          this.router.navigate(['/admin/agenda']);
+        } else {
+          this.router.navigate(['/']); // Home cliente
+        }
       }),
       catchError(error => {
         const errorMsg = error.error?.message || 'Credenciales inválidas';

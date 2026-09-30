@@ -76,15 +76,31 @@ import { NotificationService } from '../../core/services/notification.service';
                class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
               <i class="pi pi-building mr-1.5 text-xs text-amber-400/80"></i>Barberías
             </a>
-            <a routerLink="/catalogo" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
-               class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-              <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo
-            </a>
+            
+            @if (userRole() === 'ADMIN' || userRole() === 'SUPER ADMIN') {
+              <a routerLink="/admin/servicios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-cog mr-1.5 text-xs text-amber-400/80"></i>Servicios
+              </a>
+            }
+
+            @if (userRole() === 'BARBERO' || userRole() === 'ADMIN' || userRole() === 'SUPER ADMIN') {
+              <a routerLink="/admin/agenda" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-calendar mr-1.5 text-xs text-amber-400/80"></i>Mi Agenda
+              </a>
+            } @else {
+              <a routerLink="/catalogo" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo
+              </a>
+            }
+
             <a routerLink="/reservas/nueva" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                class="px-3.5 py-1.5 rounded-lg text-xs font-bold text-amber-300 bg-gradient-to-r from-amber-500/20 to-amber-600/20 border border-amber-500/40 hover:from-amber-500/30 hover:to-amber-600/30 hover:shadow-lg hover:shadow-amber-500/20 transition-all">
               <i class="pi pi-calendar-plus mr-1.5 text-xs"></i>Agendar Cita
             </a>
-            <a routerLink="/reservas" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+            <a routerLink="/reservas/mis-reservas" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
               <i class="pi pi-history mr-1.5 text-xs text-amber-400/80"></i>Mis Citas
             </a>
@@ -199,13 +215,27 @@ import { NotificationService } from '../../core/services/notification.service';
               <a routerLink="/barberias" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                 <i class="pi pi-building text-amber-400"></i>Barberías
               </a>
-              <a routerLink="/catalogo" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
-                <i class="pi pi-list text-amber-400"></i>Catálogo de Servicios
-              </a>
+              
+              @if (userRole() === 'ADMIN' || userRole() === 'SUPER ADMIN') {
+                <a routerLink="/admin/servicios" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-cog text-amber-400"></i>Gestión de Servicios
+                </a>
+              }
+
+              @if (userRole() === 'BARBERO' || userRole() === 'ADMIN' || userRole() === 'SUPER ADMIN') {
+                <a routerLink="/admin/agenda" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-calendar text-amber-400"></i>Mi Agenda
+                </a>
+              } @else {
+                <a routerLink="/catalogo" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-list text-amber-400"></i>Catálogo de Servicios
+                </a>
+              }
+
               <a routerLink="/reservas/nueva" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 flex items-center gap-2">
                 <i class="pi pi-calendar-plus text-amber-400"></i>Agendar Cita
               </a>
-              <a routerLink="/reservas" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+              <a routerLink="/reservas/mis-reservas" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                 <i class="pi pi-history text-amber-400"></i>Mis Citas
               </a>
             </div>
