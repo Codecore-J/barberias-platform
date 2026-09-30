@@ -3,6 +3,7 @@ import { CommonModule, CurrencyPipe } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ServiciosService, Servicio } from '../../core/services/servicios.service';
 import { TenantService } from '../../core/services/tenant.service';
+import { AuthService } from '../../auth/auth.service';
 
 @Component({
   selector: 'app-admin-servicios',
@@ -17,9 +18,11 @@ import { TenantService } from '../../core/services/tenant.service';
           <h2 class="text-3xl font-display font-bold text-white">Panel de <span class="gold-gradient-text">Servicios</span></h2>
           <p class="text-sm text-zinc-400">Gestiona los servicios y combos de {{ tenantService.nombreBarberiaActiva() }}</p>
         </div>
-        <button (click)="openForm()" class="px-5 py-2.5 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:-translate-y-1 hover:scale-105 transition-transform flex items-center gap-2">
-          <i class="pi pi-plus"></i> Nuevo Servicio
-        </button>
+        @if (userRole() === 'SUPER ADMIN') {
+          <button (click)="openForm()" class="px-5 py-2.5 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:-translate-y-1 hover:scale-105 transition-transform flex items-center gap-2">
+            <i class="pi pi-plus"></i> Nuevo Servicio
+          </button>
+        }
       </div>
 
       <!-- Estado de Carga Global -->
@@ -173,6 +176,16 @@ export class AdminServiciosComponent implements OnInit {
   protected readonly serviciosService = inject(ServiciosService);
   protected readonly tenantService = inject(TenantService);
   private readonly fb = inject(FormBuilder);
+  private readonly authService = inject(AuthService);
+
+  userRole(): string {
+    const roles = this.authService.authState().user?.roles;
+    if (!roles || roles.length === 0) return 'CLIENTE';
+    if (roles.includes('SUPER_ADMIN')) return 'SUPER ADMIN';
+    if (roles.includes('ADMIN_BARBERIA') || roles.includes('ADMINISTRADOR')) return 'ADMIN';
+    if (roles.includes('BARBERO')) return 'BARBERO';
+    return 'CLIENTE';
+  }
 
   showForm = signal(false);
   isEditing = signal(false);

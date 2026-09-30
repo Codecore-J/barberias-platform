@@ -117,11 +117,14 @@ export class ReservasService {
   /**
    * Registra el cobro de una reserva y la marca como COMPLETADA
    */
-  registrarCobro(reservaId: string, metodoPago: string): Observable<any> {
+  registrarCobro(reservaId: string, metodoPago: string, monto?: number): Observable<any> {
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.post(`${this.apiUrl}/cobros`, { reservaId, metodoPago }).pipe(
+    const body: any = { reservaId, metodoPago };
+    if (monto) body.monto = monto;
+
+    return this.http.post(`${this.apiUrl}/cobros`, body).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);

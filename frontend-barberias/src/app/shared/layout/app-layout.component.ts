@@ -119,17 +119,13 @@ import { NotificationService } from '../../core/services/notification.service';
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-calendar mr-1.5 text-xs text-amber-400/80"></i>Agenda Turnos
               </a>
-              <a routerLink="/admin/horarios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
-                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-building mr-1.5 text-xs text-amber-400/80"></i>Horarios Local
-              </a>
-              <a routerLink="/barbero/horarios" routerLinkActive="text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
-                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-emerald-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-user-edit mr-1.5 text-xs text-emerald-400/80"></i>Mis Horarios
-              </a>
               <a routerLink="/admin/personal" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-users mr-1.5 text-xs text-amber-400/80"></i>Personal
+              </a>
+              <a routerLink="/admin/antecedentes" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-shield mr-1.5 text-xs text-amber-400/80"></i>Antecedentes
               </a>
               <a routerLink="/catalogo" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
@@ -276,16 +272,16 @@ import { NotificationService } from '../../core/services/notification.service';
                   <i class="pi pi-building text-amber-400"></i>Barberías
                 </a>
                 <a routerLink="/admin/servicios" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
-                  <i class="pi pi-cog text-amber-400"></i>Gestión de Servicios
+                  <i class="pi pi-cog text-amber-400"></i>Ver Servicios
                 </a>
                 <a routerLink="/admin/agenda" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-calendar text-amber-400"></i>Agenda de Turnos
                 </a>
-                <a routerLink="/admin/horarios" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
-                  <i class="pi pi-clock text-amber-400"></i>Horarios
+                <a routerLink="/admin/personal" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-users text-amber-400"></i>Personal
                 </a>
-                <a class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-500 flex items-center gap-2 cursor-not-allowed">
-                  <i class="pi pi-users text-zinc-600"></i>Equipo (Próximamente)
+                <a routerLink="/admin/antecedentes" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-shield text-amber-400"></i>Aprobar Antecedentes
                 </a>
                 <a routerLink="/catalogo" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-list text-amber-400"></i>Catálogo de Servicios

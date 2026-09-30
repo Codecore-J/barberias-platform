@@ -36,10 +36,16 @@ import { ReservasService } from '../../../../core/services/reservas.service';
           </div>
 
           <!-- Resumen de Monto -->
-          <div class="bg-zinc-900/50 p-6 rounded-2xl border border-zinc-800 text-center transform translate-z-8 shadow-inner">
+          <div class="bg-zinc-900/50 p-6 rounded-2xl border border-zinc-800 text-center transform translate-z-8 shadow-inner relative">
             <p class="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Total a Cobrar</p>
-            <div class="text-4xl font-display font-extrabold text-emerald-400 drop-shadow-md">
-              {{ turno.precioTotalHist | currency:'USD':'symbol':'1.0-0' }}
+            <div class="text-4xl font-display font-extrabold text-emerald-400 drop-shadow-md transition-all">
+              {{ totalPagar() | currency:'USD':'symbol':'1.0-0' }}
+            </div>
+            
+            <div class="mt-4 flex items-center justify-center gap-3">
+              <label class="text-xs text-zinc-400 font-bold uppercase tracking-wider">Propina ($):</label>
+              <input type="number" [ngModel]="propina()" (ngModelChange)="propina.set($event || 0)" min="0" step="5" 
+                     class="w-24 bg-black/40 border border-zinc-700/50 rounded-lg text-center text-white py-1.5 focus:border-emerald-500/50 outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all font-bold">
             </div>
           </div>
 
@@ -136,6 +142,11 @@ export class CobroModalComponent {
   protected reservasService = inject(ReservasService);
   
   metodoSeleccionado = signal<string | null>(null);
+  propina = signal<number>(0);
+
+  totalPagar() {
+    return Number(this.turno.precioTotalHist || 0) + Number(this.propina() || 0);
+  }
 
   cerrar() {
     this.close.emit();
@@ -144,7 +155,7 @@ export class CobroModalComponent {
   confirmarCobro() {
     if (!this.metodoSeleccionado()) return;
     
-    this.reservasService.registrarCobro(this.turno.id, this.metodoSeleccionado()!).subscribe({
+    this.reservasService.registrarCobro(this.turno.id, this.metodoSeleccionado()!, this.totalPagar()).subscribe({
       next: () => {
         this.cobroExitoso.emit();
       }

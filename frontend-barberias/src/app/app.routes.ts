@@ -79,8 +79,14 @@ export const routes: Routes = [
           import('./features/admin/personal/admin-personal.component').then((m) => m.AdminPersonalComponent),
       },
       {
+        path: 'admin/antecedentes',
+        canActivate: [tenantGuard, roleGuard(['ADMIN'])],
+        loadComponent: () =>
+          import('./features/admin/antecedentes/admin-antecedentes.component').then((m) => m.AdminAntecedentesComponent),
+      },
+      {
         path: 'barbero/horarios',
-        canActivate: [tenantGuard, roleGuard(['BARBERO', 'ADMIN'])],
+        canActivate: [tenantGuard, roleGuard(['BARBERO'])],
         loadComponent: () =>
           import('./features/barbero/horarios/barbero-horarios.component').then((m) => m.BarberoHorariosComponent),
       }
