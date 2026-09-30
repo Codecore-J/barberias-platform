@@ -132,6 +132,7 @@ export class ReservaService {
         data: {
           barberiaId,
           clienteId,
+          barberoId: dto.barberoId || null,
           tipoReserva: 'INDIVIDUAL',
           fechaCita: fecha,
           horaInicio: inicio,
@@ -149,7 +150,7 @@ export class ReservaService {
         data: {
           reservaId: reserva.id,
           esAdultoResponsable: true,
-          nombreParticipante: 'Titular',
+          nombreParticipante: dto.nombreInvitado ? dto.nombreInvitado : 'Titular',
         }
       });
 
@@ -383,6 +384,12 @@ export class ReservaService {
             telefono: true,
           },
         },
+        barbero: {
+          select: {
+            id: true,
+            nombreCompleto: true,
+          }
+        },
         participantes: {
           include: {
             participanteServicios: {
@@ -420,6 +427,10 @@ export class ReservaService {
           correo: r.cliente?.correo || '',
           telefono: r.cliente?.telefono || 'Sin teléfono',
         },
+        barbero: r.barbero ? {
+          id: r.barbero.id,
+          nombre: r.barbero.nombreCompleto,
+        } : null,
         detalles: (r.participantes || []).flatMap((p) =>
           (p.participanteServicios || []).map((ps) => ({
             id: ps.id,

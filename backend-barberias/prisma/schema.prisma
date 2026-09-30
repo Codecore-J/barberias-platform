@@ -17,18 +17,20 @@ model Usuario {
   estadoCuenta   String    @default("ACTIVO") @map("estado_cuenta") @db.VarChar(20)
   creadoAt       DateTime? @default(now()) @map("creado_at") @db.Timestamptz
 
-  usuarioRoles    UsuarioRol[]
-  barberias       Barberia[]        @relation("Responsable")
-  clienteBarberias ClienteBarberia[]
-  reservas        Reserva[]         @relation("ClienteReserva")
-  pagosRegistrados Pago[]           @relation("RegistradoPor")
-  antecedentes    Antecedente[]
-  notificaciones  Notificacion[]
-  auditoria       Auditoria[]
-  bloqueosCreados BloqueosAgenda[]  @relation("BloqueoCreador")
+  usuarioRoles       UsuarioRol[]
+  barberias          Barberia[]                @relation("Responsable")
+  clienteBarberias   ClienteBarberia[]
+  reservas           Reserva[]                 @relation("ClienteReserva")
+  pagosRegistrados   Pago[]                    @relation("RegistradoPor")
+  antecedentes       Antecedente[]
+  notificaciones     Notificacion[]
+  auditoria          Auditoria[]
+  bloqueosCreados    BloqueosAgenda[]          @relation("BloqueoCreador")
   tokensRecuperacion TokenRecuperacion[]
-  horariosBarbero    HorarioBarbero[] @relation("HorarioDeBarbero")
+  horariosBarbero    HorarioBarbero[]          @relation("HorarioDeBarbero")
   excepcionesBarbero ExcepcionHorarioBarbero[] @relation("ExcepcionDeBarbero")
+  reservasBarbero    Reserva[]                 @relation("BarberoReserva")
+  bloqueosBarbero    BloqueosAgenda[]          @relation("BloqueoDeBarbero")
 
   @@map("usuarios")
 }
@@ -55,8 +57,8 @@ model Permiso {
 }
 
 model RolPermiso {
-  rolId     String  @map("rol_id") @db.Uuid
-  permisoId String  @map("permiso_id") @db.Uuid
+  rolId     String @map("rol_id") @db.Uuid
+  permisoId String @map("permiso_id") @db.Uuid
 
   rol     Rol     @relation(fields: [rolId], references: [id], onDelete: Cascade)
   permiso Permiso @relation(fields: [permisoId], references: [id], onDelete: Cascade)
@@ -90,7 +92,7 @@ model Barberia {
   responsableId String  @map("responsable_id") @db.Uuid
   estado        String  @default("ACTIVO") @db.VarChar(20)
 
-  responsable   Usuario @relation("Responsable", fields: [responsableId], references: [id])
+  responsable Usuario @relation("Responsable", fields: [responsableId], references: [id])
 
   usuarioRoles          UsuarioRol[]
   clienteBarberias      ClienteBarberia[]
@@ -100,7 +102,7 @@ model Barberia {
   excepcionesHorario    ExcepcionHorario[]
   bloqueosAgenda        BloqueosAgenda[]
   reservas              Reserva[]
-  antecedentesOrigen    Antecedente[]      @relation("BarberiaOrigen")
+  antecedentesOrigen    Antecedente[]             @relation("BarberiaOrigen")
   reportes              Reporte[]
   configuracionBarberia ConfiguracionBarberia?
   horariosBarbero       HorarioBarbero[]
@@ -110,15 +112,15 @@ model Barberia {
 }
 
 model ClienteBarberia {
-  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  usuarioId           String    @map("usuario_id") @db.Uuid
-  barberiaId          String    @map("barberia_id") @db.Uuid
-  estadoVinculacion   String    @default("ACTIVO") @map("estado_vinculacion") @db.VarChar(20)
-  esBarberiaActiva    Boolean   @default(false) @map("es_barberia_activa")
-  contadorNoPresentado Int      @default(0) @map("contador_no_presentado")
-  estaRestringido     Boolean   @default(false) @map("esta_restringido")
-  motivoRestriccion   String?   @map("motivo_restriccion") @db.Text
-  creadoAt            DateTime? @default(now()) @map("creado_at") @db.Timestamptz
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId            String    @map("usuario_id") @db.Uuid
+  barberiaId           String    @map("barberia_id") @db.Uuid
+  estadoVinculacion    String    @default("ACTIVO") @map("estado_vinculacion") @db.VarChar(20)
+  esBarberiaActiva     Boolean   @default(false) @map("es_barberia_activa")
+  contadorNoPresentado Int       @default(0) @map("contador_no_presentado")
+  estaRestringido      Boolean   @default(false) @map("esta_restringido")
+  motivoRestriccion    String?   @map("motivo_restriccion") @db.Text
+  creadoAt             DateTime? @default(now()) @map("creado_at") @db.Timestamptz
 
   usuario  Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
@@ -137,8 +139,8 @@ model Servicio {
   destacado        Boolean @default(false)
   estado           String  @default("ACTIVO") @db.VarChar(20)
 
-  barberia             Barberia              @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
-  comboItems           ComboItem[]
+  barberia              Barberia               @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
+  comboItems            ComboItem[]
   participanteServicios ParticipanteServicio[]
 
   @@map("servicios")
@@ -164,10 +166,10 @@ model Combo {
 }
 
 model ComboItem {
-  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  comboId     String  @map("combo_id") @db.Uuid
-  servicioId  String? @map("servicio_id") @db.Uuid
-  subComboId  String? @map("sub_combo_id") @db.Uuid
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  comboId    String  @map("combo_id") @db.Uuid
+  servicioId String? @map("servicio_id") @db.Uuid
+  subComboId String? @map("sub_combo_id") @db.Uuid
 
   combo    Combo     @relation("ComboParent", fields: [comboId], references: [id], onDelete: Cascade)
   servicio Servicio? @relation(fields: [servicioId], references: [id])
@@ -189,13 +191,13 @@ model Horario {
 }
 
 model ExcepcionHorario {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  barberiaId String   @map("barberia_id") @db.Uuid
-  fecha      DateTime @db.Date
-  tipo       String   @db.VarChar(20)
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId String    @map("barberia_id") @db.Uuid
+  fecha      DateTime  @db.Date
+  tipo       String    @db.VarChar(20)
   horaInicio DateTime? @map("hora_inicio") @db.Time
   horaFin    DateTime? @map("hora_fin") @db.Time
-  motivo     String?  @db.Text
+  motivo     String?   @db.Text
 
   barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
 
@@ -218,14 +220,14 @@ model HorarioBarbero {
 }
 
 model ExcepcionHorarioBarbero {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  barberiaId String   @map("barberia_id") @db.Uuid
-  barberoId  String   @map("barbero_id") @db.Uuid
-  fecha      DateTime @db.Date
-  tipo       String   @db.VarChar(20)
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId String    @map("barberia_id") @db.Uuid
+  barberoId  String    @map("barbero_id") @db.Uuid
+  fecha      DateTime  @db.Date
+  tipo       String    @db.VarChar(20)
   horaInicio DateTime? @map("hora_inicio") @db.Time
   horaFin    DateTime? @map("hora_fin") @db.Time
-  motivo     String?  @db.Text
+  motivo     String?   @db.Text
 
   barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
   barbero  Usuario  @relation("ExcepcionDeBarbero", fields: [barberoId], references: [id], onDelete: Cascade)
@@ -237,6 +239,7 @@ model ExcepcionHorarioBarbero {
 model BloqueosAgenda {
   id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   barberiaId String    @map("barberia_id") @db.Uuid
+  barberoId  String?   @map("barbero_id") @db.Uuid
   fecha      DateTime  @db.Date
   horaInicio DateTime  @map("hora_inicio") @db.Time
   horaFin    DateTime  @map("hora_fin") @db.Time
@@ -246,28 +249,31 @@ model BloqueosAgenda {
   creadoAt   DateTime? @default(now()) @map("creado_at") @db.Timestamptz
 
   barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
+  barbero  Usuario? @relation("BloqueoDeBarbero", fields: [barberoId], references: [id], onDelete: Cascade)
   creador  Usuario? @relation("BloqueoCreador", fields: [creadoPor], references: [id])
 
   @@map("bloqueos_agenda")
 }
 
 model Reserva {
-  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  barberiaId           String    @map("barberia_id") @db.Uuid
-  clienteId            String    @map("cliente_id") @db.Uuid
-  tipoReserva          String    @map("tipo_reserva") @db.VarChar(20)
-  estado               String    @default("PENDIENTE") @db.VarChar(30)
-  modoConfirmacion     String    @map("modo_confirmacion") @db.VarChar(20)
-  fechaCita            DateTime  @map("fecha_cita") @db.Date
-  horaInicio           DateTime  @map("hora_inicio") @db.Time
-  horaFin              DateTime  @map("hora_fin") @db.Time
-  margenGrupalHistorico Int?     @map("margen_grupal_historico")
-  totalPagar           Decimal   @map("total_pagar") @db.Decimal(10, 2)
-  expiraAt             DateTime? @map("expira_at") @db.Timestamptz
-  creadoAt             DateTime? @default(now()) @map("creado_at") @db.Timestamptz
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId            String    @map("barberia_id") @db.Uuid
+  clienteId             String    @map("cliente_id") @db.Uuid
+  barberoId             String?   @map("barbero_id") @db.Uuid
+  tipoReserva           String    @map("tipo_reserva") @db.VarChar(20)
+  estado                String    @default("PENDIENTE") @db.VarChar(30)
+  modoConfirmacion      String    @map("modo_confirmacion") @db.VarChar(20)
+  fechaCita             DateTime  @map("fecha_cita") @db.Date
+  horaInicio            DateTime  @map("hora_inicio") @db.Time
+  horaFin               DateTime  @map("hora_fin") @db.Time
+  margenGrupalHistorico Int?      @map("margen_grupal_historico")
+  totalPagar            Decimal   @map("total_pagar") @db.Decimal(10, 2)
+  expiraAt              DateTime? @map("expira_at") @db.Timestamptz
+  creadoAt              DateTime? @default(now()) @map("creado_at") @db.Timestamptz
 
   barberia Barberia @relation(fields: [barberiaId], references: [id])
   cliente  Usuario  @relation("ClienteReserva", fields: [clienteId], references: [id])
+  barbero  Usuario? @relation("BarberoReserva", fields: [barberoId], references: [id])
 
   participantes ParticipanteReserva[]
   pago          Pago?
@@ -277,10 +283,10 @@ model Reserva {
 }
 
 model ParticipanteReserva {
-  id                   String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  reservaId            String  @map("reserva_id") @db.Uuid
-  esAdultoResponsable  Boolean @default(false) @map("es_adulto_responsable")
-  nombreParticipante   String  @map("nombre_participante") @db.VarChar(150)
+  id                  String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservaId           String  @map("reserva_id") @db.Uuid
+  esAdultoResponsable Boolean @default(false) @map("es_adulto_responsable")
+  nombreParticipante  String  @map("nombre_participante") @db.VarChar(150)
 
   reserva Reserva @relation(fields: [reservaId], references: [id], onDelete: Cascade)
 
@@ -379,19 +385,19 @@ model Reporte {
 }
 
 model ConfiguracionBarberia {
-  barberiaId            String    @id @map("barberia_id") @db.Uuid
-  modoReserva           String    @default("MANUAL") @map("modo_reserva") @db.VarChar(20)
-  aceptaIndividual      Boolean   @default(true) @map("acepta_individual")
-  aceptaGrupal          Boolean   @default(true) @map("acepta_grupal")
-  maxPendientes         Int?      @map("max_pendientes")
-  maxNinos              Int?      @map("max_ninos")
-  maxPersonasTotal      Int?      @map("max_personas_total")
-  horizonteReservaDias  Int?      @map("horizonte_reserva_dias")
-  nuevasReservasActivas Boolean   @default(true) @map("nuevas_reservas_activas")
-  motivoPausa           String?   @map("motivo_pausa") @db.Text
-  pausaDesde            DateTime? @map("pausa_desde") @db.Timestamptz
+  barberiaId             String    @id @map("barberia_id") @db.Uuid
+  modoReserva            String    @default("MANUAL") @map("modo_reserva") @db.VarChar(20)
+  aceptaIndividual       Boolean   @default(true) @map("acepta_individual")
+  aceptaGrupal           Boolean   @default(true) @map("acepta_grupal")
+  maxPendientes          Int?      @map("max_pendientes")
+  maxNinos               Int?      @map("max_ninos")
+  maxPersonasTotal       Int?      @map("max_personas_total")
+  horizonteReservaDias   Int?      @map("horizonte_reserva_dias")
+  nuevasReservasActivas  Boolean   @default(true) @map("nuevas_reservas_activas")
+  motivoPausa            String?   @map("motivo_pausa") @db.Text
+  pausaDesde             DateTime? @map("pausa_desde") @db.Timestamptz
   reactivacionProgramada DateTime? @map("reactivacion_programada") @db.Timestamptz
-  reactivacionReal      DateTime? @map("reactivacion_real") @db.Timestamptz
+  reactivacionReal       DateTime? @map("reactivacion_real") @db.Timestamptz
 
   barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
 
@@ -411,4 +417,3 @@ model TokenRecuperacion {
   @@index([tokenHash], name: "idx_tokens_recuperacion_hash")
   @@map("tokens_recuperacion")
 }
-

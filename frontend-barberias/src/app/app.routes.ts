@@ -46,7 +46,7 @@ export const routes: Routes = [
         path: 'admin/agenda',
         canActivate: [tenantGuard, roleGuard(['ADMIN', 'BARBERO'])],
         loadComponent: () =>
-          import('./features/agenda/agenda-barbero.component').then((m) => m.AgendaBarberoComponent),
+          import('./features/agenda/admin-agenda.component').then((m) => m.AdminAgendaComponent),
       },
       {
         path: 'reservas/mis-reservas',

@@ -27,5 +27,13 @@ export class CreateReservaDto {
   @IsNumber()
   @Min(0, { message: 'El margen grupal histórico no puede ser negativo' })
   margenGrupalHistorico?: number;
+
+  @IsOptional()
+  @IsUUID('4')
+  barberoId?: string;
+
+  @IsOptional()
+  @IsString()
+  nombreInvitado?: string;
 }
 
