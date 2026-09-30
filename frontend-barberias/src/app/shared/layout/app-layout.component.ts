@@ -127,6 +127,10 @@ import { NotificationService } from '../../core/services/notification.service';
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-shield mr-1.5 text-xs text-amber-400/80"></i>Antecedentes
               </a>
+              <a routerLink="/admin/tickets" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-receipt mr-1.5 text-xs text-amber-400/80"></i>Pagos
+              </a>
               <a routerLink="/catalogo" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo
@@ -282,6 +286,9 @@ import { NotificationService } from '../../core/services/notification.service';
                 </a>
                 <a routerLink="/admin/antecedentes" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-shield text-amber-400"></i>Aprobar Antecedentes
+                </a>
+                <a routerLink="/admin/tickets" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-receipt text-amber-400"></i>Historial de Pagos
                 </a>
                 <a routerLink="/catalogo" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-list text-amber-400"></i>Catálogo de Servicios

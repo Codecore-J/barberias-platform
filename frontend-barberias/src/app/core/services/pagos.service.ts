@@ -1,0 +1,51 @@
+import { Injectable, inject, signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, tap, catchError, of } from 'rxjs';
+import { API_URL } from '../constants/api.constants';
+
+export interface PagoAuditoria {
+  id: string;
+  monto: number;
+  metodoPago: string;
+  estadoPago: string;
+  creadoAt: string;
+  reservaSnapshot: any; // El snapshot inmutable guardado en JSON
+  realizadoPor: {
+    nombreCompleto: string;
+    email: string;
+  };
+}
+
+@Injectable({
+  providedIn: 'root'
+})
+export class PagosService {
+  private readonly http = inject(HttpClient);
+  private readonly apiUrl = `${API_URL}`;
+
+  readonly isLoading = signal<boolean>(false);
+  readonly error = signal<string | null>(null);
+  readonly pagos = signal<PagoAuditoria[]>([]);
+
+  /**
+   * Obtiene la auditoría de pagos de una barbería
+   */
+  obtenerHistorial(limite = 50, offset = 0): Observable<PagoAuditoria[]> {
+    this.isLoading.set(true);
+    this.error.set(null);
+    
+    // Asumiendo que el backend alias de pagos/en-persona es cobros, para auditoría podría ser cobros/auditoria o pagos/auditoria
+    // Revisando el PagoController: @Controller(['barberias/:barberiaId/pagos', 'cobros', 'pagos']) y @Get('auditoria')
+    return this.http.get<PagoAuditoria[]>(`${this.apiUrl}/cobros/auditoria?limite=${limite}&offset=${offset}`).pipe(
+      tap((data) => {
+        this.pagos.set(data);
+        this.isLoading.set(false);
+      }),
+      catchError(err => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.message || 'Error al obtener el historial de pagos');
+        return of([]);
+      })
+    );
+  }
+}

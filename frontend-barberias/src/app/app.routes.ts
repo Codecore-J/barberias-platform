@@ -85,6 +85,12 @@ export const routes: Routes = [
           import('./features/admin/antecedentes/admin-antecedentes.component').then((m) => m.AdminAntecedentesComponent),
       },
       {
+        path: 'admin/tickets',
+        canActivate: [tenantGuard, roleGuard(['ADMIN', 'SUPER_ADMIN'])],
+        loadComponent: () =>
+          import('./features/admin/tickets/admin-tickets.component').then((m) => m.AdminTicketsComponent),
+      },
+      {
         path: 'barbero/horarios',
         canActivate: [tenantGuard, roleGuard(['BARBERO'])],
         loadComponent: () =>
