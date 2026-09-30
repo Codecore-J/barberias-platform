@@ -1,13 +1,15 @@
-import { Component, HostListener, signal, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, HostListener, OnInit, signal, inject } from '@angular/core';
+import { CommonModule, CurrencyPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
+import { ReservasService } from '../../core/services/reservas.service';
+import { PagosService } from '../../core/services/pagos.service';
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, CurrencyPipe],
   template: `
     <div class="relative min-h-[150vh] perspective-1200 overflow-hidden bg-ambient-mesh">
       
@@ -191,6 +193,66 @@ import { AuthService } from '../../auth/auth.service';
           </section>
         }
 
+        <!-- DASHBOARD ADMIN: MÉTRICAS FINANCIERAS -->
+        @if (userRole() === 'ADMIN' || userRole() === 'SUPER ADMIN') {
+          <section class="max-w-6xl mx-auto pt-4 pb-8 transform-style-3d"
+                   [style.transform]="'translateZ(' + (scrollY() > 150 ? 40 : 0) + 'px)'">
+            <h2 class="text-2xl font-display font-bold text-white mb-6 transform translate-z-12 flex items-center gap-3">
+              <i class="pi pi-chart-line text-amber-400"></i> Métricas del Día
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              <!-- Tarjeta: Ingresos del Día -->
+              <div class="glass-card rounded-3xl p-6 border border-emerald-500/30 shadow-[0_15px_40px_rgba(16,185,129,0.15)] hover:-translate-y-2 transition-transform duration-500 transform translate-z-8 relative overflow-hidden group">
+                <div class="absolute -right-10 -top-10 w-32 h-32 bg-emerald-500/20 rounded-full blur-2xl group-hover:bg-emerald-500/30 transition-colors"></div>
+                <div class="relative z-10 flex flex-col gap-2">
+                  <div class="flex justify-between items-start">
+                    <span class="text-sm font-bold text-zinc-400 uppercase tracking-wider">Ingresos Hoy</span>
+                    <i class="pi pi-dollar text-emerald-400 bg-emerald-500/10 p-2 rounded-xl"></i>
+                  </div>
+                  <span class="text-4xl font-display font-bold text-white drop-shadow-md">
+                    {{ ingresosHoy() | currency:'USD':'symbol':'1.0-0' }}
+                  </span>
+                  <span class="text-xs text-emerald-400 font-medium">Facturado hoy</span>
+                </div>
+              </div>
+
+              <!-- Tarjeta: Turnos -->
+              <div class="glass-card rounded-3xl p-6 border border-amber-500/30 shadow-[0_15px_40px_rgba(212,175,55,0.15)] hover:-translate-y-2 transition-transform duration-500 transform translate-z-8 relative overflow-hidden group">
+                <div class="absolute -right-10 -top-10 w-32 h-32 bg-amber-500/20 rounded-full blur-2xl group-hover:bg-amber-500/30 transition-colors"></div>
+                <div class="relative z-10 flex flex-col gap-2">
+                  <div class="flex justify-between items-start">
+                    <span class="text-sm font-bold text-zinc-400 uppercase tracking-wider">Turnos Completados</span>
+                    <i class="pi pi-calendar-check text-amber-400 bg-amber-500/10 p-2 rounded-xl"></i>
+                  </div>
+                  <span class="text-4xl font-display font-bold text-white drop-shadow-md">
+                    {{ completadosHoy() }}
+                  </span>
+                  <span class="text-xs text-zinc-400 font-medium">
+                    <span class="text-red-400">{{ canceladosHoy() }}</span> cancelados/ausentes
+                  </span>
+                </div>
+              </div>
+
+              <!-- Tarjeta: Barbero Top -->
+              <div class="glass-card rounded-3xl p-6 border border-blue-500/30 shadow-[0_15px_40px_rgba(59,130,246,0.15)] hover:-translate-y-2 transition-transform duration-500 transform translate-z-8 relative overflow-hidden group">
+                <div class="absolute -right-10 -top-10 w-32 h-32 bg-blue-500/20 rounded-full blur-2xl group-hover:bg-blue-500/30 transition-colors"></div>
+                <div class="relative z-10 flex flex-col gap-2">
+                  <div class="flex justify-between items-start">
+                    <span class="text-sm font-bold text-zinc-400 uppercase tracking-wider">Productividad Top</span>
+                    <i class="pi pi-star text-blue-400 bg-blue-500/10 p-2 rounded-xl"></i>
+                  </div>
+                  <span class="text-3xl font-display font-bold text-white drop-shadow-md truncate">
+                    {{ barberoProductivo() }}
+                  </span>
+                  <span class="text-xs text-blue-400 font-medium">Líder en turnos hoy</span>
+                </div>
+              </div>
+              
+            </div>
+          </section>
+        }
+
         <!-- CARDS CON PROFUNDIDAD ESPACIAL 3D ADAPTADAS AL ROL -->
         <section class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto pt-10 transform-style-3d">
           
@@ -317,14 +379,58 @@ import { AuthService } from '../../auth/auth.service';
     </div>
   `,
 })
-export class HomeComponent {
+export class HomeComponent implements OnInit {
   protected readonly tenantService = inject(TenantService);
   protected readonly authService = inject(AuthService);
+  protected readonly reservasService = inject(ReservasService);
+  protected readonly pagosService = inject(PagosService);
 
   // Señales reactivas para el motor 3D
   scrollY = signal<number>(0);
   mouseX = signal<number>(0);
   mouseY = signal<number>(0);
+
+  // Métricas Dashboard Admin
+  ingresosHoy = signal<number>(0);
+  completadosHoy = signal<number>(0);
+  canceladosHoy = signal<number>(0);
+  barberoProductivo = signal<string>('N/A');
+
+  ngOnInit() {
+    if (this.userRole() === 'ADMIN' || this.userRole() === 'SUPER ADMIN') {
+      this.cargarMetricas();
+    }
+  }
+
+  cargarMetricas() {
+    const hoy = new Date().toISOString().split('T')[0];
+    
+    // 1. Obtener Agenda del Día
+    this.reservasService.obtenerAgendaDiaria(hoy).subscribe((agenda) => {
+       const completados = agenda.filter((t: any) => t.estado === 'COMPLETADA');
+       const cancelados = agenda.filter((t: any) => t.estado === 'CANCELADA' || t.estado === 'NO_ASISTIO');
+       this.completadosHoy.set(completados.length);
+       this.canceladosHoy.set(cancelados.length);
+
+       // Barbero más productivo
+       const barberosCounts: Record<string, number> = {};
+       completados.forEach((t: any) => {
+         const bId = t.barbero?.nombreCompleto || 'Sin Asignar';
+         barberosCounts[bId] = (barberosCounts[bId] || 0) + 1;
+       });
+       if (Object.keys(barberosCounts).length > 0) {
+         const max = Object.entries(barberosCounts).reduce((a, b) => a[1] > b[1] ? a : b);
+         this.barberoProductivo.set(max[0]);
+       }
+    });
+
+    // 2. Obtener Pagos del Día (Ingresos)
+    this.pagosService.obtenerHistorial().subscribe((pagos) => {
+       const pagosHoy = pagos.filter((p: any) => p.creadoAt.startsWith(hoy));
+       const suma = pagosHoy.reduce((acc: number, p: any) => acc + Number(p.monto), 0);
+       this.ingresosHoy.set(suma);
+    });
+  }
 
   userRole(): string {
     const roles = this.authService.authState().user?.roles;
@@ -342,7 +448,6 @@ export class HomeComponent {
 
   @HostListener('window:mousemove', ['$event'])
   onMouseMove(event: MouseEvent) {
-    // Normalizar coordenadas del mouse de -1 a 1 para rotación 3D
     const x = (event.clientX / window.innerWidth) * 2 - 1;
     const y = (event.clientY / window.innerHeight) * 2 - 1;
     this.mouseX.set(x);
