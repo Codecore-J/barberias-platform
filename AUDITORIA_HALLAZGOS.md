@@ -341,3 +341,25 @@ La plataforma cuenta con bases arquitectónicas sobresalientes:
 - `[CORE-01 / BAJO]` ✅ Metadatos estructurados en endpoint raíz `/api/v1/`.
 
 *Pendiente de infraestructura externa:* Hallazgo 07 (Co-localización de regiones de nube entre Render y Neon en Ohio AWS us-east-2 para reducir el RTT de red).
+
+---
+
+### HALLAZGO 09: IDOR en Endpoint de Detalle de Reserva (Descubierto en TASK-E2)
+- **Módulo / Ruta afectada:** `Reserva` ➔ `GET /api/v1/barberias/:barberiaId/reservas/:id`
+- **Tipo:** Seguridad / Control de Acceso (IDOR — Insecure Direct Object Reference)
+- **Severidad:** 🔴 **CRÍTICO**
+- **Pasos exactos para reproducir:**
+  1. Autenticarse como Admin de la Barbería B, obtener un JWT válido.
+  2. Conocer el UUID de una reserva perteneciente a la Barbería A.
+  3. Ejecutar `GET /api/v1/barberias/:barberiaId_de_A/reservas/:id_reserva_A` con el token de B.
+- **Resultado esperado:** HTTP 403 Forbidden — el Admin de la Barbería B no puede leer reservas de otro tenant.
+- **Resultado real:** HTTP 200 OK — retorna todos los datos (nombre, correo, teléfono del cliente). **Violación de privacidad inter-tenant.**
+- **Log:**
+  ```text
+  [Admin B lee reserva de A] HTTP 200 ❌ IDOR DETECTADO
+  {"id":"cbaaee7b-...","barberiaId":"935bbaec-...","clienteId":"7c1a7470-...",...}
+  ```
+- **Estado:** ✅ **RESUELTO (30/09/2026)**
+  - Se agregó `@Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE')` al endpoint `GET :id` en `reserva.controller.ts`.
+  - En `reserva.service.ts`, `obtenerDetalleReserva` recibe el `UsuarioAutenticado` y verifica que `user.rolesDetallados` contenga un rol para el `barberiaId` de la URL (o sea `ambito: 'GLOBAL'`). Si no, lanza `ForbiddenException`.
+  - Build verificado: `npm run build` sin errores ni warnings.

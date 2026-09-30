@@ -5,6 +5,7 @@ import { withSerializableTransaction } from '../../shared/concurrency/serializab
 import { validateTimeRange } from '../../horario/domain/time.utils.js';
 import { DisponibilidadService } from '../../agenda/application/disponibilidad.service.js';
 import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
+import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -206,7 +207,17 @@ export class ReservaService {
     });
   }
 
-  async obtenerDetalleReserva(barberiaId: string, reservaId: string) {
+  async obtenerDetalleReserva(barberiaId: string, reservaId: string, user?: UsuarioAutenticado) {
+    // SEC-E2: Verificar que el usuario autenticado tenga rol en esta barbería (evitar IDOR)
+    if (user) {
+      const tieneRolEnBarberia = user.rolesDetallados?.some(
+        (r) => r.barberiaId === barberiaId || r.ambito === 'GLOBAL'
+      );
+      if (!tieneRolEnBarberia) {
+        throw new ForbiddenException('No tienes acceso a las reservas de esta barbería.');
+      }
+    }
+
     const reserva = await this.prisma.reserva.findFirst({
       where: { id: reservaId, barberiaId },
       include: {

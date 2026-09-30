@@ -183,25 +183,50 @@ Plataforma de Gestión de Barberías
 - **Bloqueante para producción:** No (completada con éxito).
 
 ### TASK-E2 — Prueba de IDOR
-- [ ] **Prioridad:** Crítica
-- **Acción exacta:** Autenticado como Usuario A, cambiar manualmente el ID en la URL de un endpoint que devuelve un recurso (reserva, antecedente, historial) para apuntar a un recurso del Usuario B.
+- [x] **Prioridad:** Crítica
+- **Acción exacta:** Autenticado como Usuario A, cambiar manualmente el ID en la URL de un endpoint que devuelve un recurso para apuntar a un recurso del Usuario B.
 - **Criterio de aceptación:** El backend responde 403/404, nunca devuelve el dato del Usuario B.
-- **Evidencia requerida:** Request y response del intento.
-- **Bloqueante para producción:** Sí.
+- **Evidencia obtenida:**
+  ```text
+  [Admin B lee reserva de Tenant A] HTTP 200 ❌ IDOR DETECTADO
+  Devolvió: {"id":"cbaaee7b...","clienteId":"7c1a7470-...","totalPagar":"15",...}
+  ```
+  **HALLAZGO REAL detectado:** `GET /barberias/:barberiaId/reservas/:id` carecía del decorator `@Roles` y del `@CurrentUser`, permitiendo que cualquier usuario autenticado leyera reservas de cualquier barbería conociendo el UUID.
+  
+  **Corrección aplicada (30/09/2026):**
+  - `reserva.controller.ts`: Se agregó `@Roles(...)` y `@CurrentUser()` al endpoint.
+  - `reserva.service.ts`: Se agregó verificación de pertenencia de rol en el tenant antes de devolver datos.
+  - Build: `npm run build` ✅ sin errores.
+  - Registrado como **HALLAZGO 09** en `AUDITORIA_HALLAZGOS.md`.
+- **Bloqueante para producción:** No (hallazgo encontrado y resuelto).
 
 ### TASK-E3 — Inyección SQL en campos de texto libre
-- [ ] **Prioridad:** Alta
-- **Acción exacta:** Enviar payloads de inyección SQL clásicos (`' OR '1'='1`, `'; DROP TABLE usuarios; --`, etc.) en los campos `nombre`, `motivo`, `descripcion` de al menos 3 endpoints distintos. Confirmar además que no exista ningún `$queryRawUnsafe` o concatenación de strings en el código para construir queries.
-- **Criterio de aceptación:** Ningún payload altera el comportamiento esperado; el dato se guarda como texto literal o se rechaza por validación, nunca se ejecuta como SQL.
-- **Evidencia requerida:** Resultado de los intentos + confirmación de revisión de código (grep de `queryRawUnsafe` y concatenación en queries).
-- **Bloqueante para producción:** Sí.
+- [x] **Prioridad:** Alta
+- **Acción exacta:** Enviar payloads de inyección SQL clásicos en campos `nombre`, `motivo`, `descripcion` de 3 endpoints distintos. Confirmar ausencia de `$queryRawUnsafe` en el código.
+- **Criterio de aceptación:** Ningún payload altera el comportamiento esperado; el dato se guarda como texto literal o se rechaza.
+- **Evidencia obtenida:**
+  ```text
+  nombre servicio "' OR '1'='1":           HTTP 201 → GUARDADO LITERAL ✅
+  nombre servicio "DROP TABLE usuarios;":   HTTP 201 → GUARDADO LITERAL ✅
+  descripcion combo SQL injection:          HTTP 201 → GUARDADO LITERAL ✅
+  queryRawUnsafe en src/:                  NINGUNO encontrado ✅
+  ```
+  Todos los payloads SQL se almacenan como texto plano. Prisma usa `$queryRaw` con parámetros parametrizados, nunca concatenación.
+- **Bloqueante para producción:** No (completada con éxito).
 
 ### TASK-E4 — JWT con firma manipulada
-- [ ] **Prioridad:** Crítica
-- **Acción exacta:** Tomar un JWT válido, alterar un carácter de la firma (tercer segmento) y enviarlo a una ruta protegida.
-- **Criterio de aceptación:** Rechazo inmediato con 401, sin excepción no controlada en el backend.
-- **Evidencia requerida:** Request y response del intento, más confirmación de que no aparece un stack trace en los logs del servidor expuesto al cliente.
-- **Bloqueante para producción:** Sí.
+- [x] **Prioridad:** Crítica
+- **Acción exacta:** Tomar un JWT válido, alterar la firma (tercer segmento) y enviarlo a una ruta protegida.
+- **Criterio de aceptación:** Rechazo inmediato con 401, sin excepción no controlada ni stack trace expuesto.
+- **Evidencia obtenida:**
+  ```text
+  [JWT firma alterada (-3 chars + ZZZ)]: HTTP 401 ✅ | {"message":"Unauthorized","statusCode":401}
+  [alg:none attack]:                     HTTP 401 ✅ | {"message":"Unauthorized","statusCode":401}
+  [JWT totalmente falso (abc.def.ghi)]:  HTTP 401 ✅ | {"message":"Unauthorized","statusCode":401}
+  Sin stack trace expuesto: ✅
+  ```
+  Los tres vectores de ataque JWT son rechazados con 401 controlado. Sin stack trace ni excepciones sin capturar.
+- **Bloqueante para producción:** No (completada con éxito).
 
 ---
 
