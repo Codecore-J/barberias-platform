@@ -276,7 +276,7 @@ export class ReservaService {
 
       const isResponsable = barberia.responsableId === solicitanteId;
       const isSuperAdmin = await this.prisma.usuarioRol.findFirst({
-        where: { usuarioId: solicitanteId, rol: { nombre: 'SUPER_ADMIN' } },
+        where: { usuarioId: solicitanteId, rol: { nombre: { in: ['SUPER_ADMIN', 'ADMINISTRADOR'] } } },
       });
       const rolesUser = await this.prisma.usuarioRol.findMany({
         where: { usuarioId: solicitanteId, barberiaId },
