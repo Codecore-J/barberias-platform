@@ -86,7 +86,7 @@ export const routes: Routes = [
       },
       {
         path: 'admin/tickets',
-        canActivate: [tenantGuard, roleGuard(['ADMIN', 'SUPER_ADMIN'])],
+        canActivate: [tenantGuard, roleGuard(['ADMIN'])],
         loadComponent: () =>
           import('./features/admin/tickets/admin-tickets.component').then((m) => m.AdminTicketsComponent),
       },

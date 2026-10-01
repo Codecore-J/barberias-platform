@@ -66,6 +66,7 @@ export class ReservaController {
   }
 
   @Post(':id/inasistencia')
+  @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR', 'SUPER_ADMIN')
   marcarInasistencia(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) reservaId: string,

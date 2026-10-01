@@ -37,7 +37,5 @@ export const roleGuard = (allowedRoles: string[]): CanActivateFn => {
     // Redirección defensiva si el usuario no tiene permisos para esta ruta
     // Todos son enviados al Home que actuará como dashboard
     return router.createUrlTree(['/']);
-
-    return router.createUrlTree(['/']);
   };
 };

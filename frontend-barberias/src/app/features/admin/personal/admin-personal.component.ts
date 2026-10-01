@@ -20,7 +20,7 @@ import { TenantService } from '../../../core/services/tenant.service';
           <p class="text-zinc-400 text-sm sm:text-base">Administra los barberos y staff de tu barbería.</p>
         </div>
         
-        <button class="px-6 py-2.5 rounded-xl font-bold text-sm text-zinc-950 bg-gradient-to-r from-amber-400 to-amber-600 shadow-[0_5px_20px_rgba(251,191,36,0.2)] hover:shadow-[0_10px_30px_rgba(251,191,36,0.4)] transition-all">
+        <button (click)="invitarMiembro()" class="px-6 py-2.5 rounded-xl font-bold text-sm text-zinc-950 bg-gradient-to-r from-amber-400 to-amber-600 shadow-[0_5px_20px_rgba(251,191,36,0.2)] hover:shadow-[0_10px_30px_rgba(251,191,36,0.4)] transition-all">
           <i class="pi pi-user-plus mr-2"></i>Invitar Miembro
         </button>
       </div>
@@ -61,13 +61,13 @@ import { TenantService } from '../../../core/services/tenant.service';
                 </div>
                 
                 <div class="mt-auto pt-4 flex gap-2 border-t border-white/5">
-                  <button class="flex-1 text-xs font-medium bg-white/5 hover:bg-white/10 text-white py-2 rounded-lg transition-colors">
+                  <button (click)="editarMiembro(miembro)" class="flex-1 text-xs font-medium bg-white/5 hover:bg-white/10 text-white py-2 rounded-lg transition-colors">
                     Editar
                   </button>
                   <button (click)="abrirModalExcepcion(miembro)" class="flex-1 text-xs font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 py-2 rounded-lg transition-colors border border-amber-500/30">
                     <i class="pi pi-calendar-times mr-1"></i> Excepción
                   </button>
-                  <button class="w-10 flex items-center justify-center text-zinc-500 hover:text-red-400 bg-white/5 hover:bg-red-400/10 rounded-lg transition-colors">
+                  <button (click)="eliminarMiembro(miembro)" class="w-10 flex items-center justify-center text-zinc-500 hover:text-red-400 bg-white/5 hover:bg-red-400/10 rounded-lg transition-colors">
                     <i class="pi pi-trash"></i>
                   </button>
                 </div>
@@ -234,5 +234,19 @@ export class AdminPersonalComponent implements OnInit {
         alert('Ocurrió un error al guardar la excepción');
       }
     });
+  }
+
+  invitarMiembro() {
+    alert('Funcionalidad de invitar miembro en desarrollo');
+  }
+
+  editarMiembro(miembro: Personal) {
+    alert(`Editar miembro: ${miembro.nombreCompleto} (en desarrollo)`);
+  }
+
+  eliminarMiembro(miembro: Personal) {
+    if (confirm(`¿Estás seguro de que deseas eliminar a ${miembro.nombreCompleto} de la barbería?`)) {
+      alert('Funcionalidad de eliminación en desarrollo');
+    }
   }
 }

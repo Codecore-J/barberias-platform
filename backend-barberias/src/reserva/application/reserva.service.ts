@@ -283,7 +283,7 @@ export class ReservaService {
         include: { rol: true },
       });
 
-      if (!isResponsable && !isSuperAdmin && !rolesUser.some((ur) => ur.rol.nombre === 'ADMIN_BARBERIA')) {
+      if (!isResponsable && !isSuperAdmin && !rolesUser.some((ur) => ur.rol.nombre === 'ADMIN_BARBERIA' || ur.rol.nombre === 'BARBERO')) {
         throw new ForbiddenException('No tienes permisos para marcar inasistencias en esta barbería');
       }
     }
