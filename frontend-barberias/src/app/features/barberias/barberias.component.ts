@@ -111,15 +111,19 @@ import { VincularModalComponent } from './components/vincular-modal/vincular-mod
 
       <!-- Acciones de Grid (Cuando ya hay barberías) -->
       @if (!tenantService.isLoading() && tenantService.barberiasVinculadas().length > 0) {
-        <div class="max-w-6xl mx-auto px-4 pt-12 flex justify-center gap-4 transform translate-z-12">
-          <button (click)="showVincularModal.set(true)" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 bg-zinc-800 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center">
-            <i class="pi pi-link mr-2"></i>Vincular otra Barbería
-          </button>
+        <div class="max-w-6xl mx-auto px-4 pt-10 flex flex-wrap justify-center gap-4 transform translate-z-12">
           @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'SUPER_ADMIN') {
-            <button routerLink="/barberias/nueva" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 glass-card hover:text-amber-400 transition-colors flex items-center">
-              <i class="pi pi-plus mr-2"></i>Nueva Barbería
+            <button routerLink="/barberias/nueva" 
+                    class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg shadow-amber-500/20 hover:scale-105 transition-all flex items-center gap-2">
+              <i class="pi pi-plus"></i>
+              <span>Crear Nueva Barbería</span>
             </button>
           }
+          <button (click)="showVincularModal.set(true)" 
+                  class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 bg-zinc-800/90 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center gap-2">
+            <i class="pi pi-link"></i>
+            <span>Vincular con Código</span>
+          </button>
         </div>
       }
 
@@ -151,14 +155,22 @@ export class BarberiasComponent implements OnInit {
   }
 
   rutaEntrar(): string {
+    const role = this.userRole();
+    if (role === 'SUPER_ADMIN' || role === 'ADMIN_BARBERIA' || role === 'BARBERO') {
+      return '/admin/agenda';
+    }
     return '/';
   }
 
   seleccionar(id: string) {
     this.tenantService.seleccionarBarberia(id).subscribe({
       next: () => {
-        // Redirigir al home dashboard independientemente del rol para ver todas las opciones
-        this.authService['router'].navigate(['/']);
+        const role = this.userRole();
+        if (role === 'SUPER_ADMIN' || role === 'ADMIN_BARBERIA' || role === 'BARBERO') {
+          this.authService['router'].navigate(['/admin/agenda']);
+        } else {
+          this.authService['router'].navigate(['/']);
+        }
       }
     });
   }

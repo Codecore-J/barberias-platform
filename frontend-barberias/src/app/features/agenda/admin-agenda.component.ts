@@ -16,22 +16,100 @@ import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.c
     <div class="min-h-screen py-10 px-4 max-w-[1400px] mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
       
       <!-- Header y Filtros -->
-      <div class="flex flex-col md:flex-row justify-between items-center gap-6 mb-10 relative z-20">
-        <div>
-          <h2 class="text-3xl font-display font-bold text-white">Consola de <span class="text-amber-400">Agenda</span></h2>
-          <p class="text-sm text-zinc-400">Modo Administrador - Vista de todas las columnas ({{ tenantService.nombreBarberiaActiva() }})</p>
-        </div>
-        
-        <div class="flex gap-4">
-          <button (click)="mostrarModalWalkIn.set(true)" class="glass-panel px-4 py-2 rounded-xl flex items-center gap-2 border border-emerald-500/50 hover:bg-emerald-500/10 transition-colors text-emerald-400 font-bold text-sm shadow-lg">
-            <i class="pi pi-user-plus"></i> Walk-In
-          </button>
-          
-          <div class="glass-panel px-4 py-2 rounded-xl flex items-center gap-3 border border-amber-500/30">
-            <i class="pi pi-calendar text-amber-500"></i>
-            <input type="date" [(ngModel)]="fechaFiltro" (change)="cargarDatos()"
-                   class="bg-transparent text-white font-bold outline-none border-none cursor-pointer">
+      <div class="flex flex-col gap-6 mb-8 relative z-20">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold uppercase tracking-wider mb-1">
+              <i class="pi pi-calendar text-xs"></i>
+              <span>Consola Diaria de Operaciones</span>
+            </div>
+            <h2 class="text-3xl font-display font-bold text-white">Consola de <span class="text-amber-400">Agenda</span></h2>
+            <p class="text-sm text-zinc-400">Vista multi-columna de barberos para {{ tenantService.nombreBarberiaActiva() }}</p>
           </div>
+          
+          <div class="flex flex-wrap items-center gap-3">
+            <button (click)="mostrarModalWalkIn.set(true)" 
+                    class="px-4 py-2 rounded-xl flex items-center gap-2 font-bold text-xs sm:text-sm text-zinc-950 gold-gradient-bg shadow-[0_4px_16px_rgba(212,175,55,0.25)] hover:brightness-110 transition-all">
+              <i class="pi pi-user-plus"></i> Walk-In
+            </button>
+
+            <!-- NAVEGACIÓN RÁPIDA DE FECHA -->
+            <div class="flex items-center bg-zinc-900/90 border border-zinc-700/70 rounded-xl p-1 shadow-lg">
+              <button (click)="cambiarDia(-1)" class="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 transition-colors" title="Día anterior">
+                <i class="pi pi-chevron-left text-xs"></i>
+              </button>
+              <button (click)="irAHoy()" class="px-2.5 py-1 text-xs font-semibold text-amber-400 hover:bg-zinc-800 rounded-md transition-colors">
+                Hoy
+              </button>
+              <button (click)="cambiarDia(1)" class="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 transition-colors" title="Día siguiente">
+                <i class="pi pi-chevron-right text-xs"></i>
+              </button>
+              
+              <div class="h-5 w-[1px] bg-zinc-700 mx-1"></div>
+              
+              <div class="flex items-center gap-2 px-2">
+                <input type="date" [(ngModel)]="fechaFiltro" (change)="cargarDatos()"
+                       class="bg-transparent text-white font-medium text-xs outline-none border-none cursor-pointer">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BARRA DE MÉTRICAS RÁPIDAS DEL DÍA -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="glass-panel p-3.5 rounded-2xl border border-white/5 flex items-center justify-between">
+            <div>
+              <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Total Turnos</p>
+              <p class="text-xl font-bold text-white mt-0.5">{{ totalTurnosDia() }}</p>
+            </div>
+            <div class="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+              <i class="pi pi-calendar text-sm"></i>
+            </div>
+          </div>
+
+          <div class="glass-panel p-3.5 rounded-2xl border border-white/5 flex items-center justify-between">
+            <div>
+              <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Pendientes</p>
+              <p class="text-xl font-bold text-amber-400 mt-0.5">{{ pendientesDia() }}</p>
+            </div>
+            <div class="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+              <i class="pi pi-clock text-sm"></i>
+            </div>
+          </div>
+
+          <div class="glass-panel p-3.5 rounded-2xl border border-white/5 flex items-center justify-between">
+            <div>
+              <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Completadas</p>
+              <p class="text-xl font-bold text-emerald-400 mt-0.5">{{ completadasDia() }}</p>
+            </div>
+            <div class="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <i class="pi pi-check-circle text-sm"></i>
+            </div>
+          </div>
+
+          <div class="glass-panel p-3.5 rounded-2xl border border-white/5 flex items-center justify-between">
+            <div>
+              <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Estimado Hoy</p>
+              <p class="text-xl font-bold text-emerald-400 mt-0.5">{{ ingresosEstimadosDia() | currency:'USD':'symbol':'1.0-0' }}</p>
+            </div>
+            <div class="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <i class="pi pi-dollar text-sm"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- FILTROS POR ESTADO -->
+        <div class="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+          <span class="text-zinc-500 font-medium mr-1">Filtrar:</span>
+          @for (f of ['TODOS', 'PENDIENTE', 'COMPLETADA', 'CANCELADA']; track f) {
+            <button (click)="filtroEstado.set(f)"
+                    class="px-3 py-1 rounded-lg font-medium transition-all"
+                    [ngClass]="filtroEstado() === f 
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm' 
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'">
+              {{ f === 'TODOS' ? 'Todos los turnos' : f }}
+            </button>
+          }
         </div>
       </div>
 
@@ -207,11 +285,34 @@ export class AdminAgendaComponent implements OnInit {
   barberos = signal<Personal[]>([]);
   cargando = signal(true);
   mostrarModalWalkIn = signal(false);
+  filtroEstado = signal<string>('TODOS');
 
   turnoACobrar = signal<any | null>(null);
   clienteSeleccionado = signal<any | null>(null);
 
+  // Métricas computadas del día
+  totalTurnosDia = computed(() => this.turnos().length);
+  pendientesDia = computed(() => this.turnos().filter(t => t.estado === 'PENDIENTE').length);
+  completadasDia = computed(() => this.turnos().filter(t => t.estado === 'COMPLETADA').length);
+  ingresosEstimadosDia = computed(() => {
+    return this.turnos()
+      .filter(t => t.estado === 'COMPLETADA' || t.estado === 'PENDIENTE')
+      .reduce((acc, t) => acc + (Number(t.precioTotalHist) || 0), 0);
+  });
+
   ngOnInit() {
+    this.cargarDatos();
+  }
+
+  cambiarDia(delta: number) {
+    const d = new Date(this.fechaFiltro + 'T12:00:00');
+    d.setDate(d.getDate() + delta);
+    this.fechaFiltro = d.toISOString().split('T')[0];
+    this.cargarDatos();
+  }
+
+  irAHoy() {
+    this.fechaFiltro = new Date().toISOString().split('T')[0];
     this.cargarDatos();
   }
 
@@ -242,13 +343,23 @@ export class AdminAgendaComponent implements OnInit {
 
   turnosPorBarbero(barberoId: string) {
     return this.turnos()
-      .filter(t => t.barbero?.id === barberoId)
+      .filter(t => {
+        const matchesBarbero = t.barbero?.id === barberoId;
+        if (!matchesBarbero) return false;
+        if (this.filtroEstado() === 'TODOS') return true;
+        return t.estado === this.filtroEstado();
+      })
       .sort((a, b) => new Date(a.fechaHoraInicio).getTime() - new Date(b.fechaHoraInicio).getTime());
   }
 
   turnosSinAsignar() {
     return this.turnos()
-      .filter(t => !t.barbero || !t.barbero.id)
+      .filter(t => {
+        const sinAsignar = !t.barbero || !t.barbero.id;
+        if (!sinAsignar) return false;
+        if (this.filtroEstado() === 'TODOS') return true;
+        return t.estado === this.filtroEstado();
+      })
       .sort((a, b) => new Date(a.fechaHoraInicio).getTime() - new Date(b.fechaHoraInicio).getTime());
   }
 

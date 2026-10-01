@@ -35,8 +35,6 @@ export class PagosService {
     this.isLoading.set(true);
     this.error.set(null);
     
-    // Asumiendo que el backend alias de pagos/en-persona es cobros, para auditoría podría ser cobros/auditoria o pagos/auditoria
-    // Revisando el PagoController: @Controller(['barberias/:barberiaId/pagos', 'cobros', 'pagos']) y @Get('auditoria')
     return this.http.get<any>(`${this.apiUrl}/cobros/auditoria?limite=${limite}&offset=${offset}`).pipe(
       map(res => res.data || []),
       tap((data) => {
@@ -50,4 +48,21 @@ export class PagosService {
       })
     );
   }
+
+  /**
+   * Obtiene estadísticas agregadas de auditoría (para SUPER_ADMIN / ADMIN)
+   */
+  obtenerEstadisticasAuditoria(): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/auditoria/estadisticas`).pipe(
+      catchError(() => of(null))
+    );
+  }
+
+  /**
+   * Ejecuta purga manual de registros de auditoría más antiguos de X días (solo SUPER_ADMIN)
+   */
+  purgarAuditoria(dias = 365): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/auditoria/purgar?dias=${dias}`, {});
+  }
 }
+

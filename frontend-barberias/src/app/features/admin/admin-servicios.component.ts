@@ -1,6 +1,6 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ServiciosService, Servicio } from '../../core/services/servicios.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
@@ -8,7 +8,7 @@ import { AuthService } from '../../auth/auth.service';
 @Component({
   selector: 'app-admin-servicios',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, CurrencyPipe],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, CurrencyPipe],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
       
@@ -32,20 +32,70 @@ import { AuthService } from '../../auth/auth.service';
         </div>
       }
 
+      <!-- Filtros y Búsqueda -->
+      @if (!showForm()) {
+        <div class="glass-panel p-4 rounded-2xl border border-white/5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 relative z-10">
+          <div class="flex items-center gap-2 overflow-x-auto text-xs">
+            <button (click)="filtroTipo.set('TODOS')"
+                    class="px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5"
+                    [ngClass]="filtroTipo() === 'TODOS' 
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm' 
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'">
+              <span>Todos</span>
+              <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-zinc-800 text-zinc-300">{{ serviciosService.servicios().length }}</span>
+            </button>
+
+            <button (click)="filtroTipo.set('SERVICIOS')"
+                    class="px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5"
+                    [ngClass]="filtroTipo() === 'SERVICIOS' 
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm' 
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'">
+              <i class="pi pi-tag text-[10px]"></i>
+              <span>Servicios</span>
+              <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-zinc-800 text-zinc-300">{{ countServicios() }}</span>
+            </button>
+
+            <button (click)="filtroTipo.set('COMBOS')"
+                    class="px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5"
+                    [ngClass]="filtroTipo() === 'COMBOS' 
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm' 
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'">
+              <i class="pi pi-star text-[10px]"></i>
+              <span>Combos DFS</span>
+              <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-zinc-800 text-zinc-300">{{ countCombos() }}</span>
+            </button>
+          </div>
+
+          <div class="relative w-full sm:w-72">
+            <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-xs"></i>
+            <input type="text" [(ngModel)]="busquedaTexto" placeholder="Buscar por nombre o descripción..."
+                   class="w-full bg-zinc-950/80 border border-zinc-700/60 rounded-xl pl-8 pr-4 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500 transition-colors">
+          </div>
+        </div>
+      }
+
       <!-- Grid de Servicios -->
       @if (!showForm()) {
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 transform-style-3d">
-          @for (servicio of serviciosService.servicios(); track servicio.id) {
-            <div class="glass-card rounded-2xl p-6 relative group hover:-translate-y-2 hover:rotate-x-2 transition-all duration-300 transform-style-3d flex flex-col h-full">
+          @for (servicio of serviciosFiltrados(); track servicio.id) {
+            <div class="glass-card rounded-2xl p-6 relative group hover:-translate-y-2 hover:rotate-x-2 transition-all duration-300 transform-style-3d flex flex-col h-full border border-white/5 hover:border-amber-500/30">
               
-              <div class="flex justify-between items-start mb-4 transform translate-z-12">
+              <div class="flex justify-between items-start mb-3 transform translate-z-12">
                 <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-amber-400">
-                    <i [class]="servicio.esCombo ? 'pi pi-star' : 'pi pi-tag'"></i>
+                  <div class="w-10 h-10 rounded-xl flex items-center justify-center border"
+                       [ngClass]="servicio.esCombo 
+                         ? 'bg-amber-500/15 border-amber-500/30 text-amber-400' 
+                         : 'bg-zinc-800 border-zinc-700 text-zinc-300'">
+                    <i [class]="servicio.esCombo ? 'pi pi-star text-base' : 'pi pi-tag text-base'"></i>
                   </div>
                   <div>
-                    <h3 class="font-bold text-white">{{ servicio.nombre }}</h3>
-                    <span class="text-xs text-zinc-400">{{ servicio.duracionMinutos }} min</span>
+                    <h3 class="font-bold text-white leading-tight">{{ servicio.nombre }}</h3>
+                    <div class="flex items-center gap-2 mt-0.5">
+                      <span class="text-xs text-zinc-400"><i class="pi pi-clock text-[10px] mr-1"></i>{{ servicio.duracionMinutos }} min</span>
+                      @if (servicio.esCombo) {
+                        <span class="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">Combo</span>
+                      }
+                    </div>
                   </div>
                 </div>
                 <div class="font-bold text-amber-400 text-lg">
@@ -54,7 +104,7 @@ import { AuthService } from '../../auth/auth.service';
               </div>
 
               <p class="text-xs text-zinc-400 line-clamp-2 mb-4 flex-grow transform translate-z-8">
-                {{ servicio.descripcion }}
+                {{ servicio.descripcion || 'Sin descripción detallada.' }}
               </p>
 
               <!-- Actions -->
@@ -70,10 +120,15 @@ import { AuthService } from '../../auth/auth.service';
           }
         </div>
 
-        @if (serviciosService.servicios().length === 0 && !serviciosService.isLoading()) {
-          <div class="text-center py-20 transform translate-z-12">
+        @if (serviciosFiltrados().length === 0 && !serviciosService.isLoading()) {
+          <div class="text-center py-20 transform translate-z-12 glass-panel rounded-3xl border border-white/5">
             <i class="pi pi-folder-open text-5xl text-zinc-600 mb-4 block"></i>
-            <p class="text-zinc-400">No hay servicios registrados.</p>
+            <p class="text-zinc-400 font-medium">No se encontraron servicios ni combos.</p>
+            @if (filtroTipo() !== 'TODOS' || busquedaTexto) {
+              <button (click)="resetFiltros()" class="mt-3 text-xs text-amber-400 hover:underline">
+                Limpiar filtros
+              </button>
+            }
           </div>
         }
       }
@@ -190,6 +245,34 @@ export class AdminServiciosComponent implements OnInit {
   showForm = signal(false);
   isEditing = signal(false);
   editingId = signal<string | null>(null);
+
+  filtroTipo = signal<'TODOS' | 'SERVICIOS' | 'COMBOS'>('TODOS');
+  busquedaTexto = '';
+
+  countServicios = computed(() => this.serviciosService.servicios().filter(s => !s.esCombo).length);
+  countCombos = computed(() => this.serviciosService.servicios().filter(s => s.esCombo).length);
+
+  serviciosFiltrados = computed(() => {
+    const list = this.serviciosService.servicios();
+    const tipo = this.filtroTipo();
+    const query = this.busquedaTexto.toLowerCase().trim();
+
+    return list.filter(s => {
+      if (tipo === 'SERVICIOS' && s.esCombo) return false;
+      if (tipo === 'COMBOS' && !s.esCombo) return false;
+      if (query) {
+        const nom = s.nombre?.toLowerCase() || '';
+        const desc = s.descripcion?.toLowerCase() || '';
+        if (!nom.includes(query) && !desc.includes(query)) return false;
+      }
+      return true;
+    });
+  });
+
+  resetFiltros() {
+    this.filtroTipo.set('TODOS');
+    this.busquedaTexto = '';
+  }
 
   // Computado para obtener solo los servicios regulares (no combos)
   serviciosRegulares = computed(() => this.serviciosService.servicios().filter(s => !s.esCombo));

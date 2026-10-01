@@ -107,7 +107,7 @@ import { TenantService } from '../../../core/services/tenant.service';
                 <div>
                   <label class="block text-xs font-medium text-zinc-400 mb-1">Tipo de Excepción</label>
                   <select [(ngModel)]="excepcionModel.tipo" class="w-full bg-zinc-950 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/50 transition-colors">
-                    <option value="DIA_LIBRE">Día Libre Completo</option>
+                    <option value="CERRADA">Día Libre Completo</option>
                     <option value="HORARIO_ESPECIAL">Horario Especial (Parcial)</option>
                   </select>
                 </div>
@@ -159,7 +159,7 @@ export class AdminPersonalComponent implements OnInit {
   modalAbierto = signal(false);
   barberoSeleccionado = signal<Personal | null>(null);
   excepcionModel: Partial<ExcepcionHorario> = {
-    tipo: 'DIA_LIBRE',
+    tipo: 'CERRADA',
     fecha: '',
     horaInicio: '',
     horaFin: '',
@@ -191,7 +191,7 @@ export class AdminPersonalComponent implements OnInit {
   abrirModalExcepcion(barbero: Personal) {
     this.barberoSeleccionado.set(barbero);
     this.excepcionModel = {
-      tipo: 'DIA_LIBRE',
+      tipo: 'CERRADA',
       fecha: new Date().toISOString().split('T')[0],
       horaInicio: '',
       horaFin: '',

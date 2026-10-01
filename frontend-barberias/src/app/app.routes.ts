@@ -43,6 +43,12 @@ export const routes: Routes = [
           import('./features/reservas/reserva-wizard.component').then((m) => m.ReservaWizardComponent),
       },
       {
+        path: 'reservar',
+        canActivate: [tenantGuard],
+        loadComponent: () =>
+          import('./features/reservas/reserva-wizard.component').then((m) => m.ReservaWizardComponent),
+      },
+      {
         path: 'admin/agenda',
         canActivate: [tenantGuard, roleGuard(['ADMIN', 'BARBERO'])],
         loadComponent: () =>
