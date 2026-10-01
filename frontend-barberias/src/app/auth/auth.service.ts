@@ -102,9 +102,9 @@ export class AuthService {
           this.tenantService.cargarBarberias().subscribe({
             next: (barberias) => {
               if (barberias.length > 0) {
-                this.router.navigate(['/']);
+                this.router.navigate(['/admin/agenda']); // Admin va directo a la agenda
               } else {
-                this.router.navigate(['/barberias']);
+                this.router.navigate(['/barberias']); // Sin barberías, elegir/crear una
               }
             },
             error: () => this.router.navigate(['/barberias'])
@@ -113,7 +113,7 @@ export class AuthService {
           this.tenantService.cargarBarberias().subscribe({
             next: (barberias) => {
               if (barberias.length > 0) {
-                this.router.navigate(['/']);
+                this.router.navigate(['/admin/agenda']); // Barbero también va a la agenda
               } else {
                 this.router.navigate(['/barberias']);
               }
