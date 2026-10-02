@@ -58,13 +58,23 @@ jobs:
         run: npx prisma@5.22.0 generate
 
       - name: Diagnóstico temporal oxlint
-        working-directory: ./backend-barberias
+        continue-on-error: true
         run: |
           node -v; npm -v
-          npm config get optional
-          ls node_modules/@oxlint || echo "NO EXISTE node_modules/@oxlint"
-          npm ls @oxlint/binding-linux-x64-gnu || true
-          node -e "try{require('@oxlint/binding-linux-x64-gnu');console.log('binding OK')}catch(e){console.log('FALLA:',e.message)}"
+          echo "--- config npm"
+          npm config get ignore-scripts || true
+          npm config get optional || true
+          npm config get omit || true
+          echo "--- raiz del repo"; ls -la | head -40
+          echo "--- lockfiles"; ls -la package-lock.json backend-barberias/package-lock.json frontend-barberias/package-lock.json 2>&1 || true
+          echo "--- @oxlint en raiz"; (ls node_modules/@oxlint 2>&1) || echo "NO EXISTE node_modules/@oxlint"
+          echo "--- @oxlint en backend"; (ls backend-barberias/node_modules/@oxlint 2>&1) || echo "NO EXISTE backend-barberias/node_modules/@oxlint"
+          echo "--- oxlint"; (ls -d node_modules/oxlint backend-barberias/node_modules/oxlint 2>&1) || true
+          echo "--- npm ls"; npm ls oxlint @oxlint/binding-linux-x64-gnu 2>&1 || true
+          echo "--- require del binding desde backend"
+          (cd backend-barberias && node -e "try{require('@oxlint/binding-linux-x64-gnu');console.log('binding OK')}catch(e){console.log('FALLA:',e.message)}") || true
+          echo "--- cliente de prisma generado?"
+          (ls node_modules/.prisma/client/index.d.ts backend-barberias/node_modules/.prisma/client/index.d.ts 2>&1) || true
 
       - name: Run Linter (Backend)
         working-directory: ./backend-barberias
