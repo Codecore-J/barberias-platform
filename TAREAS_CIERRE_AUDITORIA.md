@@ -156,7 +156,9 @@ Plataforma de Gestión de Barberías
 ## Bloque E — Pruebas de seguridad no confirmadas
 
 ### TASK-E1 — Margen grupal bajo carga concurrente
-- [x] **Prioridad:** Alta
+- [ ] **Prioridad:** Alta
+- **ESTADO (2026-10-02): DESMARCADA — la evidencia original contradice una decisión de producto ya cerrada.** El criterio de esta tarea validaba que `margenGrupalHistorico = suma(márgenes)`, pero la decisión D42 (revisada y cerrada el 2026-10-02) establece que el margen es un campo propio de la barbería (`configuracion_barberia.margen_grupal_minutos`, default 10, rango 0-60) snapshotteado al crear la reserva, y que nunca se toma del cliente (D44). Corregido en la rama `fix/margen-grupal-d42`.
+- **Criterio corregido (D42):** en todas las reservas creadas, `margenGrupalHistorico` en BD coincide con `configuracion_barberia.margen_grupal_minutos` de ESA barbería, sin excepciones; el campo rechazado si llega en el DTO del cliente (400 por `forbidNonWhitelisted`).
 - **Acción exacta:** Disparar 20 solicitudes de reserva concurrentes (distintos horarios) y verificar en cada una que `margenGrupalHistorico` se haya aplicado exactamente una vez por reserva, nunca por participante.
 - **Criterio de aceptación:** En todas las reservas creadas, el campo `margenGrupalHistorico` en BD coincide con `suma(margenOperativo de cada servicio)`, sin excepciones.
 - **Evidencia obtenida:**
@@ -180,7 +182,21 @@ Plataforma de Gestión de Barberías
   | 7 | 10                | 10                    | ✅         |
   ```
   En el **100% de las reservas persistidas**, `margenGrupalHistorico = 10` exacto (aplicado 1 vez por reserva, no multiplicado por participante ni por servicio).
-- **Bloqueante para producción:** No (completada con éxito).
+- **Evidencia histórica invalidada (2026-10-02):** esa tabla certificaba la regla de la SUMA, hoy derogada por D42 (ver Estado arriba). El valor `10` coincidía con la suma solo porque `5 + 5 = 10` igual que el default de configuración.
+- **Nueva evidencia (2026-10-02, rama `fix/margen-grupal-d42`):**
+  ```text
+  TEST ROJO (código viejo):
+   × D42: debe snapshottear configuracion_barberia.margen_grupal_minutos, nunca la suma de margenes ni el valor del DTO
+   AssertionError: expected "vi.fn()" to be called with arguments: [ ObjectContaining{…} ]
+   -       "margenGrupalHistorico": 12,
+   +       "margenGrupalHistorico": 10,
+   Test Files  1 failed (1) / Tests 1 failed | 9 passed (10)
+
+  TEST VERDE (con fix):
+   Test Files  1 passed (1) / Tests 10 passed (10)
+   Suite completa: Test Files 20 passed (20) / Tests 135 passed (135)
+  ```
+- **Bloqueante para producción:** No (regla corregida con test rojo→verde).
 
 ### TASK-E2 — Prueba de IDOR
 - [x] **Prioridad:** Crítica
