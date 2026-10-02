@@ -55,7 +55,7 @@ jobs:
         working-directory: ./backend-barberias
         env:
           DATABASE_URL: postgresql://postgres:password@localhost:5432/barberias_test
-        run: npx prisma generate
+        run: npx prisma@5.22.0 generate
 
       - name: Run Linter (Backend)
         working-directory: ./backend-barberias
