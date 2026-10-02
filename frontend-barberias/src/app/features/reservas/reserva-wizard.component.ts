@@ -1,6 +1,6 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
-import { RouterLink, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import { ServiciosService, Servicio } from '../../core/services/servicios.service';
 import { ReservasService, DisponibilidadSlot } from '../../core/services/reservas.service';
 import { TenantService } from '../../core/services/tenant.service';

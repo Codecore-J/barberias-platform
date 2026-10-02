@@ -9,6 +9,7 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
+    "lint": "oxlint src",
     "test": "ng test"
   },
   "private": true,
@@ -33,6 +34,7 @@
     "@tailwindcss/postcss": "^4.3.3",
     "autoprefixer": "^10.6.1",
     "jsdom": "^28.0.0",
+    "oxlint": "^1.58.0",
     "postcss": "^8.5.28",
     "prettier": "^3.8.1",
     "tailwindcss": "^4.3.3",
