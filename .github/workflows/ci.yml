@@ -53,6 +53,8 @@ jobs:
 
       - name: Generate Prisma Client
         working-directory: ./backend-barberias
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/barberias_test
         run: npx prisma generate
 
       - name: Run Linter (Backend)
