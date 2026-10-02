@@ -49,6 +49,10 @@ jobs:
         working-directory: ./frontend-barberias
         run: npm ci
 
+      - name: Generate Prisma Client
+        working-directory: ./backend-barberias
+        run: npx prisma generate
+
       - name: Run Linter (Backend)
         working-directory: ./backend-barberias
         run: npm run lint
@@ -75,10 +79,6 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:password@localhost:5432/barberias_test
         run: npx prisma migrate deploy
-
-      - name: Generate Prisma Client
-        working-directory: ./backend-barberias
-        run: npx prisma generate
 
       - name: Run Unit/Integration Tests (Backend)
         working-directory: ./backend-barberias
