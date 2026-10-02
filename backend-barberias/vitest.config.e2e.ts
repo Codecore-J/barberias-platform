@@ -8,5 +8,6 @@ export default defineConfig({
     root: './',
     include: ['**/*.e2e-spec.ts'],
     fileParallelism: false,
+    setupFiles: ['./test/setup.e2e.ts'],
   },
 });

@@ -8,6 +8,14 @@ import { AppModule } from './app.module.js';
 import { PrismaExceptionFilter } from './shared/filters/prisma-exception.filter.js';
 
 async function bootstrap() {
+  const allowedEnvs = ['dev', 'staging', 'production'];
+  const appEnv = process.env.APP_ENV;
+  
+  if (!appEnv || !allowedEnvs.includes(appEnv)) {
+    console.error(`FATAL ERROR: APP_ENV is required and must be one of: ${allowedEnvs.join(', ')}`);
+    process.exit(1);
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Confianza en proxy inverso (Render / Cloudflare) para resolución de IP real (SEC-02)
