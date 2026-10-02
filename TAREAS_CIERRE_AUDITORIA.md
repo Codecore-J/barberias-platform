@@ -60,6 +60,7 @@ Plataforma de Gestión de Barberías
 - **Acción exacta:** En `AUDITORIA_HALLAZGOS.md`, renombrar el hallazgo de CORS permisivo de `CONF-01` a `CONF-02`, dejando `CONF-01` únicamente para el secreto JWT débil. Actualizar cualquier referencia cruzada (commits, tickets, otros documentos) que mencione el ID viejo.
 - **Criterio de aceptación:** El archivo `AUDITORIA_HALLAZGOS.md` no contiene dos hallazgos con el mismo ID.
 - **Evidencia requerida:** Diff del commit que aplica el renombrado.
+- **Evidencia obtenida (2026-10-02):** el renombrado CONF-01/CONF-02 ya estaba hecho; quedaba un segundo duplicado `### HALLAZGO 09` (IDOR), renumerado a **HALLAZGO 14** en la rama `docs/correccion-auditoria-cierre`. Verificación: los dos IDs duplicados dejan de existir (grep de encabezados sin repetidos).
 - **Bloqueante para producción:** No.
 
 ---
@@ -197,7 +198,7 @@ Plataforma de Gestión de Barberías
   - `reserva.controller.ts`: Se agregó `@Roles(...)` y `@CurrentUser()` al endpoint.
   - `reserva.service.ts`: Se agregó verificación de pertenencia de rol en el tenant antes de devolver datos.
   - Build: `npm run build` ✅ sin errores.
-  - Registrado como **HALLAZGO 09** en `AUDITORIA_HALLAZGOS.md`.
+  - Registrado como **HALLAZGO 14** en `AUDITORIA_HALLAZGOS.md` (renumerado el 2026-10-02 desde el segundo `HALLAZGO 09` duplicado).
 - **Bloqueante para producción:** No (hallazgo encontrado y resuelto).
 
 ### TASK-E3 — Inyección SQL en campos de texto libre
