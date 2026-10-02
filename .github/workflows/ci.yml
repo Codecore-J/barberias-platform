@@ -65,11 +65,20 @@ jobs:
         working-directory: ./frontend-barberias
         run: npm run build
 
+      - name: Scan for Secrets (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Apply Prisma Migrations (Test DB)
         working-directory: ./backend-barberias
         env:
           DATABASE_URL: postgresql://postgres:password@localhost:5432/barberias_test
         run: npx prisma migrate deploy
+
+      - name: Generate Prisma Client
+        working-directory: ./backend-barberias
+        run: npx prisma generate
 
       - name: Run Unit/Integration Tests (Backend)
         working-directory: ./backend-barberias
