@@ -59,9 +59,10 @@ jobs:
         working-directory: ./backend-barberias
         run: npm run lint
 
-      - name: Run Linter (Frontend)
-        working-directory: ./frontend-barberias
-        run: npm run lint
+      # H23: sin script lint en frontend
+      # - name: Run Linter (Frontend)
+      #   working-directory: ./frontend-barberias
+      #   run: npm run lint
 
       - name: Build Backend
         working-directory: ./backend-barberias
@@ -92,4 +93,4 @@ jobs:
 
       - name: Run Tests (Frontend)
         working-directory: ./frontend-barberias
-        run: npm run test -- --watch=false --browsers=ChromeHeadless
+        run: npm run test -- --watch=false
