@@ -34,8 +34,24 @@ describe('Hallazgo 16 - RolesGuard Global (e2e)', () => {
     await prisma.usuario.deleteMany({ where: { correo: 'test_hallazgo16@demo.com' } });
     await prisma.barberia.deleteMany({ where: { nombre: 'Barberia Hallazgo 16' } });
 
-    // 2. Crear Barberia de prueba
-    const adminTemporal = await prisma.usuario.findFirst(); // Cualquiera como admin
+    // 2. Datos de prueba PROPIOS del test (aislamiento): no asume usuarios ni roles
+    // preexistentes en la BD — el rol CLIENTE y el dueño de la barbería se crean aquí.
+    const rolCliente = await prisma.rol.upsert({
+      where: { nombre: 'CLIENTE' },
+      update: {},
+      create: { nombre: 'CLIENTE', ambito: 'GLOBAL' },
+    });
+    const adminTemporal = await prisma.usuario.upsert({
+      where: { correo: 'test_hallazgo16_owner@demo.com' },
+      update: {},
+      create: {
+        nombreCompleto: 'Owner Hallazgo 16',
+        correo: 'test_hallazgo16_owner@demo.com',
+        telefono: '999888777161',
+        passwordHash: '$2b$10$HashFalsoOwnerNoSeUsaEnLoginTest16',
+        estadoCuenta: 'ACTIVO',
+      },
+    });
     const barberia = await prisma.barberia.create({
       data: {
         nombre: 'Barberia Hallazgo 16',
@@ -49,8 +65,7 @@ describe('Hallazgo 16 - RolesGuard Global (e2e)', () => {
     });
     barberiaId = barberia.id;
 
-    // 3. Crear usuario con rol CLIENTE exclusivamente
-    const rolCliente = await prisma.rol.findUnique({ where: { nombre: 'CLIENTE' } });
+    // 3. Crear usuario con rol CLIENTE exclusivamente (usa el rol creado arriba)
     const cliente = await prisma.usuario.create({
       data: {
         nombreCompleto: 'Cliente Hallazgo 16',
@@ -81,6 +96,8 @@ describe('Hallazgo 16 - RolesGuard Global (e2e)', () => {
     await prisma.usuarioRol.deleteMany({ where: { usuario: { correo: 'test_hallazgo16@demo.com' } } });
     await prisma.usuario.deleteMany({ where: { correo: 'test_hallazgo16@demo.com' } });
     await prisma.barberia.deleteMany({ where: { nombre: 'Barberia Hallazgo 16' } });
+    // El dueño se borra después: barberias.responsable_id tiene FK a usuarios.
+    await prisma.usuario.deleteMany({ where: { correo: 'test_hallazgo16_owner@demo.com' } });
     await app.close();
   });
 
