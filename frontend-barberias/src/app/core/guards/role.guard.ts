@@ -34,8 +34,12 @@ export const roleGuard = (allowedRoles: string[]): CanActivateFn => {
       return true;
     }
 
-    // Redirección defensiva si el usuario no tiene permisos para esta ruta
-    // Todos son enviados al Home que actuará como dashboard
+    // Redirección defensiva si el usuario no tiene permisos para esta ruta.
+    // H24: un BARBERO sin el rol requerido vuelve a SU agenda (/admin/agenda);
+    // cualquier otro caso sin el rol va al Home que actuará como dashboard.
+    if (userRoles.includes('BARBERO')) {
+      return router.createUrlTree(['/admin/agenda']);
+    }
     return router.createUrlTree(['/']);
   };
 };
