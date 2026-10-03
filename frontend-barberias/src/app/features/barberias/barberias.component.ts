@@ -1,7 +1,7 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { TenantService, BarberiaResumen } from '../../core/services/tenant.service';
+import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
 import { VincularModalComponent } from './components/vincular-modal/vincular-modal.component';
 
