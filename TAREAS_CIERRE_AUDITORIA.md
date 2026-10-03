@@ -253,16 +253,17 @@ Plataforma de Gestión de Barberías
 - [x] **Prioridad:** Crítica
 - **Depende de:** Todas las tareas anteriores marcadas como bloqueantes
 - **Acción exacta:** Ejecutar de nuevo la batería unitaria completa y la batería E2E completa.
-- **Criterio de aceptación:** 100% de las suites unitarias y E2E pasan, igual o mejor que el resultado original (20/20 suites unitarias, 5/5 suites E2E).
-- **Evidencia obtenida:**
+- **Criterio de aceptación:** 100% de las suites unitarias y E2E pasan, igual o mejor que el resultado original (20/20 suites unitarias, 5/5 suites E2E).- **Evidencia obtenida:**
   ```text
   Test Files  20 passed (20)
        Tests  134 passed (134)
-  
-  Test Files  5 passed (5)
-       Tests  16 passed (16)
+
+  Test Files  7 passed (7)   # corrección 2026-10-02: eran 5/16, la suite E2E hoy tiene 7 archivos
+       Tests  24 passed (24)
   ```
   El 100% de las pruebas unitarias y E2E corrieron de forma exitosa tras los ajustes realizados.
+- **Corrección de conteos (2026-10-02, rama `fix/e2e-hallazgo16-aislamiento`):** la cifra E2E "5/16" estaba obsoleta; hoy son **7 archivos / 24 tests** (reproducido: unit `20 passed (20) / 134 passed (134)` exit 0 sobre `main`; E2E `7 passed (7) / 24 passed (24)` exit 0 sobre BD de test con roles sembrados).
+- **Precondiciones reales de la suite E2E (documentadas para que no vuelva a parecer fláctil):** (1) la BD de test necesita `npm run seed` (roles) — sin él fallan `hallazgo14-idor-reserva` y `barberia.e2e-spec` (4 tests); (2) `hallazgo16-rolesguard-global` ya NO depende de datos ajenos desde `fix/e2e-hallazgo16-aislamiento` (crea su propio rol y usuario en `beforeAll`; verificado rojo→verde en BD vacía).
 - **Bloqueante para producción:** No (completada con éxito).
 
 ### TASK-F2 — Actualización final de `AUDITORIA_HALLAZGOS.md`
