@@ -61,10 +61,9 @@ jobs:
         working-directory: ./backend-barberias
         run: npm run lint
 
-      # H23: sin script lint en frontend
-      # - name: Run Linter (Frontend)
-      #   working-directory: ./frontend-barberias
-      #   run: npm run lint
+      - name: Run Linter (Frontend)
+        working-directory: ./frontend-barberias
+        run: npm run lint
 
       - name: Build Backend
         working-directory: ./backend-barberias
@@ -93,9 +92,6 @@ jobs:
           JWT_SECRET: test_secret_key_for_ci_pipeline
         run: npm run test
 
-      # H24: los tests del frontend necesitan un navegador, que el runner no
-      # trae. No bloquea el pipeline.
       - name: Run Tests (Frontend)
         working-directory: ./frontend-barberias
-        continue-on-error: true
         run: npm run test -- --watch=false
