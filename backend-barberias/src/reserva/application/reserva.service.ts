@@ -84,18 +84,17 @@ export class ReservaService {
         (acc, s) => acc + Number(s.precio),
         0,
       );
-      const margenTotalServicios = serviciosCatalogo.reduce(
-        (acc, s) => acc + (s.margenOperativo ?? 0),
-        0,
-      );
-
       if (duracionSolicitada < duracionTotalServicios) {
         throw new BadRequestException(
           `La duración solicitada (${duracionSolicitada} min) es insuficiente para los servicios seleccionados (mínimo ${duracionTotalServicios} min)`,
         );
       }
 
-      const margenFinal = dto.margenGrupalHistorico ?? margenTotalServicios;
+      // D42 (2026-10-02): el margen grupal es un campo propio de la barbería
+      // (configuracion_barberia.margen_grupal_minutos, default 10, rango 0-60).
+      // Se ignoran tanto la suma de márgenes individuales (D01) como cualquier
+      // valor enviado por el cliente en el DTO (D44: todo se calcula en el backend).
+      const margenFinal = config.margenGrupalMinutos ?? 10;
 
       // 2. Verificamos disponibilidad en tiempo real delegando a Agenda/Disponibilidad
       const disponibilidades = await this.disponibilidadService.calcularDisponibilidad({
