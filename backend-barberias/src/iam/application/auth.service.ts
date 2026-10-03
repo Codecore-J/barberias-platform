@@ -139,7 +139,7 @@ export class AuthService {
     // Si la contraseña tiene un costo legado superior a 10 (ej. 12 rondas),
     // re-hasheamos asíncronamente en background a 10 rondas para acelerar logins futuros
     if (usuario.passwordHash.startsWith('$2b$12$') || usuario.passwordHash.startsWith('$2a$12$')) {
-      bcrypt.hash(dto.password, this.BCRYPT_ROUNDS).then((nuevoHash) => {
+      void bcrypt.hash(dto.password, this.BCRYPT_ROUNDS).then((nuevoHash) => {
         this.prisma.usuario.update({
           where: { id: usuario.id },
           data: { passwordHash: nuevoHash },
