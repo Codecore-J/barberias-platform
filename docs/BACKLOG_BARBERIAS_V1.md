@@ -286,8 +286,8 @@ No hagas merge. Espera aprobación.
 **Aceptación:**
 - [x] `migrate diff` devuelve código 0 (sin diferencias).
 - [ ] El workflow corre en verde en el PR.
-- [x] La carpeta de la migración coincide con el nombre registrado en `_prisma_migrations` de staging.
-**Evidencia:** `migrate diff` -> `No difference detected.` Confirmado nombre de migración en BD staging (esperando log del CI).
+- [ ] La carpeta de la migración coincide con el nombre registrado en `_prisma_migrations` de staging. **Verificación del dueño:** este criterio solo se puede comprobar en la BD de staging y no se ejecuta desde el entorno de desarrollo.
+**Evidencia:** `migrate diff` -> `No difference detected.`
 
 ### E0-05 · Protección de `main` y despliegue condicionado
 `P0 · S · Depende: E0-04 · Rama: chore/proteger-main`
