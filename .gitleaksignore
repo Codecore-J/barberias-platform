@@ -1,0 +1,12 @@
+# E0-04: falso positivo confirmado por el dueño (backend-barberias/.env.example)
+1daff42c8b72d8f32e1362cffc9cabcc3bb5bb04:backend-barberias/.env.example:generic-api-key:5
+# E0-04: falso positivo confirmado por el dueño (backend-barberias/src/iam/iam.config.ts)
+5bff448150c17cdc4dd88a5bb7a8c11376016188:backend-barberias/src/iam/iam.config.ts:generic-api-key:6
+# E0-04: falso positivo confirmado por el dueño (backend-barberias/test/conf01-security.spec.ts)
+5bff448150c17cdc4dd88a5bb7a8c11376016188:backend-barberias/test/conf01-security.spec.ts:generic-api-key:18
+# E0-04: falso positivo confirmado por el dueño (backend-barberias/test/conf01-security.spec.ts)
+5bff448150c17cdc4dd88a5bb7a8c11376016188:backend-barberias/test/conf01-security.spec.ts:generic-api-key:52
+# E0-04: falso positivo confirmado por el dueño (backend-barberias/test/conf01-security.spec.ts)
+5bff448150c17cdc4dd88a5bb7a8c11376016188:backend-barberias/test/conf01-security.spec.ts:generic-api-key:59
+# E0-04: falso positivo confirmado por el dueño (backend-barberias/README.md)
+ee7c4ab696cc7833c80a020e371671e3b89580fc:backend-barberias/README.md:generic-api-key:5
