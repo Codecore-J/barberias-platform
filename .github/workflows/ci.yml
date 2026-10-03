@@ -34,6 +34,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -71,6 +73,11 @@ jobs:
       - name: Build Frontend
         working-directory: ./frontend-barberias
         run: npm run build
+
+      - name: Scan for Secrets (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Apply Prisma Migrations (Test DB)
         working-directory: ./backend-barberias
