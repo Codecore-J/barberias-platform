@@ -112,8 +112,9 @@ Cualquier otra transición es inválida y responde 409 `ESTADO_INVALIDO`. Al pas
 Ocupan: `CONFIRMADA`, `PENDIENTE`, `PROPUESTA_PENDIENTE` y toda propuesta de horario activa (el espacio propuesto se mantiene reservado hasta que expire). Liberan: `RECHAZADA`, `EXPIRADA`, `CANCELADA`, `NO_PRESENTADO`. `COMPLETADA` pertenece al pasado.
 
 ### 5.4 Cálculo del bloque de tiempo
-- **Individual (D01):** suma de las duraciones de los servicios elegidos + suma de los márgenes operativos de esos servicios. Un combo aporta su `duracion_propia` + `margen_propio` (no la suma de sus componentes). Ejemplo: 35 + 10 = 45 min.
-- **Grupal:** suma de las duraciones de todos los servicios de todos los participantes + UN SOLO margen grupal (D42: el mayor margen operativo entre los servicios incluidos). Ejemplo del diseño: 35 + 30 + 30 + 10 = 105 min. Nunca un margen por participante.
+> **Actualización 2026-10-02 (D42 revisada y cerrada):** el margen que se añade al bloque —individual o grupal— sale SIEMPRE de `configuracion_barberia.margen_grupal_minutos` (default 10, rango 0-60), snapshotteado en `reservas.margen_grupal_historico` al crear la reserva. La suma de márgenes (regla antigua de D01) y el "mayor margen" (regla antigua de D42) dejan de usarse para el bloque; los márgenes individuales siguen congelándose por servicio en `margen_historico`. Nunca lo provee el cliente (D44).
+- **Individual:** la duración solicitada debe cubrir la suma de las duraciones de los servicios elegidos; el margen aplicado al bloque es el de configuración de la barbería. Ejemplo con margen de configuración 10: 35 + 10 = 45 min.
+- **Grupal:** suma de las duraciones de todos los servicios de todos los participantes + UN SOLO margen de configuración (D42). Ejemplo del diseño: 35 + 30 + 30 + 10 = 105 min. Nunca un margen por participante.
 - Cada servicio guarda su snapshot (`precio_historico`, `duracion_historica`, `margen_historico`). En reservas grupales `margen_historico` = 0 y el margen real vive en `reservas.margen_grupal_historico`.
 
 ### 5.5 Motivos estructurados (D19)
@@ -129,7 +130,7 @@ Las D01 a D13 son del plan estratégico; las D14 en adelante se agregaron al arm
 
 | ID | Decisión |
 |---|---|
-| D01 | Margen individual con varios servicios: se suma el de cada servicio. |
+| D01 | Margen individual con varios servicios: se suma el de cada servicio. **Revisada 2026-10-02:** la suma ya no determina el bloque (ver 5.4 y D42); se conserva como snapshot por servicio en `margen_historico`. |
 | D02 | El no presentado lo marca el admin (ADMIN_BARBERIA o ADMINISTRADOR), solo pasados los 15 minutos. |
 | D03 | Se añaden el estado `COMPLETADA` y `barberias.zona_horaria`. |
 | D04 | Cualquier usuario autenticado puede crear barberías: límite 2 por responsable, sin aprobación previa, con límite de peticiones y auditoría. El ADMINISTRADOR puede dejarlas `INACTIVO`. |
@@ -168,7 +169,7 @@ Las D01 a D13 son del plan estratégico; las D14 en adelante se agregaron al arm
 | D37 | Qué ocupa espacio: sección 5.3. |
 | D40 | Contrato de errores: `{ statusCode, codigo, mensaje }`. 400 validación, 401 sin sesión, 403 sin permiso, 404 no existe, 409 conflicto (concurrencia o `ESTADO_INVALIDO`), 422 regla de negocio violada. |
 | D41 | Los horarios disponibles se ofrecen en pasos de 15 minutos (constante configurable). |
-| D42 | Margen grupal = el mayor margen operativo entre los servicios incluidos. |
+| D42 | **Revisada 2026-10-02:** el margen del bloque es un campo propio de la barbería `configuracion_barberia.margen_grupal_minutos` (default 10, rango 0-60), snapshotteado en `reservas.margen_grupal_historico` al crear. Nunca la suma ni el mayor de los márgenes individuales, nunca provisto por el cliente (D44). *(Regla anterior, derogada: "el mayor margen operativo entre los servicios incluidos".)* |
 | D43 | La declaración del cliente (antecedente de origen CLIENTE) es visible solo para barberías donde está vinculado, siempre etiquetada "declaración del cliente, no diagnóstico", y no pasa por aprobación. |
 | D44 | Existe un endpoint de cotización (`/reservas/cotizar`) para que el frontend nunca calcule bloques ni precios. |
 

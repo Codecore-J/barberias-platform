@@ -398,6 +398,9 @@ model ConfiguracionBarberia {
   pausaDesde             DateTime? @map("pausa_desde") @db.Timestamptz
   reactivacionProgramada DateTime? @map("reactivacion_programada") @db.Timestamptz
   reactivacionReal       DateTime? @map("reactivacion_real") @db.Timestamptz
+  // D42 (2026-10-02): margen grupal propio de la barbería, default 10, rango 0-60.
+  // Se snapshottea en reservas.margen_grupal_historico al crear (nunca suma ni DTO).
+  margenGrupalMinutos    Int       @default(10) @map("margen_grupal_minutos")
 
   barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
 
