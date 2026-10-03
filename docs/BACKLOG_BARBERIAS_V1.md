@@ -185,7 +185,7 @@ Las D01 a D13 son del plan estratégico; las D14 en adelante se agregaron al arm
 - **Reglas del diseño ausentes:** reserva grupal, propuesta de horario, cancelación por el cliente, ventana de 15 minutos del no presentado, advertencia a los 3, rechazo con motivo, aprobación de la 6ª vinculación, desvincular, configuración, adelanto y reprogramación, información adicional, oportunidades de espacio, solicitudes de cambio de nombre y responsable, sesiones seguras, recordatorio de 1 hora.
 - **Infraestructura:** una sola base Neon sirve para desarrollo, E2E y despliegue. Sin CI. Render y Vercel despliegan solos al hacer push a `main`. Un E2E falla por conflicto de serialización. Sin backups verificados ni alertas. 80 usuarios de prueba en la base, 4 con rol global.
 - **Frontend:** 15 rutas, 16 componentes. Los roles administrativos se agrupan bajo `'ADMIN'`. La ficha del cliente llama a una ruta inexistente. Los botones de Personal no hacen nada. 9 pruebas en total.
-- **IDs de hallazgo:** H14 y H15 faltan en `AUDITORIA_HALLAZGOS.md` y existen dos "HALLAZGO 09". Los hallazgos nuevos reciben ID provisional al iniciar cada tarea, continuando desde H18.
+- **IDs de hallazgo:** H15 falta en `AUDITORIA_HALLAZGOS.md` (H14 existe desde el 2026-10-02, renumerado desde el segundo "HALLAZGO 09" duplicado). Los hallazgos nuevos reciben ID provisional al iniciar cada tarea, continuando desde H18.
 
 ---
 
@@ -309,7 +309,7 @@ No hagas merge. Espera aprobación.
 **Contexto:** la rama local `wip/sin-revisar` (commit 8891c52) guarda trabajo no revisado. Decisiones: `src/cliente/` se rechaza (7 defectos, se rehace en E4-05); el cambio de inasistencia para `BARBERO` se rechaza (D02); los botones de Personal con `alert()` se descartan (D06); el duplicado de `return` en `role.guard.ts` se rescata (E1-09); `.github` y la migración van a E0-04.
 **Hacer:**
 1. Crear `docs/TRIAGE_WIP.md` con una tabla archivo → decisión → tarea destino.
-2. Documentar en `AUDITORIA_HALLAZGOS.md`: HALLAZGO 14 (IDOR de reservas, versión completa) y HALLAZGO 15 (notificaciones `ENVIADO` pasa a `SIMULADO`), buscando los commits reales con `git log --all --oneline --grep=`. Si no encuentras un hash escribe "no localizado". Documentar también la colisión de los dos "HALLAZGO 09" sin renumerar nada.
+2. Documentar en `AUDITORIA_HALLAZGOS.md`: HALLAZGO 15 (notificaciones `ENVIADO` pasa a `SIMULADO`), buscando los commits reales con `git log --all --oneline --grep=`. Si no encuentras un hash escribe "no localizado". ~~Documentar también la colisión de los dos "HALLAZGO 09" sin renumerar nada.~~ (La colisión se resolvió el 2026-10-02: el IDOR pasó a HALLAZGO 14.)
 3. Registrar los hallazgos H17 (parcial), H18 a H21 y los de la sección 7 con ID provisional.
 **No hacer:** cambiar IDs existentes; borrar la rama sin aprobación.
 **Aceptación:**

@@ -344,7 +344,8 @@ La plataforma cuenta con bases arquitectónicas sobresalientes:
 
 ---
 
-### HALLAZGO 09: IDOR en Endpoint de Detalle de Reserva (Descubierto en TASK-E2)
+### HALLAZGO 14: IDOR en Endpoint de Detalle de Reserva (Descubierto en TASK-E2)
+> Renumerado el 2026-10-02 desde el segundo `HALLAZGO 09` duplicado para que cada ID de hallazgo sea único.
 - **Módulo / Ruta afectada:** `Reserva` ➔ `GET /api/v1/barberias/:barberiaId/reservas/:id`
 - **Tipo:** Seguridad / Control de Acceso (IDOR — Insecure Direct Object Reference)
 - **Severidad:** 🔴 **CRÍTICO**
@@ -413,10 +414,10 @@ La plataforma cuenta con bases arquitectónicas sobresalientes:
 
 ---
 
-## CERTIFICACIÓN FINAL DE AUDITORÍA (CIERRE)
+## ACTA DE AUDITORÍA — ESTADO AL 30/09/2026
 
 **Fecha de Cierre:** 30/09/2026
-**Commit de Certificación:** Pendiente (último push a realizar tras esta actualización)
+**Commit de certificación:** pendiente de generarse — hasta que exista, este documento no se titula a sí mismo "cierre" ni "certificación final".
 
 Se declaran superadas y certificadas las siguientes tareas críticas de seguridad y privacidad definidas en el reporte pre-auditoría:
 
@@ -428,7 +429,7 @@ Se declaran superadas y certificadas las siguientes tareas críticas de segurida
 
 ### Seguridad y Control de Acceso (Bloque E)
 * **`TASK-E1` (Margen Grupal bajo Concurrencia):** Validado. El cálculo de `margenGrupalHistorico` se realiza exactamente una vez por reserva bajo condiciones de alta concurrencia gracias a la política transaccional `SERIALIZABLE`, previniendo asignaciones incorrectas.
-* **`TASK-E2` (Prueba de IDOR):** Detectado y Resuelto (Hallazgo 09). Endpoint de detalle de reservas permitía acceso inter-tenant al no validar permisos del usuario solicitante sobre la barbería. Corregido con Guards correspondientes.
+* **`TASK-E2` (Prueba de IDOR):** Detectado y Resuelto (Hallazgo 14). Endpoint de detalle de reservas permitía acceso inter-tenant al no validar permisos del usuario solicitante sobre la barbería. Corregido con Guards correspondientes.
 * **`TASK-E3` (Inyección SQL):** Validado. Prisma ORM gestiona correctamente las sanitizaciones de `$queryRaw` mediante Prepared Statements, y no se detectó el uso de `$queryRawUnsafe` ni concatenación de cadenas vulnerables en ninguna consulta a BD.
 * **`TASK-E4` (Firmas JWT Manipuladas):** Validado. Inserciones de firmas JWT alteradas, headers alg:none o tokens inválidos son denegadas inmediata y controladamente con un error HTTP 401 sin exponer trazas de la pila (Stack Trace).
 
