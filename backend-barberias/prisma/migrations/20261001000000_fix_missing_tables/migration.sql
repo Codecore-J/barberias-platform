@@ -1,4 +1,4 @@
-﻿-- AlterTable
+-- AlterTable
 ALTER TABLE "bloqueos_agenda" ADD COLUMN     "barbero_id" UUID;
 
 -- AlterTable
