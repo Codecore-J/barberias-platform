@@ -26,10 +26,11 @@ export class BarberiaController {
 
   /**
    * POST /barberias
-   * Cualquier usuario autenticado puede crear una barbería.
+   * Cualquier usuario autenticado puede crear una barbería (decisión 1).
    * El responsable se extrae automáticamente del JWT.
+   * El límite de 2 barberías por usuario es E1-07.
    */
-  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
+  // TODO(E1-07): aplicar el límite de 2 barberías por usuario en el servicio.
   @Autenticado()
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -42,10 +43,12 @@ export class BarberiaController {
 
   /**
    * POST /barberias/vincular
-   * Vincula al usuario actual a una barbería mediante código de acceso.
+   * Vincula al usuario actual a una barbería mediante código de acceso
+   * (decisión 5). Crea un vínculo `cliente_barberias`: lo usa el CLIENTE.
+   * Un barbero entra por su rol y un administrador gestiona por panel, así que
+   * ninguno necesita un vínculo de cliente.
    */
-  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
-  @Autenticado()
+  @Roles('CLIENTE')
   @Post('vincular')
   vincular(
     @Body() dto: VincularBarberiaDto,
@@ -56,9 +59,9 @@ export class BarberiaController {
 
   /**
    * GET /barberias
-   * Lista las barberías donde el usuario es responsable.
+   * Lista las barberías donde el usuario es responsable. Los cuatro roles
+   * necesitan esta pantalla: es el selector de sede del frontend.
    */
-  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
   @Autenticado()
   @Get()
   findMine(@CurrentUser() user: UsuarioAutenticado) {
@@ -93,21 +96,27 @@ export class BarberiaController {
 
   /**
    * GET /barberias/:id
-   * Cualquier usuario autenticado puede consultar una barbería por ID.
+   * Cualquier usuario autenticado puede consultar una barbería por ID
+   * (decisión 3). La respuesta excluye `codigoAcceso` y `enlaceUnico` salvo
+   * para el ADMIN_BARBERIA de esa barbería y el ADMINISTRADOR global.
    */
-  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
   @Autenticado()
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.barberiaService.findOne(id);
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.barberiaService.findOne(id, user);
   }
 
   /**
    * PATCH /barberias/:id/seleccionar
    * Selecciona una barbería como la activa para el usuario (apaga las demás).
+   * Exige vínculo `cliente_barberias` ACTIVO, de ahí que el CLIENTE sea el rol
+   * que puede usarla (decisión 2). Los administradores también la usan: es el
+   * paso final de «crear barbería» y de cambiar de sede.
    */
-  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
-  @Autenticado()
+  @Roles('CLIENTE', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Patch(':id/seleccionar')
   seleccionarActiva(
     @Param('id', ParseUUIDPipe) id: string,
@@ -118,10 +127,10 @@ export class BarberiaController {
 
   /**
    * PATCH /barberias/:id
-   * Solo el responsable de la barbería o el ADMINISTRADOR global puede editarla.
+   * Solo el ADMIN_BARBERIA de la barbería o el ADMINISTRADOR global puede
+   * editarla; la pertenencia la comprueba el servicio.
    */
-  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
-  @Autenticado()
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Patch(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -134,10 +143,10 @@ export class BarberiaController {
   /**
    * DELETE /barberias/:id
    * Soft-delete — cambia estado a INACTIVO.
-   * Solo el responsable o el ADMINISTRADOR global puede eliminarlo.
+   * Suspender una sede es una decisión de plataforma (decisión 4): solo el
+   * ADMINISTRADOR global lo hace.
    */
-  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
-  @Autenticado()
+  @Roles('ADMINISTRADOR')
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(
