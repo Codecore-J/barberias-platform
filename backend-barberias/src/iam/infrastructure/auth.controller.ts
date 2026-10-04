@@ -52,8 +52,11 @@ export class AuthController {
   /**
    * Consulta del perfil del usuario actualmente autenticado.
    * Endpoint protegido: extrae el usuario a partir del JWT verificado.
+   *
+   * E1-05: `@Autenticado` es aquí la política definitiva. La ruta devuelve los
+   * datos del propio solicitante, así que no hay rol que exigir: los cuatro
+   * roles la necesitan para arrancar sesión en el frontend.
    */
-  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
   @Autenticado()
   @Get('me')
   @HttpCode(HttpStatus.OK)
