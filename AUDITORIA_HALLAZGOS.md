@@ -434,3 +434,78 @@ Se declaran superadas y certificadas las siguientes tareas críticas de segurida
 * **`TASK-E4` (Firmas JWT Manipuladas):** Validado. Inserciones de firmas JWT alteradas, headers alg:none o tokens inválidos son denegadas inmediata y controladamente con un error HTTP 401 sin exponer trazas de la pila (Stack Trace).
 
 Todas las pruebas unitarias y E2E concluyeron de manera satisfactoria (100% de cobertura). **El sistema se considera formalmente CERTIFICADO PARA PASO A PRODUCCIÓN.**
+
+---
+
+## HALLAZGOS DE LA FASE 0 (H22 a H30)
+
+Identificadores provisionales, libres hasta H21. Documentados sin arreglar: cada entrada dice en que estado esta y que falta por verificar. La severidad solo se escribe cuando consta en la evidencia; si no, queda como *pendiente de verificar*.
+
+### H22: Modulo de cliente activo en AppModule con 7 defectos
+- **Módulo / Ruta afectada:** Backend, `src/cliente/` (`ClienteController`, `ClienteService`, `ClienteModule`), rutas `GET /clientes/:id/ficha` y `POST /clientes/:id/notas`
+- **Tipo:** Seguridad / multi-tenant
+- **Severidad:** *pendiente de verificar* — no consta en la evidencia entregada
+- **Defectos que arrastra:** IDOR por `x-barberia-id`, uso de un rol `ADMIN` inexistente, estados inexistentes, nota autoaprobada, y 3 mas no detallados aqui
+- **Estado:** contenido, no corregido. `ClienteModule` se quito de los imports de `AppModule` (PR `fix/contener-cliente`, merge `ae948bf`) con el comentario `H22: desactivado hasta E4-05`. `src/cliente/` sigue en el repo y el modulo se rehace en E4-05
+- **Evidencia:** `backend-barberias/src/app.module.spec.ts` (2 tests) fija que el modulo no esta registrado; suite del backend 137/137 en verde; las dos rutas responden 404 hasta E4-05
+- **Causa raíz:** el modulo se incorporo desde la rama `wip/sin-revisar` sin revisarlo (backlog, linea 309: "`src/cliente/` se rechaza (7 defectos, se rehace en E4-05)")
+
+### H23: Frontend sin script de lint
+- **Módulo / Ruta afectada:** Frontend, `frontend-barberias/package.json` (scripts)
+- **Tipo:** Calidad / cobertura de CI
+- **Severidad:** Baja
+- **Estado:** resuelto en el PR #12 (`fix/frontend-lint-h23`, merge `8d1454d`)
+- **Evidencia:** `npm run lint` en el frontend termina con `Found 0 warnings and 0 errors.` sobre 43 archivos; el paso del CI se reactivo en el PR #19 (merge `5a8b540`)
+
+### H24: El guard de roles no redirigia a BARBERO a /admin/agenda
+- **Módulo / Ruta afectada:** Frontend, `role.guard.ts` y su test
+- **Tipo:** UX / lógica de navegación por rol
+- **Severidad:** Baja
+- **Estado:** resuelto en el PR #11 (`fix/role-guard-redirect-barbero`, merge `f97d5a6`)
+- **Evidencia:** `role.guard.spec.ts` (7 tests) en verde; con el PR merged, el CI de main corre ese test sin `continue-on-error`
+
+### H25: Seis falsos positivos de gitleaks aceptados
+- **Módulo / Ruta afectada:** `.gitleaksignore`
+- **Tipo:** Falsos positivos de la herramienta de escaneo de secretos
+- **Severidad:** Informativa (aceptados por el dueño en E0-04)
+- **Estado:** resuelto. Los 6 fragmentos falsos positivos quedaron en `.gitleaksignore` y el paso de gitleaks entró en el CI con el PR #18 (merge `93a1506`)
+- **Archivos aceptados:** `backend-barberias/.env.example` (linea 5), `backend-barberias/src/iam/iam.config.ts` (linea 6), `backend-barberias/test/conf01-security.spec.ts` (lineas 18, 52 y 59) y `backend-barberias/README.md` (linea 5); todos con la regla `generic-api-key`
+- **Evidencia:** con el fichero presente, `gitleaks detect --log-opts="--all" --redact` sobre el historial completo devuelve `no leaks found` (0 fugas); sin el, 6 hallazgos, que son exactamente los aceptados
+
+### H26: Clave JWT de reserva hardcodeada que se usa si falta JWT_SECRET
+- **Módulo / Ruta afectada:** Backend, `backend-barberias/src/iam/iam.config.ts` (`DEFAULT_DEV_JWT_SECRET`, linea 6; fallback en la linea 41)
+- **Tipo:** Seguridad / secretos en codigo
+- **Severidad:** Media (verificado por el dueño: Render arranca con `NODE_ENV=production`)
+- **Estado:** abierto
+- **Causa raíz:** `getJwtSecret()` solo aborta el arranque si `NODE_ENV === 'production'` y el secreto falta o es trivial. Fuera de produccion, `return secret || DEFAULT_DEV_JWT_SECRET` usa la constante de 64 caracteres hex del propio repositorio
+
+### H27: auth.service devuelve un token de recuperacion en la respuesta
+- **Módulo / Ruta afectada:** Backend, `POST /api/v1/auth/forgot-password` (`auth.controller.ts` linea 69, `@Public()`, limite 5/min por IP) y `auth.service.ts` linea 258
+- **Tipo:** Seguridad / exposicion de token
+- **Severidad:** *pendiente de verificar* — no consta en la evidencia entregada
+- **Estado:** abierto
+- **Que devuelve:** la respuesta incluye `debugToken` con el token de recuperacion real (SHA-256, un solo uso, 15 minutos) cuando `NODE_ENV !== 'production'`. Ese token es el que acepta `POST /api/v1/auth/reset-password` (`auth.controller.ts` linea 83), es decir, sirve para restablecer la contrasena de la cuenta indicada
+- **Causa raíz:** el campo se anade de forma condicional para depuracion y la condicion es el `NODE_ENV`
+
+### H28: Dos E2E dependen de datos sembrados
+- **Módulo / Ruta afectada:** Backend, `backend-barberias/test/hallazgo14-idor-reserva.e2e-spec.ts` y `backend-barberias/test/barberia.e2e-spec.ts`
+- **Tipo:** Calidad / pruebas dependientes del entorno
+- **Severidad:** Baja
+- **Estado:** abierto
+- **Causa raíz:** *pendiente de verificar*. En esta tarea no se reprodujo el fallo contra una base sin seed. Lo que muestra el codigo es que ambos specs crean o hacen upsert de los roles que necesitan (`hallazgo14` lineas 76 a 83 y 298 a 302; `barberia` linea 53), y `hallazgo14` ademas busca `CLIENTE` y `ADMIN_BARBERIA` por nombre en las lineas 76 y 167
+
+### H29: Lockfiles por proyecto congelados desde el commit inicial
+- **Módulo / Ruta afectada:** `backend-barberias/package-lock.json` y `frontend-barberias/package-lock.json`
+- **Tipo:** Dependencias / higiene del repositorio
+- **Severidad:** Baja
+- **Estado:** abierto
+- **Causa raíz:** los dos ficheros los toco un unico commit, `ee7c4ab Initial commit`, mientras sus `package.json` siguieron cambiando. El lockfile que usa el CI es el de la raiz (workspaces), regenerado en `18a579c`; los otros dos no los usa nadie
+- **Evidencia:** `git log --oneline -- <fichero>` devuelve 1 commit para cada lockfile por proyecto y 7 para el de la raiz
+
+### H30: Build Command de Render distinto del que declara el repo
+- **Módulo / Ruta afectada:** Despliegue, `render.yaml` y el panel de Render
+- **Tipo:** Despliegue / divergencia entre repo y panel
+- **Severidad:** Media
+- **Estado:** abierto
+- **Que consta:** segun el dueño, el Build Command del panel de Render se edito a mano y ya no coincide con `render.yaml` (que declara `rm -f ../package.json && npm install --include=dev && npm run build`). *Pendiente de verificar*: sin acceso al panel de Render no se puede leer el valor real
+- **Causa raíz:** el `postinstall` del backend es `prisma skills sync || exit 0`, que **no** genera el cliente de Prisma; el CI lo resuelve con un paso explicito `npx prisma generate`. En el despliegue hay que confirmar que el Build Command del panel hace lo mismo
