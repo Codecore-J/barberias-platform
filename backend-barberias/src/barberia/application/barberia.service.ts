@@ -12,6 +12,7 @@ import type { BarberiaResponseDto } from './dto/barberia-response.dto.js';
 import type { VincularBarberiaDto } from './dto/vincular-barberia.dto.js';
 import { plainToInstance } from 'class-transformer';
 import { BarberiaResponseDto as BarberiaResponse } from './dto/barberia-response.dto.js';
+import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 /** Genera un slug URL-safe de hasta `maxLen` caracteres */
 function generateSlug(text: string, maxLen = 40): string {
@@ -136,7 +137,46 @@ export class BarberiaService {
   }
 
   // ── LISTAR PERSONAL ────────────────────────────────────────────────────────
-  async findPersonal(barberiaId: string) {
+
+  /**
+   * Decide si el usuario puede ver el personal de la barbería (E1-03 · H19).
+   *
+   * Devuelve `true` si es un administrador de esa barbería o el
+   * ADMINISTRADOR global (que pasa por la regla global).
+   *
+   * La comprobación es la misma que aplica E1-02 en auditoría: el decorador
+   * `@Roles('ADMIN_BARBERIA')` solo mira la lista plana de roles, así que sin
+   * esta validación un admin de la barbería A vería el personal de la B.
+   */
+  private esAdminDeBarberia(
+    barberiaId: string,
+    usuario: UsuarioAutenticado,
+  ): boolean {
+    if (usuario.roles?.includes('ADMINISTRADOR')) {
+      return true;
+    }
+
+    return (usuario.rolesDetallados ?? []).some(
+      (rol) =>
+        rol.nombre === 'ADMIN_BARBERIA' &&
+        (rol.barberiaId === barberiaId || rol.barberiaId === null),
+    );
+  }
+
+  /**
+   * Lista el personal (barberos y administradores) de una barbería.
+   *
+   * Solo un administrador de esa barbería, o el ADMINISTRADOR global, puede
+   * llamarla. El correo y el teléfono son datos de contacto y se omiten para
+   * quien no lo sea.
+   */
+  async findPersonal(barberiaId: string, usuario: UsuarioAutenticado) {
+    const veContacto = !!usuario && this.esAdminDeBarberia(barberiaId, usuario);
+
+    if (!veContacto) {
+      throw new ForbiddenException('No posees el rol ADMIN_BARBERIA en esa barbería.');
+    }
+
     const roles = await this.prisma.usuarioRol.findMany({
       where: { barberiaId },
       include: {
@@ -163,7 +203,16 @@ export class BarberiaService {
       userMap.get(r.usuario.id).roles.push(r.rol.nombre);
     }
 
-    return Array.from(userMap.values());
+    const personal = Array.from(userMap.values());
+
+    // El contacto (correo y teléfono) solo se devuelve a un administrador.
+    // Hoy la comprobación anterior ya lo garantiza, pero se mantiene aquí para
+    // que la regla se cumpla también si E1-05 amplía los roles de la ruta.
+    if (veContacto) {
+      return personal;
+    }
+
+    return personal.map(({ correo, telefono, ...resto }) => resto);
   }
 
   // ── LISTAR (propias del responsable) ──────────────────────────────────────
