@@ -23,7 +23,6 @@ export const roleGuard = (allowedRoles: string[]): CanActivateFn => {
         return (
           userRoles.includes('ADMINISTRADOR') ||
           userRoles.includes('ADMIN_BARBERIA') ||
-          userRoles.includes('SUPER_ADMIN') ||
           userRoles.includes('ADMIN')
         );
       }

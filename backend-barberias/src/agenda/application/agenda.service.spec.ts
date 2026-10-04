@@ -130,5 +130,25 @@ describe('AgendaService', () => {
 
       expect(mockPrismaService.bloqueosAgenda.findMany).toHaveBeenCalledTimes(1);
     });
+
+    it('E1-04: debe dejar leer bloqueos al ADMINISTRADOR de otra barbería', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ responsableId: 'admin-ajeno' });
+      mockPrismaService.usuarioRol.findMany.mockResolvedValue([]);
+      // Solo es administrador global si la consulta busca el rol que existe.
+      mockPrismaService.usuarioRol.findFirst.mockImplementation(async (args: any) =>
+        args?.where?.rol?.nombre === 'ADMINISTRADOR' ? { id: 'ur-global' } : null,
+      );
+      mockPrismaService.bloqueosAgenda.findMany.mockResolvedValue([{ id: 'bloqueo-1' }]);
+
+      const result = await service.obtenerBloqueos(
+        'admin-global',
+        BARBERIA_B,
+        new Date(),
+        new Date(),
+      );
+
+      expect(mockPrismaService.bloqueosAgenda.findMany).toHaveBeenCalledTimes(1);
+      expect(result).toEqual([{ id: 'bloqueo-1' }]);
+    });
   });
 });

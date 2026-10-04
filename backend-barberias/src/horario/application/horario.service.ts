@@ -3,6 +3,7 @@ import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { CreateHorarioDto } from './dto/create-horario.dto.js';
 import { CreateExcepcionHorarioDto, TipoExcepcionHorario } from './dto/create-excepcion-horario.dto.js';
 import { validateTimeRange, parseTime } from '../domain/time.utils.js';
+import { esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
 
 @Injectable()
 export class HorarioService {
@@ -24,11 +25,10 @@ export class HorarioService {
     });
 
     const isResponsable = barberia.responsableId === usuarioId;
-    const isSuperAdmin = await this.prisma.usuarioRol.findFirst({
-      where: { usuarioId, rol: { nombre: 'SUPER_ADMIN' } }
-    });
+    // E1-04 (D05): el rol global es ADMINISTRADOR.
+    const esGlobal = await esAdministradorGlobalPorId(this.prisma, usuarioId);
 
-    if (!isResponsable && !isSuperAdmin && !rolesUser.some(ur => ur.rol.nombre === 'ADMIN_BARBERIA')) {
+    if (!isResponsable && !esGlobal && !rolesUser.some(ur => ur.rol.nombre === 'ADMIN_BARBERIA')) {
       throw new ForbiddenException('No tienes permisos para modificar horarios de esta barbería');
     }
   }

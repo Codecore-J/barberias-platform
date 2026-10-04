@@ -24,6 +24,8 @@ describe('BarberiaController', () => {
             vincularCliente: vi.fn(),
             seleccionarBarberiaActiva: vi.fn(),
             findPersonal: vi.fn(),
+            update: vi.fn(),
+            remove: vi.fn(),
           },
         },
       ],
@@ -83,6 +85,44 @@ describe('BarberiaController', () => {
       await controller.findPersonal('uuid-barberia', user);
 
       expect(service.findPersonal).toHaveBeenCalledWith('uuid-barberia', user);
+    });
+  });
+
+  describe('E1-04: ADMINISTRADOR frente al rol global inexistente', () => {
+    it('update debe marcar esGlobal=true a un ADMINISTRADOR', async () => {
+      const user: UsuarioAutenticado = {
+        id: 'uuid-global',
+        correo: 'global@test.com',
+        roles: ['ADMINISTRADOR'],
+      };
+
+      await controller.update('uuid-barberia', { nombre: 'Nuevo' } as any, user);
+
+      expect(service.update).toHaveBeenCalledWith('uuid-barberia', user.id, { nombre: 'Nuevo' }, true);
+    });
+
+    it('update NO debe marcar esGlobal a un ADMIN_BARBERIA', async () => {
+      const user: UsuarioAutenticado = {
+        id: 'uuid-admin',
+        correo: 'admin@test.com',
+        roles: ['ADMIN_BARBERIA'],
+      };
+
+      await controller.update('uuid-barberia', { nombre: 'Nuevo' } as any, user);
+
+      expect(service.update).toHaveBeenCalledWith('uuid-barberia', user.id, { nombre: 'Nuevo' }, false);
+    });
+
+    it('remove debe marcar esGlobal=true a un ADMINISTRADOR', async () => {
+      const user: UsuarioAutenticado = {
+        id: 'uuid-global',
+        correo: 'global@test.com',
+        roles: ['ADMINISTRADOR'],
+      };
+
+      await controller.remove('uuid-barberia', user);
+
+      expect(service.remove).toHaveBeenCalledWith('uuid-barberia', user.id, true);
     });
   });
 });

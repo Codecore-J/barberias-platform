@@ -11,6 +11,7 @@ import { withSerializableTransaction } from '../../shared/concurrency/serializab
 import { RegistrarPagoDto } from './dto/registrar-pago.dto.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
+import { esAdministradorGlobal, esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
 
 @Injectable()
 export class PagoService {
@@ -35,11 +36,8 @@ export class PagoService {
       return;
     }
 
-    const isSuperAdmin = await this.prisma.usuarioRol.findFirst({
-      where: { usuarioId, rol: { nombre: 'SUPER_ADMIN' } },
-    });
-
-    if (isSuperAdmin) {
+    // E1-04 (D05): el rol global es ADMINISTRADOR.
+    if (await esAdministradorGlobalPorId(this.prisma, usuarioId)) {
       return;
     }
 
@@ -182,7 +180,7 @@ export class PagoService {
     page = 1,
     pageSize = 50,
   ) {
-    const esGlobal = usuario.roles?.includes('ADMINISTRADOR') ?? false;
+    const esGlobal = esAdministradorGlobal(usuario);
 
     // E1-02: mismo criterio que GET /auditoria. Sin barbería y sin ser
     // ADMINISTRADOR, 400 antes de tocar la base.

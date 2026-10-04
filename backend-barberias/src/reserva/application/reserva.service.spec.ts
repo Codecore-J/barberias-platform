@@ -336,6 +336,52 @@ describe('ReservaService', () => {
       ).rejects.toThrowError(NotFoundException);
     });
   });
+
+  describe('marcarInasistencia (E1-04)', () => {
+    it('el ADMINISTRADOR puede marcar inasistencia en una barbería ajena', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ responsableId: 'otro-res' });
+      mockPrismaService.usuarioRol.findMany.mockResolvedValue([]);
+      mockPrismaService.usuarioRol.findFirst.mockImplementation(async (args: any) =>
+        args?.where?.rol?.nombre === 'ADMINISTRADOR' ? { id: 'ur-global' } : null,
+      );
+      mockPrismaService.reserva.findUnique.mockResolvedValue({
+        id: 'uuid-reserva',
+        clienteId: 'uuid-cliente',
+        barberiaId: 'uuid-barberia',
+        estado: 'CONFIRMADA',
+      });
+      mockPrismaService.reserva.update.mockResolvedValue({ id: 'uuid-reserva' });
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({
+        id: 'uuid-vinculo',
+        contadorNoPresentado: 0,
+        estaRestringido: false,
+        motivoRestriccion: null,
+      });
+      mockPrismaService.clienteBarberia.update.mockResolvedValue({});
+
+      const result = await service.marcarInasistencia(
+        'uuid-barberia',
+        'uuid-reserva',
+        'admin-global',
+      );
+
+      expect(result.contadorNoPresentado).toBe(1);
+      expect(mockPrismaService.reserva.update).toHaveBeenCalledWith({
+        where: { id: 'uuid-reserva' },
+        data: { estado: 'NO_ASISTIO' },
+      });
+    });
+
+    it('un ADMIN_BARBERIA de otra barbería sigue sin poder marcar inasistencia', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ responsableId: 'otro-res' });
+      mockPrismaService.usuarioRol.findMany.mockResolvedValue([]);
+      mockPrismaService.usuarioRol.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.marcarInasistencia('uuid-barberia', 'uuid-reserva', 'admin-ajeno'),
+      ).rejects.toThrowError(ForbiddenException);
+    });
+  });
 });
 
 

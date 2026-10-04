@@ -141,7 +141,7 @@ import { NotificationService } from '../../core/services/notification.service';
               </div>
             }
 
-            @if (userRole() === 'SUPER_ADMIN') {
+            @if (userRole() === 'ADMINISTRADOR') {
               <!-- Mis Sedes -->
               <a routerLink="/barberias" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
@@ -337,7 +337,7 @@ import { NotificationService } from '../../core/services/notification.service';
                 </a>
               }
 
-              @if (userRole() === 'SUPER_ADMIN') {
+              @if (userRole() === 'ADMINISTRADOR') {
                 <a routerLink="/barberias" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-building text-amber-400"></i>Sedes
                 </a>
@@ -446,7 +446,7 @@ export class AppLayoutComponent implements OnInit {
   userRole(): string {
     const roles = this.authService.authState().user?.roles;
     if (!roles || roles.length === 0) return 'CLIENTE';
-    if (roles.includes('SUPER_ADMIN') || roles.includes('ADMINISTRADOR')) return 'SUPER_ADMIN';
+    if (roles.includes('ADMINISTRADOR')) return 'ADMINISTRADOR';
     if (roles.includes('ADMIN_BARBERIA')) return 'ADMIN_BARBERIA';
     if (roles.includes('BARBERO')) return 'BARBERO';
     return 'CLIENTE';

@@ -18,6 +18,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { UsuarioResponseDto } from './dto/usuario-response.dto.js';
 import { JwtPayload } from '../domain/jwt.interface.js';
+import { validarAsignacionRol } from '../domain/roles.js';
 import { plainToInstance } from 'class-transformer';
 
 @Injectable()
@@ -59,6 +60,12 @@ export class AuthService {
       this.logger.error('El rol CLIENTE no existe. Ejecuta: npm run seed');
       throw new InternalServerErrorException('Error de configuración del sistema.');
     }
+
+    // E1-04: un rol de ámbito BARBERIA exige barbería. CLIENTE es GLOBAL y se
+    // registra sin vincular, pero si el catálogo lo declara de otra forma se
+    // rechaza en el dominio y NO dentro de la transacción (que convertiría el
+    // error de dominio en un 500).
+    validarAsignacionRol(rolCliente, null);
 
     try {
       const usuario = await this.prisma.$transaction(async (tx) => {

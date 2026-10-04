@@ -142,4 +142,53 @@ describe('RolesGuard', () => {
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
     });
   });
+
+  describe('E1-04: el comodín nulo solo aplica a roles de ámbito GLOBAL', () => {
+    it('debe rechazar a un ADMIN_BARBERIA con barberiaId nulo (ya no es comodín)', () => {
+      mockPolitica({ roles: ['ADMIN_BARBERIA'] });
+      const context = createMockContext(
+        {
+          id: '1',
+          correo: 'admin@barber.com',
+          roles: ['ADMIN_BARBERIA'],
+          rolesDetallados: [
+            { nombre: 'ADMIN_BARBERIA', barberiaId: null, ambito: 'BARBERIA' },
+          ],
+        },
+        { barberiaId: 'barberia-ajena-789' },
+      );
+
+      expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+    });
+
+    it('debe rechazar a un BARBERO con barberiaId nulo (ya no es comodín)', () => {
+      mockPolitica({ roles: ['BARBERO'] });
+      const context = createMockContext(
+        {
+          id: '1',
+          correo: 'barbero@barber.com',
+          roles: ['BARBERO'],
+          rolesDetallados: [{ nombre: 'BARBERO', barberiaId: null, ambito: 'BARBERIA' }],
+        },
+        { barberiaId: 'barberia-ajena-789' },
+      );
+
+      expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+    });
+
+    it('debe seguir dejando pasar a un ADMINISTRADOR de ámbito GLOBAL con barberiaId nulo', () => {
+      mockPolitica({ roles: ['ADMIN_BARBERIA'] });
+      const context = createMockContext(
+        {
+          id: '1',
+          correo: 'global@barber.com',
+          roles: ['ADMINISTRADOR'],
+          rolesDetallados: [{ nombre: 'ADMINISTRADOR', barberiaId: null, ambito: 'GLOBAL' }],
+        },
+        { barberiaId: 'barberia-ajena-789' },
+      );
+
+      expect(guard.canActivate(context)).toBe(true);
+    });
+  });
 });

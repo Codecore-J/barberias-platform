@@ -4,6 +4,7 @@ import { CreateBloqueoDto } from './dto/create-bloqueo.dto.js';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { validateTimeRange } from '../../horario/domain/time.utils.js';
+import { esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
 
 @Injectable()
 export class AgendaService {
@@ -30,11 +31,11 @@ export class AgendaService {
     });
 
     const isResponsable = barberia.responsableId === usuarioId;
-    const isSuperAdmin = await this.prisma.usuarioRol.findFirst({
-      where: { usuarioId, rol: { nombre: 'SUPER_ADMIN' } },
-    });
+    // E1-04: antes buscaba un rol inexistente, así que el
+    // ADMINISTRADOR real pasaba el guard y aquí le devolvían 403.
+    const esGlobal = await esAdministradorGlobalPorId(this.prisma, usuarioId);
 
-    if (!isResponsable && !isSuperAdmin && !rolesUser.some((ur) => ur.rol.nombre === 'ADMIN_BARBERIA')) {
+    if (!isResponsable && !esGlobal && !rolesUser.some((ur) => ur.rol.nombre === 'ADMIN_BARBERIA')) {
       throw new ForbiddenException('No tienes permisos para gestionar la agenda de esta barbería');
     }
   }

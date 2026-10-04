@@ -10,6 +10,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import type { Prisma } from '@prisma/client';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
+import { alcanceCumple, esAdministradorGlobal } from '../../iam/domain/roles.js';
 
 export interface RegistrarAuditoriaDto {
   usuarioId?: string | null;
@@ -95,8 +96,7 @@ export class AuditoriaService implements OnModuleInit {
     barberiaId: string | undefined,
     usuario?: UsuarioAutenticado | null,
   ): string | null {
-    const roles = usuario?.roles ?? [];
-    if (roles.includes('ADMINISTRADOR')) {
+    if (esAdministradorGlobal(usuario)) {
       return barberiaId ?? null;
     }
 
@@ -106,8 +106,9 @@ export class AuditoriaService implements OnModuleInit {
       );
     }
 
+    // E1-04: el `barberiaId` nulo solo comodín para roles de ámbito GLOBAL.
     const detallado = (usuario?.rolesDetallados ?? []).some(
-      (rol) => rol.nombre === 'ADMIN_BARBERIA' && (rol.barberiaId === barberiaId || rol.barberiaId === null),
+      (rol) => rol.nombre === 'ADMIN_BARBERIA' && alcanceCumple(rol, barberiaId),
     );
 
     if (!detallado) {

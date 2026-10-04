@@ -6,6 +6,13 @@ import { validateTimeRange } from '../../horario/domain/time.utils.js';
 import { DisponibilidadService } from '../../agenda/application/disponibilidad.service.js';
 import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
+import {
+  alcanceCumple,
+  esAdministradorGlobalPorId,
+  ROL_ADMINISTRADOR,
+  ROL_ADMIN_BARBERIA,
+  ROL_BARBERO,
+} from '../../iam/domain/roles.js';
 
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -244,15 +251,15 @@ export class ReservaService {
     // SEC-E2 y HALLAZGO-14: Verificar que el usuario autenticado tenga rol en esta barbería,
     // y si SOLO es CLIENTE, verificar que la reserva sea suya.
     const rolesEnBarberia = user.rolesDetallados?.filter(
-      (r) => r.barberiaId === barberiaId || r.ambito === 'GLOBAL'
+      (r) => alcanceCumple(r, barberiaId)
     ) || [];
 
     if (rolesEnBarberia.length === 0) {
       throw new ForbiddenException('No tienes acceso a las reservas de esta barbería.');
     }
 
-    const isAdminOrBarbero = rolesEnBarberia.some(r => 
-      r.nombre === 'ADMINISTRADOR' || r.nombre === 'SUPER_ADMIN' || r.nombre === 'ADMIN_BARBERIA' || r.nombre === 'BARBERO'
+    const isAdminOrBarbero = rolesEnBarberia.some((r) =>
+      [ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA, ROL_BARBERO].includes(r.nombre),
     );
 
     if (!isAdminOrBarbero && reserva.clienteId !== user.id) {
@@ -274,15 +281,14 @@ export class ReservaService {
       }
 
       const isResponsable = barberia.responsableId === solicitanteId;
-      const isSuperAdmin = await this.prisma.usuarioRol.findFirst({
-        where: { usuarioId: solicitanteId, rol: { nombre: { in: ['SUPER_ADMIN', 'ADMINISTRADOR'] } } },
-      });
+      // E1-04 (D05): el rol global es ADMINISTRADOR.
+      const esGlobal = await esAdministradorGlobalPorId(this.prisma, solicitanteId);
       const rolesUser = await this.prisma.usuarioRol.findMany({
         where: { usuarioId: solicitanteId, barberiaId },
         include: { rol: true },
       });
 
-      if (!isResponsable && !isSuperAdmin && !rolesUser.some((ur) => ur.rol.nombre === 'ADMIN_BARBERIA' || ur.rol.nombre === 'BARBERO')) {
+      if (!isResponsable && !esGlobal && !rolesUser.some((ur) => ur.rol.nombre === 'ADMIN_BARBERIA' || ur.rol.nombre === 'BARBERO')) {
         throw new ForbiddenException('No tienes permisos para marcar inasistencias en esta barbería');
       }
     }
@@ -356,7 +362,7 @@ export class ReservaService {
     }
 
     const rolesEnBarberia = user.rolesDetallados?.filter(
-      (r) => r.barberiaId === barberiaId || r.ambito === 'GLOBAL'
+      (r) => alcanceCumple(r, barberiaId)
     ) || [];
 
     if (rolesEnBarberia.length === 0) {
