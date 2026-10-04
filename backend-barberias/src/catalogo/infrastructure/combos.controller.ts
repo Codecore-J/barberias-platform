@@ -16,12 +16,18 @@ import { UpdateComboDto } from '../application/dto/update-combo.dto.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 
+/**
+ * Catálogo de combos de una barbería (E1-05).
+ *
+ * Misma política que los servicios: D16 deja al BARBERO fuera de la escritura y
+ * la lectura se abre al ADMINISTRADOR global.
+ */
 @Controller('catalogo/combos')
 export class CombosController {
   constructor(private readonly combosService: CombosService) {}
 
   @Post()
-  @Roles('ADMIN_BARBERIA', 'BARBERO')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @HttpCode(HttpStatus.CREATED)
   create(
     @CurrentBarberiaId() barberiaId: string,
@@ -31,13 +37,13 @@ export class CombosController {
   }
 
   @Get()
-  @Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE')
+  @Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR')
   findAll(@CurrentBarberiaId() barberiaId: string) {
     return this.combosService.findAll(barberiaId);
   }
 
   @Get(':id')
-  @Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE')
+  @Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR')
   findOne(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -46,7 +52,7 @@ export class CombosController {
   }
 
   @Patch(':id')
-  @Roles('ADMIN_BARBERIA', 'BARBERO')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   update(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -56,7 +62,7 @@ export class CombosController {
   }
 
   @Delete(':id')
-  @Roles('ADMIN_BARBERIA', 'BARBERO')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @HttpCode(HttpStatus.OK)
   deactivate(
     @CurrentBarberiaId() barberiaId: string,
