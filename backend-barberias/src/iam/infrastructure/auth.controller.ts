@@ -17,6 +17,7 @@ import { Public } from './public.decorator.js';
 import { CurrentUser } from './current-user.decorator.js';
 import type { UsuarioAutenticado } from '../domain/jwt.interface.js';
 import { Throttle } from '@nestjs/throttler';
+import { Autenticado } from './autenticado.decorator.js';
 
 @Controller('auth')
 export class AuthController {
@@ -52,6 +53,8 @@ export class AuthController {
    * Consulta del perfil del usuario actualmente autenticado.
    * Endpoint protegido: extrae el usuario a partir del JWT verificado.
    */
+  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
+  @Autenticado()
   @Get('me')
   @HttpCode(HttpStatus.OK)
   async getProfile(

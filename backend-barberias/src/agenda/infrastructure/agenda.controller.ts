@@ -6,6 +6,7 @@ import { ConsultarDisponibilidadDto } from '../application/dto/consultar-disponi
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
+import { Autenticado } from '../../iam/infrastructure/autenticado.decorator.js';
 
 @Controller(['barberias/:barberiaId/agenda', 'agenda'])
 export class AgendaController {
@@ -14,6 +15,8 @@ export class AgendaController {
     private readonly disponibilidadService: DisponibilidadService
   ) {}
 
+  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
+  @Autenticado()
   @Get('disponibilidad')
   async consultarDisponibilidadGet(
     @CurrentBarberiaId() barberiaId: string,
@@ -32,6 +35,8 @@ export class AgendaController {
     });
   }
 
+  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
+  @Autenticado()
   @Post('bloqueos')
   crearBloqueo(
     @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
@@ -41,6 +46,8 @@ export class AgendaController {
     return this.agendaService.crearBloqueo(user.id, barberiaId, dto);
   }
 
+  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
+  @Autenticado()
   @Get('bloqueos')
   obtenerBloqueos(
     @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
@@ -52,6 +59,8 @@ export class AgendaController {
     return this.agendaService.obtenerBloqueos(barberiaId, fromDate, toDate);
   }
 
+  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
+  @Autenticado()
   @Delete('bloqueos/:id')
   eliminarBloqueo(
     @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
@@ -61,6 +70,8 @@ export class AgendaController {
     return this.agendaService.eliminarBloqueo(user.id, barberiaId, id);
   }
 
+  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
+  @Autenticado()
   @Post('disponibilidad')
   async obtenerDisponibilidad(
     @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
