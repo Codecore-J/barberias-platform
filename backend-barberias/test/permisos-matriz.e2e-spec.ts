@@ -64,7 +64,7 @@ const CASOS: Caso[] = [
   { verbo: 'post', ruta: '/barberias/{A}/horarios/mi-horario', permitidos: ['BARBERO', 'ADMINISTRADOR'], cuerpo: [] },
   { verbo: 'get', ruta: '/barberias/{A}/horarios/excepciones', permitidos: ['BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR'] },
   { verbo: 'post', ruta: '/barberias/{A}/horarios/excepciones', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
-  { verbo: 'post', ruta: `/barberias/{A}/horarios/barberos/${randomUUID()}/excepciones`, permitidos: ['BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
+  { verbo: 'post', ruta: '/barberias/{A}/horarios/barberos/{BARBERO}/excepciones', permitidos: ['BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
 
   // ── pagos ────────────────────────────────────────────────────────────────
   { verbo: 'get', ruta: '/cobros/auditoria', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
@@ -103,9 +103,10 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
     CLIENTE: 'pm_cliente@matriz.test',
   };
 
-  const duenios = ['pm_duenio@matriz.test', 'pm_duenio_a@matriz.test'];
+  const duenios = ['pm_duenio@matriz.test'];
   const tokens: Partial<Record<Rol, string>> = {};
   const barberia = { a: '', b: '' };
+  const usuarios: { barbero: string } = { barbero: '' };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] })
@@ -166,7 +167,10 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
     ).id;
 
     // ── Barbería A: el tenant de los cuatro usuarios ──────────────────────
-    const duenioA = await crearUsuario(duenios[1], roles['ADMIN_BARBERIA'].id, null);
+    // Su responsable es el propio ADMIN_BARBERIA del test: `PATCH /barberias/:id`
+    // solo deja editar a quien figura como responsable, y aqui lo que se quiere
+    // medir es el decorador, no esa comprobación del servicio.
+    const adminBarberiaId = await crearUsuario(correos.ADMIN_BARBERIA, roles['ADMIN_BARBERIA'].id, null);
     barberia.a = (
       await prisma.barberia.create({
         data: {
@@ -176,20 +180,21 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
           estado: 'ACTIVA',
           codigoAcceso: 'TESTPMA',
           enlaceUnico: 'matriz-a',
-          responsableId: duenioA,
+          responsableId: adminBarberiaId,
         },
       })
     ).id;
 
+    await prisma.usuarioRol.updateMany({
+      where: { usuarioId: adminBarberiaId },
+      data: { barberiaId: barberia.a },
+    });
+
     // ── Un usuario por rol ────────────────────────────────────────────────
     await crearUsuario(correos.ADMINISTRADOR, roles['ADMINISTRADOR'].id, null);
-    const adminBarberiaId = await crearUsuario(
-      correos.ADMIN_BARBERIA,
-      roles['ADMIN_BARBERIA'].id,
-      barberia.a,
-    );
-    await crearUsuario(correos.BARBERO, roles['BARBERO'].id, barberia.a);
+    const barberoId = await crearUsuario(correos.BARBERO, roles['BARBERO'].id, barberia.a);
     const clienteId = await crearUsuario(correos.CLIENTE, roles['CLIENTE'].id, null);
+    usuarios.barbero = barberoId;
 
     // El CLIENTE queda vinculado a la barbería A con vínculo activo.
     await prisma.clienteBarberia.create({
@@ -217,14 +222,19 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
     }
 
     expect(adminBarberiaId).toBeTruthy();
+    expect(barberoId).toBeTruthy();
   }, 120_000);
 
+  // `telefono` es único en el esquema: cada usuario del test recibe el suyo.
+  let secuenciaTelefono = 0;
+
   async function crearUsuario(correo: string, rolId: string, barberiaId: string | null) {
+    secuenciaTelefono += 1;
     const usuario = await prisma.usuario.create({
       data: {
         nombreCompleto: `Matriz ${correo}`,
         correo,
-        telefono: '600000000',
+        telefono: `6${String(secuenciaTelefono).padStart(9, '0')}`,
         passwordHash: '$2b$10$HashFalsoMatrizPermisosNoSeUsaParaLogin',
         estadoCuenta: 'ACTIVO',
         usuarioRoles: { create: [{ rolId, barberiaId }] },
@@ -236,12 +246,33 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
 
   async function limpiar() {
     const correosPrueba = [...Object.values(correos), ...duenios];
-    await prisma.usuarioRol.deleteMany({ where: { usuario: { correo: { in: correosPrueba } } } });
-    await prisma.clienteBarberia.deleteMany({ where: { usuario: { correo: { in: correosPrueba } } } });
-    await prisma.barberia.deleteMany({
-      where: { nombre: { in: ['Barbería Matriz A', 'Barbería Matriz B'] } },
+    const usuarios = await prisma.usuario.findMany({
+      where: { correo: { in: correosPrueba } },
+      select: { id: true },
     });
-    await prisma.usuario.deleteMany({ where: { correo: { in: correosPrueba } } });
+    const idsUsuario = usuarios.map((u) => u.id);
+
+    // La matriz incluye `PATCH /barberias/:id`, que renombra la sede, así que no
+    // se puede buscar solo por nombre: se localizan por código de acceso o por
+    // responsable, que es como el propio test las creo.
+    const sedes = await prisma.barberia.findMany({
+      where: {
+        OR: [
+          { codigoAcceso: { in: ['TESTPMA', 'TESTPMB'] } },
+          { responsableId: { in: idsUsuario } },
+          { nombre: { in: ['Barbería Matriz A', 'Barbería Matriz B'] } },
+        ],
+      },
+      select: { id: true },
+    });
+    const idsSede = sedes.map((s) => s.id);
+
+    await prisma.reserva.deleteMany({ where: { barberiaId: { in: idsSede } } });
+    await prisma.reporte.deleteMany({ where: { barberiaId: { in: idsSede } } });
+    await prisma.usuarioRol.deleteMany({ where: { usuarioId: { in: idsUsuario } } });
+    await prisma.clienteBarberia.deleteMany({ where: { usuarioId: { in: idsUsuario } } });
+    await prisma.barberia.deleteMany({ where: { id: { in: idsSede } } });
+    await prisma.usuario.deleteMany({ where: { id: { in: idsUsuario } } });
   }
 
   afterAll(async () => {
@@ -250,7 +281,10 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
   }, 120_000);
 
   async function llamar(caso: Caso, rol: Rol) {
-    const ruta = caso.ruta.replace('{A}', barberia.a).replace('{B}', barberia.b);
+    const ruta = caso.ruta
+      .replace('{A}', barberia.a)
+      .replace('{B}', barberia.b)
+      .replace('{BARBERO}', usuarios.barbero);
     const peticion = request(app.getHttpServer())[caso.verbo](ruta)
       .set('Authorization', `Bearer ${tokens[rol]}`)
       .set('x-barberia-id', barberia.a);
