@@ -12,6 +12,7 @@ import type { BarberiaResponseDto } from './dto/barberia-response.dto.js';
 import type { VincularBarberiaDto } from './dto/vincular-barberia.dto.js';
 import { plainToInstance } from 'class-transformer';
 import { BarberiaResponseDto as BarberiaResponse } from './dto/barberia-response.dto.js';
+import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 /** Genera un slug URL-safe de hasta `maxLen` caracteres */
 function generateSlug(text: string, maxLen = 40): string {
@@ -136,7 +137,58 @@ export class BarberiaService {
   }
 
   // ── LISTAR PERSONAL ────────────────────────────────────────────────────────
-  async findPersonal(barberiaId: string) {
+
+  /**
+   * ¿El usuario tiene alguno de estos roles en ESA barbería? (E1-03 · H19)
+   *
+   * La comprobación es la misma que aplica E1-02 en auditoría: el decorador
+   * `@Roles(...)` solo mira la lista plana de roles, así que sin esta
+   * validación un admin o barbero de la barbería A vería el personal de la B.
+   *
+   * El `barberiaId` nulo se trata como comodín, igual que en el guard y en
+   * E1-02; E1-04 lo restringe a los roles de ámbito GLOBAL.
+   */
+  private tieneAlgunRolEnBarberia(
+    barberiaId: string,
+    usuario: UsuarioAutenticado,
+    roles: string[],
+  ): boolean {
+    return (usuario.rolesDetallados ?? []).some(
+      (rol) =>
+        roles.includes(rol.nombre) &&
+        (rol.barberiaId === barberiaId || rol.barberiaId === null),
+    );
+  }
+
+  /** El ADMINISTRADOR tiene acceso transversal: no está acotado a una barbería. */
+  private esAdministradorGlobal(usuario: UsuarioAutenticado): boolean {
+    return usuario.roles?.includes('ADMINISTRADOR') ?? false;
+  }
+
+  /**
+   * Lista el personal (barberos y administradores) de una barbería.
+   *
+   * Puede leerla un ADMIN_BARBERIA o un BARBERO de esa misma barbería, y el
+   * ADMINISTRADOR global por la regla global. Cualquier otro recibe 403.
+   *
+   * El correo y el teléfono son datos de contacto: solo los ve un
+   * administrador. Un BARBERO recibe el resto de campos sin esos dos.
+   */
+  async findPersonal(barberiaId: string, usuario: UsuarioAutenticado) {
+    const esGlobal = !!usuario && this.esAdministradorGlobal(usuario);
+    const esAdmin =
+      esGlobal ||
+      (!!usuario && this.tieneAlgunRolEnBarberia(barberiaId, usuario, ['ADMIN_BARBERIA']));
+    const puedeLeer =
+      esAdmin ||
+      (!!usuario && this.tieneAlgunRolEnBarberia(barberiaId, usuario, ['BARBERO']));
+
+    if (!puedeLeer) {
+      throw new ForbiddenException(
+        'No posees el rol ADMIN_BARBERIA ni BARBERO en esa barbería.',
+      );
+    }
+
     const roles = await this.prisma.usuarioRol.findMany({
       where: { barberiaId },
       include: {
@@ -163,7 +215,15 @@ export class BarberiaService {
       userMap.get(r.usuario.id).roles.push(r.rol.nombre);
     }
 
-    return Array.from(userMap.values());
+    const personal = Array.from(userMap.values());
+
+    if (esAdmin) {
+      return personal;
+    }
+
+    // BARBERO: se elimina el contacto del payload, no se deja en `undefined`
+    // para que no aparezca al serializar.
+    return personal.map(({ correo, telefono, ...resto }) => resto);
   }
 
   // ── LISTAR (propias del responsable) ──────────────────────────────────────

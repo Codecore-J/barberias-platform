@@ -77,16 +77,17 @@ export class BarberiaController {
   /**
    * GET /barberias/:id/personal
    * Lista el personal (barberos y administradores) de una barbería.
+   * ADMIN_BARBERIA o BARBERO de esa barbería, y el ADMINISTRADOR global;
+   * la pertenencia y el ocultado del contacto se validan en el servicio
+   * (E1-03 · H19).
    */
-  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
-  @Autenticado()
+  @Roles('ADMIN_BARBERIA', 'BARBERO')
   @Get(':id/personal')
   findPersonal(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    // Ideally check if user has access to this info, but for MVP it's okay
-    return this.barberiaService.findPersonal(id);
+    return this.barberiaService.findPersonal(id, user);
   }
 
   /**

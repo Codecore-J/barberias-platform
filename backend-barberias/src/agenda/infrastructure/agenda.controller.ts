@@ -7,6 +7,7 @@ import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js'
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import { Autenticado } from '../../iam/infrastructure/autenticado.decorator.js';
+import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 
 @Controller(['barberias/:barberiaId/agenda', 'agenda'])
 export class AgendaController {
@@ -46,17 +47,19 @@ export class AgendaController {
     return this.agendaService.crearBloqueo(user.id, barberiaId, dto);
   }
 
-  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
-  @Autenticado()
+  // E1-03 · H20: un CLIENTE nunca lee bloqueos ni sus motivos; para su
+  // disponibilidad usa `GET .../agenda/disponibilidad`.
+  @Roles('ADMIN_BARBERIA', 'BARBERO')
   @Get('bloqueos')
   obtenerBloqueos(
     @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
     @Query('from') from: string,
     @Query('to') to: string,
+    @CurrentUser() user: UsuarioAutenticado,
   ) {
     const fromDate = from ? new Date(from) : new Date();
     const toDate = to ? new Date(to) : new Date(new Date().setMonth(new Date().getMonth() + 1));
-    return this.agendaService.obtenerBloqueos(barberiaId, fromDate, toDate);
+    return this.agendaService.obtenerBloqueos(user.id, barberiaId, fromDate, toDate);
   }
 
   // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.

@@ -110,7 +110,15 @@ export class AgendaService {
     return { success: true, message: 'Bloqueo eliminado correctamente' };
   }
 
-  async obtenerBloqueos(barberiaId: string, fromDate: Date, toDate: Date) {
+  /**
+   * Lista los bloqueos de una barbería en un rango de fechas (E1-03 · H20).
+   *
+   * Valida el acceso ANTES de leer: sin esta llamada, cualquier usuario con
+   * sesión obtenía los bloqueos y el `motivo` de cualquier barbería.
+   */
+  async obtenerBloqueos(usuarioId: string, barberiaId: string, fromDate: Date, toDate: Date) {
+    await this.validateAccess(usuarioId, barberiaId);
+
     return this.prisma.bloqueosAgenda.findMany({
       where: {
         barberiaId,

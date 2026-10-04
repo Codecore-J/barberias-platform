@@ -3,6 +3,67 @@ import { vi } from 'vitest';
 import { BarberiaService } from './barberia.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
+
+const BARBERIA_A = 'barberia-a';
+const BARBERIA_B = 'barberia-b';
+
+const CLIENTE: UsuarioAutenticado = {
+  id: 'usuario-cliente',
+  correo: 'cliente@test.com',
+  roles: ['CLIENTE'],
+  rolesDetallados: [{ nombre: 'CLIENTE', barberiaId: BARBERIA_A, ambito: 'BARBERIA' }],
+};
+
+const ADMIN_A: UsuarioAutenticado = {
+  id: 'usuario-admin-a',
+  correo: 'admin.a@test.com',
+  roles: ['ADMIN_BARBERIA'],
+  rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: BARBERIA_A, ambito: 'BARBERIA' }],
+};
+
+const ADMIN_B: UsuarioAutenticado = {
+  id: 'usuario-admin-b',
+  correo: 'admin.b@test.com',
+  roles: ['ADMIN_BARBERIA'],
+  rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: BARBERIA_B, ambito: 'BARBERIA' }],
+};
+
+const ADMINISTRADOR: UsuarioAutenticado = {
+  id: 'usuario-global',
+  correo: 'global@test.com',
+  roles: ['ADMINISTRADOR'],
+  rolesDetallados: [{ nombre: 'ADMINISTRADOR', barberiaId: null, ambito: 'GLOBAL' }],
+};
+
+const BARBERO_A: UsuarioAutenticado = {
+  id: 'usuario-barbero-a',
+  correo: 'barbero.a@test.com',
+  roles: ['BARBERO'],
+  rolesDetallados: [{ nombre: 'BARBERO', barberiaId: BARBERIA_A, ambito: 'BARBERIA' }],
+};
+
+const BARBERO_B: UsuarioAutenticado = {
+  id: 'usuario-barbero-b',
+  correo: 'barbero.b@test.com',
+  roles: ['BARBERO'],
+  rolesDetallados: [{ nombre: 'BARBERO', barberiaId: BARBERIA_B, ambito: 'BARBERIA' }],
+};
+
+/** Fila de usuario_roles tal y como la devuelve Prisma. */
+function filaRol(usuarioId: string, nombreRol: string, barberiaId = BARBERIA_B) {
+  return {
+    barberiaId,
+    usuario: {
+      id: usuarioId,
+      nombreCompleto: 'Persona',
+      correo: `${usuarioId}@test.com`,
+      telefono: '600000000',
+      estadoCuenta: 'ACTIVO',
+    },
+    rol: { nombre: nombreRol },
+  };
+}
 
 describe('BarberiaService', () => {
   let service: BarberiaService;
@@ -32,6 +93,7 @@ describe('BarberiaService', () => {
             },
             usuarioRol: {
               upsert: vi.fn(),
+              findMany: vi.fn(),
             },
             configuracionBarberia: {
               create: vi.fn(),
@@ -129,6 +191,84 @@ describe('BarberiaService', () => {
       const result = await service.vincularCliente('user-1', { codigoAcceso: 'ABC12345' });
       expect(result.estadoVinculacion).toBe('PENDIENTE');
       expect(result.esBarberiaActiva).toBe(false);
+    });
+  });
+
+  describe('findPersonal (E1-03 · H19)', () => {
+    beforeEach(() => {
+      (prisma.usuarioRol.findMany as any).mockResolvedValue([]);
+    });
+
+    it('debe rechazar a un CLIENTE antes de leer nada', async () => {
+      await expect(service.findPersonal(BARBERIA_B, CLIENTE)).rejects.toThrow(ForbiddenException);
+      expect(prisma.usuarioRol.findMany).not.toHaveBeenCalled();
+    });
+
+    it('debe rechazar a un ADMIN de otra barbería antes de leer nada', async () => {
+      await expect(service.findPersonal(BARBERIA_B, ADMIN_A)).rejects.toThrow(ForbiddenException);
+      expect(prisma.usuarioRol.findMany).not.toHaveBeenCalled();
+    });
+
+    it('debe listar el personal al ADMIN de esa barbería, con correo y teléfono', async () => {
+      (prisma.usuarioRol.findMany as any).mockResolvedValue([
+        filaRol('barbero-1', 'BARBERO'),
+        filaRol('admin-1', 'ADMIN_BARBERIA'),
+      ]);
+
+      const result = await service.findPersonal(BARBERIA_B, ADMIN_B);
+
+      expect(prisma.usuarioRol.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { barberiaId: BARBERIA_B } }),
+      );
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({
+        id: 'barbero-1',
+        correo: 'barbero-1@test.com',
+        telefono: '600000000',
+        roles: ['BARBERO'],
+      });
+    });
+
+    it('debe dejar pasar al ADMINISTRADOR global (regla global) con correo y teléfono', async () => {
+      (prisma.usuarioRol.findMany as any).mockResolvedValue([filaRol('admin-1', 'ADMIN_BARBERIA')]);
+
+      const result = await service.findPersonal(BARBERIA_B, ADMINISTRADOR);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].correo).toBe('admin-1@test.com');
+      expect(result[0].telefono).toBe('600000000');
+    });
+
+    it('debe devolver el personal al BARBERO de esa barbería, sin correo ni teléfono', async () => {
+      (prisma.usuarioRol.findMany as any).mockResolvedValue([
+        filaRol('barbero-1', 'BARBERO'),
+        filaRol('admin-1', 'ADMIN_BARBERIA'),
+      ]);
+
+      const result = await service.findPersonal(BARBERIA_B, BARBERO_B);
+
+      expect(prisma.usuarioRol.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { barberiaId: BARBERIA_B } }),
+      );
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        id: 'barbero-1',
+        nombreCompleto: 'Persona',
+        estado: 'ACTIVO',
+        roles: ['BARBERO'],
+      });
+      expect(result[0]).not.toHaveProperty('correo');
+      expect(result[0]).not.toHaveProperty('telefono');
+      expect(JSON.stringify(result)).not.toContain('@test.com');
+      expect(JSON.stringify(result)).not.toContain('600000000');
+    });
+
+    it('debe rechazar a un BARBERO de otra barbería antes de leer nada', async () => {
+      (prisma.usuarioRol.findMany as any).mockResolvedValue([filaRol('barbero-1', 'BARBERO')]);
+
+      await expect(service.findPersonal(BARBERIA_B, BARBERO_A)).rejects.toThrow(ForbiddenException);
+
+      expect(prisma.usuarioRol.findMany).not.toHaveBeenCalled();
     });
   });
 

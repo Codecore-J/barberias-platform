@@ -23,6 +23,7 @@ describe('BarberiaController', () => {
             remove: vi.fn(),
             vincularCliente: vi.fn(),
             seleccionarBarberiaActiva: vi.fn(),
+            findPersonal: vi.fn(),
           },
         },
       ],
@@ -72,6 +73,16 @@ describe('BarberiaController', () => {
         const user: UsuarioAutenticado = { id: 'uuid-user', correo: 'test@test.com', roles: [] };
         await controller.seleccionarActiva('uuid-barberia', user);
         expect(service.seleccionarBarberiaActiva).toHaveBeenCalledWith(user.id, 'uuid-barberia');
+    });
+  });
+
+  describe('findPersonal (E1-03 · H19)', () => {
+    it('debe pasar el usuario actual al servicio para validar pertenencia', async () => {
+      const user: UsuarioAutenticado = { id: 'uuid-user', correo: 'test@test.com', roles: [] };
+
+      await controller.findPersonal('uuid-barberia', user);
+
+      expect(service.findPersonal).toHaveBeenCalledWith('uuid-barberia', user);
     });
   });
 });
