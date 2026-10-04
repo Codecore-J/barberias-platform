@@ -331,6 +331,21 @@ No hagas merge. Espera aprobación.
 - [ ] El script de admin falla de forma segura sin variables.
 **Evidencia:** salida de los tests.
 
+### E0-08 · Hallazgos H22 a H30 documentados (sin corregir)
+`P1 · S · Depende: — · Rama: docs/e0-08-hallazgos`
+**Contexto:** entre el commit inicial y hoy aparecieron nueve hallazgos que no estaban registrados en ningun sitio; los IDs libres llegaban hasta H21. Cuatro estan resueltos o contenidos (H22 contenido, H23 y H24 resueltos, H25 aceptado) y cinco siguen abiertos (H26 a H30). Se documentan en `AUDITORIA_HALLAZGOS.md`; esta tarea no arregla ninguno.
+**Hacer:**
+1. Solo documentacion: registrar H22 a H30 con el formato de la seccion 3 del archivo de hallazgos.
+2. Cada entrada declara su estado y, si falta evidencia, lo dice como *pendiente de verificar*. No rellenar severidades ni causas por inferencia.
+**No hacer:** corregir H26 a H30 aqui; tocar `src/cliente/` (se rehace en E4-05); editar `render.yaml`.
+**Aceptación:**
+- [x] H22 a H30 registrados en `AUDITORIA_HALLAZGOS.md` con estado y evidencia.
+- [ ] H22 reimplementado en E4-05.
+- [ ] H26 y H27 cerrados en tareas propias (secretos en codigo y token de recuperacion en la respuesta).
+- [ ] H28 reproducido contra una base sin seed, para confirmar o desmentir la dependencia.
+- [ ] H29 y H30 decididos por el dueno: si borrar los lockfiles por proyecto y si alinear el Build Command del panel de Render con `render.yaml`.
+**Evidencia:** la seccion nueva del archivo de hallazgos contiene las nueve entradas, H22 a H30.
+
 ---
 
 ## ÉPICA E1 — SEGURIDAD
