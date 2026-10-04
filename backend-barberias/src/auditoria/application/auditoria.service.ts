@@ -1,8 +1,15 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import type { Prisma } from '@prisma/client';
+import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 export interface RegistrarAuditoriaDto {
   usuarioId?: string | null;
@@ -18,8 +25,16 @@ export interface FiltrosAuditoriaDto {
   accion?: string;
   usuarioId?: string;
   barberiaId?: string;
-  limite?: number;
-  offset?: number;
+  page?: number;
+  pageSize?: number;
+}
+
+/** Pagina de resultados con la forma { data, total, page, pageSize } (D32). */
+export interface PaginaAuditoria<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 @Injectable()
@@ -62,10 +77,61 @@ export class AuditoriaService implements OnModuleInit {
   }
 
   /**
-   * Consulta el registro de auditoría filtrado por entidad, acción, usuario o barbería con paginación.
+   * Decide qué barbería puede consultar el usuario (E1-02 / H18).
+   *
+   * Devuelve el `barberiaId` que se debe aplicar al filtro, o `null` cuando
+   * el usuario es ADMINISTRADOR y consulta la vista global.
+   *
+   * Reglas:
+   * - ADMINISTRADOR: vista global, `barberiaId` opcional.
+   * - Cualquier otro: `barberiaId` obligatorio (400 si falta) y tiene que
+   *   aparecer en sus `rolesDetallados` con ADMIN_BARBERIA (403 si no).
+   *
+   * Nunca devuelve `undefined`: para un usuario no global el filtro por
+   * barbería es siempre obligatorio, así que la consulta nunca llega a
+   * `where: {}`.
    */
-  async consultarAuditorias(filtros: FiltrosAuditoriaDto = {}) {
-    const { entidad, entidadId, accion, usuarioId, barberiaId, limite = 50, offset = 0 } = filtros;
+  private barberiaConsultable(
+    barberiaId: string | undefined,
+    usuario?: UsuarioAutenticado | null,
+  ): string | null {
+    const roles = usuario?.roles ?? [];
+    if (roles.includes('ADMINISTRADOR')) {
+      return barberiaId ?? null;
+    }
+
+    if (!barberiaId) {
+      throw new BadRequestException(
+        'Debes indicar la barbería (query barberiaId o cabecera x-barberia-id) para consultar la auditoría.',
+      );
+    }
+
+    const detallado = (usuario?.rolesDetallados ?? []).some(
+      (rol) => rol.nombre === 'ADMIN_BARBERIA' && (rol.barberiaId === barberiaId || rol.barberiaId === null),
+    );
+
+    if (!detallado) {
+      throw new ForbiddenException(
+        'No posees el rol ADMIN_BARBERIA en esa barbería.',
+      );
+    }
+
+    return barberiaId;
+  }
+
+  /**
+   * Consulta el registro de auditoría filtrado por entidad, acción, usuario o
+   * barbería, con paginación `{ data, total, page, pageSize }` (D32).
+   *
+   * El filtro por barbería se hace sobre el JSON `contexto->>'barberiaId'`
+   * porque la tabla `auditoria` todavía no tiene columna propia (E3-01).
+   */
+  async consultarAuditorias(
+    filtros: FiltrosAuditoriaDto = {},
+    usuario?: UsuarioAutenticado | null,
+  ): Promise<PaginaAuditoria<any>> {
+    const { entidad, entidadId, accion, usuarioId } = filtros;
+    const barberiaId = this.barberiaConsultable(filtros.barberiaId, usuario);
 
     const where: any = {};
     if (entidad) where.entidad = entidad;
@@ -79,14 +145,15 @@ export class AuditoriaService implements OnModuleInit {
       };
     }
 
-    const take = Math.min(Math.max(limite, 1), 100);
-    const skip = Math.max(offset, 0);
+    const pageSize = Math.min(Math.max(filtros.pageSize ?? 50, 1), 100);
+    const page = Math.max(filtros.page ?? 1, 1);
+    const skip = (page - 1) * pageSize;
 
-    const [total, registros] = await Promise.all([
+    const [total, data] = await Promise.all([
       this.prisma.auditoria.count({ where }),
       this.prisma.auditoria.findMany({
         where,
-        take,
+        take: pageSize,
         skip,
         orderBy: { creadoAt: 'desc' },
         include: {
@@ -101,12 +168,7 @@ export class AuditoriaService implements OnModuleInit {
       }),
     ]);
 
-    return {
-      total,
-      limite: take,
-      offset: skip,
-      registros,
-    };
+    return { data, total, page, pageSize };
   }
 
   /**

@@ -75,26 +75,45 @@ describe('AuditoriaController (T8.2)', () => {
   });
 
   describe('consultarAuditorias', () => {
-    it('debe delegar en auditoriaService.consultarAuditorias() con los filtros pasados', async () => {
+    it('debe delegar en auditoriaService.consultarAuditorias() con los filtros y el usuario', async () => {
       const mockResult = {
+        data: [{ id: 'audit-1', accion: 'REGISTRO_PAGO_EN_PERSONA' }],
         total: 1,
-        limite: 20,
-        offset: 0,
-        registros: [{ id: 'audit-1', accion: 'REGISTRO_PAGO_EN_PERSONA' }],
+        page: 2,
+        pageSize: 20,
       };
       mockAuditoriaService.consultarAuditorias.mockResolvedValue(mockResult);
 
-      const result = await controller.consultarAuditorias('PAGO', 'pago-1', 'REGISTRO_PAGO_EN_PERSONA', 'user-1', 'barberia-1', '20', '0');
+      const usuario = {
+        id: 'user-1',
+        correo: 'admin@test.com',
+        roles: ['ADMIN_BARBERIA'],
+        rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: 'barberia-1', ambito: 'BARBERIA' }],
+      };
 
-      expect(mockAuditoriaService.consultarAuditorias).toHaveBeenCalledWith({
-        entidad: 'PAGO',
-        entidadId: 'pago-1',
-        accion: 'REGISTRO_PAGO_EN_PERSONA',
-        usuarioId: 'user-1',
-        barberiaId: 'barberia-1',
-        limite: 20,
-        offset: 0,
-      });
+      const result = await controller.consultarAuditorias(
+        usuario,
+        'PAGO',
+        'pago-1',
+        'REGISTRO_PAGO_EN_PERSONA',
+        'user-1',
+        'barberia-1',
+        '2',
+        '20',
+      );
+
+      expect(mockAuditoriaService.consultarAuditorias).toHaveBeenCalledWith(
+        {
+          entidad: 'PAGO',
+          entidadId: 'pago-1',
+          accion: 'REGISTRO_PAGO_EN_PERSONA',
+          usuarioId: 'user-1',
+          barberiaId: 'barberia-1',
+          page: 2,
+          pageSize: 20,
+        },
+        usuario,
+      );
       expect(result).toEqual(mockResult);
     });
   });

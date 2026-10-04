@@ -10,6 +10,7 @@ import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
 import { RegistrarPagoDto } from './dto/registrar-pago.dto.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
+import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 @Injectable()
 export class PagoService {
@@ -176,19 +177,34 @@ export class PagoService {
    * Consulta los registros de auditoría de pagos para una barbería específica.
    */
   async obtenerAuditoriaPagos(
-    usuarioId: string,
-    barberiaId: string,
-    limite = 50,
-    offset = 0,
+    usuario: UsuarioAutenticado,
+    barberiaId: string | null,
+    page = 1,
+    pageSize = 50,
   ) {
-    await this.validateAccess(usuarioId, barberiaId);
+    const esGlobal = usuario.roles?.includes('ADMINISTRADOR') ?? false;
 
-    return this.auditoriaService.consultarAuditorias({
-      entidad: 'PAGO',
-      accion: 'REGISTRO_PAGO_EN_PERSONA',
-      barberiaId,
-      limite,
-      offset,
-    });
+    // E1-02: mismo criterio que GET /auditoria. Sin barbería y sin ser
+    // ADMINISTRADOR, 400 antes de tocar la base.
+    if (!barberiaId && !esGlobal) {
+      throw new BadRequestException(
+        'Debes indicar la barbería (ruta /barberias/:barberiaId/cobros/auditoria o cabecera x-barberia-id) para consultar la auditoría.',
+      );
+    }
+
+    if (barberiaId) {
+      await this.validateAccess(usuario.id, barberiaId);
+    }
+
+    return this.auditoriaService.consultarAuditorias(
+      {
+        entidad: 'PAGO',
+        accion: 'REGISTRO_PAGO_EN_PERSONA',
+        barberiaId: barberiaId ?? undefined,
+        page,
+        pageSize,
+      },
+      usuario,
+    );
   }
 }
