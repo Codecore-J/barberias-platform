@@ -127,18 +127,64 @@ describe('BarberiaService', () => {
   });
 
   describe('findOne', () => {
-    it('debe retornar la barberia si existe', async () => {
-      const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1' };
+    const mockBarberia = {
+      id: 'uuid-1',
+      nombre: 'Barberia 1',
+      responsableId: 'res-1',
+      codigoAcceso: 'CODIGO1',
+      enlaceUnico: 'enlace-1',
+    };
+
+    it('debe retornar la barberia si existe, sin codigo de acceso a un CLIENTE', async () => {
       (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
 
-      const result = await service.findOne('uuid-1');
+      const result = await service.findOne('uuid-1', {
+        id: 'cli-1',
+        correo: 'cli@demo.com',
+        roles: ['CLIENTE'],
+        rolesDetallados: [{ nombre: 'CLIENTE', barberiaId: null, ambito: 'GLOBAL' }],
+      });
+
       expect(result.id).toBe(mockBarberia.id);
       expect(result.nombre).toBe(mockBarberia.nombre);
+      expect((result as any).codigoAcceso).toBeUndefined();
+      expect((result as any).enlaceUnico).toBeUndefined();
+    });
+
+    it('debe incluir codigoAcceso y enlaceUnico al ADMIN_BARBERIA de esa barberia', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
+
+      const result = await service.findOne('uuid-1', {
+        id: 'adm-1',
+        correo: 'adm@demo.com',
+        roles: ['ADMIN_BARBERIA'],
+        rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: 'uuid-1', ambito: 'BARBERIA' }],
+      });
+
+      expect((result as any).codigoAcceso).toBe('CODIGO1');
+      expect((result as any).enlaceUnico).toBe('enlace-1');
+    });
+
+    it('debe incluir codigoAcceso y enlaceUnico al ADMINISTRADOR global', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
+
+      const result = await service.findOne('uuid-1', {
+        id: 'adm-2',
+        correo: 'adm2@demo.com',
+        roles: ['ADMINISTRADOR'],
+        rolesDetallados: [{ nombre: 'ADMINISTRADOR', barberiaId: null, ambito: 'GLOBAL' }],
+      });
+
+      expect((result as any).codigoAcceso).toBe('CODIGO1');
     });
 
     it('debe arrojar NotFoundException si no existe', async () => {
       (prisma.barberia.findUnique as any).mockResolvedValue(null);
-      await expect(service.findOne('uuid-invalid')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('uuid-invalid', {
+        id: 'cli-1',
+        correo: 'cli@demo.com',
+        roles: ['CLIENTE'],
+      })).rejects.toThrow(NotFoundException);
     });
   });
 

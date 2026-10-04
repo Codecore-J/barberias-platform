@@ -12,6 +12,8 @@ import type { BarberiaResponseDto } from './dto/barberia-response.dto.js';
 import type { VincularBarberiaDto } from './dto/vincular-barberia.dto.js';
 import { plainToInstance } from 'class-transformer';
 import { BarberiaResponseDto as BarberiaResponse } from './dto/barberia-response.dto.js';
+import type { BarberiaLecturaDto } from './dto/barberia-lectura.dto.js';
+import { BarberiaLecturaDto as BarberiaLectura } from './dto/barberia-lectura.dto.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import {
   alcanceCumple,
@@ -48,6 +50,19 @@ export class BarberiaService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ── Helpers de mapeo ───────────────────────────────────────────────────────
+
+  /** Mismo payload que `toResponse` sin `codigoAcceso` ni `enlaceUnico`. */
+  private toLectura(barberia: any): BarberiaLecturaDto {
+    return plainToInstance(BarberiaLectura, {
+      id: barberia.id,
+      nombre: barberia.nombre,
+      descripcion: barberia.descripcion ?? null,
+      telefono: barberia.telefono,
+      ubicacion: barberia.ubicacion,
+      responsableId: barberia.responsableId,
+      estado: barberia.estado,
+    });
+  }
 
   private toResponse(barberia: any): BarberiaResponseDto {
     return plainToInstance(BarberiaResponse, {
@@ -252,12 +267,25 @@ export class BarberiaService {
 
   // ── OBTENER UNA ────────────────────────────────────────────────────────────
 
-  async findOne(id: string): Promise<BarberiaResponseDto> {
+  /**
+   * E1-05 (decisión 3): cualquier usuario autenticado puede leer una barbería,
+   * pero `codigoAcceso` y `enlaceUnico` —que son la puerta de entrada— solo se
+   * entregan al ADMIN_BARBERIA de esa barbería y al ADMINISTRADOR global.
+   */
+  async findOne(
+    id: string,
+    usuario: UsuarioAutenticado,
+  ): Promise<BarberiaResponseDto | BarberiaLecturaDto> {
     const barberia = await this.prisma.barberia.findUnique({ where: { id } });
     if (!barberia) {
       throw new NotFoundException(`Barbería ${id} no encontrada.`);
     }
-    return this.toResponse(barberia);
+
+    const veCodigo =
+      this.esAdministrador(usuario) ||
+      this.tieneAlgunRolEnBarberia(id, usuario, ['ADMIN_BARBERIA']);
+
+    return veCodigo ? this.toResponse(barberia) : this.toLectura(barberia);
   }
 
   // ── ACTUALIZAR ─────────────────────────────────────────────────────────────

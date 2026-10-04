@@ -97,9 +97,11 @@ import { VincularModalComponent } from './components/vincular-modal/vincular-mod
             Para comenzar a agendar turnos o gestionar una barbería, necesitas vincularte a una utilizando un código de acceso o crear la tuya propia.
           </p>
           <div class="flex justify-center gap-4 pt-4">
-            <button (click)="showVincularModal.set(true)" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:scale-105 transition-transform flex items-center">
-              <i class="pi pi-link mr-2"></i>Vincular con Código
-            </button>
+            @if (userRole() === 'CLIENTE') {
+              <button (click)="showVincularModal.set(true)" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:scale-105 transition-transform flex items-center">
+                <i class="pi pi-link mr-2"></i>Vincular con Código
+              </button>
+            }
             @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'ADMINISTRADOR') {
               <button routerLink="/barberias/nueva" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 glass-card hover:text-amber-400 transition-colors flex items-center">
                 <i class="pi pi-plus mr-2"></i>Crear Barbería
@@ -119,11 +121,13 @@ import { VincularModalComponent } from './components/vincular-modal/vincular-mod
               <span>Crear Nueva Barbería</span>
             </button>
           }
-          <button (click)="showVincularModal.set(true)" 
-                  class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 bg-zinc-800/90 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center gap-2">
-            <i class="pi pi-link"></i>
-            <span>Vincular con Código</span>
-          </button>
+          @if (userRole() === 'CLIENTE') {
+            <button (click)="showVincularModal.set(true)" 
+                    class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 bg-zinc-800/90 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center gap-2">
+              <i class="pi pi-link"></i>
+              <span>Vincular con Código</span>
+            </button>
+          }
         </div>
       }
 

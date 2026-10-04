@@ -10,14 +10,20 @@ import { RegistrarPagoDto } from '../application/dto/registrar-pago.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
-import { Autenticado } from '../../iam/infrastructure/autenticado.decorator.js';
+import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 
 @Controller(['barberias/:barberiaId/pagos', 'cobros', 'pagos'])
 export class PagoController {
   constructor(private readonly pagoService: PagoService) {}
 
-  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
-  @Autenticado()
+  /**
+   * POST /pagos (alias /cobros)
+   * Registrar atención y pago: BARBERO, ADMIN_BARBERIA y ADMINISTRADOR
+   * (decisión 9). Lo usa el modal de cobro de la pantalla de agenda, que
+   * comparten el barbero y el responsable.
+   */
+  // TODO(E3-09): un BARBERO solo puede cobrar reservas que tenga asignadas.
+  @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Post(['en-persona', ''])
   registrarPagoEnPersona(
     @CurrentBarberiaId() barberiaId: string,
@@ -27,8 +33,13 @@ export class PagoController {
     return this.pagoService.registrarPagoEnPersona(user.id, barberiaId, dto);
   }
 
-  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
-  @Autenticado()
+  /**
+   * GET /pagos/auditoria (alias /cobros/auditoria)
+   * Auditoría de cobros: la lee el responsable de la barbería y el
+   * ADMINISTRADOR global. El barbero ve sus cobros en la agenda, no la
+   * auditoría.
+   */
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Get('auditoria')
   obtenerAuditoriaPagos(
     @CurrentBarberiaId() barberiaId: string | null,
