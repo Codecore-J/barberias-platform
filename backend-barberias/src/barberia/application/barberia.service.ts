@@ -139,42 +139,54 @@ export class BarberiaService {
   // ── LISTAR PERSONAL ────────────────────────────────────────────────────────
 
   /**
-   * Decide si el usuario puede ver el personal de la barbería (E1-03 · H19).
-   *
-   * Devuelve `true` si es un administrador de esa barbería o el
-   * ADMINISTRADOR global (que pasa por la regla global).
+   * ¿El usuario tiene alguno de estos roles en ESA barbería? (E1-03 · H19)
    *
    * La comprobación es la misma que aplica E1-02 en auditoría: el decorador
-   * `@Roles('ADMIN_BARBERIA')` solo mira la lista plana de roles, así que sin
-   * esta validación un admin de la barbería A vería el personal de la B.
+   * `@Roles(...)` solo mira la lista plana de roles, así que sin esta
+   * validación un admin o barbero de la barbería A vería el personal de la B.
+   *
+   * El `barberiaId` nulo se trata como comodín, igual que en el guard y en
+   * E1-02; E1-04 lo restringe a los roles de ámbito GLOBAL.
    */
-  private esAdminDeBarberia(
+  private tieneAlgunRolEnBarberia(
     barberiaId: string,
     usuario: UsuarioAutenticado,
+    roles: string[],
   ): boolean {
-    if (usuario.roles?.includes('ADMINISTRADOR')) {
-      return true;
-    }
-
     return (usuario.rolesDetallados ?? []).some(
       (rol) =>
-        rol.nombre === 'ADMIN_BARBERIA' &&
+        roles.includes(rol.nombre) &&
         (rol.barberiaId === barberiaId || rol.barberiaId === null),
     );
+  }
+
+  /** El ADMINISTRADOR tiene acceso transversal: no está acotado a una barbería. */
+  private esAdministradorGlobal(usuario: UsuarioAutenticado): boolean {
+    return usuario.roles?.includes('ADMINISTRADOR') ?? false;
   }
 
   /**
    * Lista el personal (barberos y administradores) de una barbería.
    *
-   * Solo un administrador de esa barbería, o el ADMINISTRADOR global, puede
-   * llamarla. El correo y el teléfono son datos de contacto y se omiten para
-   * quien no lo sea.
+   * Puede leerla un ADMIN_BARBERIA o un BARBERO de esa misma barbería, y el
+   * ADMINISTRADOR global por la regla global. Cualquier otro recibe 403.
+   *
+   * El correo y el teléfono son datos de contacto: solo los ve un
+   * administrador. Un BARBERO recibe el resto de campos sin esos dos.
    */
   async findPersonal(barberiaId: string, usuario: UsuarioAutenticado) {
-    const veContacto = !!usuario && this.esAdminDeBarberia(barberiaId, usuario);
+    const esGlobal = !!usuario && this.esAdministradorGlobal(usuario);
+    const esAdmin =
+      esGlobal ||
+      (!!usuario && this.tieneAlgunRolEnBarberia(barberiaId, usuario, ['ADMIN_BARBERIA']));
+    const puedeLeer =
+      esAdmin ||
+      (!!usuario && this.tieneAlgunRolEnBarberia(barberiaId, usuario, ['BARBERO']));
 
-    if (!veContacto) {
-      throw new ForbiddenException('No posees el rol ADMIN_BARBERIA en esa barbería.');
+    if (!puedeLeer) {
+      throw new ForbiddenException(
+        'No posees el rol ADMIN_BARBERIA ni BARBERO en esa barbería.',
+      );
     }
 
     const roles = await this.prisma.usuarioRol.findMany({
@@ -205,13 +217,12 @@ export class BarberiaService {
 
     const personal = Array.from(userMap.values());
 
-    // El contacto (correo y teléfono) solo se devuelve a un administrador.
-    // Hoy la comprobación anterior ya lo garantiza, pero se mantiene aquí para
-    // que la regla se cumpla también si E1-05 amplía los roles de la ruta.
-    if (veContacto) {
+    if (esAdmin) {
       return personal;
     }
 
+    // BARBERO: se elimina el contacto del payload, no se deja en `undefined`
+    // para que no aparezca al serializar.
     return personal.map(({ correo, telefono, ...resto }) => resto);
   }
 

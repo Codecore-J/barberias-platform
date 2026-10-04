@@ -26,6 +26,8 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
     'admin.b.h19@test.com',
     'cliente.h19@test.com',
     'global.h19@test.com',
+    'barbero.a.h19@test.com',
+    'barbero.b.h19@test.com',
   ];
 
   let barberiaA: string;
@@ -34,6 +36,8 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
   let tokenAdminB: string;
   let tokenCliente: string;
   let tokenGlobal: string;
+  let tokenBarberoA: string;
+  let tokenBarberoB: string;
 
   async function crearUsuario(correo: string, nombre: string, telefono: string) {
     const hash = await bcrypt.hash('Password1!', 10);
@@ -73,6 +77,11 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
       update: {},
       create: { nombre: 'CLIENTE', ambito: 'BARBERIA' },
     });
+    const rolBarbero = await prisma.rol.upsert({
+      where: { nombre: 'BARBERO' },
+      update: {},
+      create: { nombre: 'BARBERO', ambito: 'BARBERIA' },
+    });
     const rolGlobal = await prisma.rol.upsert({
       where: { nombre: 'ADMINISTRADOR' },
       update: {},
@@ -83,6 +92,8 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
     const adminB = await crearUsuario('admin.b.h19@test.com', 'Admin B', '9991000002');
     const cliente = await crearUsuario('cliente.h19@test.com', 'Cliente', '9991000003');
     const global = await crearUsuario('global.h19@test.com', 'Global', '9991000004');
+    const barberoA = await crearUsuario('barbero.a.h19@test.com', 'Barbero A', '9991000005');
+    const barberoB = await crearUsuario('barbero.b.h19@test.com', 'Barbero B', '9991000006');
 
     barberiaA = (
       await prisma.barberia.create({
@@ -115,6 +126,8 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
         { usuarioId: adminB.id, rolId: rolAdmin.id, barberiaId: barberiaB },
         { usuarioId: cliente.id, rolId: rolCliente.id, barberiaId: barberiaA },
         { usuarioId: global.id, rolId: rolGlobal.id, barberiaId: null },
+        { usuarioId: barberoA.id, rolId: rolBarbero.id, barberiaId: barberiaA },
+        { usuarioId: barberoB.id, rolId: rolBarbero.id, barberiaId: barberiaB },
       ],
     });
 
@@ -152,6 +165,8 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
     tokenAdminB = await login('admin.b.h19@test.com');
     tokenCliente = await login('cliente.h19@test.com');
     tokenGlobal = await login('global.h19@test.com');
+    tokenBarberoA = await login('barbero.a.h19@test.com');
+    tokenBarberoB = await login('barbero.b.h19@test.com');
   }, 60000);
 
   afterAll(async () => {
@@ -199,6 +214,31 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
 
       expect(res.status).toBe(200);
       expect(res.body[0].correo).toBe('admin.b.h19@test.com');
+    });
+
+    it('el BARBERO de esa barbería recibe 200 sin correo ni telefono', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/barberias/${barberiaB}/personal`)
+        .set('Authorization', `Bearer ${tokenBarberoB}`);
+
+      expect(res.status).toBe(200);
+
+      const barbero = res.body.find((p: any) => p.roles.includes('BARBERO'));
+      expect(barbero).toBeDefined();
+      expect(barbero.nombreCompleto).toBeTruthy();
+      expect(barbero.estado).toBeTruthy();
+      expect(barbero).not.toHaveProperty('correo');
+      expect(barbero).not.toHaveProperty('telefono');
+      expect(JSON.stringify(res.body)).not.toContain('@h19@test.com');
+    });
+
+    it('un BARBERO de otra barbería recibe 403', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/barberias/${barberiaB}/personal`)
+        .set('Authorization', `Bearer ${tokenBarberoA}`);
+
+      expect(res.status).toBe(403);
+      expect(JSON.stringify(res.body)).not.toContain('@h19@test.com');
     });
   });
 

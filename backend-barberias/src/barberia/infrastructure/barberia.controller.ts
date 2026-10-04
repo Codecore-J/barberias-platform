@@ -77,10 +77,11 @@ export class BarberiaController {
   /**
    * GET /barberias/:id/personal
    * Lista el personal (barberos y administradores) de una barbería.
-   * Solo un ADMIN_BARBERIA de esa barbería o el ADMINISTRADOR global;
-   * la pertenencia se valida en el servicio (E1-03 · H19).
+   * ADMIN_BARBERIA o BARBERO de esa barbería, y el ADMINISTRADOR global;
+   * la pertenencia y el ocultado del contacto se validan en el servicio
+   * (E1-03 · H19).
    */
-  @Roles('ADMIN_BARBERIA')
+  @Roles('ADMIN_BARBERIA', 'BARBERO')
   @Get(':id/personal')
   findPersonal(
     @Param('id', ParseUUIDPipe) id: string,

@@ -37,16 +37,23 @@ const ADMINISTRADOR: UsuarioAutenticado = {
 };
 
 const BARBERO_A: UsuarioAutenticado = {
-  id: 'usuario-barbero',
-  correo: 'barbero@test.com',
+  id: 'usuario-barbero-a',
+  correo: 'barbero.a@test.com',
   roles: ['BARBERO'],
   rolesDetallados: [{ nombre: 'BARBERO', barberiaId: BARBERIA_A, ambito: 'BARBERIA' }],
 };
 
+const BARBERO_B: UsuarioAutenticado = {
+  id: 'usuario-barbero-b',
+  correo: 'barbero.b@test.com',
+  roles: ['BARBERO'],
+  rolesDetallados: [{ nombre: 'BARBERO', barberiaId: BARBERIA_B, ambito: 'BARBERIA' }],
+};
+
 /** Fila de usuario_roles tal y como la devuelve Prisma. */
-function filaRol(usuarioId: string, nombreRol: string) {
+function filaRol(usuarioId: string, nombreRol: string, barberiaId = BARBERIA_B) {
   return {
-    barberiaId: BARBERIA_B,
+    barberiaId,
     usuario: {
       id: usuarioId,
       nombreCompleto: 'Persona',
@@ -232,10 +239,34 @@ describe('BarberiaService', () => {
       expect(result[0].telefono).toBe('600000000');
     });
 
-    it('debe rechazar a un BARBERO: no existe respuesta sin correo ni teléfono para un no admin', async () => {
+    it('debe devolver el personal al BARBERO de esa barbería, sin correo ni teléfono', async () => {
+      (prisma.usuarioRol.findMany as any).mockResolvedValue([
+        filaRol('barbero-1', 'BARBERO'),
+        filaRol('admin-1', 'ADMIN_BARBERIA'),
+      ]);
+
+      const result = await service.findPersonal(BARBERIA_B, BARBERO_B);
+
+      expect(prisma.usuarioRol.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { barberiaId: BARBERIA_B } }),
+      );
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        id: 'barbero-1',
+        nombreCompleto: 'Persona',
+        estado: 'ACTIVO',
+        roles: ['BARBERO'],
+      });
+      expect(result[0]).not.toHaveProperty('correo');
+      expect(result[0]).not.toHaveProperty('telefono');
+      expect(JSON.stringify(result)).not.toContain('@test.com');
+      expect(JSON.stringify(result)).not.toContain('600000000');
+    });
+
+    it('debe rechazar a un BARBERO de otra barbería antes de leer nada', async () => {
       (prisma.usuarioRol.findMany as any).mockResolvedValue([filaRol('barbero-1', 'BARBERO')]);
 
-      await expect(service.findPersonal(BARBERIA_A, BARBERO_A)).rejects.toThrow(ForbiddenException);
+      await expect(service.findPersonal(BARBERIA_B, BARBERO_A)).rejects.toThrow(ForbiddenException);
 
       expect(prisma.usuarioRol.findMany).not.toHaveBeenCalled();
     });
