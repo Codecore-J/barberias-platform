@@ -18,6 +18,7 @@ import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js'
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import { Autenticado } from '../../iam/infrastructure/autenticado.decorator.js';
+import { esAdministradorGlobal } from '../../iam/domain/roles.js';
 
 @Controller('barberias')
 export class BarberiaController {
@@ -66,10 +67,10 @@ export class BarberiaController {
 
   /**
    * GET /barberias/all
-   * Solo SUPER_ADMIN puede listar todas las barberías.
+   * Solo el ADMINISTRADOR global puede listar todas las barberías (D05).
    */
   @Get('all')
-  @Roles('SUPER_ADMIN')
+  @Roles('ADMINISTRADOR')
   findAll() {
     return this.barberiaService.findAll();
   }
@@ -117,7 +118,7 @@ export class BarberiaController {
 
   /**
    * PATCH /barberias/:id
-   * Solo el responsable de la barbería o un SUPER_ADMIN puede editarla.
+   * Solo el responsable de la barbería o el ADMINISTRADOR global puede editarla.
    */
   // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
   @Autenticado()
@@ -127,14 +128,13 @@ export class BarberiaController {
     @Body() dto: UpdateBarberiaDto,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    const isSuperAdmin = user.roles?.includes('SUPER_ADMIN') ?? false;
-    return this.barberiaService.update(id, user.id, dto, isSuperAdmin);
+    return this.barberiaService.update(id, user.id, dto, esAdministradorGlobal(user));
   }
 
   /**
    * DELETE /barberias/:id
    * Soft-delete — cambia estado a INACTIVO.
-   * Solo el responsable o SUPER_ADMIN puede eliminarlo.
+   * Solo el responsable o el ADMINISTRADOR global puede eliminarlo.
    */
   // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
   @Autenticado()
@@ -144,7 +144,6 @@ export class BarberiaController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    const isSuperAdmin = user.roles?.includes('SUPER_ADMIN') ?? false;
-    return this.barberiaService.remove(id, user.id, isSuperAdmin);
+    return this.barberiaService.remove(id, user.id, esAdministradorGlobal(user));
   }
 }

@@ -21,7 +21,7 @@ export class ReservaController {
   constructor(private readonly reservaService: ReservaService) {}
 
   @Get('agenda')
-  @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR', 'SUPER_ADMIN')
+  @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR')
   obtenerAgenda(
     @CurrentBarberiaId() barberiaId: string,
     @Query('fecha') fecha: string,
@@ -39,7 +39,7 @@ export class ReservaController {
   }
 
   @Patch(':id/estado')
-  @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR', 'SUPER_ADMIN')
+  @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR')
   cambiarEstado(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) reservaId: string,
@@ -71,7 +71,7 @@ export class ReservaController {
   }
 
   @Post(':id/inasistencia')
-  @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR', 'SUPER_ADMIN')
+  @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR')
   marcarInasistencia(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) reservaId: string,

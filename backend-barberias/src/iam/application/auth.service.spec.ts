@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthService } from './auth.service.js';
-import { ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, NotFoundException, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 
 describe('AuthService', () => {
@@ -78,6 +78,60 @@ describe('AuthService', () => {
           password: 'Password123',
         }),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('E1-04: un rol de ámbito BARBERIA sin barberiaId debe fallar con error de dominio', async () => {
+      // Catálogo mal configurado: CLIENTE declarado de ámbito BARBERIA, y el
+      // registro no tiene barbería a la que vincularlo.
+      mockPrisma.rol.findUnique.mockResolvedValue({
+        id: 'rol-cliente-id',
+        nombre: 'CLIENTE',
+        ambito: 'BARBERIA',
+      });
+      mockPrisma.usuario.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.register({
+          nombreCompleto: 'Juan Pérez',
+          correo: 'juan@example.com',
+          telefono: '+584141234567',
+          password: 'Password123',
+        }),
+      ).rejects.toThrow(UnprocessableEntityException);
+
+      expect(mockPrisma.usuarioRol.create).not.toHaveBeenCalled();
+    });
+
+    it('E1-04: un rol de ámbito GLOBAL sin barberiaId es válido', async () => {
+      mockPrisma.rol.findUnique.mockResolvedValue({
+        id: 'rol-cliente-id',
+        nombre: 'CLIENTE',
+        ambito: 'GLOBAL',
+      });
+      mockPrisma.usuario.findUnique.mockResolvedValue(null);
+      mockPrisma.usuario.create.mockResolvedValue({
+        id: 'new-user-id',
+        nombreCompleto: 'Juan Pérez',
+        correo: 'juan@example.com',
+        telefono: '+584141234567',
+        cedula: null,
+        passwordHash: 'hashed',
+        estadoCuenta: 'ACTIVO',
+        creadoAt: new Date(),
+      });
+      mockPrisma.usuarioRol.create.mockResolvedValue({ id: 'ur-1' });
+
+      const result = await service.register({
+        nombreCompleto: 'Juan Pérez',
+        correo: 'juan@example.com',
+        telefono: '+584141234567',
+        password: 'Password123',
+      });
+
+      expect(result.id).toBe('new-user-id');
+      expect(mockPrisma.usuarioRol.create).toHaveBeenCalledWith({
+        data: { usuarioId: 'new-user-id', rolId: 'rol-cliente-id', barberiaId: null },
+      });
     });
   });
 

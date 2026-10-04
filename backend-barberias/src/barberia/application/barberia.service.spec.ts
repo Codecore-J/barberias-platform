@@ -50,6 +50,14 @@ const BARBERO_B: UsuarioAutenticado = {
   rolesDetallados: [{ nombre: 'BARBERO', barberiaId: BARBERIA_B, ambito: 'BARBERIA' }],
 };
 
+/** ADMIN_BARBERIA con barberia_id nulo: la fila corrupta que E1-04 corrige. */
+const ADMIN_BARBERIA_SIN_BARBERIA: UsuarioAutenticado = {
+  id: 'usuario-admin-sin-barberia',
+  correo: 'admin.sin.barberia@test.com',
+  roles: ['ADMIN_BARBERIA'],
+  rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: null, ambito: 'BARBERIA' }],
+};
+
 /** Fila de usuario_roles tal y como la devuelve Prisma. */
 function filaRol(usuarioId: string, nombreRol: string, barberiaId = BARBERIA_B) {
   return {
@@ -140,15 +148,24 @@ describe('BarberiaService', () => {
       (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
 
       await expect(service.update('uuid-1', 'other-user', {}, false)).rejects.toThrow(ForbiddenException);
+    });    it('debe permitir si es responsable', async () => {
+        const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1' };
+        (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
+        (prisma.barberia.update as any).mockResolvedValue({ ...mockBarberia, nombre: 'Updated' });
+  
+        const result = await service.update('uuid-1', 'res-1', { nombre: 'Updated' }, false);
+        expect(result.nombre).toBe('Updated');
     });
 
-    it('debe permitir si es responsable', async () => {
-      const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1' };
+    it('E1-04: el ADMINISTRADOR puede editar una barbería ajena', async () => {
+      const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'otro-res' };
       (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
-      (prisma.barberia.update as any).mockResolvedValue({ ...mockBarberia, nombre: 'Updated' });
+      (prisma.barberia.update as any).mockResolvedValue({ ...mockBarberia, nombre: 'Renombrada' });
 
-      const result = await service.update('uuid-1', 'res-1', { nombre: 'Updated' }, false);
-      expect(result.nombre).toBe('Updated');
+      const result = await service.update('uuid-1', 'admin-global', { nombre: 'Renombrada' }, true);
+
+      expect(prisma.barberia.update).toHaveBeenCalled();
+      expect(result.nombre).toBe('Renombrada');
     });
   });
 
@@ -267,6 +284,16 @@ describe('BarberiaService', () => {
       (prisma.usuarioRol.findMany as any).mockResolvedValue([filaRol('barbero-1', 'BARBERO')]);
 
       await expect(service.findPersonal(BARBERIA_B, BARBERO_A)).rejects.toThrow(ForbiddenException);
+
+      expect(prisma.usuarioRol.findMany).not.toHaveBeenCalled();
+    });
+
+    it('E1-04: un ADMIN_BARBERIA con barberiaId nulo ya no es comodín', async () => {
+      (prisma.usuarioRol.findMany as any).mockResolvedValue([filaRol('admin-1', 'ADMIN_BARBERIA')]);
+
+      await expect(
+        service.findPersonal(BARBERIA_B, ADMIN_BARBERIA_SIN_BARBERIA),
+      ).rejects.toThrow(ForbiddenException);
 
       expect(prisma.usuarioRol.findMany).not.toHaveBeenCalled();
     });

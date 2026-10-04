@@ -9,13 +9,13 @@ export class AuditoriaController {
   constructor(private readonly auditoriaService: AuditoriaService) {}
 
   @Get('estadisticas')
-  @Roles('SUPER_ADMIN', 'ADMINISTRADOR')
+  @Roles('ADMINISTRADOR')
   obtenerEstadisticas() {
     return this.auditoriaService.obtenerEstadisticas();
   }
 
   @Get()
-  @Roles('SUPER_ADMIN', 'ADMINISTRADOR', 'ADMIN_BARBERIA')
+  @Roles('ADMINISTRADOR', 'ADMIN_BARBERIA')
   consultarAuditorias(
     @CurrentUser() user: UsuarioAutenticado,
     @Query('entidad') entidad?: string,
@@ -43,7 +43,7 @@ export class AuditoriaController {
   }
 
   @Post('purgar')
-  @Roles('SUPER_ADMIN', 'ADMINISTRADOR')
+  @Roles('ADMINISTRADOR')
   ejecutarPurgaManual(@Query('dias') dias?: string) {
     const diasNum = dias ? parseInt(dias, 10) : 365;
     return this.auditoriaService.purgarAuditoriasAntiguas(diasNum);

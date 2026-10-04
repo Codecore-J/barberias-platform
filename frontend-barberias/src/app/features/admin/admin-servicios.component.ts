@@ -18,7 +18,7 @@ import { AuthService } from '../../auth/auth.service';
           <h2 class="text-3xl font-display font-bold text-white">Panel de <span class="gold-gradient-text">Servicios</span></h2>
           <p class="text-sm text-zinc-400">Gestiona los servicios y combos de {{ tenantService.nombreBarberiaActiva() }}</p>
         </div>
-        @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'SUPER_ADMIN') {
+        @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'ADMINISTRADOR') {
           <button (click)="openForm()" class="px-5 py-2.5 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:-translate-y-1 hover:scale-105 transition-transform flex items-center gap-2">
             <i class="pi pi-plus"></i> Nuevo Servicio
           </button>
@@ -236,7 +236,7 @@ export class AdminServiciosComponent implements OnInit {
   userRole(): string {
     const roles = this.authService.authState().user?.roles;
     if (!roles || roles.length === 0) return 'CLIENTE';
-    if (roles.includes('SUPER_ADMIN') || roles.includes('ADMINISTRADOR')) return 'SUPER_ADMIN';
+    if (roles.includes('ADMINISTRADOR')) return 'ADMINISTRADOR';
     if (roles.includes('ADMIN_BARBERIA')) return 'ADMIN_BARBERIA';
     if (roles.includes('BARBERO')) return 'BARBERO';
     return 'CLIENTE';

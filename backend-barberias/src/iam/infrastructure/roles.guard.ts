@@ -10,6 +10,7 @@ import { ROLES_KEY } from './roles.decorator.js';
 import { AUTENTICADO_KEY } from './autenticado.decorator.js';
 import { IS_PUBLIC_KEY } from './public.decorator.js';
 import { UsuarioAutenticado } from '../domain/jwt.interface.js';
+import { alcanceCumple, esAdministradorGlobal } from '../domain/roles.js';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -52,7 +53,7 @@ export class RolesGuard implements CanActivate {
     }
 
     // Regla de jerarquía: ADMINISTRADOR tiene acceso transversal global
-    if (user.roles.includes('ADMINISTRADOR')) {
+    if (esAdministradorGlobal(user)) {
       return true;
     }
 
@@ -65,10 +66,9 @@ export class RolesGuard implements CanActivate {
 
     // Si la ruta está acotada a una barbería y el usuario tiene roles detallados
     if (barberiaId && user.rolesDetallados && user.rolesDetallados.length > 0) {
+      // E1-04: el `barberiaId` nulo solo es comodín para roles de ámbito GLOBAL.
       const tieneRolEnBarberia = user.rolesDetallados.some(
-        (rd) =>
-          requiredRoles.includes(rd.nombre) &&
-          (rd.barberiaId === barberiaId || rd.barberiaId === null),
+        (rd) => requiredRoles.includes(rd.nombre) && alcanceCumple(rd, barberiaId),
       );
 
       if (tieneRolEnBarberia) {

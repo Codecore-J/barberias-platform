@@ -156,7 +156,7 @@ describe('PagoService', () => {
       mockPrismaService.barberia.findUnique.mockResolvedValue({
         responsableId: 'otro-usuario',
       });
-      mockPrismaService.usuarioRol.findFirst.mockResolvedValue(null); // No es SUPER_ADMIN
+      mockPrismaService.usuarioRol.findFirst.mockResolvedValue(null); // No es ADMINISTRADOR
       mockPrismaService.usuarioRol.findMany.mockResolvedValue([]); // No tiene roles
 
       await expect(

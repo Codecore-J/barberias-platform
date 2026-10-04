@@ -9,6 +9,7 @@ import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { CreateAntecedenteDto } from './dto/create-antecedente.dto.js';
 import { EvaluarAntecedenteDto, DecisionAntecedente } from './dto/evaluar-antecedente.dto.js';
 import { maskName, maskEmail, maskPhone } from '../domain/anonymizer.utils.js';
+import { esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
 
 @Injectable()
 export class AntecedenteService {
@@ -33,11 +34,8 @@ export class AntecedenteService {
       return { isResponsable: true, isAdmin: true };
     }
 
-    const isSuperAdmin = await this.prisma.usuarioRol.findFirst({
-      where: { usuarioId, rol: { nombre: 'SUPER_ADMIN' } },
-    });
-
-    if (isSuperAdmin) {
+    // E1-04 (D05): el rol global es ADMINISTRADOR.
+    if (await esAdministradorGlobalPorId(this.prisma, usuarioId)) {
       return { isResponsable: false, isAdmin: true };
     }
 

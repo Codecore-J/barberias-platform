@@ -94,7 +94,6 @@ export class AuthService {
         const isAdmin =
           roles.includes('ADMINISTRADOR') ||
           roles.includes('ADMIN_BARBERIA') ||
-          roles.includes('SUPER_ADMIN') ||
           roles.includes('ADMIN');
         const isBarbero = roles.includes('BARBERO');
 
