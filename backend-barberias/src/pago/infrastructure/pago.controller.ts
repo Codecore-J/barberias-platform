@@ -31,16 +31,19 @@ export class PagoController {
   @Autenticado()
   @Get('auditoria')
   obtenerAuditoriaPagos(
-    @CurrentBarberiaId() barberiaId: string,
+    @CurrentBarberiaId() barberiaId: string | null,
     @CurrentUser() user: UsuarioAutenticado,
-    @Query('limite') limite?: string,
-    @Query('offset') offset?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
+    // E1-02: mismo criterio que GET /auditoria. La barbería sale de la ruta
+    // (alias `barberias/:barberiaId/pagos`) o de la cabecera x-barberia-id;
+    // sin ella y sin ADMINISTRADOR, la respuesta es 400.
     return this.pagoService.obtenerAuditoriaPagos(
-      user.id,
+      user,
       barberiaId,
-      limite ? parseInt(limite, 10) : 50,
-      offset ? parseInt(offset, 10) : 0,
+      page ? parseInt(page, 10) : 1,
+      pageSize ? parseInt(pageSize, 10) : 50,
     );
   }
 }
