@@ -3,9 +3,12 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from './roles.decorator.js';
+import { AUTENTICADO_KEY } from './autenticado.decorator.js';
+import { IS_PUBLIC_KEY } from './public.decorator.js';
 import { UsuarioAutenticado } from '../domain/jwt.interface.js';
 
 @Injectable()
@@ -13,14 +16,32 @@ export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const objetivos = [context.getHandler(), context.getClass()];
 
-    // Si no se declararon roles requeridos, el endpoint está abierto (según su JwtAuthGuard)
-    if (!requiredRoles || requiredRoles.length === 0) {
+    // @Public(): lo resuelve el JwtAuthGuard, aqui no hay nada que decidir.
+    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, objetivos) === true) {
       return true;
+    }
+
+    const requiredRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, objetivos);
+
+    // @Autenticado(): cualquier usuario con sesion, sin exigir rol concreto.
+    if (this.reflector.getAllAndOverride<boolean>(AUTENTICADO_KEY, objetivos) === true) {
+      return true;
+    }
+
+    // Sin @Public, @Autenticado ni @Roles, la ruta no declara su politica y
+    // falla cerrado (E1-01). Antes devolvia true y dejaba la ruta abierta a
+    // cualquier usuario con sesion.
+    if (!requiredRoles || requiredRoles.length === 0) {
+      const request = context.switchToHttp().getRequest();
+      const ruta = `${request?.method ?? '?'} ${request?.originalUrl ?? request?.url ?? '?'}`;
+      new Logger(RolesGuard.name).warn(
+        `Ruta sin politica de acceso declarada, denegada: ${ruta}`,
+      );
+      throw new ForbiddenException(
+        'Acceso denegado: la ruta no declara su politica de acceso.',
+      );
     }
 
     const request = context.switchToHttp().getRequest();

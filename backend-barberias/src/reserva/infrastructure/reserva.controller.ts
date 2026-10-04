@@ -14,6 +14,7 @@ import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js'
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
+import { Autenticado } from '../../iam/infrastructure/autenticado.decorator.js';
 
 @Controller(['barberias/:barberiaId/reservas', 'reservas'])
 export class ReservaController {
@@ -30,6 +31,8 @@ export class ReservaController {
     return this.reservaService.obtenerAgendaDiaria(barberiaId, fechaFiltro, user);
   }
 
+  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
+  @Autenticado()
   @Get('mis-reservas')
   obtenerMisReservas(@CurrentUser() user: UsuarioAutenticado) {
     return this.reservaService.obtenerMisReservas(user.id);
@@ -46,6 +49,8 @@ export class ReservaController {
     return this.reservaService.cambiarEstado(barberiaId, reservaId, estado, user);
   }
 
+  // TODO(E1-05): E1-05 sustituye @Autenticado por el rol o decorador real.
+  @Autenticado()
   @Post()
   crearReserva(
     @CurrentBarberiaId() barberiaId: string,
