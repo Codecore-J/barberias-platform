@@ -11,7 +11,7 @@ FROM usuarios u
 JOIN usuario_roles ur ON u.id = ur.usuario_id
 JOIN roles r ON ur.rol_id = r.id
 WHERE
-  r.nombre IN ('ADMINISTRADOR', 'SUPER_ADMIN')
+  r.nombre IN ('ADMINISTRADOR')
   OR (r.nombre = 'ADMIN_BARBERIA' AND ur.barberia_id IS NULL);
 ```
 
@@ -27,7 +27,7 @@ WHERE id IN (
     JOIN usuario_roles ur ON u.id = ur.usuario_id
     JOIN roles r ON ur.rol_id = r.id
     WHERE
-      r.nombre IN ('ADMINISTRADOR', 'SUPER_ADMIN')
+      r.nombre IN ('ADMINISTRADOR')
       OR (r.nombre = 'ADMIN_BARBERIA' AND ur.barberia_id IS NULL)
 );
 ```
