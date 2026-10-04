@@ -18,7 +18,6 @@ import { AntecedenteModule } from './antecedente/infrastructure/antecedente.modu
 import { NotificacionModule } from './notificacion/infrastructure/notificacion.module.js';
 import { AuditoriaModule } from './auditoria/infrastructure/auditoria.module.js';
 import { HealthModule } from './health/health.module.js';
-import { ClienteModule } from './cliente/cliente.module.js';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import Redis from 'ioredis';
 
@@ -54,7 +53,9 @@ import Redis from 'ioredis';
     AntecedenteModule,
     NotificacionModule,
     AuditoriaModule,
-    ClienteModule,
+    // H22: desactivado hasta E4-05. ClienteController expone /clientes/:id/ficha
+    // y /clientes/:id/notas. El modulo sigue en src/cliente/, sin registrar:
+    // mientras tanto esas rutas responden 404.
   ],
   controllers: [AppController],
   providers: [
