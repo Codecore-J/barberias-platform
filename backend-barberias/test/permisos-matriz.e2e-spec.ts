@@ -37,7 +37,7 @@ interface Caso {
 
 const CASOS: Caso[] = [
   // ── barbería ────────────────────────────────────────────────────────────
-  { verbo: 'patch', ruta: '/barberias/{A}/seleccionar', permitidos: ['CLIENTE', 'ADMIN_BARBERIA', 'ADMINISTRADOR'] },
+  { verbo: 'patch', ruta: '/barberias/{A}/seleccionar', permitidos: ['CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR'] },
   { verbo: 'post', ruta: '/barberias/vincular', permitidos: ['CLIENTE', 'ADMINISTRADOR'], cuerpo: { codigoAcceso: 'TESTPM' } },
   { verbo: 'patch', ruta: '/barberias/{A}', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: { nombre: 'Matriz permisos' } },
   { verbo: 'get', ruta: '/barberias/{A}', permitidos: TODOS },

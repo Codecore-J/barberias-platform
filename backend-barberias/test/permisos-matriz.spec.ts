@@ -80,7 +80,7 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'GET /barberias/all': [ROL_ADMINISTRADOR],
   'GET /barberias/:id/personal': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
   'GET /barberias/:id': TODOS,
-  'PATCH /barberias/:id/seleccionar': [ROL_CLIENTE, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /barberias/:id/seleccionar': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'PATCH /barberias/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'DELETE /barberias/:id': [ROL_ADMINISTRADOR],
   'POST /barberias/vincular': [ROL_CLIENTE],

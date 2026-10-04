@@ -60,7 +60,7 @@
 | 11 | POST | `/auditoria/purgar` | AuditoriaController | `@Roles(ADMINISTRADOR)` | `@Roles(ADMINISTRADOR)` | matriz | no | no | sí — `core/services/pagos.service.ts:65` | `src/auditoria/infrastructure/auditoria.controller.spec.ts` |
 | 12 | GET | `/barberias` | BarberiaController | `@Autenticado` | `@Autenticado` | — | no (filtra por `responsableId`) | no | sí — `core/services/tenant.service.ts:64` | `test/barberia.e2e-spec.ts` |
 | 13 | POST | `/barberias` | BarberiaController | `@Autenticado` | `@Autenticado` | **1** | no | no | sí — `core/services/tenant.service.ts:133` | `src/barberia/application/barberia.service.spec.ts` |
-| 14 | PATCH | `/barberias/:id/seleccionar` | BarberiaController | `@Autenticado` | `@Roles(CLIENTE, ADMIN_BARBERIA, ADMINISTRADOR)` | **2** | **sí** — vínculo en `cliente_barberias` | **sí** — `estado_vinculacion = 'ACTIVO'` | sí — `core/services/tenant.service.ts:94` y `:137` | `src/barberia/application/barberia.service.spec.ts`; `test/barberia.e2e-spec.ts` |
+| 14 | PATCH | `/barberias/:id/seleccionar` | BarberiaController | `@Autenticado` | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **2** | **sí** — vínculo en `cliente_barberias` (E1-06) | **sí** — `estado_vinculacion = 'ACTIVO'` | sí — `core/services/tenant.service.ts:94` y `:137` | `src/barberia/application/barberia.service.spec.ts`; `test/barberia.e2e-spec.ts` |
 | 15 | GET | `/barberias/:id` | BarberiaController | `@Autenticado` | `@Autenticado` + DTO de lectura | **3** | no | no | **no** | `src/barberia/application/barberia.service.spec.ts` |
 | 16 | PATCH | `/barberias/:id` | BarberiaController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** | **sí** — responsable, salvo ADMINISTRADOR | **no** | `test/hallazgo16-rolesguard-global.e2e-spec.ts` |
 | 17 | DELETE | `/barberias/:id` | BarberiaController | `@Autenticado` | `@Roles(ADMINISTRADOR)` | **4** | no (el guard ya acota) | no | no | `test/permisos-matriz.e2e-spec.ts` |
@@ -126,12 +126,14 @@ implementa aquí; queda anotado como `TODO(E1-07)`. La pantalla `/barberias/nuev
 `roleGuard(['ADMIN'])`, de modo que un CLIENTE ve la API abierta y la pantalla cerrada: es exactamente lo
 que se pidió.
 
-**2. `PATCH /barberias/:id/seleccionar` — `@Roles(CLIENTE, ADMIN_BARBERIA, ADMINISTRADOR)`.**
-`seleccionarBarberiaActiva` exige una fila en `cliente_barberias` ACTIVO, así que quien puede usarla de
-verdad es el CLIENTE vinculado. Se sumo los dos roles de administración porque la invoca
-`tenant.service.ts:137` al final de «crear barbería», pantalla que está tras `roleGuard(['ADMIN'])`: sin
-ellos, el responsable que crea una sede se queda con un 403 al auto-seleccionarla y la nueva sede nunca
-queda activa.
+**2. `PATCH /barberias/:id/seleccionar` — `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)`**
+(decisión 2, enmendada por el dueño). `seleccionarBarberiaActiva` exige una fila en `cliente_barberias`
+con `estado_vinculacion = 'ACTIVO'`, de modo que el decorador es más generoso que el servicio: un barbero,
+un responsable o el administrador global pasan el guard y reciben 404 «No estás vinculado a esta
+barbería» si no tienen ese vínculo. El `TODO(E1-06)` deja apuntado dónde tiene que decidirse el vínculo
+de verdad. La decisión original era solo `CLIENTE`; se ampliaron los roles de administración porque
+`tenant.service.ts:137` encadena esta llamada al final de «crear barbería» (pantalla tras
+`roleGuard(['ADMIN'])`), y después al barbero, que es quien más la necesita según el flujo del frontend.
 
 **3. `GET /barberias/:id` — `@Autenticado` con DTO de lectura.** Sigue abierta a cualquier autenticado
 porque sus datos (nombre, descripción, teléfono, ubicación) no son secretos de negocio, pero
@@ -176,18 +178,41 @@ registrando walk-ins, pero no le ofrezca una acción que el backend le va a dene
 
 ### Ajustes sobre las decisiones, decididos con el dueño
 
-- **Decisión 2 ampliada**: `/seleccionar` admite además a `ADMIN_BARBERIA` y `ADMINISTRADOR`, para no
-  romper el flujo de crear y cambiar de sede.
+- **Decisión 2 ampliada dos veces**: `/seleccionar` admite además a `ADMIN_BARBERIA` y `ADMINISTRADOR`
+  (para no romper el flujo de crear y cambiar de sede) y después también a `BARBERO`.
 - **Decisión 10 ampliada**: `/reservas` incluye también al `ADMINISTRADOR`, que entra en `/admin/agenda` y
   usa el walk-in.
 - **Consecuencia del guard**: `RolesGuard` concede el acceso al `ADMINISTRADOR` antes de mirar la lista, así
   que en la fila 20 el administrador global también pasa, aunque la política solo declare `CLIENTE`.
+
+## Hallazgos de la traza del flujo de sede
+
+Salen de seguir el flujo de un `BARBERO` después de iniciar sesión. **No se arreglan aquí**: son lógica de
+negocio y cada uno necesita su propia tarea.
+
+1. **`GET /barberias` solo devuelve las sedes donde el usuario es `responsableId`.** Es lo que hace
+   `findAllByResponsable` (`barberia.service.ts`). Para un `BARBERO` y para un `CLIENTE` la respuesta es
+   `[]`, aunque tengan barberías por `usuario_roles` o por `cliente_barberias`. Consecuencia: tras el login,
+   `auth.service.ts:110-119` manda al barbero a `/barberias` porque la lista viene vacía, y ahí no hay
+   tarjetas que seleccionar: su sede activa solo sobrevive desde la caché de `localStorage`
+   (`tenant.service.ts:145-154`). En un dispositivo nuevo, el barbero queda sin forma de fijar su sede.
+2. **La sede activa del frontend no pasa por `/seleccionar`.** `tenant.service.ts:59-82` la elige localmente
+   entre las que devuelve `GET /barberias` (caché → `esBarberiaActiva` → la primera) y la guarda en
+   `localStorage`; `/seleccionar` solo se invoca desde el botón «Seleccionar» de una tarjeta
+   (`barberias.component.ts:166`) y desde el encadenado de `crearBarberia` (`tenant.service.ts:137`). El
+   interceptor manda ese id en `x-barberia-id` (`auth.interceptor.ts:16-18`), que es lo que leen
+   `@CurrentBarberiaId` y `RolesGuard`.
+3. **`@CurrentBarberiaId` cae en `params.id`** (`current-barberia.decorator.ts:22-26`). En
+   `GET /catalogo/servicios/:id` y `GET /catalogo/combos/:id` el primer argumento del servicio es por tanto
+   el id del propio recurso, y `findOne(barberiaId, id)` busca `{ id, barberiaId }` con los dos iguales: esas
+   dos rutas no pueden devolver nunca un recurso.
 
 ## Qué queda pendiente de esta tarea
 
 | Tarea | Qué falta | Dónde está anotado |
 |---|---|---|
 | E1-06 | Comprobar el vínculo del solicitante al calcular disponibilidad | `agenda.controller.ts`, ambos verbos |
+| E1-06 | Resolver el vínculo de la sede seleccionada: hoy la exige `cliente_barberias` y el barbero no lo tiene | `barberia.controller.ts`, `PATCH /barberias/:id/seleccionar` |
 | E1-07 | Límite de 2 barberías por usuario al crear | `barberia.controller.ts`, `POST /barberias` |
 | E3-03 | Reservar la creación de reservas al CLIENTE y crear la ruta de walk-in | `reserva.controller.ts`, `POST /reservas` |
 | E3-09 | Un BARBERO solo cobra las reservas que tiene asignadas | `pago.controller.ts`, `POST /cobros` |

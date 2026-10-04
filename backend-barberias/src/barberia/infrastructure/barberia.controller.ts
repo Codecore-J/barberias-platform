@@ -112,11 +112,12 @@ export class BarberiaController {
   /**
    * PATCH /barberias/:id/seleccionar
    * Selecciona una barbería como la activa para el usuario (apaga las demás).
-   * Exige vínculo `cliente_barberias` ACTIVO, de ahí que el CLIENTE sea el rol
-   * que puede usarla (decisión 2). Los administradores también la usan: es el
-   * paso final de «crear barbería» y de cambiar de sede.
+   * Decisión 2 enmendada: los cuatro roles. La vincula `cliente_barberias`, que
+   * un barbero normalmente no tiene —entra por su rol, no por un código—, así
+   * que hoy el servicio le responde 404 aunque el guard le deje pasar.
    */
-  @Roles('CLIENTE', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
+  // TODO(E1-06): validar el vínculo del solicitante con la barbería seleccionada.
+  @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Patch(':id/seleccionar')
   seleccionarActiva(
     @Param('id', ParseUUIDPipe) id: string,
