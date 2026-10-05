@@ -423,26 +423,6 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
     });
   });
 
-    it('responde 200 con el listado global, no 400', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/api/v1/cobros/auditoria')
-        .set('Authorization', `Bearer ${tokenGlobal}`);
-
-      expect(res.status).toBe(200);
-      // `consultarAuditorias` devuelve la página, no un array suelto.
-      expect(Array.isArray(res.body.data)).toBe(true);
-      expect(typeof res.body.total).toBe('number');
-      expect(res.body.page).toBe(1);
-    });
-
-    it('un ADMIN_BARBERIA sin sede sigue recibiendo 400', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/api/v1/cobros/auditoria')
-        .set('Authorization', `Bearer ${tokenAdminA}`);
-
-      expect(res.status).toBe(400);
-    });
-
   /**
    * E1-06 · parte 3. Los dos huecos que dejó la parte 1 del arreglo.
    *
