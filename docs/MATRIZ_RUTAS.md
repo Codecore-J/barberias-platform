@@ -60,7 +60,7 @@
 | 11 | POST | `/auditoria/purgar` | AuditoriaController | `@Roles(ADMINISTRADOR)` | `@Roles(ADMINISTRADOR)` | matriz | no | no | sí — `core/services/pagos.service.ts:65` | `src/auditoria/infrastructure/auditoria.controller.spec.ts` |
 | 12 | GET | `/barberias` | BarberiaController | `@Autenticado` | `@Autenticado` | — | no (filtra por `responsableId`) | **sí** — `veCodigoDe` por sede (E1-07) | sí — `core/services/tenant.service.ts:64` | `test/barberia.e2e-spec.ts`; `src/barberia/application/barberia.service.spec.ts` |
 | 13 | POST | `/barberias` | BarberiaController | `@Autenticado` | `@Autenticado` | **1** | no | no | sí — `core/services/tenant.service.ts:133` | `src/barberia/application/barberia.service.spec.ts` |
-| 14 | PATCH | `/barberias/:id/seleccionar` | BarberiaController | `@Autenticado` | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **2** | **sí** — vínculo en `cliente_barberias` (E1-06) | **sí** — `estado_vinculacion = 'ACTIVO'` | sí — `core/services/tenant.service.ts:94` y `:137` | `src/barberia/application/barberia.service.spec.ts`; `test/barberia.e2e-spec.ts` |
+| 14 | PATCH | `/barberias/:id/seleccionar` | BarberiaController | `@Autenticado` | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **2** | **sí** — `cliente_barberias`, `usuario_roles` o ser el responsable (`d93e9af`) | **sí** — `estado_vinculacion = 'ACTIVO'` **solo en la vía `cliente_barberias`** | sí — `core/services/tenant.service.ts:94` y `:137` | `src/barberia/application/barberia.service.spec.ts`; `test/barberia.e2e-spec.ts` |
 | 15 | GET | `/barberias/:id` | BarberiaController | `@Autenticado` | `@Autenticado` + DTO de lectura | **3** | no | no | **no** | `src/barberia/application/barberia.service.spec.ts` |
 | 16 | PATCH | `/barberias/:id` | BarberiaController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** | **sí** — responsable, salvo ADMINISTRADOR | **no** | `test/hallazgo16-rolesguard-global.e2e-spec.ts` |
 | 17 | DELETE | `/barberias/:id` | BarberiaController | `@Autenticado` | `@Roles(ADMINISTRADOR)` | **4** | no (el guard ya acota) | no | no | `test/permisos-matriz.e2e-spec.ts` |
@@ -70,8 +70,8 @@
 | 21 | GET | `/barberias/:barberiaId/agenda/bloqueos` · `/agenda/bloqueos` | AgendaController | `@Roles(ADMIN_BARBERIA, BARBERO)` | `@Roles(ADMIN_BARBERIA, BARBERO)` | E1-03 | **sí** — `validateAccess` | no | sí — `core/services/horarios.service.ts:83` | `test/h19-h20-lecturas-abiertas.e2e-spec.ts`; `src/agenda/application/agenda.service.spec.ts` |
 | 22 | POST | `/barberias/:barberiaId/agenda/bloqueos` · `/agenda/bloqueos` | AgendaController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** — `validateAccess` | no | sí — `core/services/horarios.service.ts:87` | `src/agenda/application/agenda.service.spec.ts` |
 | 23 | DELETE | `/barberias/:barberiaId/agenda/bloqueos/:id` · `/agenda/bloqueos/:id` | AgendaController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** — `validateAccess` | **sí** — el bloqueo debe ser de esa barbería | sí — `core/services/horarios.service.ts:91` | `src/agenda/application/agenda.service.spec.ts` |
-| 24 | GET | `/barberias/:barberiaId/agenda/disponibilidad` · `/agenda/disponibilidad` | AgendaController | `@Autenticado` | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **6** | pendiente — E1-06 | no | sí — `core/services/reservas.service.ts:38`, que llama al alias `/agenda/disponibilidad` | `test/permisos-matriz.e2e-spec.ts` |
-| 25 | POST | `/barberias/:barberiaId/agenda/disponibilidad` · `/agenda/disponibilidad` | AgendaController | `@Autenticado` | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **6** | pendiente — E1-06 | no | no | `test/permisos-matriz.e2e-spec.ts` |
+| 24 | GET | `/barberias/:barberiaId/agenda/disponibilidad` · `/agenda/disponibilidad` | AgendaController | `@Autenticado` | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **6** | **sí** — `calcularDisponibilidadDeSolicitante` (`d93e9af`) | no | sí — `core/services/reservas.service.ts:38`, que llama al alias `/agenda/disponibilidad` | `src/agenda/application/disponibilidad.service.spec.ts`; `test/e1-06-sede-del-tenant.e2e-spec.ts` |
+| 25 | POST | `/barberias/:barberiaId/agenda/disponibilidad` · `/agenda/disponibilidad` | AgendaController | `@Autenticado` | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **6** | **sí** — `calcularDisponibilidadDeSolicitante` (`d93e9af`) | no | no | `src/agenda/application/disponibilidad.service.spec.ts`; `test/e1-06-sede-del-tenant.e2e-spec.ts` |
 | 26 | POST | `/barberias/:barberiaId/antecedentes` | AntecedenteController | `@Autenticado` | `@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **7** | **sí** | no | no | `src/antecedente/application/antecedente.service.spec.ts` |
 | 27 | PATCH | `/barberias/:barberiaId/antecedentes/:id/evaluar` | AntecedenteController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D35) | **sí** | **sí** — el antecedente debe ser de esa barbería | sí — `core/services/antecedentes.service.ts:29` | `src/antecedente/application/antecedente.service.spec.ts` |
 | 28 | GET | `/barberias/:barberiaId/antecedentes/cliente/:clienteId` | AntecedenteController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **7** | **sí** | **sí** — el cliente debe estar vinculado a esa barbería | no | `src/antecedente/application/antecedente.service.spec.ts` |
@@ -127,13 +127,19 @@ implementa aquí; queda anotado como `TODO(E1-07)`. La pantalla `/barberias/nuev
 que se pidió.
 
 **2. `PATCH /barberias/:id/seleccionar` — `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)`**
-(decisión 2, enmendada por el dueño). `seleccionarBarberiaActiva` exige una fila en `cliente_barberias`
-con `estado_vinculacion = 'ACTIVO'`, de modo que el decorador es más generoso que el servicio: un barbero,
-un responsable o el administrador global pasan el guard y reciben 404 «No estás vinculado a esta
-barbería» si no tienen ese vínculo. El `TODO(E1-06)` deja apuntado dónde tiene que decidirse el vínculo
-de verdad. La decisión original era solo `CLIENTE`; se ampliaron los roles de administración porque
-`tenant.service.ts:137` encadena esta llamada al final de «crear barbería» (pantalla tras
-`roleGuard(['ADMIN'])`), y después al barbero, que es quien más la necesita según el flujo del frontend.
+(decisión 2, enmendada por el dueño). **Arreglado en E1-06** (`d93e9af`). Antes
+`seleccionarBarberiaActiva` exigía una fila en `cliente_barberias` con `estado_vinculacion = 'ACTIVO'`,
+de modo que el decorador era más generoso que el servicio: un barbero, un responsable o el administrador
+global pasaban el guard y recibían 404 «No estás vinculado a esta barbería». La decisión original era
+solo `CLIENTE`; se ampliaron los roles de administración porque `tenant.service.ts:137` encadena esta
+llamada al final de «crear barbería» (pantalla tras `roleGuard(['ADMIN'])`), y después al barbero, que es
+quien más la necesita según el flujo del frontend.
+
+Ahora el servicio admite los tres vínculos reales, en este orden: `cliente_barberias` con
+`estado_vinculacion = 'ACTIVO'` (el cliente que entró por código, que es el único caso que mueve la marca
+`esBarberiaActiva`), `usuario_roles.barberia_id` (barbero y ADMIN_BARBERIA) y `barberia.responsable_id`
+(el dueño). El ADMINISTRADOR global no necesita vínculo: es transversal. Quien no tenga ninguno de los
+tres sigue recibiendo 404, y quien tenga el vínculo de cliente en `PENDIENTE` sigue recibiendo 403.
 
 **3. `GET /barberias/:id` — `@Autenticado` con DTO de lectura.** Sigue abierta a cualquier autenticado
 porque sus datos (nombre, descripción, teléfono, ubicación) no son secretos de negocio, pero
@@ -149,8 +155,19 @@ trata al solicitante como cliente de esa barbería. Como el botón «Vincular co
 «Crear Barbería», que estaba justo al lado y sí estaba condicionado, no cambia.
 
 **6. `GET` y `POST /agenda/disponibilidad` — los cuatro roles.** Consultar disponibilidad es lectura de
-agenda y la usan el wizard de reservas y la pantalla de agenda. La validación de vinculación se deja
-anotada como `TODO(E1-06)`.
+agenda y la usan el wizard de reservas y la pantalla de agenda. **Arreglado en E1-06** (`d93e9af`).
+
+El hueco era real y no era un `TODO` decorativo: el guard y el decorador validan el ROL, pero el rol no es
+la pertenencia. `CLIENTE` es de ámbito GLOBAL con `barberia_id` nulo, y `alcanceCumple` trata ese nulo como
+comodín, así que un cliente autenticado que enviara `x-barberia-id` de otra sede pasaba el guard y leía los
+horarios, las excepciones y los bloqueos de una barbería ajena. Ahora ambos verbos llaman a
+`calcularDisponibilidadDeSolicitante`, que exige pertenencia real vía `perteneceABarberia` y devuelve 403
+con «No perteneces a esta barbería» cuando no la hay. El ADMINISTRADOR global se acepta aparte por ser
+transversal (D05).
+
+El POST tenía además un segundo defecto: leía `params.barberiaId` con `ParseUUIDPipe`, así que en el alias
+`/agenda/disponibilidad` —que es el que usa `reservas.service.ts:38`— el parámetro no existía y la ruta
+respondía 400 por un id vacío. Ahora la sede sale de `@CurrentBarberiaId`, la misma cadena que usa el guard.
 
 **7. Antecedentes.** `POST /antecedentes` pasa a `@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)`: propone
 un antecedente sobre otro usuario, que es tarea del personal. `GET /antecedentes/cliente/:clienteId` pasa a
@@ -203,7 +220,8 @@ negocio y cada uno necesita su propia tarea.
    interceptor manda ese id en `x-barberia-id` (`auth.interceptor.ts:16-18`), que es lo que leen
    `@CurrentBarberiaId` y `RolesGuard`.
 3. ~~**`@CurrentBarberiaId` cae en `params.id`.**~~ **Arreglado en E1-06** (`c5e5111`, rama
-   `fix/e1-06-currentbarberiaid-params-id`). El decorador tenía cuatro fuentes y la cuarta era `params.id`,
+   `fix/e1-06-currentbarberiaid-params-id`; cerrado en su totality por `d93e9af`). El decorador tenía cuatro
+   fuentes y la cuarta era `params.id`,
    que en las rutas con `:id` es el id del recurso: en `GET /catalogo/servicios/:id` y
    `GET /catalogo/combos/:id` —cuyos controladores no llevan `:barberiaId` en el path— el servicio recibía el
    id del recurso como sede y buscaba `{ id, barberiaId }` con los dos iguales. `RolesGuard` usaba la misma
@@ -216,6 +234,12 @@ negocio y cada uno necesita su propia tarea.
    **Fuga que salió de paso:** `GET /catalogo/servicios` sin sede devolvía 200 con los servicios de **todas**
    las barberías, porque `ServiciosService.findAll` solo filtra cuando recibe la sede
    (`servicios.service.ts:34-43`). Con el contrato nuevo responde 400 y queda cerrada.
+
+   **Complemento de `d93e9af`:** quitar el fallback arregló que la sede fuera correcta, pero no que el
+   solicitante *perteneciera* a ella. El rol `CLIENTE` es GLOBAL con `barberia_id` nulo, de modo que
+   `alcanceCumple` lo admitía contra cualquier sede: la fuga estaba un peldaño más abajo, en el guard, y
+   afectaba a rutas cuyo decorador ya era correcto. Ese segundo peldaño es el que cerraba `/agenda/disponibilidad`
+   y `/seleccionar`, y es la razón por la que este hallazgo no se dio por cerrado con `c5e5111` solo.
 4. ~~**La regla del código de acceso solo está escrita en `findOne`.**~~ **Arreglado en E1-07**
    (`6bc243f`, rama `fix/e1-07-veCodigo-findallbyresponsable`). `GET /barberias` mapeaba con `toResponse` —
    con `codigoAcceso` y `enlaceUnico`— filtrando solo por `responsableId` y sin mirar el rol, mientras que
@@ -236,12 +260,26 @@ negocio y cada uno necesita su propia tarea.
 
 | Tarea | Qué falta | Dónde está anotado |
 |---|---|---|
-| E1-06 | Comprobar el vínculo del solicitante al calcular disponibilidad | `agenda.controller.ts`, ambos verbos |
-| E1-06 | Resolver el vínculo de la sede seleccionada: hoy la exige `cliente_barberias` y el barbero no lo tiene | `barberia.controller.ts`, `PATCH /barberias/:id/seleccionar` |
+| E1-06 | ~~Comprobar el vínculo del solicitante al calcular disponibilidad~~ — cerrado en `d93e9af` | `agenda.controller.ts`, ambos verbos |
+| E1-06 | ~~Resolver el vínculo de la sede seleccionada~~ — cerrado en `d93e9af` | `barberia.controller.ts`, `PATCH /barberias/:id/seleccionar` |
 | E1-07 | Límite de 2 barberías por usuario al crear | `barberia.controller.ts`, `POST /barberias` |
 | E3-03 | Reservar la creación de reservas al CLIENTE y crear la ruta de walk-in | `reserva.controller.ts`, `POST /reservas` |
 | E3-09 | Un BARBERO solo cobra las reservas que tiene asignadas | `pago.controller.ts`, `POST /cobros` |
 | D43 | Declaración propia del cliente con su ruta y su campo de origen | `antecedente.controller.ts`, `POST /antecedentes` |
+
+### E1-06 · estado de verificación de la parte 3
+
+- **Unitarios:** `roles.vinculo.spec.ts` (5) y `disponibilidad.service.spec.ts` (5) son nuevos;
+  `barberia.service.spec.ts` pasa de 32 a 40. Suite completa del backend: **27 ficheros / 223 tests**
+  (`npm test`, `EXIT=0`).
+- **Mutación:** `perteneceABarberia` forzada a `true` deja **4 rojos**; el criterio de vínculo de
+  `seleccionarBarberiaActiva` forzado a `true` deja **5 rojos**. Ambas revertidas.
+- **Build y lint:** `nest build` en 0, `oxlint` en 0 con 49 warnings preexistentes.
+- **e2e: NO EJECUTADO.** Los 8 casos nuevos de `test/e1-06-sede-del-tenant.e2e-spec.ts` (19 en total)
+  están escritos y el fichero compila, pero en esta máquina no hay Postgres ni Redis
+  (`ECONNREFUSED 127.0.0.1:5432` y `:6379`) y Docker Desktop no está instalado, así que `beforeAll`
+  aborta y los tests quedan sin ejecutar. Necesitan una corrida con la base de pruebas levantada antes
+  de darse por verificados.
 
 ### Deuda que dejó E1-06 (sin arreglar, con nombre)
 
