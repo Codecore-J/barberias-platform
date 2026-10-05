@@ -465,14 +465,20 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
       expect(res.status).toBe(403);
     });
 
-    it('el POST con la sede propia responde 200 (el alias ya no exige params.barberiaId)', async () => {
+    it('el POST con la sede propia resuelve el alias (ya no exige params.barberiaId)', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/agenda/disponibilidad')
         .set('Authorization', `Bearer ${tokenCliente}`)
         .set('x-barberia-id', barberiaA)
         .send({ fecha: '2026-10-05', duracionTotal: 30 });
 
-      expect(res.status).toBe(200);
+      // 201, no 200: `@Post('disponibilidad')` no lleva `@HttpCode`, asi que Nest
+      // aplica el 201 que da por defecto a POST. Esta asercion pedia 200 y era el
+      // unico rojo del fichero la primera vez que se ejecuto (E1-06, 2026-10-05);
+      // el fallo era de la expectativa, no de la ruta. Corregir el codigo de
+      // estado del endpoint seria cambiar el contrato que ya consume el frontend
+      // (`core/services/reservas.service.ts:38`), asi que fuera de alcance.
+      expect(res.status).toBe(201);
     });
 
     it('el ADMINISTRADOR global sí lee cualquier sede: es transversal', async () => {
