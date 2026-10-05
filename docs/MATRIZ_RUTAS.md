@@ -202,10 +202,20 @@ negocio y cada uno necesita su propia tarea.
    (`barberias.component.ts:166`) y desde el encadenado de `crearBarberia` (`tenant.service.ts:137`). El
    interceptor manda ese id en `x-barberia-id` (`auth.interceptor.ts:16-18`), que es lo que leen
    `@CurrentBarberiaId` y `RolesGuard`.
-3. **`@CurrentBarberiaId` cae en `params.id`** (`current-barberia.decorator.ts:22-26`). En
-   `GET /catalogo/servicios/:id` y `GET /catalogo/combos/:id` el primer argumento del servicio es por tanto
-   el id del propio recurso, y `findOne(barberiaId, id)` busca `{ id, barberiaId }` con los dos iguales: esas
-   dos rutas no pueden devolver nunca un recurso.
+3. ~~**`@CurrentBarberiaId` cae en `params.id`.**~~ **Arreglado en E1-06** (`c5e5111`, rama
+   `fix/e1-06-currentbarberiaid-params-id`). El decorador tenía cuatro fuentes y la cuarta era `params.id`,
+   que en las rutas con `:id` es el id del recurso: en `GET /catalogo/servicios/:id` y
+   `GET /catalogo/combos/:id` —cuyos controladores no llevan `:barberiaId` en el path— el servicio recibía el
+   id del recurso como sede y buscaba `{ id, barberiaId }` con los dos iguales. `RolesGuard` usaba la misma
+   cadena **sin** ese fallback, así que el guard verificaba una sede y el servicio consultaba otra.
+   Alcance real: **9 rutas**, no 2 —las 6 del catálogo y las 3 de reservas cuando se llaman por su alias
+   `/reservas/...`. Ahora hay un único `resolverBarberiaId` con tres fuentes (`params.barberiaId`,
+   `x-barberia-id`, `?barberiaId=`) y, si no hay ninguna, la ruta responde **400** en vez de inventarse un
+   tenant. Cubierto por `current-barberia.decorator.spec.ts` (6 tests) y
+   `test/e1-06-sede-del-tenant.e2e-spec.ts` (11).
+   **Fuga que salió de paso:** `GET /catalogo/servicios` sin sede devolvía 200 con los servicios de **todas**
+   las barberías, porque `ServiciosService.findAll` solo filtra cuando recibe la sede
+   (`servicios.service.ts:34-43`). Con el contrato nuevo responde 400 y queda cerrada.
 4. ~~**La regla del código de acceso solo está escrita en `findOne`.**~~ **Arreglado en E1-07**
    (`6bc243f`, rama `fix/e1-07-veCodigo-findallbyresponsable`). `GET /barberias` mapeaba con `toResponse` —
    con `codigoAcceso` y `enlaceUnico`— filtrando solo por `responsableId` y sin mirar el rol, mientras que
