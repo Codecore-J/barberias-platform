@@ -311,31 +311,113 @@ describe('BarberiaService', () => {
   });
 
   /**
-   * `GET /barberias` (findMine) devuelve `toResponse` —con `codigoAcceso` y
-   * `enlaceUnico`— filtrando solo por `responsableId`, sin mirar el rol. Quien
-   * es responsable ya es el ADMIN_BARBERIA de esa sede, así que hoy no se abre
-   * nada, pero la regla de E1-05 solo está escrita en `findOne`. Este test fija
-   * el comportamiento real; cerrarlo es una decisión del dueño (informe E1-05).
+   * E1-07. `GET /barberias` (findMine) devolvía `toResponse` —con `codigoAcceso`
+   * y `enlaceUnico`— filtrando solo por `responsableId`, sin mirar el rol, así
+   * que la regla de E1-05 solo estaba escrita en `findOne`. Aquí se exige la
+   * misma regla que en la lectura por id, sede a sede.
    */
-  describe('findAllByResponsable · hueco conocido de E1-05', () => {
-    it('entrega el código al responsable sin comprobar que sea ADMIN_BARBERIA', async () => {
+  describe('findAllByResponsable · E1-07', () => {
+    const SEDE = 'barberia-z';
+    const mockSede = {
+      id: SEDE,
+      nombre: 'Barberia Z',
+      descripcion: null,
+      telefono: '8095555555',
+      ubicacion: 'Santiago',
+      responsableId: 'usuario-z',
+      codigoAcceso: 'CODIGOZ',
+      enlaceUnico: 'enlace-z',
+      estado: 'ACTIVO',
+    };
+
+    /** Responsable de la sede con su fila de ADMIN_BARBERIA: el caso normal. */
+    const RESPONSABLE_ADMIN: UsuarioAutenticado = {
+      id: 'usuario-z',
+      correo: 'admin.z@test.com',
+      roles: ['ADMIN_BARBERIA'],
+      rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: SEDE, ambito: 'BARBERIA' }],
+    };
+
+    /**
+     * `responsableId` de la sede pero SIN fila `usuario_roles`: la corruption que
+     * ya se dio en E1-04. El filtro `where: { responsableId }` lo deja pasar, así
+     * que era la única forma de que la lista entregara el código sin ser admin.
+     */
+    const RESPONSABLE_SIN_ROL: UsuarioAutenticado = {
+      id: 'usuario-z',
+      correo: 'admin.z@test.com',
+      roles: ['CLIENTE'],
+      rolesDetallados: [{ nombre: 'CLIENTE', barberiaId: null, ambito: 'GLOBAL' }],
+    };
+
+    beforeEach(() => {
+      (prisma.barberia.findMany as any).mockResolvedValue([mockSede]);
+    });
+
+    it('filtra igual que antes, por responsableId', async () => {
+      await service.findAllByResponsable('usuario-z', RESPONSABLE_ADMIN);
+
+      expect(prisma.barberia.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { responsableId: 'usuario-z' } }),
+      );
+    });
+
+    it('entrega el código al responsable que sí es ADMIN_BARBERIA de esa sede', async () => {
+      const result = await service.findAllByResponsable('usuario-z', RESPONSABLE_ADMIN);
+
+      expect(result).toHaveLength(1);
+      expect((result[0] as any).codigoAcceso).toBe('CODIGOZ');
+      expect((result[0] as any).enlaceUnico).toBe('enlace-z');
+    });
+
+    it('NO entrega el código al responsable sin fila de ADMIN_BARBERIA', async () => {
+      const result = await service.findAllByResponsable('usuario-z', RESPONSABLE_SIN_ROL);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe(SEDE);
+      expect((result[0] as any).codigoAcceso).toBeUndefined();
+      expect((result[0] as any).enlaceUnico).toBeUndefined();
+      expect(JSON.stringify(result)).not.toContain('CODIGOZ');
+    });
+
+    it('aplica la regla sede a sede dentro de la misma lista', async () => {
       (prisma.barberia.findMany as any).mockResolvedValue([
+        mockSede,
         {
-          id: 'barberia-z',
-          nombre: 'Barberia Z',
-          responsableId: 'usuario-cliente',
-          codigoAcceso: 'CODIGOZ',
-          enlaceUnico: 'enlace-z',
+          ...mockSede,
+          id: 'barberia-w',
+          nombre: 'Barberia W',
+          responsableId: 'usuario-z',
+          codigoAcceso: 'CODIGOW',
+          enlaceUnico: 'enlace-w',
         },
       ]);
 
-      const result = await service.findAllByResponsable('usuario-cliente');
+      // ADMIN_BARBERIA de una sola de las dos sedes: solo esa entrega el código.
+      const result = await service.findAllByResponsable('usuario-z', {
+        id: 'usuario-z',
+        correo: 'admin.z@test.com',
+        roles: ['ADMIN_BARBERIA'],
+        rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: SEDE, ambito: 'BARBERIA' }],
+      });
 
-      expect(prisma.barberia.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { responsableId: 'usuario-cliente' } }),
-      );
-      expect(result).toHaveLength(1);
+      expect(result).toHaveLength(2);
       expect((result[0] as any).codigoAcceso).toBe('CODIGOZ');
+      expect((result[1] as any).codigoAcceso).toBeUndefined();
+      expect((result[1] as any).enlaceUnico).toBeUndefined();
+    });
+
+    it('el ADMINISTRADOR global recibe el código de todas las sedes de la lista', async () => {
+      (prisma.barberia.findMany as any).mockResolvedValue([
+        mockSede,
+        { ...mockSede, id: 'barberia-w', codigoAcceso: 'CODIGOW', enlaceUnico: 'enlace-w' },
+      ]);
+
+      const result = await service.findAllByResponsable('usuario-z', ADMINISTRADOR);
+
+      expect(result).toHaveLength(2);
+      expect((result[0] as any).codigoAcceso).toBe('CODIGOZ');
+      expect((result[1] as any).codigoAcceso).toBe('CODIGOW');
     });
   });
 

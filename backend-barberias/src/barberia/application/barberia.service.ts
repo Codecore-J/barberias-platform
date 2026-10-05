@@ -186,6 +186,18 @@ export class BarberiaService {
   }
 
   /**
+   * E1-05/E1-07: criterio único para `codigoAcceso` y `enlaceUnico`. Lo usan
+   * tanto la lectura por id como la lista de sedes, para que no vuelvan a
+   * existir dos reglas distintas para el mismo dato.
+   */
+  private veCodigoDe(barberiaId: string, usuario: UsuarioAutenticado): boolean {
+    return (
+      this.esAdministrador(usuario) ||
+      this.tieneAlgunRolEnBarberia(barberiaId, usuario, ['ADMIN_BARBERIA'])
+    );
+  }
+
+  /**
    * Lista el personal (barberos y administradores) de una barbería.
    *
    * Puede leerla un ADMIN_BARBERIA o un BARBERO de esa misma barbería, y el
@@ -248,12 +260,28 @@ export class BarberiaService {
 
   // ── LISTAR (propias del responsable) ──────────────────────────────────────
 
-  async findAllByResponsable(responsableId: string): Promise<BarberiaResponseDto[]> {
+  /**
+   * E1-07. Lista las sedes donde el usuario es responsable.
+   *
+   * El filtro `responsableId` ya impide sacar barberías ajenas, pero eso no es
+   * lo mismo que la regla del código de acceso: quien figura como responsable
+   * puede no tener su fila `usuario_roles` (la corrupción que ya hubo en E1-04),
+   * y entonces recibiría `codigoAcceso` y `enlaceUnico` sin ser administrador de
+   * nada. Por eso cada sede de la lista pasa por el MISMO criterio que usa
+   * `findOne`: la puerta de entrada solo se entrega al ADMIN_BARBERIA de esa sede
+   * y al ADMINISTRADOR global.
+   */
+  async findAllByResponsable(
+    responsableId: string,
+    usuario: UsuarioAutenticado,
+  ): Promise<(BarberiaResponseDto | BarberiaLecturaDto)[]> {
     const barberias = await this.prisma.barberia.findMany({
       where: { responsableId },
       orderBy: { nombre: 'asc' },
     });
-    return barberias.map((b) => this.toResponse(b));
+    return barberias.map((b) =>
+      this.veCodigoDe(b.id, usuario) ? this.toResponse(b) : this.toLectura(b),
+    );
   }
 
   // ── LISTAR TODAS (solo ADMINISTRADOR) ───────────────────────────────────
@@ -281,11 +309,9 @@ export class BarberiaService {
       throw new NotFoundException(`Barbería ${id} no encontrada.`);
     }
 
-    const veCodigo =
-      this.esAdministrador(usuario) ||
-      this.tieneAlgunRolEnBarberia(id, usuario, ['ADMIN_BARBERIA']);
-
-    return veCodigo ? this.toResponse(barberia) : this.toLectura(barberia);
+    return this.veCodigoDe(id, usuario)
+      ? this.toResponse(barberia)
+      : this.toLectura(barberia);
   }
 
   // ── ACTUALIZAR ─────────────────────────────────────────────────────────────

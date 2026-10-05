@@ -58,7 +58,7 @@
 | 9 | GET | `/auditoria` | AuditoriaController | `@Roles(ADMINISTRADOR, ADMIN_BARBERIA)` | `@Roles(ADMINISTRADOR, ADMIN_BARBERIA)` | E1-02 | **sí** | no | no — `pagos.service.ts:38` llama al alias `/cobros/auditoria`, que es la fila 37 | `test/h18-auditoria-cross-tenant.e2e-spec.ts`; `src/auditoria/application/auditoria.service.spec.ts` |
 | 10 | GET | `/auditoria/estadisticas` | AuditoriaController | `@Roles(ADMINISTRADOR)` | `@Roles(ADMINISTRADOR)` | matriz | no | no | sí — `core/services/pagos.service.ts:56` | `src/auditoria/infrastructure/auditoria.controller.spec.ts` |
 | 11 | POST | `/auditoria/purgar` | AuditoriaController | `@Roles(ADMINISTRADOR)` | `@Roles(ADMINISTRADOR)` | matriz | no | no | sí — `core/services/pagos.service.ts:65` | `src/auditoria/infrastructure/auditoria.controller.spec.ts` |
-| 12 | GET | `/barberias` | BarberiaController | `@Autenticado` | `@Autenticado` | — | no (filtra por `responsableId`) | no | sí — `core/services/tenant.service.ts:64` | `test/barberia.e2e-spec.ts` |
+| 12 | GET | `/barberias` | BarberiaController | `@Autenticado` | `@Autenticado` | — | no (filtra por `responsableId`) | **sí** — `veCodigoDe` por sede (E1-07) | sí — `core/services/tenant.service.ts:64` | `test/barberia.e2e-spec.ts`; `src/barberia/application/barberia.service.spec.ts` |
 | 13 | POST | `/barberias` | BarberiaController | `@Autenticado` | `@Autenticado` | **1** | no | no | sí — `core/services/tenant.service.ts:133` | `src/barberia/application/barberia.service.spec.ts` |
 | 14 | PATCH | `/barberias/:id/seleccionar` | BarberiaController | `@Autenticado` | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **2** | **sí** — vínculo en `cliente_barberias` (E1-06) | **sí** — `estado_vinculacion = 'ACTIVO'` | sí — `core/services/tenant.service.ts:94` y `:137` | `src/barberia/application/barberia.service.spec.ts`; `test/barberia.e2e-spec.ts` |
 | 15 | GET | `/barberias/:id` | BarberiaController | `@Autenticado` | `@Autenticado` + DTO de lectura | **3** | no | no | **no** | `src/barberia/application/barberia.service.spec.ts` |
@@ -206,15 +206,15 @@ negocio y cada uno necesita su propia tarea.
    `GET /catalogo/servicios/:id` y `GET /catalogo/combos/:id` el primer argumento del servicio es por tanto
    el id del propio recurso, y `findOne(barberiaId, id)` busca `{ id, barberiaId }` con los dos iguales: esas
    dos rutas no pueden devolver nunca un recurso.
-4. **La regla del código de acceso solo está escrita en `findOne`.** `GET /barberias/:id` calcula `veCodigo`
-   (solo ADMIN_BARBERIA de esa sede o ADMINISTRADOR) y usa el DTO de lectura; `GET /barberias` usa
-   `toResponse` —con `codigoAcceso` y `enlaceUnico`— filtrando solo por `responsableId`, sin mirar el rol
-   (`barberia.service.ts:251-257`). Hoy no se abre nada: quien es `responsableId` de una sede es su
-   ADMIN_BARBERIA, y `findAllByResponsable` no devuelve barberías ajenas. Pero las dos lecturas de la misma
-   sede aplican reglas distintas, y basta con que una fila `usuario_roles` se borre para que el responsable
-   reciba por una ruta lo que por la otra no. Fijado por
-   `barberia.service.spec.ts` → `findAllByResponsable · hueco conocido de E1-05`; cerrarlo es decisión del
-   dueño (E1-07 o tarea nueva).
+4. ~~**La regla del código de acceso solo está escrita en `findOne`.**~~ **Arreglado en E1-07**
+   (`6bc243f`, rama `fix/e1-07-veCodigo-findallbyresponsable`). `GET /barberias` mapeaba con `toResponse` —
+   con `codigoAcceso` y `enlaceUnico`— filtrando solo por `responsableId` y sin mirar el rol, mientras que
+   `GET /barberias/:id` sí comprobaba `veCodigo`. No era explotable (quien es `responsableId` de una sede es
+   su ADMIN_BARBERIA y la lista nunca trae barberías ajenas), pero eran dos reglas distintas para el mismo
+   dato: bastaba una fila `usuario_roles` ausente —la corrupción que ya hubo en E1-04— para que el
+   responsable recibiera por una ruta lo que por la otra no. Ahora las dos lecturas pasan por el mismo
+   helper `veCodigoDe`, aplicado sede a sede dentro de la lista. Cubierto por
+   `barberia.service.spec.ts` → `findAllByResponsable · E1-07`.
 5. **No existe ninguna ruta que liste las barberías de un `CLIENTE`.** `cliente_barberias` solo se lee con
    `findUnique` por `(usuarioId, barberiaId)` —en `vincularCliente`, `seleccionarBarberiaActiva` y
    `reserva.service.ts:42,316`—, nunca con `findMany`. La única lista del backend es `GET /barberias`, que
