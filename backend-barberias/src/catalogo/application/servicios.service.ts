@@ -14,6 +14,16 @@ export class ServiciosService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Sin sede no hay consulta: un `where` sin `barberiaId` es una fuga. */
+  private static exigirSede(barberiaId: string | undefined | null): string {
+    if (typeof barberiaId !== 'string' || barberiaId.trim() === '') {
+      throw new BadRequestException(
+        'No se indicó la barbería: es obligatorio acotar el catálogo a una sede.',
+      );
+    }
+    return barberiaId.trim();
+  }
+
   async create(barberiaId: string, dto: CreateServicioDto) {
     const duracion = dto.duracionEstimada ?? dto.duracionMinutos ?? 30;
     const servicio = await this.prisma.servicio.create({
@@ -31,20 +41,26 @@ export class ServiciosService {
     return servicio;
   }
 
-  async findAll(barberiaId?: string) {
-    const where: any = { estado: 'ACTIVO' };
-    if (barberiaId) {
-      where.barberiaId = barberiaId;
-    }
+  /**
+   * E1-06: la sede es obligatoria y el filtro va SIEMPRE en el `where`.
+   *
+   * Antes el filtro se caía a propósito cuando no llegaba sede, y Prisma, al
+   * ignorar los campos `undefined`, devolvía el catálogo de TODAS las barberías
+   * desde una ruta con `@Roles`. Ahora la ausencia es un 400 en el servicio y el
+   * `where` lleva siempre `barberiaId`.
+   */
+  async findAll(barberiaId: string) {
+    const sede = ServiciosService.exigirSede(barberiaId);
     return this.prisma.servicio.findMany({
-      where,
+      where: { estado: 'ACTIVO', barberiaId: sede },
       orderBy: { nombre: 'asc' },
     });
   }
 
   async findOne(barberiaId: string, id: string) {
+    const sede = ServiciosService.exigirSede(barberiaId);
     const servicio = await this.prisma.servicio.findFirst({
-      where: { id, barberiaId },
+      where: { id, barberiaId: sede },
     });
     if (!servicio) {
       throw new NotFoundException(`Servicio con ID ${id} no encontrado en esta barbería`);
