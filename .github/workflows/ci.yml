@@ -92,6 +92,22 @@ jobs:
           JWT_SECRET: test_secret_key_for_ci_pipeline
         run: npm run test
 
+      # El paso anterior invoca `npm run test` = `vitest run`, que carga
+      # vitest.config.ts con include: ['**/*.spec.ts']. Ese glob exige terminar
+      # en `.spec.ts`, asi que NO casa con los `*.e2e-spec.ts` (terminan en
+      # `-spec.ts`): los 11 ficheros / 67 tests e2e nunca se ejecutaban.
+      #
+      # APP_ENV=dev no es opcional: test/setup.e2e.ts aborta con exit 1
+      # si process.env.APP_ENV !== 'dev', por seguridad anti datos reales.
+      - name: Run E2E Tests (Backend)
+        working-directory: ./backend-barberias
+        env:
+          APP_ENV: dev
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/barberias_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test_secret_key_for_ci_pipeline
+        run: npm run test:e2e
+
       - name: Run Tests (Frontend)
         working-directory: ./frontend-barberias
         run: npm run test -- --watch=false
