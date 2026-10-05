@@ -34,20 +34,28 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
-      - name: Install dependencies (Backend)
-        working-directory: ./backend-barberias
+      # Un unico `npm ci` en la raiz: el package.json raiz declara
+      # "workspaces": ["backend-barberias", "frontend-barberias"], asi que
+      # instala ambos proyectos de una vez. Sustituye a los dos `npm ci`
+      # separados, que se pisaban entre si sobre el node_modules compartido.
+      - name: Install dependencies
         run: npm ci
 
-      - name: Install dependencies (Frontend)
-        working-directory: ./frontend-barberias
-        run: npm ci
+      # El "postinstall" del backend es "prisma skills sync", que no genera el
+      # cliente. Sin este paso, `nest build` falla con 58 errores TS2694 y los
+      # tests con "Right-hand side of 'instanceof' is not an object".
+      - name: Generate Prisma Client
+        working-directory: ./backend-barberias
+        run: npx prisma generate
 
       - name: Run Linter (Backend)
         working-directory: ./backend-barberias
@@ -65,6 +73,11 @@ jobs:
         working-directory: ./frontend-barberias
         run: npm run build
 
+      - name: Scan for Secrets (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Apply Prisma Migrations (Test DB)
         working-directory: ./backend-barberias
         env:
@@ -81,4 +94,4 @@ jobs:
 
       - name: Run Tests (Frontend)
         working-directory: ./frontend-barberias
-        run: npm run test -- --watch=false --browsers=ChromeHeadless
+        run: npm run test -- --watch=false

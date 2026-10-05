@@ -41,7 +41,7 @@ export class ServiciosService {
         this.servicios.set(data);
         this.isLoading.set(false);
       }),
-      catchError(err => {
+      catchError(_err => {
         this.isLoading.set(false);
         this.error.set('No se pudieron cargar los servicios');
         return of([]);

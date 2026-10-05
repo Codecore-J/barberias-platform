@@ -57,6 +57,7 @@ describe('ReservaService', () => {
         modoReserva: 'MANUAL',
         nuevasReservasActivas: true,
         aceptaIndividual: true,
+        margenGrupalMinutos: 10,
       });
 
       // Simular catálogo con precio oficial de $15, 30 mins, 5 margen
@@ -90,7 +91,9 @@ describe('ReservaService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             totalPagar: 15,
-            margenGrupalHistorico: 5,
+            // D42: el margen snapshotteado viene de la configuración de la barbería (10),
+            // no de la suma de márgenes de los servicios (5).
+            margenGrupalHistorico: 10,
           }),
         }),
       );
@@ -107,6 +110,59 @@ describe('ReservaService', () => {
           },
         ],
       });
+    });
+
+    it('D42: debe snapshottear configuracion_barberia.margen_grupal_minutos, nunca la suma de margenes ni el valor del DTO', async () => {
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null);
+      // La barbería define su propio margen grupal (D42): 12 min, rango 0-60
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
+        modoReserva: 'MANUAL',
+        nuevasReservasActivas: true,
+        aceptaIndividual: true,
+        margenGrupalMinutos: 12,
+      });
+
+      // Dos servicios: la suma de sus márgenes (5+5=10) NO coincide con el valor de
+      // configuración (12) y el mayor (5) tampoco — así el test distingue las 3 reglas.
+      mockPrismaService.servicio.findMany.mockResolvedValue([
+        { id: 's1', precio: 15, duracionEstimada: 20, margenOperativo: 5 },
+        { id: 's2', precio: 10, duracionEstimada: 10, margenOperativo: 5 },
+      ]);
+
+      const fecha = new Date('2026-10-10');
+      const inicioSlot = new Date(fecha);
+      inicioSlot.setHours(9, 0, 0, 0);
+      const finSlot = new Date(fecha);
+      finSlot.setHours(10, 0, 0, 0);
+
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
+        { inicio: inicioSlot, fin: finSlot },
+      ]);
+      mockPrismaService.reserva.create.mockResolvedValue({ id: 'uuid-reserva' });
+      mockPrismaService.participanteReserva.create.mockResolvedValue({ id: 'uuid-part' });
+
+      await service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        fecha: '2026-10-10',
+        horaInicio: '09:00',
+        horaFin: '09:40',
+        serviciosIds: ['s1', 's2'],
+        precioTotalEsperado: 25,
+      });
+
+      // Snapshot = valor de configuración (12), no la suma (10) ni el mayor (5)
+      expect(mockPrismaService.reserva.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            margenGrupalHistorico: 12,
+          }),
+        }),
+      );
+
+      // Y ese mismo valor es el que se exige a la disponibilidad (D44: todo se calcula aquí)
+      expect(mockDisponibilidadService.calcularDisponibilidad).toHaveBeenCalledWith(
+        expect.objectContaining({ margenRequerido: 12 }),
+        expect.anything(),
+      );
     });
 
     it('debe rechazar con BadRequestException si los servicios solicitados no existen en la barbería', async () => {
@@ -278,6 +334,52 @@ describe('ReservaService', () => {
       await expect(
         service.obtenerDetalleReserva('uuid-barberia', 'uuid-inexistente', mockUser as any),
       ).rejects.toThrowError(NotFoundException);
+    });
+  });
+
+  describe('marcarInasistencia (E1-04)', () => {
+    it('el ADMINISTRADOR puede marcar inasistencia en una barbería ajena', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ responsableId: 'otro-res' });
+      mockPrismaService.usuarioRol.findMany.mockResolvedValue([]);
+      mockPrismaService.usuarioRol.findFirst.mockImplementation(async (args: any) =>
+        args?.where?.rol?.nombre === 'ADMINISTRADOR' ? { id: 'ur-global' } : null,
+      );
+      mockPrismaService.reserva.findUnique.mockResolvedValue({
+        id: 'uuid-reserva',
+        clienteId: 'uuid-cliente',
+        barberiaId: 'uuid-barberia',
+        estado: 'CONFIRMADA',
+      });
+      mockPrismaService.reserva.update.mockResolvedValue({ id: 'uuid-reserva' });
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({
+        id: 'uuid-vinculo',
+        contadorNoPresentado: 0,
+        estaRestringido: false,
+        motivoRestriccion: null,
+      });
+      mockPrismaService.clienteBarberia.update.mockResolvedValue({});
+
+      const result = await service.marcarInasistencia(
+        'uuid-barberia',
+        'uuid-reserva',
+        'admin-global',
+      );
+
+      expect(result.contadorNoPresentado).toBe(1);
+      expect(mockPrismaService.reserva.update).toHaveBeenCalledWith({
+        where: { id: 'uuid-reserva' },
+        data: { estado: 'NO_ASISTIO' },
+      });
+    });
+
+    it('un ADMIN_BARBERIA de otra barbería sigue sin poder marcar inasistencia', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ responsableId: 'otro-res' });
+      mockPrismaService.usuarioRol.findMany.mockResolvedValue([]);
+      mockPrismaService.usuarioRol.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.marcarInasistencia('uuid-barberia', 'uuid-reserva', 'admin-ajeno'),
+      ).rejects.toThrowError(ForbiddenException);
     });
   });
 });

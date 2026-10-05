@@ -18,6 +18,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { UsuarioResponseDto } from './dto/usuario-response.dto.js';
 import { JwtPayload } from '../domain/jwt.interface.js';
+import { validarAsignacionRol } from '../domain/roles.js';
 import { plainToInstance } from 'class-transformer';
 
 @Injectable()
@@ -59,6 +60,12 @@ export class AuthService {
       this.logger.error('El rol CLIENTE no existe. Ejecuta: npm run seed');
       throw new InternalServerErrorException('Error de configuración del sistema.');
     }
+
+    // E1-04: un rol de ámbito BARBERIA exige barbería. CLIENTE es GLOBAL y se
+    // registra sin vincular, pero si el catálogo lo declara de otra forma se
+    // rechaza en el dominio y NO dentro de la transacción (que convertiría el
+    // error de dominio en un 500).
+    validarAsignacionRol(rolCliente, null);
 
     try {
       const usuario = await this.prisma.$transaction(async (tx) => {
@@ -139,7 +146,7 @@ export class AuthService {
     // Si la contraseña tiene un costo legado superior a 10 (ej. 12 rondas),
     // re-hasheamos asíncronamente en background a 10 rondas para acelerar logins futuros
     if (usuario.passwordHash.startsWith('$2b$12$') || usuario.passwordHash.startsWith('$2a$12$')) {
-      bcrypt.hash(dto.password, this.BCRYPT_ROUNDS).then((nuevoHash) => {
+      void bcrypt.hash(dto.password, this.BCRYPT_ROUNDS).then((nuevoHash) => {
         this.prisma.usuario.update({
           where: { id: usuario.id },
           data: { passwordHash: nuevoHash },

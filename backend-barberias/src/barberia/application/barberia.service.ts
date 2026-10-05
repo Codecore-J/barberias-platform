@@ -12,6 +12,14 @@ import type { BarberiaResponseDto } from './dto/barberia-response.dto.js';
 import type { VincularBarberiaDto } from './dto/vincular-barberia.dto.js';
 import { plainToInstance } from 'class-transformer';
 import { BarberiaResponseDto as BarberiaResponse } from './dto/barberia-response.dto.js';
+import type { BarberiaLecturaDto } from './dto/barberia-lectura.dto.js';
+import { BarberiaLecturaDto as BarberiaLectura } from './dto/barberia-lectura.dto.js';
+import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
+import {
+  alcanceCumple,
+  esAdministradorGlobal,
+  validarAsignacionRol,
+} from '../../iam/domain/roles.js';
 
 /** Genera un slug URL-safe de hasta `maxLen` caracteres */
 function generateSlug(text: string, maxLen = 40): string {
@@ -42,6 +50,19 @@ export class BarberiaService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ── Helpers de mapeo ───────────────────────────────────────────────────────
+
+  /** Mismo payload que `toResponse` sin `codigoAcceso` ni `enlaceUnico`. */
+  private toLectura(barberia: any): BarberiaLecturaDto {
+    return plainToInstance(BarberiaLectura, {
+      id: barberia.id,
+      nombre: barberia.nombre,
+      descripcion: barberia.descripcion ?? null,
+      telefono: barberia.telefono,
+      ubicacion: barberia.ubicacion,
+      responsableId: barberia.responsableId,
+      estado: barberia.estado,
+    });
+  }
 
   private toResponse(barberia: any): BarberiaResponseDto {
     return plainToInstance(BarberiaResponse, {
@@ -105,9 +126,12 @@ export class BarberiaService {
       // Asignar rol ADMIN_BARBERIA al responsable en este tenant
       const rolAdmin = await tx.rol.findUnique({
         where: { nombre: 'ADMIN_BARBERIA' },
-        select: { id: true },
+        select: { id: true, nombre: true, ambito: true },
       });
+
       if (rolAdmin) {
+        // E1-04: un rol de ámbito BARBERIA exige barbería.
+        validarAsignacionRol(rolAdmin, barberia.id);
         await tx.usuarioRol.upsert({
           where: {
             uk_usuario_rol_barberia: {
@@ -136,7 +160,67 @@ export class BarberiaService {
   }
 
   // ── LISTAR PERSONAL ────────────────────────────────────────────────────────
-  async findPersonal(barberiaId: string) {
+
+  /**
+   * ¿El usuario tiene alguno de estos roles en ESA barbería? (E1-03 · H19)
+   *
+   * La comprobación es la misma que aplica E1-02 en auditoría: el decorador
+   * `@Roles(...)` solo mira la lista plana de roles, así que sin esta
+   * validación un admin o barbero de la barbería A vería el personal de la B.
+   *
+   * E1-04: un `barberiaId` nulo solo comodín para roles de ámbito GLOBAL.
+   */
+  private tieneAlgunRolEnBarberia(
+    barberiaId: string,
+    usuario: UsuarioAutenticado,
+    roles: string[],
+  ): boolean {
+    return (usuario.rolesDetallados ?? []).some(
+      (rol) => roles.includes(rol.nombre) && alcanceCumple(rol, barberiaId),
+    );
+  }
+
+  /** El ADMINISTRADOR tiene acceso transversal: no está acotado a una barbería. */
+  private esAdministrador(usuario: UsuarioAutenticado): boolean {
+    return esAdministradorGlobal(usuario);
+  }
+
+  /**
+   * E1-05/E1-07: criterio único para `codigoAcceso` y `enlaceUnico`. Lo usan
+   * tanto la lectura por id como la lista de sedes, para que no vuelvan a
+   * existir dos reglas distintas para el mismo dato.
+   */
+  private veCodigoDe(barberiaId: string, usuario: UsuarioAutenticado): boolean {
+    return (
+      this.esAdministrador(usuario) ||
+      this.tieneAlgunRolEnBarberia(barberiaId, usuario, ['ADMIN_BARBERIA'])
+    );
+  }
+
+  /**
+   * Lista el personal (barberos y administradores) de una barbería.
+   *
+   * Puede leerla un ADMIN_BARBERIA o un BARBERO de esa misma barbería, y el
+   * ADMINISTRADOR global por la regla global. Cualquier otro recibe 403.
+   *
+   * El correo y el teléfono son datos de contacto: solo los ve un
+   * administrador. Un BARBERO recibe el resto de campos sin esos dos.
+   */
+  async findPersonal(barberiaId: string, usuario: UsuarioAutenticado) {
+    const esGlobal = !!usuario && this.esAdministrador(usuario);
+    const esAdmin =
+      esGlobal ||
+      (!!usuario && this.tieneAlgunRolEnBarberia(barberiaId, usuario, ['ADMIN_BARBERIA']));
+    const puedeLeer =
+      esAdmin ||
+      (!!usuario && this.tieneAlgunRolEnBarberia(barberiaId, usuario, ['BARBERO']));
+
+    if (!puedeLeer) {
+      throw new ForbiddenException(
+        'No posees el rol ADMIN_BARBERIA ni BARBERO en esa barbería.',
+      );
+    }
+
     const roles = await this.prisma.usuarioRol.findMany({
       where: { barberiaId },
       include: {
@@ -163,20 +247,44 @@ export class BarberiaService {
       userMap.get(r.usuario.id).roles.push(r.rol.nombre);
     }
 
-    return Array.from(userMap.values());
+    const personal = Array.from(userMap.values());
+
+    if (esAdmin) {
+      return personal;
+    }
+
+    // BARBERO: se elimina el contacto del payload, no se deja en `undefined`
+    // para que no aparezca al serializar.
+    return personal.map(({ correo, telefono, ...resto }) => resto);
   }
 
   // ── LISTAR (propias del responsable) ──────────────────────────────────────
 
-  async findAllByResponsable(responsableId: string): Promise<BarberiaResponseDto[]> {
+  /**
+   * E1-07. Lista las sedes donde el usuario es responsable.
+   *
+   * El filtro `responsableId` ya impide sacar barberías ajenas, pero eso no es
+   * lo mismo que la regla del código de acceso: quien figura como responsable
+   * puede no tener su fila `usuario_roles` (la corrupción que ya hubo en E1-04),
+   * y entonces recibiría `codigoAcceso` y `enlaceUnico` sin ser administrador de
+   * nada. Por eso cada sede de la lista pasa por el MISMO criterio que usa
+   * `findOne`: la puerta de entrada solo se entrega al ADMIN_BARBERIA de esa sede
+   * y al ADMINISTRADOR global.
+   */
+  async findAllByResponsable(
+    responsableId: string,
+    usuario: UsuarioAutenticado,
+  ): Promise<(BarberiaResponseDto | BarberiaLecturaDto)[]> {
     const barberias = await this.prisma.barberia.findMany({
       where: { responsableId },
       orderBy: { nombre: 'asc' },
     });
-    return barberias.map((b) => this.toResponse(b));
+    return barberias.map((b) =>
+      this.veCodigoDe(b.id, usuario) ? this.toResponse(b) : this.toLectura(b),
+    );
   }
 
-  // ── LISTAR TODAS (solo SUPER_ADMIN) ──────────────────────────────────────
+  // ── LISTAR TODAS (solo ADMINISTRADOR) ───────────────────────────────────
 
   async findAll(): Promise<BarberiaResponseDto[]> {
     const barberias = await this.prisma.barberia.findMany({
@@ -187,32 +295,43 @@ export class BarberiaService {
 
   // ── OBTENER UNA ────────────────────────────────────────────────────────────
 
-  async findOne(id: string): Promise<BarberiaResponseDto> {
+  /**
+   * E1-05 (decisión 3): cualquier usuario autenticado puede leer una barbería,
+   * pero `codigoAcceso` y `enlaceUnico` —que son la puerta de entrada— solo se
+   * entregan al ADMIN_BARBERIA de esa barbería y al ADMINISTRADOR global.
+   */
+  async findOne(
+    id: string,
+    usuario: UsuarioAutenticado,
+  ): Promise<BarberiaResponseDto | BarberiaLecturaDto> {
     const barberia = await this.prisma.barberia.findUnique({ where: { id } });
     if (!barberia) {
       throw new NotFoundException(`Barbería ${id} no encontrada.`);
     }
-    return this.toResponse(barberia);
+
+    return this.veCodigoDe(id, usuario)
+      ? this.toResponse(barberia)
+      : this.toLectura(barberia);
   }
 
   // ── ACTUALIZAR ─────────────────────────────────────────────────────────────
 
   /**
-   * Solo el responsable o un SUPER_ADMIN puede actualizar.
+   * Solo el responsable o el ADMINISTRADOR global puede actualizar.
    * Comprobación de pertenencia: authUserId === barberia.responsableId
    */
   async update(
     id: string,
     authUserId: string,
     dto: UpdateBarberiaDto,
-    isSuperAdmin = false,
+    esGlobal = false,
   ): Promise<BarberiaResponseDto> {
     const barberia = await this.prisma.barberia.findUnique({ where: { id } });
     if (!barberia) {
       throw new NotFoundException(`Barbería ${id} no encontrada.`);
     }
 
-    if (!isSuperAdmin && barberia.responsableId !== authUserId) {
+    if (!esGlobal && barberia.responsableId !== authUserId) {
       throw new ForbiddenException('Solo el responsable puede modificar esta barbería.');
     }
 
@@ -232,13 +351,13 @@ export class BarberiaService {
 
   // ── ELIMINAR (soft-delete: estado → INACTIVO) ──────────────────────────────
 
-  async remove(id: string, authUserId: string, isSuperAdmin = false): Promise<void> {
+  async remove(id: string, authUserId: string, esGlobal = false): Promise<void> {
     const barberia = await this.prisma.barberia.findUnique({ where: { id } });
     if (!barberia) {
       throw new NotFoundException(`Barbería ${id} no encontrada.`);
     }
 
-    if (!isSuperAdmin && barberia.responsableId !== authUserId) {
+    if (!esGlobal && barberia.responsableId !== authUserId) {
       throw new ForbiddenException('Solo el responsable puede eliminar esta barbería.');
     }
 

@@ -9,6 +9,7 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
+    "lint": "oxlint src",
     "test": "ng test"
   },
   "private": true,

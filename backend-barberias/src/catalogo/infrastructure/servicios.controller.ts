@@ -16,12 +16,20 @@ import { UpdateServicioDto } from '../application/dto/update-servicio.dto.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 
+/**
+ * Catálogo de servicios de una barbería (E1-05).
+ *
+ * D16: el BARBERO consulta el catálogo pero no lo escribe. Quien crea, edita y
+ * desactiva es el ADMIN_BARBERIA de la sede; el ADMINISTRADOR global entra como
+ * en el resto de rutas de gestión, y así la pantalla /admin/servicios deja de
+ * devolverle 403.
+ */
 @Controller(['catalogo/servicios', 'servicios'])
 export class ServiciosController {
   constructor(private readonly serviciosService: ServiciosService) {}
 
   @Post()
-  @Roles('ADMIN_BARBERIA', 'BARBERO')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @HttpCode(HttpStatus.CREATED)
   create(
     @CurrentBarberiaId() barberiaId: string,
@@ -31,13 +39,13 @@ export class ServiciosController {
   }
 
   @Get()
-  @Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE')
+  @Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR')
   findAll(@CurrentBarberiaId() barberiaId?: string) {
     return this.serviciosService.findAll(barberiaId);
   }
 
   @Get(':id')
-  @Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE')
+  @Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR')
   findOne(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -46,7 +54,7 @@ export class ServiciosController {
   }
 
   @Patch(':id')
-  @Roles('ADMIN_BARBERIA', 'BARBERO')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   update(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -56,7 +64,7 @@ export class ServiciosController {
   }
 
   @Delete(':id')
-  @Roles('ADMIN_BARBERIA', 'BARBERO')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @HttpCode(HttpStatus.OK)
   deactivate(
     @CurrentBarberiaId() barberiaId: string,

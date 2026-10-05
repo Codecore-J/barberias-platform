@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, catchError, of, throwError } from 'rxjs';
+import { Observable, tap, catchError, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 
 export interface NotaCliente {

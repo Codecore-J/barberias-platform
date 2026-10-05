@@ -1,6 +1,6 @@
 import { Injectable, signal, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, catchError, of, map } from 'rxjs';
+import { Observable, tap, catchError, of } from 'rxjs';
 import { Router } from '@angular/router';
 import {
   AuthResponseDto,
@@ -94,7 +94,6 @@ export class AuthService {
         const isAdmin =
           roles.includes('ADMINISTRADOR') ||
           roles.includes('ADMIN_BARBERIA') ||
-          roles.includes('SUPER_ADMIN') ||
           roles.includes('ADMIN');
         const isBarbero = roles.includes('BARBERO');
 

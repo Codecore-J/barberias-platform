@@ -6,6 +6,7 @@ import { ConsultarDisponibilidadDto } from '../application/dto/consultar-disponi
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
+import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 
 @Controller(['barberias/:barberiaId/agenda', 'agenda'])
 export class AgendaController {
@@ -14,6 +15,12 @@ export class AgendaController {
     private readonly disponibilidadService: DisponibilidadService
   ) {}
 
+  /**
+   * GET /agenda/disponibilidad
+   * Consultar disponibilidad es lectura de agenda: los cuatro roles (decisión 6).
+   */
+  // TODO(E1-06): validar que el solicitante está vinculado a esta barbería.
+  @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Get('disponibilidad')
   async consultarDisponibilidadGet(
     @CurrentBarberiaId() barberiaId: string,
@@ -32,6 +39,12 @@ export class AgendaController {
     });
   }
 
+  /**
+   * POST /agenda/bloqueos
+   * Crear un bloqueo es escribir la agenda: ADMIN_BARBERIA de la barbería y
+   * ADMINISTRADOR global. El BARBERO solo gestiona su propio horario.
+   */
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Post('bloqueos')
   crearBloqueo(
     @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
@@ -41,17 +54,27 @@ export class AgendaController {
     return this.agendaService.crearBloqueo(user.id, barberiaId, dto);
   }
 
+  // E1-03 · H20: un CLIENTE nunca lee bloqueos ni sus motivos; para su
+  // disponibilidad usa `GET .../agenda/disponibilidad`.
+  @Roles('ADMIN_BARBERIA', 'BARBERO')
   @Get('bloqueos')
   obtenerBloqueos(
     @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
     @Query('from') from: string,
     @Query('to') to: string,
+    @CurrentUser() user: UsuarioAutenticado,
   ) {
     const fromDate = from ? new Date(from) : new Date();
     const toDate = to ? new Date(to) : new Date(new Date().setMonth(new Date().getMonth() + 1));
-    return this.agendaService.obtenerBloqueos(barberiaId, fromDate, toDate);
+    return this.agendaService.obtenerBloqueos(user.id, barberiaId, fromDate, toDate);
   }
 
+  /**
+   * DELETE /agenda/bloqueos/:id
+   * Misma política que la creación: el bloqueo pertenece a la barbería y solo
+   * su ADMIN_BARBERIA o el ADMINISTRADOR global pueden retirarlo.
+   */
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Delete('bloqueos/:id')
   eliminarBloqueo(
     @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
@@ -61,6 +84,13 @@ export class AgendaController {
     return this.agendaService.eliminarBloqueo(user.id, barberiaId, id);
   }
 
+  /**
+   * POST /agenda/disponibilidad
+   * Mismo cálculo que el GET, con el cuerpo tipado. Los cuatro roles
+   * (decisión 6).
+   */
+  // TODO(E1-06): validar que el solicitante está vinculado a esta barbería.
+  @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Post('disponibilidad')
   async obtenerDisponibilidad(
     @Param('barberiaId', ParseUUIDPipe) barberiaId: string,

@@ -136,7 +136,7 @@ import { PagosService } from '../../core/services/pagos.service';
           }
 
           <!-- ROL: SUPER ADMIN -->
-          @if (userRole() === 'SUPER_ADMIN') {
+          @if (userRole() === 'ADMINISTRADOR') {
             <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-semibold uppercase tracking-wider backdrop-blur-md shadow-[0_0_20px_rgba(168,85,247,0.2)] hover:scale-110 transition-all duration-500 transform translate-z-12">
               <i class="pi pi-shield text-purple-400"></i>
               <span>Centro de Control Administrativo (Plataforma)</span>
@@ -196,7 +196,7 @@ import { PagosService } from '../../core/services/pagos.service';
                 </div>
 
                 <div class="flex items-center gap-4 transform translate-z-24">
-                  @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'SUPER_ADMIN') {
+                  @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'ADMINISTRADOR') {
                     <a routerLink="/admin/servicios" class="px-5 py-3 rounded-xl text-sm font-bold text-zinc-200 bg-zinc-800/80 hover:bg-zinc-700/80 hover:text-amber-400 border border-zinc-600/50 hover:border-amber-500/50 transition-all duration-300 flex items-center gap-2 hover:-translate-y-1 shadow-lg">
                       <i class="pi pi-cog"></i>Servicios
                     </a>
@@ -225,7 +225,7 @@ import { PagosService } from '../../core/services/pagos.service';
         }
 
         <!-- DASHBOARD ADMIN: MÉTRICAS FINANCIERAS -->
-        @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'SUPER_ADMIN') {
+        @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'ADMINISTRADOR') {
           <section class="max-w-6xl mx-auto pt-4 pb-8 transform-style-3d"
                    [style.transform]="'translateZ(' + (scrollY() > 150 ? 40 : 0) + 'px)'">
             <h2 class="text-2xl font-display font-bold text-white mb-6 transform translate-z-12 flex items-center gap-3">
@@ -385,8 +385,8 @@ import { PagosService } from '../../core/services/pagos.service';
             </a>
           }
 
-          <!-- ROL: SUPER_ADMIN -->
-          @if (userRole() === 'SUPER_ADMIN') {
+          <!-- ROL: ADMINISTRADOR -->
+          @if (userRole() === 'ADMINISTRADOR') {
             <!-- Se han removido las redundancias. Mantenemos opciones globales específicas -->
             <a routerLink="/barberias" class="glass-card rounded-3xl p-8 space-y-5 hover:-translate-y-4 hover:rotate-y-6 hover:rotate-x-6 transition-all duration-500 group shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d block"
                  [style.transform]="'translateZ(' + (scrollY() > 200 ? 30 : 0) + 'px)'">
@@ -434,7 +434,7 @@ export class HomeComponent implements OnInit {
   barberoProductivo = signal<string>('N/A');
 
   ngOnInit() {
-    if (this.userRole() === 'ADMIN_BARBERIA' || this.userRole() === 'SUPER_ADMIN') {
+    if (this.userRole() === 'ADMIN_BARBERIA' || this.userRole() === 'ADMINISTRADOR') {
       this.cargarMetricas();
     }
   }
@@ -472,7 +472,7 @@ export class HomeComponent implements OnInit {
   userRole(): string {
     const roles = this.authService.authState().user?.roles;
     if (!roles || roles.length === 0) return 'CLIENTE';
-    if (roles.includes('SUPER_ADMIN') || roles.includes('ADMINISTRADOR')) return 'SUPER_ADMIN';
+    if (roles.includes('ADMINISTRADOR')) return 'ADMINISTRADOR';
     if (roles.includes('ADMIN_BARBERIA')) return 'ADMIN_BARBERIA';
     if (roles.includes('BARBERO')) return 'BARBERO';
     return 'CLIENTE';

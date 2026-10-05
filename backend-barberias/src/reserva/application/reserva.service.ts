@@ -6,6 +6,13 @@ import { validateTimeRange } from '../../horario/domain/time.utils.js';
 import { DisponibilidadService } from '../../agenda/application/disponibilidad.service.js';
 import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
+import {
+  alcanceCumple,
+  esAdministradorGlobalPorId,
+  ROL_ADMINISTRADOR,
+  ROL_ADMIN_BARBERIA,
+  ROL_BARBERO,
+} from '../../iam/domain/roles.js';
 
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -84,18 +91,17 @@ export class ReservaService {
         (acc, s) => acc + Number(s.precio),
         0,
       );
-      const margenTotalServicios = serviciosCatalogo.reduce(
-        (acc, s) => acc + (s.margenOperativo ?? 0),
-        0,
-      );
-
       if (duracionSolicitada < duracionTotalServicios) {
         throw new BadRequestException(
           `La duración solicitada (${duracionSolicitada} min) es insuficiente para los servicios seleccionados (mínimo ${duracionTotalServicios} min)`,
         );
       }
 
-      const margenFinal = dto.margenGrupalHistorico ?? margenTotalServicios;
+      // D42 (2026-10-02): el margen grupal es un campo propio de la barbería
+      // (configuracion_barberia.margen_grupal_minutos, default 10, rango 0-60).
+      // Se ignoran tanto la suma de márgenes individuales (D01) como cualquier
+      // valor enviado por el cliente en el DTO (D44: todo se calcula en el backend).
+      const margenFinal = config.margenGrupalMinutos ?? 10;
 
       // 2. Verificamos disponibilidad en tiempo real delegando a Agenda/Disponibilidad
       const disponibilidades = await this.disponibilidadService.calcularDisponibilidad({
@@ -245,15 +251,15 @@ export class ReservaService {
     // SEC-E2 y HALLAZGO-14: Verificar que el usuario autenticado tenga rol en esta barbería,
     // y si SOLO es CLIENTE, verificar que la reserva sea suya.
     const rolesEnBarberia = user.rolesDetallados?.filter(
-      (r) => r.barberiaId === barberiaId || r.ambito === 'GLOBAL'
+      (r) => alcanceCumple(r, barberiaId)
     ) || [];
 
     if (rolesEnBarberia.length === 0) {
       throw new ForbiddenException('No tienes acceso a las reservas de esta barbería.');
     }
 
-    const isAdminOrBarbero = rolesEnBarberia.some(r => 
-      r.nombre === 'ADMINISTRADOR' || r.nombre === 'SUPER_ADMIN' || r.nombre === 'ADMIN_BARBERIA' || r.nombre === 'BARBERO'
+    const isAdminOrBarbero = rolesEnBarberia.some((r) =>
+      [ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA, ROL_BARBERO].includes(r.nombre),
     );
 
     if (!isAdminOrBarbero && reserva.clienteId !== user.id) {
@@ -275,15 +281,14 @@ export class ReservaService {
       }
 
       const isResponsable = barberia.responsableId === solicitanteId;
-      const isSuperAdmin = await this.prisma.usuarioRol.findFirst({
-        where: { usuarioId: solicitanteId, rol: { nombre: { in: ['SUPER_ADMIN', 'ADMINISTRADOR'] } } },
-      });
+      // E1-04 (D05): el rol global es ADMINISTRADOR.
+      const esGlobal = await esAdministradorGlobalPorId(this.prisma, solicitanteId);
       const rolesUser = await this.prisma.usuarioRol.findMany({
         where: { usuarioId: solicitanteId, barberiaId },
         include: { rol: true },
       });
 
-      if (!isResponsable && !isSuperAdmin && !rolesUser.some((ur) => ur.rol.nombre === 'ADMIN_BARBERIA' || ur.rol.nombre === 'BARBERO')) {
+      if (!isResponsable && !esGlobal && !rolesUser.some((ur) => ur.rol.nombre === 'ADMIN_BARBERIA' || ur.rol.nombre === 'BARBERO')) {
         throw new ForbiddenException('No tienes permisos para marcar inasistencias en esta barbería');
       }
     }
@@ -357,7 +362,7 @@ export class ReservaService {
     }
 
     const rolesEnBarberia = user.rolesDetallados?.filter(
-      (r) => r.barberiaId === barberiaId || r.ambito === 'GLOBAL'
+      (r) => alcanceCumple(r, barberiaId)
     ) || [];
 
     if (rolesEnBarberia.length === 0) {

@@ -60,6 +60,7 @@ Plataforma de Gestión de Barberías
 - **Acción exacta:** En `AUDITORIA_HALLAZGOS.md`, renombrar el hallazgo de CORS permisivo de `CONF-01` a `CONF-02`, dejando `CONF-01` únicamente para el secreto JWT débil. Actualizar cualquier referencia cruzada (commits, tickets, otros documentos) que mencione el ID viejo.
 - **Criterio de aceptación:** El archivo `AUDITORIA_HALLAZGOS.md` no contiene dos hallazgos con el mismo ID.
 - **Evidencia requerida:** Diff del commit que aplica el renombrado.
+- **Evidencia obtenida (2026-10-02):** el renombrado CONF-01/CONF-02 ya estaba hecho; quedaba un segundo duplicado `### HALLAZGO 09` (IDOR), renumerado a **HALLAZGO 14** en la rama `docs/correccion-auditoria-cierre`. Verificación: los dos IDs duplicados dejan de existir (grep de encabezados sin repetidos).
 - **Bloqueante para producción:** No.
 
 ---
@@ -156,7 +157,9 @@ Plataforma de Gestión de Barberías
 ## Bloque E — Pruebas de seguridad no confirmadas
 
 ### TASK-E1 — Margen grupal bajo carga concurrente
-- [x] **Prioridad:** Alta
+- [ ] **Prioridad:** Alta
+- **ESTADO (2026-10-02): DESMARCADA — la evidencia original contradice una decisión de producto ya cerrada.** El criterio de esta tarea validaba que `margenGrupalHistorico = suma(márgenes)`, pero la decisión D42 (revisada y cerrada el 2026-10-02) establece que el margen es un campo propio de la barbería (`configuracion_barberia.margen_grupal_minutos`, default 10, rango 0-60) snapshotteado al crear la reserva, y que nunca se toma del cliente (D44). Corregido en la rama `fix/margen-grupal-d42`.
+- **Criterio corregido (D42):** en todas las reservas creadas, `margenGrupalHistorico` en BD coincide con `configuracion_barberia.margen_grupal_minutos` de ESA barbería, sin excepciones; el campo rechazado si llega en el DTO del cliente (400 por `forbidNonWhitelisted`).
 - **Acción exacta:** Disparar 20 solicitudes de reserva concurrentes (distintos horarios) y verificar en cada una que `margenGrupalHistorico` se haya aplicado exactamente una vez por reserva, nunca por participante.
 - **Criterio de aceptación:** En todas las reservas creadas, el campo `margenGrupalHistorico` en BD coincide con `suma(margenOperativo de cada servicio)`, sin excepciones.
 - **Evidencia obtenida:**
@@ -180,7 +183,21 @@ Plataforma de Gestión de Barberías
   | 7 | 10                | 10                    | ✅         |
   ```
   En el **100% de las reservas persistidas**, `margenGrupalHistorico = 10` exacto (aplicado 1 vez por reserva, no multiplicado por participante ni por servicio).
-- **Bloqueante para producción:** No (completada con éxito).
+- **Evidencia histórica invalidada (2026-10-02):** esa tabla certificaba la regla de la SUMA, hoy derogada por D42 (ver Estado arriba). El valor `10` coincidía con la suma solo porque `5 + 5 = 10` igual que el default de configuración.
+- **Nueva evidencia (2026-10-02, rama `fix/margen-grupal-d42`):**
+  ```text
+  TEST ROJO (código viejo):
+   × D42: debe snapshottear configuracion_barberia.margen_grupal_minutos, nunca la suma de margenes ni el valor del DTO
+   AssertionError: expected "vi.fn()" to be called with arguments: [ ObjectContaining{…} ]
+   -       "margenGrupalHistorico": 12,
+   +       "margenGrupalHistorico": 10,
+   Test Files  1 failed (1) / Tests 1 failed | 9 passed (10)
+
+  TEST VERDE (con fix):
+   Test Files  1 passed (1) / Tests 10 passed (10)
+   Suite completa: Test Files 20 passed (20) / Tests 135 passed (135)
+  ```
+- **Bloqueante para producción:** No (regla corregida con test rojo→verde).
 
 ### TASK-E2 — Prueba de IDOR
 - [x] **Prioridad:** Crítica
@@ -197,7 +214,7 @@ Plataforma de Gestión de Barberías
   - `reserva.controller.ts`: Se agregó `@Roles(...)` y `@CurrentUser()` al endpoint.
   - `reserva.service.ts`: Se agregó verificación de pertenencia de rol en el tenant antes de devolver datos.
   - Build: `npm run build` ✅ sin errores.
-  - Registrado como **HALLAZGO 09** en `AUDITORIA_HALLAZGOS.md`.
+  - Registrado como **HALLAZGO 14** en `AUDITORIA_HALLAZGOS.md` (renumerado el 2026-10-02 desde el segundo `HALLAZGO 09` duplicado).
 - **Bloqueante para producción:** No (hallazgo encontrado y resuelto).
 
 ### TASK-E3 — Inyección SQL en campos de texto libre
@@ -236,16 +253,17 @@ Plataforma de Gestión de Barberías
 - [x] **Prioridad:** Crítica
 - **Depende de:** Todas las tareas anteriores marcadas como bloqueantes
 - **Acción exacta:** Ejecutar de nuevo la batería unitaria completa y la batería E2E completa.
-- **Criterio de aceptación:** 100% de las suites unitarias y E2E pasan, igual o mejor que el resultado original (20/20 suites unitarias, 5/5 suites E2E).
-- **Evidencia obtenida:**
+- **Criterio de aceptación:** 100% de las suites unitarias y E2E pasan, igual o mejor que el resultado original (20/20 suites unitarias, 5/5 suites E2E).- **Evidencia obtenida:**
   ```text
   Test Files  20 passed (20)
        Tests  134 passed (134)
-  
-  Test Files  5 passed (5)
-       Tests  16 passed (16)
+
+  Test Files  7 passed (7)   # corrección 2026-10-02: eran 5/16, la suite E2E hoy tiene 7 archivos
+       Tests  24 passed (24)
   ```
   El 100% de las pruebas unitarias y E2E corrieron de forma exitosa tras los ajustes realizados.
+- **Corrección de conteos (2026-10-02, rama `fix/e2e-hallazgo16-aislamiento`):** la cifra E2E "5/16" estaba obsoleta; hoy son **7 archivos / 24 tests** (reproducido: unit `20 passed (20) / 134 passed (134)` exit 0 sobre `main`; E2E `7 passed (7) / 24 passed (24)` exit 0 sobre BD de test con roles sembrados).
+- **Precondiciones reales de la suite E2E (documentadas para que no vuelva a parecer fláctil):** (1) la BD de test necesita `npm run seed` (roles) — sin él fallan `hallazgo14-idor-reserva` y `barberia.e2e-spec` (4 tests); (2) `hallazgo16-rolesguard-global` ya NO depende de datos ajenos desde `fix/e2e-hallazgo16-aislamiento` (crea su propio rol y usuario en `beforeAll`; verificado rojo→verde en BD vacía).
 - **Bloqueante para producción:** No (completada con éxito).
 
 ### TASK-F2 — Actualización final de `AUDITORIA_HALLAZGOS.md`

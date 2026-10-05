@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AgendaService } from './agenda.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { getQueueToken } from '@nestjs/bullmq';
+
+const BARBERIA_B = 'barberia-b';
 
 describe('AgendaService', () => {
   let service: AgendaService;
@@ -65,6 +68,87 @@ describe('AgendaService', () => {
         where: { id: 'uuid-bloqueo' },
         data: { jobId: 'job-123' },
       });
+    });
+  });
+
+  describe('obtenerBloqueos (E1-03 · H20)', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('debe validar el acceso antes de leer los bloqueos', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ responsableId: 'otro-admin' });
+      mockPrismaService.usuarioRol.findMany.mockResolvedValue([]);
+      mockPrismaService.usuarioRol.findFirst.mockResolvedValue(null);
+      mockPrismaService.bloqueosAgenda.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.obtenerBloqueos('usuario-cliente', BARBERIA_B, new Date(), new Date()),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockPrismaService.bloqueosAgenda.findMany).not.toHaveBeenCalled();
+    });
+
+    it('debe lanzar NotFoundException si la barbería no existe', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.obtenerBloqueos('usuario-cliente', BARBERIA_B, new Date(), new Date()),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(mockPrismaService.bloqueosAgenda.findMany).not.toHaveBeenCalled();
+    });
+
+    it('debe devolver los bloqueos al ADMIN de esa barbería', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ responsableId: 'admin-b' });
+      mockPrismaService.usuarioRol.findMany.mockResolvedValue([
+        { barberiaId: BARBERIA_B, rol: { nombre: 'ADMIN_BARBERIA' } },
+      ]);
+      mockPrismaService.usuarioRol.findFirst.mockResolvedValue(null);
+      mockPrismaService.bloqueosAgenda.findMany.mockResolvedValue([
+        { id: 'bloqueo-1', motivo: 'H20 almuerzo' },
+      ]);
+
+      const result = await service.obtenerBloqueos(
+        'admin-b',
+        BARBERIA_B,
+        new Date('2026-10-01'),
+        new Date('2026-11-01'),
+      );
+
+      expect(mockPrismaService.bloqueosAgenda.findMany).toHaveBeenCalledTimes(1);
+      expect(result).toEqual([{ id: 'bloqueo-1', motivo: 'H20 almuerzo' }]);
+    });
+
+    it('debe devolver los bloqueos al responsable, aunque no tenga ADMIN_BARBERIA', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ responsableId: 'responsable' });
+      mockPrismaService.usuarioRol.findMany.mockResolvedValue([]);
+      mockPrismaService.usuarioRol.findFirst.mockResolvedValue(null);
+      mockPrismaService.bloqueosAgenda.findMany.mockResolvedValue([]);
+
+      await service.obtenerBloqueos('responsable', BARBERIA_B, new Date(), new Date());
+
+      expect(mockPrismaService.bloqueosAgenda.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('E1-04: debe dejar leer bloqueos al ADMINISTRADOR de otra barbería', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ responsableId: 'admin-ajeno' });
+      mockPrismaService.usuarioRol.findMany.mockResolvedValue([]);
+      // Solo es administrador global si la consulta busca el rol que existe.
+      mockPrismaService.usuarioRol.findFirst.mockImplementation(async (args: any) =>
+        args?.where?.rol?.nombre === 'ADMINISTRADOR' ? { id: 'ur-global' } : null,
+      );
+      mockPrismaService.bloqueosAgenda.findMany.mockResolvedValue([{ id: 'bloqueo-1' }]);
+
+      const result = await service.obtenerBloqueos(
+        'admin-global',
+        BARBERIA_B,
+        new Date(),
+        new Date(),
+      );
+
+      expect(mockPrismaService.bloqueosAgenda.findMany).toHaveBeenCalledTimes(1);
+      expect(result).toEqual([{ id: 'bloqueo-1' }]);
     });
   });
 });

@@ -20,7 +20,7 @@ export class ReservaController {
   constructor(private readonly reservaService: ReservaService) {}
 
   @Get('agenda')
-  @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR', 'SUPER_ADMIN')
+  @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR')
   obtenerAgenda(
     @CurrentBarberiaId() barberiaId: string,
     @Query('fecha') fecha: string,
@@ -30,13 +30,24 @@ export class ReservaController {
     return this.reservaService.obtenerAgendaDiaria(barberiaId, fechaFiltro, user);
   }
 
+  /**
+   * GET /reservas/mis-reservas
+   * Las reservas del propio cliente: el `clienteId` sale del token.
+   */
+  @Roles('CLIENTE')
   @Get('mis-reservas')
   obtenerMisReservas(@CurrentUser() user: UsuarioAutenticado) {
     return this.reservaService.obtenerMisReservas(user.id);
   }
 
+  /**
+   * PATCH /reservas/:id/estado
+   * Cambiar el estado de una reserva queda restringido al responsable de la
+   * barbería y al ADMINISTRADOR global (decisión 11): el no presentado es una
+   * decisión de la sede, no del barbero.
+   */
   @Patch(':id/estado')
-  @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR', 'SUPER_ADMIN')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   cambiarEstado(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) reservaId: string,
@@ -46,6 +57,15 @@ export class ReservaController {
     return this.reservaService.cambiarEstado(barberiaId, reservaId, estado, user);
   }
 
+  /**
+   * POST /reservas
+   * Crear reserva: los cuatro roles (decisión 10). El alias `/reservas` lo usan
+   * tanto el wizard del cliente como el modal de walk-in de la pantalla de
+   * agenda, de modo que restringirlo a CLIENTE dejaría sin walk-in a la
+   * pantalla que más lo usa.
+   */
+  // TODO(E3-03): restringir a CLIENTE y crear una ruta aparte para el walk-in.
+  @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Post()
   crearReserva(
     @CurrentBarberiaId() barberiaId: string,
@@ -65,8 +85,13 @@ export class ReservaController {
     return this.reservaService.obtenerDetalleReserva(barberiaId, reservaId, user);
   }
 
+  /**
+   * POST /reservas/:id/inasistencia
+   * Marcar una reserva como no presentada (D02): del responsable de la sede y
+   * del ADMINISTRADOR global.
+   */
   @Post(':id/inasistencia')
-  @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR', 'SUPER_ADMIN')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   marcarInasistencia(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) reservaId: string,

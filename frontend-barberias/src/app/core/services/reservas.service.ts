@@ -14,7 +14,6 @@ export interface CrearReservaDto {
   horaFin: string;
   serviciosIds: string[];
   precioTotalEsperado: number;
-  margenGrupalHistorico?: number;
   barberoId?: string | null;
   nombreInvitado?: string;
 }

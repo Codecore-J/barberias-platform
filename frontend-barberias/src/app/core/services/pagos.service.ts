@@ -50,7 +50,7 @@ export class PagosService {
   }
 
   /**
-   * Obtiene estadísticas agregadas de auditoría (para SUPER_ADMIN / ADMIN)
+   * Obtiene estadísticas agregadas de auditoría (para ADMINISTRADOR)
    */
   obtenerEstadisticasAuditoria(): Observable<any> {
     return this.http.get<any>(`${this.apiUrl}/auditoria/estadisticas`).pipe(
@@ -59,7 +59,7 @@ export class PagosService {
   }
 
   /**
-   * Ejecuta purga manual de registros de auditoría más antiguos de X días (solo SUPER_ADMIN)
+   * Ejecuta purga manual de registros de auditoría más antiguos de X días (solo ADMINISTRADOR)
    */
   purgarAuditoria(dias = 365): Observable<any> {
     return this.http.post<any>(`${this.apiUrl}/auditoria/purgar?dias=${dias}`, {});

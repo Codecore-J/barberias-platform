@@ -1,7 +1,7 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { TenantService, BarberiaResumen } from '../../core/services/tenant.service';
+import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
 import { VincularModalComponent } from './components/vincular-modal/vincular-modal.component';
 
@@ -97,10 +97,12 @@ import { VincularModalComponent } from './components/vincular-modal/vincular-mod
             Para comenzar a agendar turnos o gestionar una barbería, necesitas vincularte a una utilizando un código de acceso o crear la tuya propia.
           </p>
           <div class="flex justify-center gap-4 pt-4">
-            <button (click)="showVincularModal.set(true)" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:scale-105 transition-transform flex items-center">
-              <i class="pi pi-link mr-2"></i>Vincular con Código
-            </button>
-            @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'SUPER_ADMIN') {
+            @if (userRole() === 'CLIENTE') {
+              <button (click)="showVincularModal.set(true)" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:scale-105 transition-transform flex items-center">
+                <i class="pi pi-link mr-2"></i>Vincular con Código
+              </button>
+            }
+            @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'ADMINISTRADOR') {
               <button routerLink="/barberias/nueva" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 glass-card hover:text-amber-400 transition-colors flex items-center">
                 <i class="pi pi-plus mr-2"></i>Crear Barbería
               </button>
@@ -112,18 +114,20 @@ import { VincularModalComponent } from './components/vincular-modal/vincular-mod
       <!-- Acciones de Grid (Cuando ya hay barberías) -->
       @if (!tenantService.isLoading() && tenantService.barberiasVinculadas().length > 0) {
         <div class="max-w-6xl mx-auto px-4 pt-10 flex flex-wrap justify-center gap-4 transform translate-z-12">
-          @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'SUPER_ADMIN') {
+          @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'ADMINISTRADOR') {
             <button routerLink="/barberias/nueva" 
                     class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg shadow-amber-500/20 hover:scale-105 transition-all flex items-center gap-2">
               <i class="pi pi-plus"></i>
               <span>Crear Nueva Barbería</span>
             </button>
           }
-          <button (click)="showVincularModal.set(true)" 
-                  class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 bg-zinc-800/90 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center gap-2">
-            <i class="pi pi-link"></i>
-            <span>Vincular con Código</span>
-          </button>
+          @if (userRole() === 'CLIENTE') {
+            <button (click)="showVincularModal.set(true)" 
+                    class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 bg-zinc-800/90 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center gap-2">
+              <i class="pi pi-link"></i>
+              <span>Vincular con Código</span>
+            </button>
+          }
         </div>
       }
 
@@ -148,7 +152,7 @@ export class BarberiasComponent implements OnInit {
   userRole(): string {
     const roles = this.authService.authState().user?.roles;
     if (!roles || roles.length === 0) return 'CLIENTE';
-    if (roles.includes('SUPER_ADMIN') || roles.includes('ADMINISTRADOR')) return 'SUPER_ADMIN';
+    if (roles.includes('ADMINISTRADOR')) return 'ADMINISTRADOR';
     if (roles.includes('ADMIN_BARBERIA')) return 'ADMIN_BARBERIA';
     if (roles.includes('BARBERO')) return 'BARBERO';
     return 'CLIENTE';
@@ -156,7 +160,7 @@ export class BarberiasComponent implements OnInit {
 
   rutaEntrar(): string {
     const role = this.userRole();
-    if (role === 'SUPER_ADMIN' || role === 'ADMIN_BARBERIA' || role === 'BARBERO') {
+    if (role === 'ADMINISTRADOR' || role === 'ADMIN_BARBERIA' || role === 'BARBERO') {
       return '/admin/agenda';
     }
     return '/';
@@ -166,7 +170,7 @@ export class BarberiasComponent implements OnInit {
     this.tenantService.seleccionarBarberia(id).subscribe({
       next: () => {
         const role = this.userRole();
-        if (role === 'SUPER_ADMIN' || role === 'ADMIN_BARBERIA' || role === 'BARBERO') {
+        if (role === 'ADMINISTRADOR' || role === 'ADMIN_BARBERIA' || role === 'BARBERO') {
           this.authService['router'].navigate(['/admin/agenda']);
         } else {
           this.authService['router'].navigate(['/']);

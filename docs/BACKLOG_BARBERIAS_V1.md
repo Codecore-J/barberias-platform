@@ -112,8 +112,9 @@ Cualquier otra transición es inválida y responde 409 `ESTADO_INVALIDO`. Al pas
 Ocupan: `CONFIRMADA`, `PENDIENTE`, `PROPUESTA_PENDIENTE` y toda propuesta de horario activa (el espacio propuesto se mantiene reservado hasta que expire). Liberan: `RECHAZADA`, `EXPIRADA`, `CANCELADA`, `NO_PRESENTADO`. `COMPLETADA` pertenece al pasado.
 
 ### 5.4 Cálculo del bloque de tiempo
-- **Individual (D01):** suma de las duraciones de los servicios elegidos + suma de los márgenes operativos de esos servicios. Un combo aporta su `duracion_propia` + `margen_propio` (no la suma de sus componentes). Ejemplo: 35 + 10 = 45 min.
-- **Grupal:** suma de las duraciones de todos los servicios de todos los participantes + UN SOLO margen grupal (D42: el mayor margen operativo entre los servicios incluidos). Ejemplo del diseño: 35 + 30 + 30 + 10 = 105 min. Nunca un margen por participante.
+> **Actualización 2026-10-02 (D42 revisada y cerrada):** el margen que se añade al bloque —individual o grupal— sale SIEMPRE de `configuracion_barberia.margen_grupal_minutos` (default 10, rango 0-60), snapshotteado en `reservas.margen_grupal_historico` al crear la reserva. La suma de márgenes (regla antigua de D01) y el "mayor margen" (regla antigua de D42) dejan de usarse para el bloque; los márgenes individuales siguen congelándose por servicio en `margen_historico`. Nunca lo provee el cliente (D44).
+- **Individual:** la duración solicitada debe cubrir la suma de las duraciones de los servicios elegidos; el margen aplicado al bloque es el de configuración de la barbería. Ejemplo con margen de configuración 10: 35 + 10 = 45 min.
+- **Grupal:** suma de las duraciones de todos los servicios de todos los participantes + UN SOLO margen de configuración (D42). Ejemplo del diseño: 35 + 30 + 30 + 10 = 105 min. Nunca un margen por participante.
 - Cada servicio guarda su snapshot (`precio_historico`, `duracion_historica`, `margen_historico`). En reservas grupales `margen_historico` = 0 y el margen real vive en `reservas.margen_grupal_historico`.
 
 ### 5.5 Motivos estructurados (D19)
@@ -129,7 +130,7 @@ Las D01 a D13 son del plan estratégico; las D14 en adelante se agregaron al arm
 
 | ID | Decisión |
 |---|---|
-| D01 | Margen individual con varios servicios: se suma el de cada servicio. |
+| D01 | Margen individual con varios servicios: se suma el de cada servicio. **Revisada 2026-10-02:** la suma ya no determina el bloque (ver 5.4 y D42); se conserva como snapshot por servicio en `margen_historico`. |
 | D02 | El no presentado lo marca el admin (ADMIN_BARBERIA o ADMINISTRADOR), solo pasados los 15 minutos. |
 | D03 | Se añaden el estado `COMPLETADA` y `barberias.zona_horaria`. |
 | D04 | Cualquier usuario autenticado puede crear barberías: límite 2 por responsable, sin aprobación previa, con límite de peticiones y auditoría. El ADMINISTRADOR puede dejarlas `INACTIVO`. |
@@ -168,7 +169,7 @@ Las D01 a D13 son del plan estratégico; las D14 en adelante se agregaron al arm
 | D37 | Qué ocupa espacio: sección 5.3. |
 | D40 | Contrato de errores: `{ statusCode, codigo, mensaje }`. 400 validación, 401 sin sesión, 403 sin permiso, 404 no existe, 409 conflicto (concurrencia o `ESTADO_INVALIDO`), 422 regla de negocio violada. |
 | D41 | Los horarios disponibles se ofrecen en pasos de 15 minutos (constante configurable). |
-| D42 | Margen grupal = el mayor margen operativo entre los servicios incluidos. |
+| D42 | **Revisada 2026-10-02:** el margen del bloque es un campo propio de la barbería `configuracion_barberia.margen_grupal_minutos` (default 10, rango 0-60), snapshotteado en `reservas.margen_grupal_historico` al crear. Nunca la suma ni el mayor de los márgenes individuales, nunca provisto por el cliente (D44). *(Regla anterior, derogada: "el mayor margen operativo entre los servicios incluidos".)* |
 | D43 | La declaración del cliente (antecedente de origen CLIENTE) es visible solo para barberías donde está vinculado, siempre etiquetada "declaración del cliente, no diagnóstico", y no pasa por aprobación. |
 | D44 | Existe un endpoint de cotización (`/reservas/cotizar`) para que el frontend nunca calcule bloques ni precios. |
 
@@ -184,7 +185,7 @@ Las D01 a D13 son del plan estratégico; las D14 en adelante se agregaron al arm
 - **Reglas del diseño ausentes:** reserva grupal, propuesta de horario, cancelación por el cliente, ventana de 15 minutos del no presentado, advertencia a los 3, rechazo con motivo, aprobación de la 6ª vinculación, desvincular, configuración, adelanto y reprogramación, información adicional, oportunidades de espacio, solicitudes de cambio de nombre y responsable, sesiones seguras, recordatorio de 1 hora.
 - **Infraestructura:** una sola base Neon sirve para desarrollo, E2E y despliegue. Sin CI. Render y Vercel despliegan solos al hacer push a `main`. Un E2E falla por conflicto de serialización. Sin backups verificados ni alertas. 80 usuarios de prueba en la base, 4 con rol global.
 - **Frontend:** 15 rutas, 16 componentes. Los roles administrativos se agrupan bajo `'ADMIN'`. La ficha del cliente llama a una ruta inexistente. Los botones de Personal no hacen nada. 9 pruebas en total.
-- **IDs de hallazgo:** H14 y H15 faltan en `AUDITORIA_HALLAZGOS.md` y existen dos "HALLAZGO 09". Los hallazgos nuevos reciben ID provisional al iniciar cada tarea, continuando desde H18.
+- **IDs de hallazgo:** H15 falta en `AUDITORIA_HALLAZGOS.md` (H14 existe desde el 2026-10-02, renumerado desde el segundo "HALLAZGO 09" duplicado). Los hallazgos nuevos reciben ID provisional al iniciar cada tarea, continuando desde H18.
 
 ---
 
@@ -284,10 +285,10 @@ No hagas merge. Espera aprobación.
 4. Abrir el pull request y mostrar el CI en verde.
 **No hacer:** ejecutar nada contra staging; incluir cambios de código de la aplicación.
 **Aceptación:**
-- [ ] `migrate diff` devuelve código 0 (sin diferencias).
-- [ ] El workflow corre en verde en el PR.
-- [ ] La carpeta de la migración coincide con el nombre registrado en `_prisma_migrations` de staging.
-**Evidencia:** salida de `migrate diff` y enlace o log del CI.
+- [x] `migrate diff` devuelve código 0 (sin diferencias).
+- [x] El workflow corre en verde en el PR. **Evidencia:** run del `main` ya fusionado, `conclusion: success` — https://github.com/Codecore-J/barberias-platform/actions/runs/37164750324 (head `5a8b540`, incluye el lint y los tests del frontend ya activos tras el PR #19).
+- [ ] La carpeta de la migración coincide con el nombre registrado en `_prisma_migrations` de staging. **Verificación del dueño:** este criterio solo se puede comprobar en la BD de staging y no se ejecuta desde el entorno de desarrollo.
+**Evidencia:** `migrate diff` -> `No difference detected.`
 
 ### E0-05 · Protección de `main` y despliegue condicionado
 `P0 · S · Depende: E0-04 · Rama: chore/proteger-main`
@@ -308,7 +309,7 @@ No hagas merge. Espera aprobación.
 **Contexto:** la rama local `wip/sin-revisar` (commit 8891c52) guarda trabajo no revisado. Decisiones: `src/cliente/` se rechaza (7 defectos, se rehace en E4-05); el cambio de inasistencia para `BARBERO` se rechaza (D02); los botones de Personal con `alert()` se descartan (D06); el duplicado de `return` en `role.guard.ts` se rescata (E1-09); `.github` y la migración van a E0-04.
 **Hacer:**
 1. Crear `docs/TRIAGE_WIP.md` con una tabla archivo → decisión → tarea destino.
-2. Documentar en `AUDITORIA_HALLAZGOS.md`: HALLAZGO 14 (IDOR de reservas, versión completa) y HALLAZGO 15 (notificaciones `ENVIADO` pasa a `SIMULADO`), buscando los commits reales con `git log --all --oneline --grep=`. Si no encuentras un hash escribe "no localizado". Documentar también la colisión de los dos "HALLAZGO 09" sin renumerar nada.
+2. Documentar en `AUDITORIA_HALLAZGOS.md`: HALLAZGO 15 (notificaciones `ENVIADO` pasa a `SIMULADO`), buscando los commits reales con `git log --all --oneline --grep=`. Si no encuentras un hash escribe "no localizado". ~~Documentar también la colisión de los dos "HALLAZGO 09" sin renumerar nada.~~ (La colisión se resolvió el 2026-10-02: el IDOR pasó a HALLAZGO 14.)
 3. Registrar los hallazgos H17 (parcial), H18 a H21 y los de la sección 7 con ID provisional.
 **No hacer:** cambiar IDs existentes; borrar la rama sin aprobación.
 **Aceptación:**
@@ -329,6 +330,21 @@ No hagas merge. Espera aprobación.
 - [ ] BD vacía + `migrate deploy` + seed deja 4 roles.
 - [ ] El script de admin falla de forma segura sin variables.
 **Evidencia:** salida de los tests.
+
+### E0-08 · Hallazgos H22 a H30 documentados (sin corregir)
+`P1 · S · Depende: — · Rama: docs/e0-08-hallazgos`
+**Contexto:** entre el commit inicial y hoy aparecieron nueve hallazgos que no estaban registrados en ningun sitio; los IDs libres llegaban hasta H21. Cuatro estan resueltos o contenidos (H22 contenido, H23 y H24 resueltos, H25 aceptado) y cinco siguen abiertos (H26 a H30). Se documentan en `AUDITORIA_HALLAZGOS.md`; esta tarea no arregla ninguno.
+**Hacer:**
+1. Solo documentacion: registrar H22 a H30 con el formato de la seccion 3 del archivo de hallazgos.
+2. Cada entrada declara su estado y, si falta evidencia, lo dice como *pendiente de verificar*. No rellenar severidades ni causas por inferencia.
+**No hacer:** corregir H26 a H30 aqui; tocar `src/cliente/` (se rehace en E4-05); editar `render.yaml`.
+**Aceptación:**
+- [x] H22 a H30 registrados en `AUDITORIA_HALLAZGOS.md` con estado y evidencia.
+- [ ] H22 reimplementado en E4-05.
+- [ ] H26 y H27 cerrados en tareas propias (secretos en codigo y token de recuperacion en la respuesta).
+- [ ] H28 reproducido contra una base sin seed, para confirmar o desmentir la dependencia.
+- [ ] H29 y H30 decididos por el dueno: si borrar los lockfiles por proyecto y si alinear el Build Command del panel de Render con `render.yaml`.
+**Evidencia:** la seccion nueva del archivo de hallazgos contiene las nueve entradas, H22 a H30.
 
 ---
 

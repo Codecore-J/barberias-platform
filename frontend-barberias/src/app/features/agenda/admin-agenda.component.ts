@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ReservasService } from '../../core/services/reservas.service';
 import { PersonalService, Personal } from '../../core/services/personal.service';
 import { TenantService } from '../../core/services/tenant.service';
+import { AuthService } from '../../auth/auth.service';
 import { CobroModalComponent } from './components/cobro-modal/cobro-modal.component';
 import { FichaClienteDrawerComponent } from '../clientes/components/ficha-cliente-drawer/ficha-cliente-drawer.component';
 import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.component';
@@ -198,9 +199,11 @@ import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.c
                          <button (click)="iniciarCobro(turno)" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors">
                            Cobrar
                          </button>
-                         <button (click)="cambiarEstado(turno.id, 'NO_ASISTIO')" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
-                           No Asistió
-                         </button>
+                         @if (puedeMarcarInasistencia()) {
+                           <button (click)="cambiarEstado(turno.id, 'NO_ASISTIO')" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
+                             No Asistió
+                           </button>
+                         }
                       </div>
                     }
                   </div>
@@ -278,6 +281,7 @@ export class AdminAgendaComponent implements OnInit {
   protected readonly reservasService = inject(ReservasService);
   protected readonly personalService = inject(PersonalService);
   protected readonly tenantService = inject(TenantService);
+  protected readonly authService = inject(AuthService);
 
   fechaFiltro: string = new Date().toISOString().split('T')[0];
   
@@ -289,6 +293,14 @@ export class AdminAgendaComponent implements OnInit {
 
   turnoACobrar = signal<any | null>(null);
   clienteSeleccionado = signal<any | null>(null);
+
+  // E1-05 · D02: PATCH /reservas/:id/estado es del ADMIN_BARBERIA y del
+  // ADMINISTRADOR global, así que el barbero no ve el botón «No Asistió»
+  // (la pantalla le deja cobrar y registrar el walk-in, que sí puede).
+  puedeMarcarInasistencia = computed(() => {
+    const roles = this.authService.authState().user?.roles ?? [];
+    return !roles.includes('BARBERO') || roles.includes('ADMIN_BARBERIA') || roles.includes('ADMINISTRADOR');
+  });
 
   // Métricas computadas del día
   totalTurnosDia = computed(() => this.turnos().length);

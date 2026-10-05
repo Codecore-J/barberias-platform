@@ -156,7 +156,7 @@ describe('PagoService', () => {
       mockPrismaService.barberia.findUnique.mockResolvedValue({
         responsableId: 'otro-usuario',
       });
-      mockPrismaService.usuarioRol.findFirst.mockResolvedValue(null); // No es SUPER_ADMIN
+      mockPrismaService.usuarioRol.findFirst.mockResolvedValue(null); // No es ADMINISTRADOR
       mockPrismaService.usuarioRol.findMany.mockResolvedValue([]); // No tiene roles
 
       await expect(
@@ -221,6 +221,12 @@ describe('PagoService', () => {
   describe('obtenerAuditoriaPagos', () => {
     const usuarioId = 'uuid-responsable';
     const barberiaId = 'uuid-barberia';
+    const usuario = {
+      id: usuarioId,
+      correo: 'responsable@test.com',
+      roles: ['ADMIN_BARBERIA'],
+      rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId, ambito: 'BARBERIA' }],
+    };
 
     it('debe validar permisos y retornar los registros de auditoría de pagos', async () => {
       mockPrismaService.barberia.findUnique.mockResolvedValue({
@@ -228,10 +234,7 @@ describe('PagoService', () => {
       });
 
       const mockAuditorias = {
-        total: 1,
-        limite: 50,
-        offset: 0,
-        registros: [
+        data: [
           {
             id: 'audit-1',
             accion: 'REGISTRO_PAGO_EN_PERSONA',
@@ -239,19 +242,40 @@ describe('PagoService', () => {
             entidadId: 'pago-1',
           },
         ],
+        total: 1,
+        page: 1,
+        pageSize: 50,
       };
       mockAuditoriaService.consultarAuditorias.mockResolvedValue(mockAuditorias);
 
-      const result = await service.obtenerAuditoriaPagos(usuarioId, barberiaId, 50, 0);
+      const result = await service.obtenerAuditoriaPagos(usuario, barberiaId, 1, 50);
 
       expect(result).toEqual(mockAuditorias);
-      expect(mockAuditoriaService.consultarAuditorias).toHaveBeenCalledWith({
-        entidad: 'PAGO',
-        accion: 'REGISTRO_PAGO_EN_PERSONA',
-        barberiaId,
-        limite: 50,
-        offset: 0,
-      });
+      expect(mockAuditoriaService.consultarAuditorias).toHaveBeenCalledWith(
+        {
+          entidad: 'PAGO',
+          accion: 'REGISTRO_PAGO_EN_PERSONA',
+          barberiaId,
+          page: 1,
+          pageSize: 50,
+        },
+        usuario,
+      );
+    });
+
+    it('debe rechazar con 400 cuando no hay barbería y el usuario no es ADMINISTRADOR', async () => {
+      const cliente: any = {
+        id: 'uuid-cliente',
+        correo: 'cliente@test.com',
+        roles: ['CLIENTE'],
+        rolesDetallados: [],
+      };
+
+      await expect(service.obtenerAuditoriaPagos(cliente, null, 1, 50)).rejects.toThrowError(
+        BadRequestException,
+      );
+
+      expect(mockAuditoriaService.consultarAuditorias).not.toHaveBeenCalled();
     });
   });
 });
