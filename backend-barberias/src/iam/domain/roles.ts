@@ -44,6 +44,16 @@ interface ClienteDeRoles {
   };
 }
 
+/** Cliente mínimo de Prisma que necesita las dos tablas de pertenencia. */
+interface ClienteDeVinculo {
+  usuarioRol: {
+    findFirst(args: unknown): Promise<unknown>;
+  };
+  clienteBarberia: {
+    findFirst(args: unknown): Promise<unknown>;
+  };
+}
+
 /**
  * Variante para los servicios que solo reciben `usuarioId` y no el objeto de
  * sesión (agenda, horario, pago, antecedentes, reservas). Consulta el rol que
@@ -89,4 +99,41 @@ export function alcanceCumple(rol: RolConAlcance, barberiaId: string): boolean {
   }
 
   return rol.barberiaId === null && rol.ambito === AMBITO_GLOBAL;
+}
+
+/**
+ * E1-06 · parte 3: ¿el solicitante pertenece de verdad a esta barbería?
+ *
+ * El decorador de la ruta y el guard yailtersan el ROL, pero el rol no es la
+ * pertenencia: un `CLIENTE` es GLOBAL y su `barberiaId` es nulo, así que
+ * `alcanceCumple` lo deja pasar contra cualquier sede. Eso convertía
+ * `/agenda/disponibilidad` en una lectura cross-tenant para cualquier cliente
+ * autenticado.
+ *
+ * Aquí la pertenencia se resuelve contra las DOS tablas que la expresan:
+ *  - `usuario_roles.barberia_id`: el BARBERO y el ADMIN_BARBERIA entran por rol.
+ *  - `cliente_barberias`: el CLIENTE entra por su código de acceso.
+ *
+ * El ADMINISTRADOR global no está: es transversal por `esAdministradorGlobal`,
+ * que se consulta aparte para no meter una regla de alcance en un helper que
+ * también usa el resto de servicios.
+ */
+export async function perteneceABarberia(
+  prisma: ClienteDeVinculo,
+  usuarioId: string,
+  barberiaId: string,
+): Promise<boolean> {
+  const rol = await prisma.usuarioRol.findFirst({
+    where: { usuarioId, barberiaId },
+    select: { id: true },
+  });
+  if (rol) {
+    return true;
+  }
+
+  const vinculo = await prisma.clienteBarberia.findFirst({
+    where: { usuarioId, barberiaId },
+    select: { id: true },
+  });
+  return !!vinculo;
 }

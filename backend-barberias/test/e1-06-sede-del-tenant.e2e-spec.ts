@@ -27,6 +27,7 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
     'admin.a.e106@test.com',
     'admin.b.e106@test.com',
     'cliente.a.e106@test.com',
+    'barbero.a.e106@test.com',
     'global.e106@test.com',
   ];
 
@@ -38,6 +39,9 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
   let comboB: string;
   let tokenAdminA: string;
   let tokenGlobal: string;
+  let tokenCliente: string;
+  let barberoA: string;
+  let tokenBarberoA: string;
 
   async function crearUsuario(correo: string, nombre: string, telefono: string) {
     const hash = await bcrypt.hash('Password1!', 10);
@@ -69,7 +73,7 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
     });
     await prisma.usuario.deleteMany({ where: { correo: { in: correos } } });
 
-    const [rolAdmin, rolCliente, rolGlobal] = await Promise.all([
+    const [rolAdmin, rolCliente, rolGlobal, rolBarbero] = await Promise.all([
       prisma.rol.upsert({
         where: { nombre: 'ADMIN_BARBERIA' },
         update: {},
@@ -85,12 +89,19 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
         update: {},
         create: { nombre: 'ADMINISTRADOR', ambito: 'GLOBAL' },
       }),
+      prisma.rol.upsert({
+        where: { nombre: 'BARBERO' },
+        update: {},
+        create: { nombre: 'BARBERO', ambito: 'BARBERIA' },
+      }),
     ]);
 
     const adminA = await crearUsuario('admin.a.e106@test.com', 'Admin A', '9992000001');
     const adminB = await crearUsuario('admin.b.e106@test.com', 'Admin B', '9992000002');
     const cliente = await crearUsuario('cliente.a.e106@test.com', 'Cliente A', '9992000003');
+    const barbero = await crearUsuario('barbero.a.e106@test.com', 'Barbero A', '9992000005');
     const global = await crearUsuario('global.e106@test.com', 'Global', '9992000004');
+    barberoA = barbero.id;
 
     barberiaA = (
       await prisma.barberia.create({
@@ -121,9 +132,17 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
       data: [
         { usuarioId: adminA.id, rolId: rolAdmin.id, barberiaId: barberiaA },
         { usuarioId: adminB.id, rolId: rolAdmin.id, barberiaId: barberiaB },
-        { usuarioId: cliente.id, rolId: rolCliente.id, barberiaId: barberiaA },
+        // El CLIENTE es GLOBAL con `barberia_id` nulo: por eso `alcanceCumple`
+        // lo dejaba pasar contra cualquier sede. Su pertenencia real va por
+        // `cliente_barberias`, que es lo que comprueba la parte 3.
+        { usuarioId: cliente.id, rolId: rolCliente.id, barberiaId: null },
+        { usuarioId: barbero.id, rolId: rolBarbero.id, barberiaId: barberiaA },
         { usuarioId: global.id, rolId: rolGlobal.id, barberiaId: null },
       ],
+    });
+
+    await prisma.clienteBarberia.create({
+      data: { usuarioId: cliente.id, barberiaId: barberiaA, estadoVinculacion: 'ACTIVO' },
     });
 
     servicioA = (
@@ -177,6 +196,8 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
 
     tokenAdminA = await login('admin.a.e106@test.com');
     tokenGlobal = await login('global.e106@test.com');
+    tokenCliente = await login('cliente.a.e106@test.com');
+    tokenBarberoA = await login('barbero.a.e106@test.com');
   }, 60000);
 
   afterAll(async () => {
@@ -399,6 +420,116 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
         .set('Authorization', `Bearer ${tokenAdminA}`);
 
       expect(res.status).toBe(400);
+    });
+  });
+
+    it('responde 200 con el listado global, no 400', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/cobros/auditoria')
+        .set('Authorization', `Bearer ${tokenGlobal}`);
+
+      expect(res.status).toBe(200);
+      // `consultarAuditorias` devuelve la página, no un array suelto.
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(typeof res.body.total).toBe('number');
+      expect(res.body.page).toBe(1);
+    });
+
+    it('un ADMIN_BARBERIA sin sede sigue recibiendo 400', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/cobros/auditoria')
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+
+      expect(res.status).toBe(400);
+    });
+
+  /**
+   * E1-06 · parte 3. Los dos huecos que dejó la parte 1 del arreglo.
+   *
+   * 1. `/agenda/disponibilidad`: el guard y el decorador miran el ROL, y el
+   *    `CLIENTE` es GLOBAL con `barberia_id` nulo, así que `alcanceCumple` lo
+   *    admitía contra cualquier sede. Con solo la cabecera `x-barberia-id` un
+   *    cliente autenticado leía los horarios de una barbería ajena.
+   *
+   * 2. `/seleccionar`: el servicio exigía una fila en `cliente_barberias`, que
+   *    un BARBERO no tiene porque entra por `usuario_roles`. Pasaba el guard y
+   *    recibía 404 en la ruta que el frontend encadena tras crear sede.
+   */
+  describe('E1-06 parte 3 · pertenencia a la sede', () => {
+    it('un cliente NO puede leer la disponibilidad de otra sede: 403', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/agenda/disponibilidad')
+        .set('Authorization', `Bearer ${tokenCliente}`)
+        .set('x-barberia-id', barberiaB);
+
+      expect(res.status).toBe(403);
+    });
+
+    it('el mismo cliente SÍ lee la disponibilidad de la suya', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/agenda/disponibilidad')
+        .set('Authorization', `Bearer ${tokenCliente}`)
+        .set('x-barberia-id', barberiaA);
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+    });
+
+    it('el POST también exige pertenencia: 403 desde el alias', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/agenda/disponibilidad')
+        .set('Authorization', `Bearer ${tokenCliente}`)
+        .set('x-barberia-id', barberiaB)
+        .send({ fecha: '2026-10-05', duracionTotal: 30 });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('el POST con la sede propia responde 200 (el alias ya no exige params.barberiaId)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/agenda/disponibilidad')
+        .set('Authorization', `Bearer ${tokenCliente}`)
+        .set('x-barberia-id', barberiaA)
+        .send({ fecha: '2026-10-05', duracionTotal: 30 });
+
+      expect(res.status).toBe(200);
+    });
+
+    it('el ADMINISTRADOR global sí lee cualquier sede: es transversal', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/agenda/disponibilidad')
+        .set('Authorization', `Bearer ${tokenGlobal}`)
+        .set('x-barberia-id', barberiaB);
+
+      expect(res.status).toBe(200);
+    });
+
+    it('un BARBERO de la sede selecciona sin tener fila en cliente_barberias: 200', async () => {
+      const vinculos = await prisma.clienteBarberia.count({ where: { usuarioId: barberoA } });
+      expect(vinculos, 'el barbero no debe tener vínculo de cliente').toBe(0);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/barberias/${barberiaA}/seleccionar`)
+        .set('Authorization', `Bearer ${tokenBarberoA}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.vinculo).toBe('ROL');
+    });
+
+    it('el barbero NO puede seleccionar la sede en la que no trabaja', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/barberias/${barberiaB}/seleccionar`)
+        .set('Authorization', `Bearer ${tokenBarberoA}`);
+
+      expect(res.status).toBe(404);
+    });
+
+    it('un usuario sin vínculo ni rol recibe 404 en la sede ajena', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/barberias/${barberiaB}/seleccionar`)
+        .set('Authorization', `Bearer ${tokenCliente}`);
+
+      expect(res.status).toBe(404);
     });
   });
 });

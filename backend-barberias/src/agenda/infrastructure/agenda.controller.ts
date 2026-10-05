@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Param, Body, Query, ParseUUIDPipe, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Param, Body, Query, ParseUUIDPipe } from '@nestjs/common';
 import { AgendaService } from '../application/agenda.service.js';
 import { DisponibilidadService } from '../application/disponibilidad.service.js';
 import { CreateBloqueoDto } from '../application/dto/create-bloqueo.dto.js';
@@ -18,25 +18,28 @@ export class AgendaController {
   /**
    * GET /agenda/disponibilidad
    * Consultar disponibilidad es lectura de agenda: los cuatro roles (decisión 6).
+   *
+   * E1-06: el decorador fija la sede y el servicio comprueba que el solicitante
+   * pertenece a ella. Antes bastaba con la cabecera `x-barberia-id` de otra sede.
    */
-  // TODO(E1-06): validar que el solicitante está vinculado a esta barbería.
   @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Get('disponibilidad')
   async consultarDisponibilidadGet(
     @CurrentBarberiaId() barberiaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
     @Query('fecha') fecha: string,
     @Query('duracionMinutos') duracionMinutos?: string,
   ) {
-    if (!barberiaId) {
-      throw new BadRequestException('ID de barbería es requerido');
-    }
     const duracion = duracionMinutos ? parseInt(duracionMinutos, 10) : 30;
-    return this.disponibilidadService.calcularDisponibilidad({
-      barberiaId,
-      fecha: new Date(fecha || new Date()),
-      duracionTotal: duracion,
-      margenRequerido: 0,
-    });
+    return this.disponibilidadService.calcularDisponibilidadDeSolicitante(
+      {
+        barberiaId,
+        fecha: new Date(fecha || new Date()),
+        duracionTotal: duracion,
+        margenRequerido: 0,
+      },
+      user.id,
+    );
   }
 
   /**
@@ -88,19 +91,27 @@ export class AgendaController {
    * POST /agenda/disponibilidad
    * Mismo cálculo que el GET, con el cuerpo tipado. Los cuatro roles
    * (decisión 6).
+   *
+   * E1-06: misma comprobación de pertenencia que el GET. Además esta ruta leía
+   * `params.barberiaId` con ParseUUIDPipe, que en el alias `/agenda/disponibilidad`
+   * no existe y devolvía 400 por un id vacío; ahora la sede sale del decorador,
+   * que es la misma cadena que usa el guard.
    */
-  // TODO(E1-06): validar que el solicitante está vinculado a esta barbería.
   @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Post('disponibilidad')
   async obtenerDisponibilidad(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @CurrentBarberiaId() barberiaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
     @Body() dto: ConsultarDisponibilidadDto,
   ) {
-    return this.disponibilidadService.calcularDisponibilidad({
-      barberiaId,
-      fecha: new Date(dto.fecha),
-      duracionTotal: dto.duracionTotal,
-      margenRequerido: dto.margenRequerido ?? 0,
-    });
+    return this.disponibilidadService.calcularDisponibilidadDeSolicitante(
+      {
+        barberiaId,
+        fecha: new Date(dto.fecha),
+        duracionTotal: dto.duracionTotal,
+        margenRequerido: dto.margenRequerido ?? 0,
+      },
+      user.id,
+    );
   }
 }

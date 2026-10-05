@@ -1,6 +1,7 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { TipoExcepcionHorario } from '../../horario/application/dto/create-excepcion-horario.dto.js';
+import { esAdministradorGlobalPorId, perteneceABarberia } from '../../iam/domain/roles.js';
 
 export interface Intervalo {
   inicio: Date;
@@ -19,6 +20,35 @@ export class DisponibilidadService {
   private readonly logger = new Logger(DisponibilidadService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * E1-06 · parte 3: la disponibilidad es lectura de agenda de UNA sede.
+   *
+   * El guard y el decorador comprueban el ROL, pero el `CLIENTE` es GLOBAL con
+   * `barberia_id` nulo, así que `alcanceCumple` lo admitía contra cualquier sede:
+   * con solo la cabecera `x-barberia-id` un cliente autenticado leía los horarios
+   * de una barbería ajena. Aquí se exige la PERTENENCIA real.
+   *
+   * El ADMINISTRADOR global se acepta aparte: es transversal por diseño (D05).
+   */
+  async calcularDisponibilidadDeSolicitante(
+    solicitud: SolicitudDisponibilidad,
+    solicitanteId: string,
+    txClient?: any,
+  ): Promise<Intervalo[]> {
+    const db = txClient ?? this.prisma;
+
+    if (!(await esAdministradorGlobalPorId(db, solicitanteId))) {
+      const pertenece = await perteneceABarberia(db, solicitanteId, solicitud.barberiaId);
+      if (!pertenece) {
+        throw new ForbiddenException(
+          'No perteneces a esta barbería: no puedes consultar su disponibilidad.',
+        );
+      }
+    }
+
+    return this.calcularDisponibilidad(solicitud, txClient);
+  }
 
   /**
    * Calcula los Time Slots (intervalos) disponibles en una fecha para una duración dada.

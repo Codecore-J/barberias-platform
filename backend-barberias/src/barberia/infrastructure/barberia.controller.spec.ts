@@ -74,7 +74,9 @@ describe('BarberiaController', () => {
     it('debe llamar a seleccionarBarberiaActiva del servicio', async () => {
         const user: UsuarioAutenticado = { id: 'uuid-user', correo: 'test@test.com', roles: [] };
         await controller.seleccionarActiva('uuid-barberia', user);
-        expect(service.seleccionarBarberiaActiva).toHaveBeenCalledWith(user.id, 'uuid-barberia');
+        // E1-06: se pasa también la sesión, para que el servicio resuelva el
+        // ADMINISTRADOR global sin volver a consultar `usuario_roles`.
+        expect(service.seleccionarBarberiaActiva).toHaveBeenCalledWith(user.id, 'uuid-barberia', user);
     });
   });
 
