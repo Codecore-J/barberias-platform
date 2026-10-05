@@ -83,7 +83,7 @@
 | 34 | GET | `/barberias/:barberiaId/horarios/excepciones` | HorarioController | `@Autenticado` | `@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **8** | **sí** | no | sí — `core/services/horarios.service.ts:68` | `test/permisos-matriz.e2e-spec.ts` |
 | 35 | POST | `/barberias/:barberiaId/horarios/excepciones` | HorarioController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** — `validateAccess` | no | sí — `core/services/horarios.service.ts:72` | `test/permisos-matriz.e2e-spec.ts` |
 | 36 | POST | `/barberias/:barberiaId/horarios/barberos/:barberoId/excepciones` | HorarioController | `@Autenticado` | `@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** | **sí** — un barbero solo sobre su propio `barberoId` | sí — `core/services/horarios.service.ts:76` | `test/permisos-matriz.e2e-spec.ts` |
-| 37 | GET | `/barberias/:barberiaId/pagos/auditoria` · `/cobros/auditoria` · `/pagos/auditoria` | PagoController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** — `validateAccess` | no | **no** — `pagos.service.ts:38` existe pero nadie lo llama | `src/pago/application/pago.service.spec.ts` |
+| 37 | GET | `/barberias/:barberiaId/pagos/auditoria` · `/cobros/auditoria` · `/pagos/auditoria` | PagoController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** — `validateAccess` | no | sí — `core/services/pagos.service.ts:38` (`obtenerHistorial`), desde `admin-tickets.component.ts:329` y `home.component.ts:465` | `src/pago/application/pago.service.spec.ts` |
 | 38 | POST | `/barberias/:barberiaId/pagos/en-persona` · `/cobros` · `/pagos` | PagoController | `@Autenticado` | `@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **9** | **sí** — `validateAccess` | pendiente — E3-09, solo reservas asignadas | sí — `core/services/reservas.service.ts:131` | `src/pago/application/pago.service.spec.ts` |
 | 39 | POST | `/barberias/:barberiaId/reservas` · `/reservas` | ReservaController | `@Autenticado` | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **10** | **sí** | **sí** — cliente vinculado, no restringido | sí — `core/services/reservas.service.ts:60`, que llama al alias `/reservas`, desde `reserva-wizard` y `walk-in-modal` | `test/hallazgo14-idor-reserva.e2e-spec.ts` |
 | 40 | GET | `/barberias/:barberiaId/reservas/:id` · `/reservas/:id` | ReservaController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | — | **sí** | **sí** — un `CLIENTE` solo ve la suya | no | `test/hallazgo14-idor-reserva.e2e-spec.ts`; `src/reserva/application/reserva.service.spec.ts` |
@@ -206,6 +206,21 @@ negocio y cada uno necesita su propia tarea.
    `GET /catalogo/servicios/:id` y `GET /catalogo/combos/:id` el primer argumento del servicio es por tanto
    el id del propio recurso, y `findOne(barberiaId, id)` busca `{ id, barberiaId }` con los dos iguales: esas
    dos rutas no pueden devolver nunca un recurso.
+4. **La regla del código de acceso solo está escrita en `findOne`.** `GET /barberias/:id` calcula `veCodigo`
+   (solo ADMIN_BARBERIA de esa sede o ADMINISTRADOR) y usa el DTO de lectura; `GET /barberias` usa
+   `toResponse` —con `codigoAcceso` y `enlaceUnico`— filtrando solo por `responsableId`, sin mirar el rol
+   (`barberia.service.ts:251-257`). Hoy no se abre nada: quien es `responsableId` de una sede es su
+   ADMIN_BARBERIA, y `findAllByResponsable` no devuelve barberías ajenas. Pero las dos lecturas de la misma
+   sede aplican reglas distintas, y basta con que una fila `usuario_roles` se borre para que el responsable
+   reciba por una ruta lo que por la otra no. Fijado por
+   `barberia.service.spec.ts` → `findAllByResponsable · hueco conocido de E1-05`; cerrarlo es decisión del
+   dueño (E1-07 o tarea nueva).
+5. **No existe ninguna ruta que liste las barberías de un `CLIENTE`.** `cliente_barberias` solo se lee con
+   `findUnique` por `(usuarioId, barberiaId)` —en `vincularCliente`, `seleccionarBarberiaActiva` y
+   `reserva.service.ts:42,316`—, nunca con `findMany`. La única lista del backend es `GET /barberias`, que
+   filtra por `responsableId` y devuelve `[]` a un cliente (hallazgo 1). Resuelve la pregunta que quedaba
+   abierta en el informe de estado: la pantalla de barberías del cliente no puede estar saliendo de ningún
+   endpoint; si el cliente ve sedes hoy, vienen de la caché en `localStorage` o de datos de otra versión.
 
 ## Qué queda pendiente de esta tarea
 
