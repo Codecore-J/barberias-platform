@@ -114,18 +114,19 @@ export class BarberiaController {
   /**
    * PATCH /barberias/:id/seleccionar
    * Selecciona una barbería como la activa para el usuario (apaga las demás).
-   * Decisión 2 enmendada: los cuatro roles. La vincula `cliente_barberias`, que
-   * un barbero normalmente no tiene —entra por su rol, no por un código—, así
-   * que hoy el servicio le responde 404 aunque el guard le deje pasar.
+   * Decisión 2 enmendada: los cuatro roles.
+   *
+   * E1-06: el servicio ya acepta el vínculo por rol, no solo `cliente_barberias`,
+   * así que el barbero y el dueño dejan de recibir 404 en la ruta que existe
+   * para ellos. Se le pasa la sesión para no consultar `usuario_roles` dos veces.
    */
-  // TODO(E1-06): validar el vínculo del solicitante con la barbería seleccionada.
   @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Patch(':id/seleccionar')
   seleccionarActiva(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.barberiaService.seleccionarBarberiaActiva(user.id, id);
+    return this.barberiaService.seleccionarBarberiaActiva(user.id, id, user);
   }
 
   /**

@@ -18,6 +18,7 @@ import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import {
   alcanceCumple,
   esAdministradorGlobal,
+  esAdministradorGlobalPorId,
   validarAsignacionRol,
 } from '../../iam/domain/roles.js';
 
@@ -428,8 +429,22 @@ export class BarberiaService {
   /**
    * Garantiza que el usuario solo tenga una barbería activa a la vez.
    * Ejecuta en una transacción atómica para desactivar previas y activar la nueva.
+   *
+   * E1-06 · parte 3: el vínculo ya no es solo `cliente_barberias`.
+   *
+   * El decorador admite a los cuatro roles y la matriz lo documenta así, pero el
+   * servicio exigía una fila en `cliente_barberias` —que un BARBERO o un
+   * responsable no tienen, porque entran por `usuario_roles` o por
+   * `barberia.responsableId`—. Resultado: el guard le dejaba pasar y el servicio
+   * le respondía 404 «No estás vinculado a esta barbería», justo el caso para el
+   * que existe la ruta (`tenant.service.ts:137` la encadena tras crear sede).
+   *
+   * Ahora se acepta cualquiera de los tres vínculos reales: `cliente_barberias`
+   * (el cliente que entró por código), `usuario_roles.barberia_id` (barbero y
+   * ADMIN_BARBERIA) y `barberia.responsable_id` (el dueño). El ADMINISTRADOR
+   * global no necesita vínculo: es transversal, igual que en el resto del backend.
    */
-  async seleccionarBarberiaActiva(usuarioId: string, barberiaId: string) {
+  async seleccionarBarberiaActiva(usuarioId: string, barberiaId: string, usuario?: UsuarioAutenticado) {
     return withSerializableTransaction(this.prisma, async (tx) => {
       const vinculacion = await tx.clienteBarberia.findUnique({
         where: {
@@ -440,12 +455,30 @@ export class BarberiaService {
         },
       });
 
-      if (!vinculacion) {
-        throw new NotFoundException('No estás vinculado a esta barbería.');
+      if (vinculacion && vinculacion.estadoVinculacion !== 'ACTIVO') {
+        throw new ForbiddenException('Tu vinculación a esta barbería no está activa.');
       }
 
-      if (vinculacion.estadoVinculacion !== 'ACTIVO') {
-        throw new ForbiddenException('Tu vinculación a esta barbería no está activa.');
+      if (!vinculacion) {
+        // Sin fila en `cliente_barberias` se admite el rol de la sede y el dueño,
+        // pero entonces no hay nada que activar: la marca de sede activa vive en
+        // `cliente_barberias`. Se devuelve la sede para que el frontend la cachee.
+        const [rolEnSede, sede, esGlobal] = await Promise.all([
+          tx.usuarioRol.findFirst({ where: { usuarioId, barberiaId }, select: { id: true } }),
+          tx.barberia.findUnique({ where: { id: barberiaId }, select: { id: true, responsableId: true } }),
+          usuario ? Promise.resolve(esAdministradorGlobal(usuario)) : esAdministradorGlobalPorId(tx, usuarioId),
+        ]);
+
+        if (!sede) {
+          throw new NotFoundException('Barbería no encontrada.');
+        }
+
+        if (!rolEnSede && !esGlobal && sede.responsableId !== usuarioId) {
+          throw new NotFoundException('No estás vinculado a esta barbería.');
+        }
+
+        this.logger.log(`Usuario ${usuarioId} seleccionó la barbería ${barberiaId} por rol`);
+        return { usuarioId, barberiaId, esBarberiaActiva: true, vinculo: 'ROL' };
       }
 
       // Desactivar todas las barberías para este usuario

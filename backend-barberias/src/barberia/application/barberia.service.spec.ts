@@ -102,6 +102,8 @@ describe('BarberiaService', () => {
             usuarioRol: {
               upsert: vi.fn(),
               findMany: vi.fn(),
+              // E1-06: `seleccionarBarberiaActiva` admite el vínculo por rol
+              findFirst: vi.fn(),
             },
             configuracionBarberia: {
               create: vi.fn(),
@@ -576,6 +578,116 @@ describe('BarberiaService', () => {
       (prisma.clienteBarberia.findUnique as any).mockResolvedValue(mockVinculacion);
 
       await expect(service.seleccionarBarberiaActiva('user-1', 'barberia-1')).rejects.toThrow(ForbiddenException);
+    });
+
+    /**
+     * E1-06 · parte 3. El decorador admite a los cuatro roles pero el servicio
+     * exigía `cliente_barberias`, que un barbero y un responsable no tienen:
+     * pasaban el guard y recibían 404 en la ruta que existe para ellos.
+     */
+    describe('E1-06: el vínculo ya no es solo cliente_barberias', () => {
+      beforeEach(() => {
+        (prisma.clienteBarberia.findUnique as any).mockResolvedValue(null);
+        (prisma.barberia.findUnique as any).mockResolvedValue({
+          id: 'barberia-1',
+          responsableId: 'otro-usuario',
+        });
+        (prisma.usuarioRol.findFirst as any).mockResolvedValue({ id: 'rol-1' });
+      });
+
+      it('un BARBERO con rol en la sede la puede seleccionar (antes: 404)', async () => {
+        const result = await service.seleccionarBarberiaActiva('barbero-1', 'barberia-1');
+
+        expect(result).toEqual({
+          usuarioId: 'barbero-1',
+          barberiaId: 'barberia-1',
+          esBarberiaActiva: true,
+          vinculo: 'ROL',
+        });
+      });
+
+      it('no inventa una fila en cliente_barberias para el barbero', async () => {
+        await service.seleccionarBarberiaActiva('barbero-1', 'barberia-1');
+
+        expect(prisma.clienteBarberia.update).not.toHaveBeenCalled();
+        expect(prisma.clienteBarberia.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('el RESPONSABLE la puede seleccionar sin rol: le basta con ser el dueño', async () => {
+        (prisma.usuarioRol.findFirst as any).mockResolvedValue(null);
+        (prisma.barberia.findUnique as any).mockResolvedValue({
+          id: 'barberia-1',
+          responsableId: 'dueno-1',
+        });
+
+        const result = await service.seleccionarBarberiaActiva('dueno-1', 'barberia-1');
+
+        expect(result.vinculo).toBe('ROL');
+      });
+
+      it('un ADMINISTRADOR global la puede seleccionar sin vínculo ni rol', async () => {
+        (prisma.usuarioRol.findFirst as any).mockResolvedValue(null);
+        (prisma.barberia.findUnique as any).mockResolvedValue({
+          id: 'barberia-1',
+          responsableId: 'otro-usuario',
+        });
+
+        const result = await service.seleccionarBarberiaActiva(
+          'global-1',
+          'barberia-1',
+          ADMINISTRADOR,
+        );
+
+        expect(result.vinculo).toBe('ROL');
+      });
+
+      it('sigue dando 404 a quien no tiene rol, no es dueño ni es global', async () => {
+        (prisma.usuarioRol.findFirst as any).mockResolvedValue(null);
+
+        await expect(
+          service.seleccionarBarberiaActiva('ajeno-1', 'barberia-1'),
+        ).rejects.toThrow(NotFoundException);
+      });
+
+      it('sigue dando 404 si la sede ni siquiera existe', async () => {
+        (prisma.barberia.findUnique as any).mockResolvedValue(null);
+
+        await expect(
+          service.seleccionarBarberiaActiva('barbero-1', 'barberia-fantasma'),
+        ).rejects.toThrow(NotFoundException);
+      });
+
+      it('el ADMINISTRADOR global se resuelve por la sesión si se le pasa', async () => {
+        // Con la sesión no se consulta `usuario_roles` por ADMINISTRADOR.
+        (prisma.usuarioRol.findFirst as any).mockResolvedValue(null);
+
+        await service.seleccionarBarberiaActiva('global-1', 'barberia-1', ADMINISTRADOR);
+
+        expect(prisma.usuarioRol.findFirst).toHaveBeenCalledWith({
+          where: { usuarioId: 'global-1', barberiaId: 'barberia-1' },
+          select: { id: true },
+        });
+      });
+
+      it('el camino del cliente con vínculo ACTIVO no cambia: sigue moviendo la marca', async () => {
+        const mockVinculacion = {
+          usuarioId: 'cliente-1',
+          barberiaId: 'barberia-1',
+          estadoVinculacion: 'ACTIVO',
+          esBarberiaActiva: false,
+        };
+        (prisma.clienteBarberia.findUnique as any).mockResolvedValue(mockVinculacion);
+        (prisma.clienteBarberia.updateMany as any).mockResolvedValue({ count: 1 });
+        (prisma.clienteBarberia.update as any).mockResolvedValue({
+          ...mockVinculacion,
+          esBarberiaActiva: true,
+        });
+
+        const result = await service.seleccionarBarberiaActiva('cliente-1', 'barberia-1');
+
+        expect(result.esBarberiaActiva).toBe(true);
+        expect(prisma.clienteBarberia.updateMany).toHaveBeenCalled();
+      });
     });
   });
 });

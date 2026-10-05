@@ -8,7 +8,7 @@ import {
 import { PagoService } from '../application/pago.service.js';
 import { RegistrarPagoDto } from '../application/dto/registrar-pago.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
-import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
+import { CurrentBarberiaId, CurrentBarberiaIdOpcional } from '../../iam/infrastructure/current-barberia.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 
@@ -42,7 +42,7 @@ export class PagoController {
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Get('auditoria')
   obtenerAuditoriaPagos(
-    @CurrentBarberiaId() barberiaId: string | null,
+    @CurrentBarberiaIdOpcional() barberiaId: string | null,
     @CurrentUser() user: UsuarioAutenticado,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
