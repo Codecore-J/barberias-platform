@@ -302,4 +302,103 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
       expect(res.body.map((s: any) => s.id)).not.toContain(servicioB);
     });
   });
+
+  /**
+   * El alias que usa la app. `ServiciosService` llama a `${API_URL}/servicios`,
+   * no a `/catalogo/servicios`, así que el contrato nuevo hay que comprobarlo
+   * también en la URL que el frontend usa de verdad.
+   */
+  describe('GET /servicios/:id (alias de la app)', () => {
+    it('devuelve el servicio cuando la sede viene en la cabecera', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/servicios/${servicioA}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .set('x-barberia-id', barberiaA);
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(servicioA);
+    });
+
+    it('responde 404 si el servicio es de otra barbería', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/servicios/${servicioB}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .set('x-barberia-id', barberiaA);
+
+      expect(res.status).toBe(404);
+      expect(JSON.stringify(res.body)).not.toContain('Corte E1-06 de B');
+    });
+
+    it('responde 400 si no se indica la sede', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/servicios/${servicioA}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body)).not.toContain('Corte E1-06');
+    });
+
+    it('la lista por alias sin sede tampoco devuelve todas las barberías', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/servicios')
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body)).not.toContain('Corte E1-06 de B');
+    });
+  });
+
+  /**
+   * `home` es la ÚNICA ruta de la app que llama a un handler con sede
+   * obligatoria sin pasar por `tenantGuard`, así que es el único sitio donde el
+   * 400 se ve de verdad. Antes de E1-06 ya respondía 400 desde
+   * `ReservaService.obtenerAgendaDiaria`; aquí se fija el contrato nuevo.
+   */
+  describe('GET /reservas/agenda sin sede', () => {
+    it('responde 400 en vez de buscar con params.id', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/reservas/agenda?fecha=2026-10-05')
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+
+      expect(res.status).toBe(400);
+    });
+
+    it('con sede devuelve 200 y no filtra datos de otra barbería', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/reservas/agenda?fecha=2026-10-05')
+        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .set('x-barberia-id', barberiaA);
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+    });
+  });
+
+  /**
+   * La única ruta que usa la variante opcional. El ADMINISTRADOR global no
+   * tiene sede activa (`GET /barberias` le devuelve `[]` porque filtra por
+   * `responsableId`), y su panel de inicio llama a esta ruta sin cabecera. Si
+   * `CurrentBarberiaIdOpcional` dejara de ser opcional, ese panel se rompe.
+   */
+  describe('GET /cobros/auditoria sin sede (ADMINISTRADOR global)', () => {
+    it('responde 200 con el listado global, no 400', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/cobros/auditoria')
+        .set('Authorization', `Bearer ${tokenGlobal}`);
+
+      expect(res.status).toBe(200);
+      // `consultarAuditorias` devuelve la página, no un array suelto.
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(typeof res.body.total).toBe('number');
+      expect(res.body.page).toBe(1);
+    });
+
+    it('un ADMIN_BARBERIA sin sede sigue recibiendo 400', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/cobros/auditoria')
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+
+      expect(res.status).toBe(400);
+    });
+  });
 });

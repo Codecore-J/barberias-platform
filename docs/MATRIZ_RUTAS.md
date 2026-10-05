@@ -242,3 +242,15 @@ negocio y cada uno necesita su propia tarea.
 | E3-03 | Reservar la creación de reservas al CLIENTE y crear la ruta de walk-in | `reserva.controller.ts`, `POST /reservas` |
 | E3-09 | Un BARBERO solo cobra las reservas que tiene asignadas | `pago.controller.ts`, `POST /cobros` |
 | D43 | Declaración propia del cliente con su ruta y su campo de origen | `antecedente.controller.ts`, `POST /antecedentes` |
+
+### Deuda que dejó E1-06 (sin arreglar, con nombre)
+
+Ninguna de estas cuatro es un fallo de E1-06: son huecos de cobertura y una limitación de navegación
+que aparecieron al revisar el contrato de sede antes de fusionar.
+
+| # | Deuda | Dónde se nota |
+|---|---|---|
+| a | **El frontend no tiene ni un test de estos flujos.** Solo existen `app.spec.ts` y `core/guards/role.guard.spec.ts` (9 tests): nadie comprueba que `tenantGuard` bloquee una ruta sin sede ni que `auth.interceptor` ponga `x-barberia-id`. El e2e de E1-06 comprueba el backend, no la app | `frontend-barberias/src/app/core/guards/tenant.guard.ts`, `auth/auth.interceptor.ts` |
+| b | **`/reservas/:id` por alias, con un recurso real.** La matriz de permisos usa `randomUUID()`, así que prueba el guard y no el filtrado por tenant. Lo mismo para `/reservas/:id/estado` y `/reservas/:id/inasistencia`, que además **no tienen ningún llamador** en el frontend | `reserva.controller.ts`, `PATCH/GET/POST /reservas/:id*` |
+| c | **`POST /servicios` con carga real.** La matriz manda `cuerpo: {}`, que falla en el `ValidationPipe` antes de llegar a la lógica de sede: el camino de escritura con tenant sigue sin ejercitarse de punta a punta | `servicios.controller.ts`, `POST /servicios` |
+| d | **El ADMINISTRADOR global no puede entrar a las rutas con `tenantGuard`.** `GET /barberias` le devuelve `[]` porque filtra por `responsableId`, así que `tenantGuard` lo manda a `/barberias` y le bloquea `/catalogo`, `/admin/agenda`, `/admin/servicios` y `/admin/tickets`. Es H17 y es **preexistente**, no lo causa E1-06 | `core/guards/tenant.guard.ts`, `core/services/tenant.service.ts` |
