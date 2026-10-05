@@ -188,6 +188,101 @@ describe('BarberiaService', () => {
     });
   });
 
+  /**
+   * Casos negativos de `findOne` (E1-05, seguimiento).
+   *
+   * La regla es una sola: `codigoAcceso` y `enlaceUnico` —la puerta de
+   * entrada— solo salen para el ADMIN_BARBERIA de ESA barbería y el
+   * ADMINISTRADOR global. Estos casos fijan por escrito los caminos por los que
+   * un usuario NO los recibe, para que nadie los abra por refactor.
+   */
+  describe('findOne · quién NO recibe el código de acceso', () => {
+    const SEDE = BARBERIA_B;
+    const mockSede = {
+      id: SEDE,
+      nombre: 'Barberia B',
+      descripcion: null,
+      telefono: '8095555555',
+      ubicacion: 'Santo Domingo',
+      responsableId: 'usuario-admin-b',
+      codigoAcceso: 'CODIGOB',
+      enlaceUnico: 'enlace-b',
+      estado: 'ACTIVO',
+    };
+
+    /** CLIENTE vinculado a la sede: el vínculo no le da la puerta de entrada. */
+    const CLIENTE_VINCULADO: UsuarioAutenticado = {
+      id: 'usuario-cliente-vinculado',
+      correo: 'cliente.vinculado@test.com',
+      roles: ['CLIENTE'],
+      rolesDetallados: [{ nombre: 'CLIENTE', barberiaId: SEDE, ambito: 'BARBERIA' }],
+    };
+
+    beforeEach(() => {
+      (prisma.barberia.findUnique as any).mockResolvedValue(mockSede);
+    });
+
+    it('no se lo entrega a un ADMIN_BARBERIA de OTRA barbería', async () => {
+      const result = await service.findOne(SEDE, ADMIN_A);
+
+      expect((result as any).codigoAcceso).toBeUndefined();
+      expect((result as any).enlaceUnico).toBeUndefined();
+      expect(result.id).toBe(SEDE);
+      expect(JSON.stringify(result)).not.toContain('CODIGOB');
+      expect(JSON.stringify(result)).not.toContain('enlace-b');
+    });
+
+    it('no se lo entrega a un ADMIN_BARBERIA sin sede (fila corrupta de E1-04)', async () => {
+      const result = await service.findOne(SEDE, ADMIN_BARBERIA_SIN_BARBERIA);
+
+      expect((result as any).codigoAcceso).toBeUndefined();
+      expect((result as any).enlaceUnico).toBeUndefined();
+    });
+
+    it('no se lo entrega a un BARBERO, ni siquiera el de esa misma barbería', async () => {
+      const result = await service.findOne(SEDE, BARBERO_B);
+
+      expect((result as any).codigoAcceso).toBeUndefined();
+      expect((result as any).enlaceUnico).toBeUndefined();
+      expect(result.nombre).toBe('Barberia B');
+    });
+
+    it('no se lo entrega a un BARBERO de otra barbería', async () => {
+      const result = await service.findOne(SEDE, BARBERO_A);
+
+      expect((result as any).codigoAcceso).toBeUndefined();
+      expect((result as any).enlaceUnico).toBeUndefined();
+    });
+
+    it('no se lo entrega a un CLIENTE vinculado a esa barbería', async () => {
+      const result = await service.findOne(SEDE, CLIENTE_VINCULADO);
+
+      expect((result as any).codigoAcceso).toBeUndefined();
+      expect((result as any).enlaceUnico).toBeUndefined();
+    });
+
+    it('no truena ni lo entrega cuando el token viene sin roles detallados', async () => {
+      const result = await service.findOne(SEDE, {
+        id: 'usuario-sin-detalle',
+        correo: 'sin.detalle@test.com',
+        roles: ['CLIENTE'],
+      });
+
+      expect((result as any).codigoAcceso).toBeUndefined();
+      expect(result.id).toBe(SEDE);
+    });
+
+    it('la lectura sin código expone exactamente los campos públicos acordados', async () => {
+      const result = await service.findOne(SEDE, CLIENTE_VINCULADO);
+
+      // `responsableId` se mantiene porque el frontend lo usa para identificar a
+      // la sede: si algún día se quita, este test debe romperse a propósito.
+      expect(Object.keys(result).sort()).toEqual(
+        ['descripcion', 'estado', 'id', 'nombre', 'responsableId', 'telefono', 'ubicacion'].sort(),
+      );
+    });
+  });
+
   describe('update', () => {
     it('debe arrojar ForbiddenException si no es super admin ni responsable', async () => {
       const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1' };
@@ -212,6 +307,35 @@ describe('BarberiaService', () => {
 
       expect(prisma.barberia.update).toHaveBeenCalled();
       expect(result.nombre).toBe('Renombrada');
+    });
+  });
+
+  /**
+   * `GET /barberias` (findMine) devuelve `toResponse` —con `codigoAcceso` y
+   * `enlaceUnico`— filtrando solo por `responsableId`, sin mirar el rol. Quien
+   * es responsable ya es el ADMIN_BARBERIA de esa sede, así que hoy no se abre
+   * nada, pero la regla de E1-05 solo está escrita en `findOne`. Este test fija
+   * el comportamiento real; cerrarlo es una decisión del dueño (informe E1-05).
+   */
+  describe('findAllByResponsable · hueco conocido de E1-05', () => {
+    it('entrega el código al responsable sin comprobar que sea ADMIN_BARBERIA', async () => {
+      (prisma.barberia.findMany as any).mockResolvedValue([
+        {
+          id: 'barberia-z',
+          nombre: 'Barberia Z',
+          responsableId: 'usuario-cliente',
+          codigoAcceso: 'CODIGOZ',
+          enlaceUnico: 'enlace-z',
+        },
+      ]);
+
+      const result = await service.findAllByResponsable('usuario-cliente');
+
+      expect(prisma.barberia.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { responsableId: 'usuario-cliente' } }),
+      );
+      expect(result).toHaveLength(1);
+      expect((result[0] as any).codigoAcceso).toBe('CODIGOZ');
     });
   });
 
