@@ -54,10 +54,10 @@ describe('BarberiaController', () => {
   });
 
   describe('findMine', () => {
-    it('debe llamar a findAllByResponsable', async () => {
+    it('debe llamar a findAllByResponsable con el id y la sesion (E1-07)', async () => {
         const user: UsuarioAutenticado = { id: 'uuid-user', correo: 'test@test.com', roles: [] };
         await controller.findMine(user);
-        expect(service.findAllByResponsable).toHaveBeenCalledWith(user.id);
+        expect(service.findAllByResponsable).toHaveBeenCalledWith(user.id, user);
     });
   });
 
