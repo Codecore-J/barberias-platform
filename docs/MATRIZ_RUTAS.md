@@ -220,7 +220,7 @@ negocio y cada uno necesita su propia tarea.
    interceptor manda ese id en `x-barberia-id` (`auth.interceptor.ts:16-18`), que es lo que leen
    `@CurrentBarberiaId` y `RolesGuard`.
 3. ~~**`@CurrentBarberiaId` cae en `params.id`.**~~ **Arreglado en E1-06** (`c5e5111`, rama
-   `fix/e1-06-currentbarberiaid-params-id`; cerrado en su totality por `d93e9af`). El decorador tenía cuatro
+   `fix/e1-06-currentbarberiaid-params-id`; cerrado en su totalidad por `d93e9af`). El decorador tenía cuatro
    fuentes y la cuarta era `params.id`,
    que en las rutas con `:id` es el id del recurso: en `GET /catalogo/servicios/:id` y
    `GET /catalogo/combos/:id` —cuyos controladores no llevan `:barberiaId` en el path— el servicio recibía el
@@ -229,11 +229,23 @@ negocio y cada uno necesita su propia tarea.
    Alcance real: **9 rutas**, no 2 —las 6 del catálogo y las 3 de reservas cuando se llaman por su alias
    `/reservas/...`. Ahora hay un único `resolverBarberiaId` con tres fuentes (`params.barberiaId`,
    `x-barberia-id`, `?barberiaId=`) y, si no hay ninguna, la ruta responde **400** en vez de inventarse un
-   tenant. Cubierto por `current-barberia.decorator.spec.ts` (6 tests) y
-   `test/e1-06-sede-del-tenant.e2e-spec.ts` (11).
+   tenant. Cubierto por `current-barberia.decorator.spec.ts` (12 tests) y
+   `test/e1-06-sede-del-tenant.e2e-spec.ts` (27, sin ejecutar).
    **Fuga que salió de paso:** `GET /catalogo/servicios` sin sede devolvía 200 con los servicios de **todas**
    las barberías, porque `ServiciosService.findAll` solo filtra cuando recibe la sede
-   (`servicios.service.ts:34-43`). Con el contrato nuevo responde 400 y queda cerrada.
+   (`servicios.service.ts:34-43`).
+
+   **Corrección de alcance (2026-10-05, `e538566`, rama `test/cross-tenant-admin`):** la ruta empezó a
+   responder 400 en cuanto el decorador pasó a ser obligatorio, pero eso cerró el **síntoma**, no la causa:
+   el servicio conservaba la rama `if (barberiaId)` que se comía el filtro, así que cualquier llamador
+   interno —o un futuro refactor que dejara de usar el decorador— volvía a listar el catálogo entero. Lo
+   mismo en `CombosService.findAll`, donde `where: { barberiaId }` era literal y un `undefined` hacía que
+   Prisma descartara el campo en vez de filtrar por él. Los dos servicios exigen ahora sede y el `where`
+   lleva siempre `barberiaId`. Añadido en el mismo commit: **validación de formato UUID** en el decorador.
+   Antes `x-barberia-id: no-es-uuid` viajaba intacto hasta la columna `uuid` y era Prisma quien respondía
+   400, después de abrir conexión; ahora el 400 sale del decorador y la variante opcional devuelve `null`.
+   Cubierto por `current-barberia.decorator.spec.ts` (12), `servicios.service.spec.ts` y
+   `combos.service.spec.ts` (nuevo).
 
    **Complemento de `d93e9af`:** quitar el fallback arregló que la sede fuera correcta, pero no que el
    solicitante *perteneciera* a ella. El rol `CLIENTE` es GLOBAL con `barberia_id` nulo, de modo que
@@ -272,14 +284,26 @@ negocio y cada uno necesita su propia tarea.
 - **Unitarios:** `roles.vinculo.spec.ts` (5) y `disponibilidad.service.spec.ts` (5) son nuevos;
   `barberia.service.spec.ts` pasa de 32 a 40. Suite completa del backend: **27 ficheros / 223 tests**
   (`npm test`, `EXIT=0`).
+- **Unitarios de la corrección `e538566` (2026-10-05):** `combos.service.spec.ts` es nuevo y el spec del
+  decorador se reescribe sobre una app Nest real con `supertest`. Suite completa: **28 ficheros / 242 tests**
+  (`npm test`, `EXIT_TEST=0`); `nest build` `EXIT_BUILD=0`; `oxlint` `EXIT_LINT=0` con 48 warnings.
+  Rojo previo al fix: `Test Files 3 failed (3)` · `Tests 14 failed | 19 passed (33)` · `EXIT_TEST=1`.
 - **Mutación:** `perteneceABarberia` forzada a `true` deja **4 rojos**; el criterio de vínculo de
   `seleccionarBarberiaActiva` forzado a `true` deja **5 rojos**. Ambas revertidas.
 - **Build y lint:** `nest build` en 0, `oxlint` en 0 con 49 warnings preexistentes.
-- **e2e: NO EJECUTADO.** Los 8 casos nuevos de `test/e1-06-sede-del-tenant.e2e-spec.ts` (19 en total)
+- **e2e: NO EJECUTADO.** Los 8 casos nuevos de `test/e1-06-sede-del-tenant.e2e-spec.ts` (27 en total)
   están escritos y el fichero compila, pero en esta máquina no hay Postgres ni Redis
   (`ECONNREFUSED 127.0.0.1:5432` y `:6379`) y Docker Desktop no está instalado, así que `beforeAll`
   aborta y los tests quedan sin ejecutar. Necesitan una corrida con la base de pruebas levantada antes
   de darse por verificados.
+- **La CI tampoco los ejecuta, y eso es un hallazgo de proceso aparte.** `.github/workflows/ci.yml` monta
+  `postgres:15` y `redis:7` y aplica las migraciones, pero **ningún paso invoca los `*.e2e-spec.ts`**: el
+  único paso de pruebas del backend es `npm run test` (`ci.yml:93`), que carga `vitest.config.ts` con
+  `include: ['**/*.spec.ts']`, glob que no casa con los ficheros terminados en `-spec.ts`. Revisadas las 19
+  versiones históricas de `ci.yml`: ninguna ha tenido un paso de e2e. Los «223 tests» que acompañaron a
+  E1-01..E1-07 eran solo unitarios. Estado real: **11 ficheros e2e / 67 tests escritos y nunca ejecutados.**
+  La rama `ci/run-e2e-tests` añade ese paso (incluido `APP_ENV=dev`, obligatorio porque `test/setup.e2e.ts`
+  aborta sin él).
 
 ### Deuda que dejó E1-06 (sin arreglar, con nombre)
 
