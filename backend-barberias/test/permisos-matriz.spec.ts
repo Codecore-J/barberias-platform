@@ -105,6 +105,13 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /barberias/:barberiaId/horarios/barberos/:barberoId/excepciones': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
   'GET /barberias/:barberiaId/pagos,cobros,pagos/auditoria': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // E3-09 (2026-10): la política de la RUTA no cambia — el guard sigue
+  // admitiendo a los tres roles en POST /cobros. Lo que se añade es una
+  // comprobación de SERVICIO: un BARBERO solo cobra las reservas asignadas a
+  // él (y las sin asignar solo las cobra un ADMIN), que el guard no puede ver
+  // porque no consulta la reserva. Cubierto por
+  // `test/pago-barbero-asignado.e2e-spec.ts` (5 casos, rojo→verde) y por el
+  // describe E3-09 de `src/pago/application/pago.service.spec.ts`.
   'POST /barberias/:barberiaId/pagos,cobros,pagos/en-persona,': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
   'POST /barberias/:barberiaId/reservas,reservas/': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],

@@ -21,8 +21,12 @@ export class PagoController {
    * Registrar atención y pago: BARBERO, ADMIN_BARBERIA y ADMINISTRADOR
    * (decisión 9). Lo usa el modal de cobro de la pantalla de agenda, que
    * comparten el barbero y el responsable.
+   *
+   * E3-09: el BARBERO solo cobra las reservas que tiene asignadas; una reserva
+   * sin barbero solo puede cobrarla el ADMIN_BARBERIA o el ADMINISTRADOR. La
+   * comprobación vive en `PagoService.registrarPagoEnPersona`, porque necesita
+   * la reserva concreta y el decorador solo ve el rol.
    */
-  // TODO(E3-09): un BARBERO solo puede cobrar reservas que tenga asignadas.
   @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Post(['en-persona', ''])
   registrarPagoEnPersona(

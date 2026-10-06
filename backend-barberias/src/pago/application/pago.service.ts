@@ -22,7 +22,15 @@ export class PagoService {
     private readonly auditoriaService: AuditoriaService,
   ) {}
 
-  private async validateAccess(usuarioId: string, barberiaId: string) {
+  /**
+   * Perfil con el que se paga: `ADMIN` accede sin restricción de asignación
+   * (responsable, ADMINISTRADOR global o ADMIN_BARBERIA de la sede) y `BARBERO`
+   * queda sujeto a E3-09, que exige que la reserva esté asignada a él.
+   */
+  private async validateAccess(
+    usuarioId: string,
+    barberiaId: string,
+  ): Promise<'ADMIN' | 'BARBERO'> {
     const barberia = await this.prisma.barberia.findUnique({
       where: { id: barberiaId },
       select: { responsableId: true },
@@ -33,12 +41,12 @@ export class PagoService {
     }
 
     if (barberia.responsableId === usuarioId) {
-      return;
+      return 'ADMIN';
     }
 
     // E1-04 (D05): el rol global es ADMINISTRADOR.
     if (await esAdministradorGlobalPorId(this.prisma, usuarioId)) {
-      return;
+      return 'ADMIN';
     }
 
     const rolesUser = (await this.prisma.usuarioRol.findMany({
@@ -46,15 +54,19 @@ export class PagoService {
       include: { rol: true },
     })) ?? [];
 
-    const hasAllowedRole = rolesUser.some((ur) =>
-      ['ADMIN_BARBERIA', 'BARBERO'].includes(ur.rol?.nombre),
-    );
-
-    if (!hasAllowedRole) {
-      throw new ForbiddenException(
-        'No tienes permisos para registrar pagos en esta barbería',
-      );
+    // E3-09: el ADMIN_BARBERIA de la sede conserva su bypass; el que queda
+    // restringido a "solo las suyas" es el que entra por el rol BARBERO.
+    if (rolesUser.some((ur) => ur.rol?.nombre === 'ADMIN_BARBERIA')) {
+      return 'ADMIN';
     }
+
+    if (rolesUser.some((ur) => ur.rol?.nombre === 'BARBERO')) {
+      return 'BARBERO';
+    }
+
+    throw new ForbiddenException(
+      'No tienes permisos para registrar pagos en esta barbería',
+    );
   }
 
   /**
@@ -83,7 +95,7 @@ export class PagoService {
       targetBarberiaId = reservaPrevia.barberiaId;
     }
 
-    await this.validateAccess(usuarioId, targetBarberiaId);
+    const perfil = await this.validateAccess(usuarioId, targetBarberiaId);
 
     return withSerializableTransaction(this.prisma, async (tx) => {
       // Bloqueo pesimista para evitar que dos cajeros cobren la misma reserva simultáneamente
@@ -101,6 +113,24 @@ export class PagoService {
         throw new NotFoundException(
           `Reserva con ID ${dto.reservaId} no encontrada en esta barbería`,
         );
+      }
+
+      // E3-09: un BARBERO solo cobra las reservas que tiene asignadas. El
+      // check va aquí y no en `validateAccess` porque necesita la reserva
+      // concreta, y dentro de la transacción para que lea y juzgue la misma
+      // fila que después actualiza. Las reservas sin asignar (barberoId nulo)
+      // solo las cobra un ADMIN: deben asignarse antes de pasar por caja.
+      if (perfil === 'BARBERO') {
+        if (!reserva.barberoId) {
+          throw new ForbiddenException(
+            'La reserva no tiene barbero asignado: debe asignarse antes de cobrarla',
+          );
+        }
+        if (reserva.barberoId !== usuarioId) {
+          throw new ForbiddenException(
+            'Solo puedes cobrar reservas asignadas a ti',
+          );
+        }
       }
 
       if (['CANCELADA', 'NO_ASISTIO', 'EXPIRADA'].includes(reserva.estado)) {

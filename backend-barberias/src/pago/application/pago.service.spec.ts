@@ -218,6 +218,99 @@ describe('PagoService', () => {
     });
   });
 
+  describe('E3-09 · un BARBERO solo cobra reservas asignadas', () => {
+    const barberoId = 'uuid-barbero-a';
+    const barberiaId = 'uuid-barberia';
+    const reservaId = 'uuid-reserva';
+
+    /** El BARBERO de la sede: no es responsable, no es global, rol BARBERO en la sede. */
+    function prepararBarbero() {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({
+        responsableId: 'uuid-otro-usuario',
+      });
+      mockPrismaService.usuarioRol.findFirst.mockResolvedValue(null); // no es ADMINISTRADOR global
+      mockPrismaService.usuarioRol.findMany.mockResolvedValue([
+        { rol: { nombre: 'BARBERO' } },
+      ]);
+    }
+
+    function prepararReservaAsignada(a: string | null) {
+      mockPrismaService.reserva.findFirst.mockResolvedValue({
+        id: reservaId,
+        barberiaId,
+        clienteId: 'uuid-cliente',
+        barberoId: a,
+        estado: 'CONFIRMADA',
+        totalPagar: 30,
+        pago: null,
+      });
+      mockPrismaService.pago.upsert.mockResolvedValue({
+        id: 'uuid-pago',
+        reservaId,
+        estadoPago: 'PAGADA',
+        monto: 30,
+        registradoPor: barberoId,
+      });
+      mockPrismaService.reserva.update.mockResolvedValue({
+        id: reservaId,
+        estado: 'COMPLETADA',
+      });
+    }
+
+    it('rechaza con 403 cuando la reserva está asignada a OTRO barbero de la misma sede', async () => {
+      prepararBarbero();
+      prepararReservaAsignada('uuid-barbero-b');
+
+      await expect(
+        service.registrarPagoEnPersona(barberoId, barberiaId, { reservaId }),
+      ).rejects.toThrowError(ForbiddenException);
+
+      // Ni se crea el pago ni se completa la reserva.
+      expect(mockPrismaService.pago.upsert).not.toHaveBeenCalled();
+      expect(mockPrismaService.reserva.update).not.toHaveBeenCalled();
+    });
+
+    it('rechaza con 403 cuando la reserva NO tiene barbero asignado (decisión: asignar antes de cobrar)', async () => {
+      prepararBarbero();
+      prepararReservaAsignada(null);
+
+      await expect(
+        service.registrarPagoEnPersona(barberoId, barberiaId, { reservaId }),
+      ).rejects.toThrowError(ForbiddenException);
+
+      expect(mockPrismaService.pago.upsert).not.toHaveBeenCalled();
+    });
+
+    it('permite al BARBERO cobrar la reserva que SÍ tiene asignada (no es una regresión)', async () => {
+      prepararBarbero();
+      prepararReservaAsignada(barberoId);
+
+      const result = await service.registrarPagoEnPersona(barberoId, barberiaId, {
+        reservaId,
+      });
+
+      expect(result.reserva.estado).toBe('COMPLETADA');
+      expect(mockPrismaService.pago.upsert).toHaveBeenCalled();
+    });
+
+    it('permite al ADMIN_BARBERIA cobrar una reserva sin asignar (el bypass de sede no cambia)', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({
+        responsableId: 'uuid-otro-usuario',
+      });
+      mockPrismaService.usuarioRol.findFirst.mockResolvedValue(null); // no es ADMINISTRADOR global
+      mockPrismaService.usuarioRol.findMany.mockResolvedValue([
+        { rol: { nombre: 'ADMIN_BARBERIA' } },
+      ]);
+      prepararReservaAsignada(null);
+
+      const result = await service.registrarPagoEnPersona('uuid-admin-barberia', barberiaId, {
+        reservaId,
+      });
+
+      expect(result.reserva.estado).toBe('COMPLETADA');
+    });
+  });
+
   describe('obtenerAuditoriaPagos', () => {
     const usuarioId = 'uuid-responsable';
     const barberiaId = 'uuid-barberia';
