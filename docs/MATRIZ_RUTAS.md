@@ -36,8 +36,15 @@
 3. **El frontend llama a dos rutas que no existen.** `GET /clientes/:id/ficha` y `POST /clientes/:id/notas`
    están en `frontend-barberias/src/app/core/services/clientes.service.ts:38,55`, pero `ClienteModule` no
    está registrado en `AppModule` (`app.module.ts:56-58`, comentario H22) y sus rutas responden 404. No
-   figuran entre las 54 porque no existen en el servidor. Además declaran `@Roles('BARBERO', 'ADMIN')`, un
-   alias que el backend nunca entendió.
+   figuran entre las 54 porque no existen en el servidor.
+   **El rol ya está corregido** (`fix/rol-admin-inexistente`): declaraban `@Roles('BARBERO', 'ADMIN')`, y
+   `ADMIN` no existe en el catálogo de roles —`roles.ts` solo tiene ADMINISTRADOR, ADMIN_BARBERIA, BARBERO
+   y CLIENTE—, así que nadie podía tener ese rol y el ADMIN_BARBERIA de la sede recibía 403 en las dos
+   rutas sin querer. Ahora es `@Roles('BARBERO', 'ADMIN_BARBERIA')`.
+   **Lo que sigue pendiente NO es de este PR:** publicar el módulo. `app.module.spec.ts:50` exige
+   explícitamente que `ClienteController` no esté en el grafo, así que registrarla es la tarea E4-05 y
+   requiere desactivar ese test a la vez. El spec de este arreglo monta `ClienteModule` por separado para
+   poder probar la política del controlador sin tocar esa decisión.
 4. **E1-05 no cambia lógica de negocio.** Solo sustituye decoradores, con la excepción del DTO de lectura
    de `GET /barberias/:id` (decisión 3). Lo que exigía lógica nueva queda anotado como `TODO` con su
    tarea: E1-06 (vinculación en disponibilidad), E1-07 (límite de 2 barberías), E3-03 (walk-in) y
