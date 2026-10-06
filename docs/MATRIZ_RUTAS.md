@@ -2,8 +2,8 @@
 
 > **Estado: aplicada.** Este documento nació como inventario de solo lectura en `main` y
 > ahora refleja la política que hay en `fix/matriz-permisos`, rama de E1-05.
-> La tabla de rutas es la que produce `test/route-security.spec.ts` (`=== TABLA DE RUTAS (54) ===`)
-> y la que verifica `test/permisos-matriz.spec.ts` (54 rutas × 4 roles = 216 decisiones).
+> La tabla de rutas es la que produce `test/route-security.spec.ts` (`=== TABLA DE RUTAS (55) ===`)
+> y la que verifica `test/permisos-matriz.spec.ts` (55 rutas × 4 roles = 220 decisiones).
 
 ## Cómo leerla
 
@@ -36,7 +36,7 @@
 3. **El frontend llama a dos rutas que no existen.** `GET /clientes/:id/ficha` y `POST /clientes/:id/notas`
    están en `frontend-barberias/src/app/core/services/clientes.service.ts:38,55`, pero `ClienteModule` no
    está registrado en `AppModule` (`app.module.ts:56-58`, comentario H22) y sus rutas responden 404. No
-   figuran entre las 54 porque no existen en el servidor.
+   figuran entre las 55 porque no existen en el servidor.
    **El rol ya está corregido** (`fix/rol-admin-inexistente`): declaraban `@Roles('BARBERO', 'ADMIN')`, y
    `ADMIN` no existe en el catálogo de roles —`roles.ts` solo tiene ADMINISTRADOR, ADMIN_BARBERIA, BARBERO
    y CLIENTE—, así que nadie podía tener ese rol y el ADMIN_BARBERIA de la sede recibía 403 en las dos
@@ -47,8 +47,12 @@
    poder probar la política del controlador sin tocar esa decisión.
 4. **E1-05 no cambia lógica de negocio.** Solo sustituye decoradores, con la excepción del DTO de lectura
    de `GET /barberias/:id` (decisión 3). Lo que exigía lógica nueva queda anotado como `TODO` con su
-   tarea: E1-06 (vinculación en disponibilidad), E1-07 (límite de 2 barberías), E3-03 (walk-in) y
-   E3-09 (cobro de reservas asignadas; este último cerrado en `4b62cf7`).
+   tarea: E1-06 (vinculación en disponibilidad), E1-07 (límite de 2 barberías), E3-03 y
+   E3-09 (cobro de reservas asignadas; cerrado en `4b62cf7`). De E3-03, la partición de rutas
+   (`POST /reservas` solo CLIENTE + `POST /reservas/walk-in` para el staff) está cerrada en
+   `758a70d`; **sigue abierto el resto de E3-03**: orden de validaciones
+   (`NO_VINCULADO`/`CLIENTE_RESTRINGIDO`/pausa/horizonte/`max_pendientes`), 422
+   `GRUPAL_NO_DISPONIBLE`, `FOR UPDATE` bajo SERIALIZABLE y el endpoint de cotización (D44).
 
 ## La matriz
 
@@ -92,7 +96,8 @@
 | 36 | POST | `/barberias/:barberiaId/horarios/barberos/:barberoId/excepciones` | HorarioController | `@Autenticado` | `@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** | **sí** — un barbero solo sobre su propio `barberoId` | sí — `core/services/horarios.service.ts:76` | `test/permisos-matriz.e2e-spec.ts` |
 | 37 | GET | `/barberias/:barberiaId/pagos/auditoria` · `/cobros/auditoria` · `/pagos/auditoria` | PagoController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** — `validateAccess` | no | sí — `core/services/pagos.service.ts:38` (`obtenerHistorial`), desde `admin-tickets.component.ts:329` y `home.component.ts:465` | `src/pago/application/pago.service.spec.ts` |
 | 38 | POST | `/barberias/:barberiaId/pagos/en-persona` · `/cobros` · `/pagos` | PagoController | `@Autenticado` | `@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **9** | **sí** — `validateAccess` | **sí** — E3-09: el BARBERO solo cobra sus reservas (las sin asignar, solo un ADMIN) | sí — `core/services/reservas.service.ts:131` | `src/pago/application/pago.service.spec.ts`; `test/pago-barbero-asignado.e2e-spec.ts` |
-| 39 | POST | `/barberias/:barberiaId/reservas` · `/reservas` | ReservaController | `@Autenticado` | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **10** | **sí** | **sí** — cliente vinculado, no restringido | sí — `core/services/reservas.service.ts:60`, que llama al alias `/reservas`, desde `reserva-wizard` y `walk-in-modal` | `test/hallazgo14-idor-reserva.e2e-spec.ts` |
+| 39 | POST | `/barberias/:barberiaId/reservas` · `/reservas` | ReservaController | `@Autenticado` | `@Roles(CLIENTE)` | **10** — restricción cerrada en `758a70d` (E3-03) | **sí** | **sí** — cliente vinculado, no restringido | sí — `core/services/reservas.service.ts:60`, ahora **solo** desde `reserva-wizard` | `test/hallazgo14-idor-reserva.e2e-spec.ts`; `test/reserva-walkin-split.e2e-spec.ts` |
+| 39b | POST | `/barberias/:barberiaId/reservas/walk-in` · `/reservas/walk-in` | ReservaController | — no existía | `@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **10** — ruta nueva en `758a70d` (E3-03) | **sí** | **sí** — la misma comprobación de servicio que la fila 39 (restricción del actor); no hay recurso previo | sí — `core/services/reservas.service.ts:79`, desde `walk-in-modal` | `test/reserva-walkin-split.e2e-spec.ts`; `test/permisos-matriz.e2e-spec.ts` |
 | 40 | GET | `/barberias/:barberiaId/reservas/:id` · `/reservas/:id` | ReservaController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | — | **sí** | **sí** — un `CLIENTE` solo ve la suya | no | `test/hallazgo14-idor-reserva.e2e-spec.ts`; `src/reserva/application/reserva.service.spec.ts` |
 | 41 | PATCH | `/barberias/:barberiaId/reservas/:id/estado` · `/reservas/:id/estado` | ReservaController | `@Roles(ADMIN_BARBERIA, BARBERO, ADMINISTRADOR)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **11** | **sí** | no | sí — `core/services/reservas.service.ts:111`; el botón «No Asistió» ya se oculta al BARBERO | `src/reserva/application/reserva.service.spec.ts` |
 | 42 | POST | `/barberias/:barberiaId/reservas/:id/inasistencia` · `/reservas/:id/inasistencia` | ReservaController | `@Roles(ADMIN_BARBERIA, BARBERO, ADMINISTRADOR)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D02) | **sí** | no | no | `test/permisos-matriz.e2e-spec.ts` |
@@ -111,15 +116,16 @@
 
 ## Recuento aplicado
 
-Conteo de `test/route-security.spec.ts` antes y después de E1-05:
+Conteo de `test/route-security.spec.ts` antes y después de E1-05. El total aplicado pasa a **55** con
+E3-03 (`758a70d`), que añade `POST /reservas/walk-in`:
 
 | Política | Antes (main `05a0961`) | Aplicado (`fix/matriz-permisos`) |
 |---|---|---|
 | `@Public` | 6 | 6 |
 | `@Autenticado` | 28 | 5 |
-| `@Roles(...)` | 20 | 43 |
+| `@Roles(...)` | 20 | 44 |
 | ninguna | 0 | 0 |
-| **Total** | **54** | **54** |
+| **Total** | **54** | **55** |
 
 Las 5 rutas que siguen en `@Autenticado` son las que devuelven datos del propio solicitante o no son de
 negocio: `GET /`, `GET /auth/me`, `POST /barberias`, `GET /barberias` y `GET /notificaciones/mis-notificaciones`.
@@ -193,10 +199,16 @@ ve el rol), la comprobación vive en `PagoService.registrarPagoEnPersona`, que c
 `validateAccess` exige a un BARBERO que `reserva.barberoId` sea el suyo y rechaza con 403 las reservas sin
 asignar; el ADMIN_BARBERIA y el ADMINISTRADOR conservan su bypass.
 
-**10. `POST /reservas` — `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)`.** La sección 4 pide
-solo CLIENTE, pero el frontend usa el mismo alias `/reservas` para el walk-in del modal de la pantalla de
-agenda. Restringirla deja esa pantalla sin walk-in, así que la política declarada incluye a los cuatro
-roles y la restricción real queda como `TODO(E3-03)`, que además pide una ruta aparte para el walk-in.
+**10. `POST /reservas` solo CLIENTE, y el walk-in pasa a `POST /reservas/walk-in` —
+`@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` (E3-03, cerrado en `758a70d`).** La sección 4 pedía
+solo CLIENTE, pero el mismo alias lo usaban DOS pantallas: el wizard del cliente
+(`reserva-wizard.component.ts:341`, manda `barberoId: null`) y el modal de walk-in de la pantalla de
+agenda (`walk-in-modal.component.ts:147`, exige `barberoId`). Restringirla a CLIENTE dejaba sin walk-in a
+la pantalla que más lo usa, así que la política declarada eran los cuatro roles y la restricción quedaba
+como `TODO(E3-03)`. Ahora cada pantalla tiene ruta propia: el alias vuelve a ser exclusivo del cliente y
+el walk-in —que solo ocurre en la sede y siempre con barbero— se sirve en `/reservas/walk-in`, llamada
+por `walk-in-modal.component.ts` vía `ReservasService.crearReservaWalkIn`. Cubierto por
+`test/reserva-walkin-split.e2e-spec.ts` (5 casos, rojo→verde) y por las filas 39 y 39b de esta matriz.
 
 **11. `PATCH /reservas/:id/estado` — `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)`.** El barbero deja de cambiar
 el estado de una reserva. El botón «No Asistió» de `/admin/agenda` lo llama a esta ruta y el componente no
@@ -208,7 +220,9 @@ registrando walk-ins, pero no le ofrezca una acción que el backend le va a dene
 - **Decisión 2 ampliada dos veces**: `/seleccionar` admite además a `ADMIN_BARBERIA` y `ADMINISTRADOR`
   (para no romper el flujo de crear y cambiar de sede) y después también a `BARBERO`.
 - **Decisión 10 ampliada**: `/reservas` incluye también al `ADMINISTRADOR`, que entra en `/admin/agenda` y
-  usa el walk-in.
+  usa el walk-in. Tras E3-03 (`758a70d`) esa ampliación se materializa en la fila 39b: el walk-in se
+  declara con los tres roles de la sede **más** `ADMINISTRADOR`, y en el alias de cliente el
+  `ADMINISTRADOR` sigue pasando por la jerarquía del guard (E1-04), no por el decorador.
 - **Consecuencia del guard**: `RolesGuard` concede el acceso al `ADMINISTRADOR` antes de mirar la lista, así
   que en la fila 20 el administrador global también pasa, aunque la política solo declare `CLIENTE`.
 
@@ -312,7 +326,8 @@ negocio y cada uno necesita su propia tarea.
 | E1-06 | ~~Comprobar el vínculo del solicitante al calcular disponibilidad~~ — cerrado en `d93e9af` | `agenda.controller.ts`, ambos verbos |
 | E1-06 | ~~Resolver el vínculo de la sede seleccionada~~ — cerrado en `d93e9af` | `barberia.controller.ts`, `PATCH /barberias/:id/seleccionar` |
 | E1-07 | Límite de 2 barberías por usuario al crear | `barberia.controller.ts`, `POST /barberias` |
-| E3-03 | Reservar la creación de reservas al CLIENTE y crear la ruta de walk-in | `reserva.controller.ts`, `POST /reservas` |
+| E3-03 | ~~Reservar la creación de reservas al CLIENTE y crear la ruta de walk-in~~ — cerrado en `758a70d` | `reserva.controller.ts`, `POST /reservas` y `POST /reservas/walk-in` |
+| E3-03 | **El resto de E3-03 sigue abierto** (no es alcance de la partición de rutas): orden de validaciones `NO_VINCULADO`/`CLIENTE_RESTRINGIDO`/pausa/horizonte/`max_pendientes`, 422 `GRUPAL_NO_DISPONIBLE`, `FOR UPDATE` bajo SERIALIZABLE y `POST /reservas/cotizar` (D44) | `BACKLOG_BARBERIAS_V1.md` → E3-03; `reserva.service.ts` |
 | E3-09 | ~~Un BARBERO solo cobra las reservas que tiene asignadas~~ — cerrado en `4b62cf7` | `pago.controller.ts`, `POST /cobros` |
 | D43 | Declaración propia del cliente con su ruta y su campo de origen | `antecedente.controller.ts`, `POST /antecedentes` |
 

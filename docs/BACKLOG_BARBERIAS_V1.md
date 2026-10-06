@@ -632,6 +632,18 @@ No hagas merge. Espera aprobación.
 
 ### E3-03 · Crear reserva y cotización
 `P0 · L · Depende: E3-02, E2-02, E3-01 · Rama: feat/crear-reserva-v2`
+**Estado (2026-10-06, `758a70d`, rama `feat/reservas-split-cliente-walkin`): la partición de rutas del
+punto 1 está RESUELTA** — `POST /barberias/:barberiaId/reservas` es ya `@Roles('CLIENTE')` y el walk-in
+de la pantalla de agenda pasó a `POST .../reservas/walk-in` con `@Roles('BARBERO', 'ADMIN_BARBERIA',
+'ADMINISTRADOR')`; `walk-in-modal.component.ts` llama a la ruta nueva, las matrices están actualizadas
+(55 rutas × 4 roles = 220 decisiones) y hay e2e rojo→verde (`test/reserva-walkin-split.e2e-spec.ts`).
+**Sigue pendiente TODO lo demás del punto 1**: el orden de validaciones (sesión → rol → DTO →
+vinculación `ACTIVO` → `NO_VINCULADO`/`CLIENTE_RESTRINGIDO` → pausa → horizonte → `max_pendientes` →
+servicios → bloque → disponibilidad), el 422 `GRUPAL_NO_DISPONIBLE` del punto 3, los puntos 2, 4
+(`POST .../reservas/cotizar`, D44), 5 y 6, y las casillas de aceptación. El `FOR UPDATE` que menciona el
+punto 1 **ya existe** en `crearReserva` (bloqueo pesado sobre la barbería dentro de la transacción
+SERIALIZABLE), pero su cobertura de carrera no se ha verificado en esta tarea, así que no se da por
+hecho.
 **Contexto:** hoy `reserva.service.crearReserva` fija `tipoReserva: 'INDIVIDUAL'` con un único participante y encola el job `expirar-reserva` de 10 min en modo MANUAL. `POST .../reservas` no tiene `@Roles`. El helper `withSerializableTransaction` ya existe y mapea 40001 a 409.
 **Hacer:**
 1. `POST /barberias/:barberiaId/reservas` (`@Roles('CLIENTE')`). Orden de validación (principio 9): sesión → rol → DTO → vinculación `ACTIVO` con esa barbería → no restringido (403 `CLIENTE_RESTRINGIDO`) → configuración (pausa, tipo aceptado, horizonte, `max_pendientes`) → servicios y combos activos de ESA barbería → bloque (E2-05) → disponibilidad bajo SERIALIZABLE y `FOR UPDATE` → persistir con snapshots y `modo_confirmacion`.
