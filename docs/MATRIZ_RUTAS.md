@@ -91,14 +91,14 @@
 | 42 | POST | `/barberias/:barberiaId/reservas/:id/inasistencia` · `/reservas/:id/inasistencia` | ReservaController | `@Roles(ADMIN_BARBERIA, BARBERO, ADMINISTRADOR)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D02) | **sí** | no | no | `test/permisos-matriz.e2e-spec.ts` |
 | 43 | GET | `/barberias/:barberiaId/reservas/agenda` · `/reservas/agenda` | ReservaController | `@Roles(ADMIN_BARBERIA, BARBERO, ADMINISTRADOR)` | `@Roles(ADMIN_BARBERIA, BARBERO, ADMINISTRADOR)` | matriz (D16) | **sí** | **sí** — el barbero solo la suya | sí — `core/services/reservas.service.ts:94` | `test/hallazgo16-rolesguard-global.e2e-spec.ts` |
 | 44 | GET | `/barberias/:barberiaId/reservas/mis-reservas` · `/reservas/mis-reservas` | ReservaController | `@Autenticado` | `@Roles(CLIENTE)` | matriz | no | **sí** — `clienteId` del token | sí — `core/services/reservas.service.ts:77`, y los enlaces «Mis Citas» solo se muestran a CLIENTE | `test/permisos-matriz.e2e-spec.ts` |
-| 45 | GET | `/catalogo/servicios` · `/servicios` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` | matriz | **sí** | no | sí — `core/services/servicios.service.ts:32` | `src/catalogo/application/servicios.service.spec.ts` |
+| 45 | GET | `/catalogo/servicios` · `/servicios` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` + `VinculoBarberiaGuard` | **decisión del dueño** — el CLIENTE requiere fila ACTIVA en `cliente_barberias` | **sí** | **sí** — desde `81db5dc` | sí — `core/services/servicios.service.ts:32` | `src/catalogo/application/servicios.service.spec.ts`; `src/iam/infrastructure/vinculo-barberia.guard.spec.ts` |
 | 46 | POST | `/catalogo/servicios` · `/servicios` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D16) | **sí** | no | sí — `core/services/servicios.service.ts:58` | `test/permisos-matriz.e2e-spec.ts` |
-| 47 | GET | `/catalogo/servicios/:id` · `/servicios/:id` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` | matriz | **sí** | no | no | `test/permisos-matriz.e2e-spec.ts` |
+| 47 | GET | `/catalogo/servicios/:id` · `/servicios/:id` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` + `VinculoBarberiaGuard` | **decisión del dueño** — el CLIENTE requiere fila ACTIVA | **sí** | **sí** — desde `81db5dc` | no | `test/permisos-matriz.e2e-spec.ts`; `src/iam/infrastructure/vinculo-barberia.guard.spec.ts` |
 | 48 | PATCH | `/catalogo/servicios/:id` · `/servicios/:id` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D16) | **sí** | no | sí — `core/services/servicios.service.ts:76` | `test/permisos-matriz.e2e-spec.ts` |
 | 49 | DELETE | `/catalogo/servicios/:id` · `/servicios/:id` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D16) | **sí** | no | sí — `core/services/servicios.service.ts:90` | `test/permisos-matriz.e2e-spec.ts` |
-| 50 | GET | `/catalogo/combos` | CombosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` | matriz | **sí** | no | **no** | `test/permisos-matriz.e2e-spec.ts` |
+| 50 | GET | `/catalogo/combos` | CombosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` + `VinculoBarberiaGuard` | **decisión del dueño** — el CLIENTE requiere fila ACTIVA | **sí** | **sí** — desde `81db5dc` | **no** | `test/permisos-matriz.e2e-spec.ts`; `src/iam/infrastructure/vinculo-barberia.guard.spec.ts` |
 | 51 | POST | `/catalogo/combos` | CombosController | `@Roles(ADMIN_BARBERIA, BARBERO)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D16) | **sí** | no | **no** | `test/permisos-matriz.e2e-spec.ts` |
-| 52 | GET | `/catalogo/combos/:id` | CombosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` | matriz | **sí** | no | **no** | `test/permisos-matriz.e2e-spec.ts` |
+| 52 | GET | `/catalogo/combos/:id` | CombosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` + `VinculoBarberiaGuard` | **decisión del dueño** — el CLIENTE requiere fila ACTIVA | **sí** | **sí** — desde `81db5dc` | **no** | `test/permisos-matriz.e2e-spec.ts`; `src/iam/infrastructure/vinculo-barberia.guard.spec.ts` |
 | 53 | PATCH | `/catalogo/combos/:id` | CombosController | `@Roles(ADMIN_BARBERIA, BARBERO)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D16) | **sí** | no | **no** | `test/permisos-matriz.e2e-spec.ts` |
 | 54 | DELETE | `/catalogo/combos/:id` | CombosController | `@Roles(ADMIN_BARBERIA, BARBERO)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D16) | **sí** | no | **no** | `test/permisos-matriz.e2e-spec.ts` |
 
@@ -246,6 +246,33 @@ negocio y cada uno necesita su propia tarea.
    400, después de abrir conexión; ahora el 400 sale del decorador y la variante opcional devuelve `null`.
    Cubierto por `current-barberia.decorator.spec.ts` (12), `servicios.service.spec.ts` y
    `combos.service.spec.ts` (nuevo).
+
+   **El catálogo exige vínculo (decisión del dueño, `81db5dc`, rama `fix/catalogo-requiere-vinculo`).** Las cuatro
+   lecturas del catálogo —`GET /catalogo/servicios`, `GET /catalogo/servicios/:id`, `GET /catalogo/combos`
+   y `GET /catalogo/combos/:id`— siguen admitting a los cuatro roles por rol, pero ahora pasan además
+   por `VinculoBarberiaGuard`. Motivo: el rol `CLIENTE` es GLOBAL con `barberia_id` nulo, así que
+   `alcanceCumple` lo trata como comodín y un cliente autenticado leía el catálogo **de cualquier sede**
+   con solo mandar `x-barberia-id`: no era una fuga de datos de una sede a otra, era un directorio de
+   precios de todas las sedes a la que llegaba cualquiera con una cuenta. El hallazgo salió en el paso 5 de
+   E1-06 y quedó fijado como desviación conocida en `test/e1-06-cross-tenant-admin.e2e-spec.ts`, que
+   esperaba el 200; ahí se invierte la expectativa a 403.
+
+   La regla, tal como queda:
+   - `ADMIN_BARBERIA` y `BARBERO`: el vínculo ya está en `usuario_roles.barberia_id`, no cambia nada.
+   - `CLIENTE`: necesita fila en `cliente_barberias` con `estado_vinculacion = 'ACTIVO'`. Un vínculo
+     suspendido no habilita.
+   - `ADMINISTRADOR` global: **bypass intacto**, es transversal por diseño (D05).
+
+   El guard resuelve la sede con la misma cadena que `@CurrentBarberiaId` (`params` > cabecera > query, con
+   validación de UUID), para que la comprobación y la consulta miren siempre la misma sede. Si no hay sede,
+   no decide y deja que la ruta conteste 400, que es el mensaje que corresponde. Las escrituras del
+   catálogo (`POST`, `PATCH`, `DELETE`) no lo llevan: `RolesGuard` ya las acota al `ADMIN_BARBERIA` de esa
+   sede, así que el vínculo está implícito.
+
+   Cubierto por `vinculo-barberia.guard.spec.ts` (11, nuevo) y por los casos del e2e: sin vínculo 403 en
+   servicios y combos, con vínculo ACTIVO 200 y con el catálogo acotado a su sede, y con vínculo suspendido
+   403. La mutación de quitar el filtro `ACTIVO` deja el e2e en rojo, que es lo que demuestra que el caso
+   suspendido no es decorativo.
 
    **Complemento de `d93e9af`:** quitar el fallback arregló que la sede fuera correcta, pero no que el
    solicitante *perteneciera* a ella. El rol `CLIENTE` es GLOBAL con `barberia_id` nulo, de modo que
