@@ -18,6 +18,35 @@
  * 12. Consulta de estadísticas y purga de auditoría.
  */
 
+/**
+ * GUARDIA DE SEGURIDAD (mismo patron que test/setup.e2e.ts)
+ *
+ * Este script abre un PrismaClient contra el DATABASE_URL del proceso y escribe
+ * usuarios reales (admin_smoke_*, barbero_smoke_*, ...). Antes de que se crearan
+ * los admin_smoke_* en produccion, se ejecuto con la URL de Neon en el entorno.
+ * Por eso aborta si APP_ENV no es 'dev' o si la base no es local.
+ */
+function assertSafeSmokeDatabase() {
+  if (process.env.APP_ENV !== 'dev') {
+    console.error(`SMOKE TEST ABORTED: APP_ENV is set to '${process.env.APP_ENV}'. The live smoke test must only run in 'dev' environment to prevent writing test data in staging/production.`);
+    process.exit(1);
+  }
+
+  const databaseUrl = process.env.DATABASE_URL ?? '';
+  if (!/localhost|127\.0\.0\.1/.test(databaseUrl)) {
+    let host = '(no parseable)';
+    try {
+      host = new URL(databaseUrl).host;
+    } catch {
+      host = '(no parseable)';
+    }
+    console.error(`SMOKE TEST ABORTED: DATABASE_URL points to '${host}', which is not localhost nor 127.0.0.1. This script writes directly in the database (admin_smoke_*) and must never run against staging/production.`);
+    process.exit(1);
+  }
+}
+
+assertSafeSmokeDatabase();
+
 const BASE_URL = 'http://localhost:3000/api/v1';
 
 async function request(path: string, options: { method?: string; body?: any; token?: string; headers?: Record<string, string> } = {}) {
