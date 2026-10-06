@@ -48,7 +48,7 @@
 4. **E1-05 no cambia lógica de negocio.** Solo sustituye decoradores, con la excepción del DTO de lectura
    de `GET /barberias/:id` (decisión 3). Lo que exigía lógica nueva queda anotado como `TODO` con su
    tarea: E1-06 (vinculación en disponibilidad), E1-07 (límite de 2 barberías), E3-03 (walk-in) y
-   E3-09 (cobro de reservas asignadas).
+   E3-09 (cobro de reservas asignadas; este último cerrado en `4b62cf7`).
 
 ## La matriz
 
@@ -313,7 +313,7 @@ negocio y cada uno necesita su propia tarea.
 | E1-06 | ~~Resolver el vínculo de la sede seleccionada~~ — cerrado en `d93e9af` | `barberia.controller.ts`, `PATCH /barberias/:id/seleccionar` |
 | E1-07 | Límite de 2 barberías por usuario al crear | `barberia.controller.ts`, `POST /barberias` |
 | E3-03 | Reservar la creación de reservas al CLIENTE y crear la ruta de walk-in | `reserva.controller.ts`, `POST /reservas` |
-| E3-09 | Un BARBERO solo cobra las reservas que tiene asignadas | `pago.controller.ts`, `POST /cobros` |
+| E3-09 | ~~Un BARBERO solo cobra las reservas que tiene asignadas~~ — cerrado en `4b62cf7` | `pago.controller.ts`, `POST /cobros` |
 | D43 | Declaración propia del cliente con su ruta y su campo de origen | `antecedente.controller.ts`, `POST /antecedentes` |
 
 ### E1-06 · estado de verificación de la parte 3
