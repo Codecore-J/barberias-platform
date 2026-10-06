@@ -40,7 +40,7 @@ export class ServiciosController {
 
   @Get()
   @Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR')
-  findAll(@CurrentBarberiaId() barberiaId?: string) {
+  findAll(@CurrentBarberiaId() barberiaId: string) {
     return this.serviciosService.findAll(barberiaId);
   }
 

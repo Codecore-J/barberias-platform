@@ -426,14 +426,23 @@ No hagas merge. Espera aprobación.
 ### E1-06 · Tests cross-tenant de administradores
 `P0 · M · Depende: E1-05 · Rama: test/cross-tenant-admin`
 **Contexto:** el guard compara el `barberiaId` de los parámetros, el header `x-barberia-id` o la query; `@CurrentBarberiaId` lo toma de otra fuente en servicios y combos. Riesgo clásico de Prisma: `where: { barberiaId: undefined }` ignora el filtro y devuelve datos de todas las barberías. `GET /catalogo/servicios` tiene tenant "opcional".
+
+> **Corrección de contexto (2026-10-05, rama `test/cross-tenant-admin`).** La frase «`@CurrentBarberiaId` lo toma de otra fuente» describe el estado **anterior** a E1-06, no el de `main`. El fallback a `params.id` ya no existe desde `c5e5111` (PR #31): `resolverBarberiaId` solo lee `params.barberiaId`, `x-barberia-id` y `?barberiaId=`. Al revisar el decorador quedaban otras dos vías reales, que son las que cierra `e538566`:
+>
+> 1. **Sin validación de formato.** `x-barberia-id: no-es-uuid` llegaba entero al `where` de una columna `uuid`: el 400 lo daba Prisma *después* de abrir conexión, no el decorador. Ahora `resolverBarberiaId` solo devuelve UUID y la variante opcional devuelve `null` en vez de propagar el valor.
+> 2. **El filtro de sede podía desaparecer.** `ServiciosService.findAll` declaraba `barberiaId?: string` y se comía el filtro a propósito cuando no llegaba sede, devolviendo el catálogo de todas las barberías; en `CombosService.findAll` el `where: { barberiaId }` era literal y el mismo `undefined` producía una consulta sin filtro. Los dos servicios exigen ahora sede y la llevan siempre en el `where`.
+>
+> La frase «`GET /catalogo/servicios` tiene tenant "opcional"» también queda obsoleta: el decorador era el obligatorio desde E1-06 parte 1 (400 sin sede), pero el **servicio** seguía teniendo la rama sin filtro hasta `e538566`.
+
 **Hacer:**
 1. Pegar y revisar `current-barberia.decorator.ts` y todos los `where` de servicios y combos. Si `barberiaId` falta o no es UUID, error 400 (nunca `undefined` hacia Prisma).
 2. Test E2E con barberías A y B: el `ADMIN_BARBERIA` de A intenta, sobre recursos de B: editar, desactivar y leer servicios y combos; leer agenda, bloqueos, pagos, horarios, auditoría y antecedentes; y un CLIENTE no vinculado intenta leer su catálogo.
 3. Casos de manipulación: header distinto al parámetro de la ruta, `barberiaId` en la query.
 **Aceptación:**
 - [ ] Todo intento ajeno devuelve 403 o 404, ninguno 2xx.
-- [ ] `where` con `undefined` imposible (test).
+- [x] `where` con `undefined` imposible (test). Cubierto por los unitarios de `current-barberia.decorator.spec.ts`, `servicios.service.spec.ts` y `combos.service.spec.ts` (`e538566`); el e2e cross-tenant del punto 2 sigue sin ejecutar.
 **Evidencia:** salida del test.
+**Bloqueo conocido (paso 5 y 6 de la tarea):** el e2e no se puede ejecutar en esta máquina. Docker Desktop no está instalado (`docker ps` → `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine`), los puertos 5432 y 6379 están cerrados y no hay `C:\Program Files\Docker`. Hasta que exista un paso de e2e en `.github/workflows/ci.yml` (rama `ci/run-e2e-tests`) o una corrida con la base levantada, los e2e del repositorio no se ejecutan en ningún lado: son hoy **11 ficheros / 67 tests** escritos y nunca ejecutados.
 
 ### E1-07 · Crear barbería con límite y respuestas públicas seguras
 `P1 · M · Depende: E1-05 · Rama: feat/crear-barberia-limite`

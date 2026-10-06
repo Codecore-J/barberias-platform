@@ -81,6 +81,41 @@ describe('ServiciosService', () => {
     });
   });
 
+  describe('findAll · el filtro de sede nunca se omite (E1-06)', () => {
+    it('acota siempre el where a la sede recibida', async () => {
+      prisma.servicio.findMany.mockResolvedValue([]);
+
+      await service.findAll(mockBarberiaId);
+
+      expect(prisma.servicio.findMany).toHaveBeenCalledWith({
+        where: { estado: 'ACTIVO', barberiaId: mockBarberiaId },
+        orderBy: { nombre: 'asc' },
+      });
+    });
+
+    it('NO devuelve el catalogo de todas las barberias si la sede llega vacia', async () => {
+      prisma.servicio.findMany.mockResolvedValue([]);
+
+      // Antes de E1-06 el filtro se caia a proposito: sin sede devolvia los
+      // servicios de TODAS las barberias, que es la fuga que persigue H36.
+      await expect(service.findAll(undefined as unknown as string)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      // Y la garantia que de verdad importa: sin sede no se consulta. Si en
+      // algun momento volviera a llamarse a findMany, este test falla.
+      expect(prisma.servicio.findMany).not.toHaveBeenCalled();
+    });
+
+    it('NO acepta una sede vacia ni solo espacios', async () => {
+      prisma.servicio.findMany.mockResolvedValue([]);
+
+      await expect(service.findAll('')).rejects.toThrow(BadRequestException);
+      await expect(service.findAll('   ')).rejects.toThrow(BadRequestException);
+      expect(prisma.servicio.findMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('findOne', () => {
     it('debe retornar el servicio si existe en la barbería', async () => {
       const mockServicio = { id: mockServicioId, barberiaId: mockBarberiaId, nombre: 'Corte', estado: 'ACTIVO' };

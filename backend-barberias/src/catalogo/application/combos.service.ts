@@ -15,6 +15,19 @@ export class CombosService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * E1-06: sin sede no se consulta. En Prisma `where: { barberiaId: undefined }`
+   * no filtra, el motor descarta el campo y salen los combos de todas las sedes.
+   */
+  private static exigirSede(barberiaId: string | undefined | null): string {
+    if (typeof barberiaId !== 'string' || barberiaId.trim() === '') {
+      throw new BadRequestException(
+        'No se indicó la barbería: es obligatorio acotar el catálogo a una sede.',
+      );
+    }
+    return barberiaId.trim();
+  }
+
   async create(barberiaId: string, dto: CreateComboDto) {
     if (dto.items && dto.items.length > 0) {
       await this.validateCycles(barberiaId, 'NEW_COMBO', dto.items.map(i => i.subComboId).filter(id => id !== undefined) as string[]);
@@ -47,16 +60,18 @@ export class CombosService {
   }
 
   async findAll(barberiaId: string) {
+    const sede = CombosService.exigirSede(barberiaId);
     return this.prisma.combo.findMany({
-      where: { barberiaId, estado: 'ACTIVO' },
+      where: { barberiaId: sede, estado: 'ACTIVO' },
       include: { comboItemsAsParent: true },
       orderBy: { nombre: 'asc' },
     });
   }
 
   async findOne(barberiaId: string, id: string) {
+    const sede = CombosService.exigirSede(barberiaId);
     const combo = await this.prisma.combo.findFirst({
-      where: { id, barberiaId },
+      where: { id, barberiaId: sede },
       include: { comboItemsAsParent: true },
     });
     if (!combo) {
