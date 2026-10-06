@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { TipoExcepcionHorario } from '../../horario/application/dto/create-excepcion-horario.dto.js';
 import { esAdministradorGlobalPorId, perteneceABarberia } from '../../iam/domain/roles.js';

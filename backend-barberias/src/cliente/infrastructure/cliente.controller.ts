@@ -16,7 +16,6 @@ export class ClienteController {
   obtenerFicha(
     @Param('id', ParseUUIDPipe) clienteId: string,
     @Headers('x-barberia-id') barberiaId: string,
-    @CurrentUser() user: UsuarioAutenticado
   ) {
     if (!barberiaId) throw new UnauthorizedException('x-barberia-id es requerido');
     return this.clienteService.obtenerFicha(clienteId, barberiaId);
