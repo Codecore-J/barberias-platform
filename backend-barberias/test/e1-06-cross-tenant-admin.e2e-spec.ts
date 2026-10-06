@@ -24,7 +24,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
   let app: INestApplication;
   let prisma: PrismaService;
 
-  const correos = ['admin.a.cta@test.com', 'admin.b.cta@test.com', 'suelto.cta@test.com'];
+  const correos = ['admin.a.cta@test.com', 'admin.b.cta@test.com', 'suelto.cta@test.com', 'vinculado.cta@test.com'];
 
   let barberiaA: string;
   let barberiaB: string;
@@ -35,6 +35,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
   let bloqueoB: string;
   let tokenAdminA: string;
   let tokenSuelto: string;
+  let tokenVinculado: string;
 
   const api = '/api/v1';
 
@@ -86,6 +87,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
     const adminA = await crearUsuario('admin.a.cta@test.com', 'Admin A CTA', '9993000001');
     const adminB = await crearUsuario('admin.b.cta@test.com', 'Admin B CTA', '9993000002');
     const suelto = await crearUsuario('suelto.cta@test.com', 'Cliente Suelto', '9993000003');
+    const vinculado = await crearUsuario('vinculado.cta@test.com', 'Cliente Vinculado', '9993000004');
 
     barberiaA = (
       await prisma.barberia.create({
@@ -119,7 +121,23 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
         // CLIENTE GLOBAL con barberia_id nulo y SIN fila en cliente_barberias:
         // no está vinculado a ninguna sede.
         { usuarioId: suelto.id, rolId: rolCliente.id, barberiaId: null },
+        // Igual de GLOBAL y sin barberia_id en usuario_roles, pero CON fila ACTIVA
+        // en cliente_barberias para A: es el control positivo de la regla.
+        { usuarioId: vinculado.id, rolId: rolCliente.id, barberiaId: null },
       ],
+    });
+
+    // Control positivo de la regla de vínculo: este cliente SÍ está vinculado a
+    // A, así que debe seguir viendo su catálogo con normalidad. Sin esta fila,
+    // un arreglo que denegase a todos los CLIENTES también dejaría el spec verde.
+    await prisma.clienteBarberia.create({
+      data: { usuarioId: vinculado.id, barberiaId: barberiaA, estadoVinculacion: 'ACTIVO' },
+    });
+
+    // Vínculo SUSPENDIDO con A: ni rol en usuario_roles ni fila ACTIVA. Debe
+    // recibir 403 igual que el cliente sin vínculo, que es el caso que se arregla.
+    await prisma.clienteBarberia.create({
+      data: { usuarioId: vinculado.id, barberiaId: barberiaB, estadoVinculacion: 'SUSPENDIDO' },
     });
 
     servicioA = (
@@ -183,6 +201,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
 
     tokenAdminA = await login('admin.a.cta@test.com');
     tokenSuelto = await login('suelto.cta@test.com');
+    tokenVinculado = await login('vinculado.cta@test.com');
   }, 60000);
 
   afterAll(async () => {
@@ -334,36 +353,80 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       .set('x-barberia-id', barberiaA)
       .send({ nombre: 'Corte E1-06-CTA de A (editado por su admin)' });
 
-    // HALLAZGO (paso 5) · un CLIENTE sin vinculo a ninguna sede lee el catalogo
-    // de A con 200. Se comprueba aqui para que quede fijado y visible, en vez de
-    // esconderlo bajando la asercion del bucle. Ver el informe: la matriz de
-    // permisos abre `GET /catalogo/servicios` a los cuatro roles y navegar sin
-    // vinculo parece intencionado, pero contradice el criterio del paso 4
-    // ("todo intento ajeno, 403 o 404"). Decide el dueno; NO se cambia aqui.
+    // CATÁLOGO PRIVADO HASTA EL VÍNCULO (decision del dueno, E1-06 paso 5).
+    // Un CLIENTE sin fila ACTIVA en cliente_barberias para esa sede recibe 403
+    // en /catalogo/servicios y /catalogo/combos. Antes respondia 200 con solo la
+    // cabecera x-barberia-id de cualquier sede.
     const catalogoSuelto = await request(app.getHttpServer())
       .get(`${api}/catalogo/servicios`)
       .set('Authorization', jwt(tokenSuelto))
       .set('x-barberia-id', barberiaA);
+
+    const combosSuelto = await request(app.getHttpServer())
+      .get(`${api}/catalogo/combos`)
+      .set('Authorization', jwt(tokenSuelto))
+      .set('x-barberia-id', barberiaA);
+
+    // CONTROL POSITIVO: el mismo rol CLIENTE, pero VINCULADO a A con fila ACTIVA,
+    // sigue viendo el catalogo de A con normalidad. Sin este caso, un arreglo que
+    // denegase a todos los CLIENTES pasaria el spec por el motivo equivocado.
+    const catalogoVinculado = await request(app.getHttpServer())
+      .get(`${api}/catalogo/servicios`)
+      .set('Authorization', jwt(tokenVinculado))
+      .set('x-barberia-id', barberiaA);
+
+    const combosVinculado = await request(app.getHttpServer())
+      .get(`${api}/catalogo/combos`)
+      .set('Authorization', jwt(tokenVinculado))
+      .set('x-barberia-id', barberiaA);
+
+    // El vinculo con B esta SUSPENDIDO: el mismo cliente que si lee A no puede
+    // leer el catalogo de B. Comprueba que la regla mira `estado_vinculacion` y
+    // no solo la existencia de la fila.
+    const catalogoVinculadoB = await request(app.getHttpServer())
+      .get(`${api}/catalogo/servicios`)
+      .set('Authorization', jwt(tokenVinculado))
+      .set('x-barberia-id', barberiaB);
 
     console.log(
       '\n| ruta | intento | estado |\n|---|---|---|\n' +
         casos.map((c) => `| \`${c.ruta}\` | ${c.intento} | ${c.estado} |`).join('\n') +
         `\n| \`PATCH /catalogo/servicios/:id\` | *CONTROL* el admin edita SU servicio | ${controlPropio.status} |` +
         `\n| \`GET /barberias/:id/horarios (ruta A, cabecera B)\` | *CONTROL* lee A (diaSemana 1), no B (7) | ${rutaAconCabeceraB.status} |` +
-        `\n| \`GET /catalogo/servicios\` | *HALLAZGO* cliente sin vinculo lee el catalogo | ${catalogoSuelto.status} |\n`,
+        `\n| \`GET /catalogo/servicios\` | cliente SIN vinculo lee el catalogo de A | ${catalogoSuelto.status} |` +
+        `\n| \`GET /catalogo/combos\` | cliente SIN vinculo lee los combos de A | ${combosSuelto.status} |` +
+        `\n| \`GET /catalogo/servicios\` | *CONTROL* cliente VINCULADO lee el catalogo de A | ${catalogoVinculado.status} |` +
+        `\n| \`GET /catalogo/combos\` | *CONTROL* cliente VINCULADO lee los combos de A | ${combosVinculado.status} |` +
+        `\n| \`GET /catalogo/servicios\` | cliente con vinculo SUSPENDIDO en B | ${catalogoVinculadoB.status} |\n`,
     );
 
     // El control positivo tiene que pasar: si esto no es 2xx, el 403/404 de los
     // casos ajenos no estaría probando aislamiento sino una app que deniega todo.
     expect(controlPropio.status, 'control positivo: el admin edita su propio servicio').toBe(200);
 
-    // El hallazgo queda fijado con su estado real, y ademas se comprueba que el
-    // catalogo leido es el de la sede pedida y no el de todas las sedes.
-    expect(catalogoSuelto.status, 'desviacion conocida: cliente sin vinculo lee el catalogo').toBe(200);
+    // La regla de vinculo: sin fila ACTIVA, 403 en servicios y combos.
+    expect(catalogoSuelto.status, 'cliente sin vinculo: /catalogo/servicios').toBe(403);
+    expect(combosSuelto.status, 'cliente sin vinculo: /catalogo/combos').toBe(403);
+
+    // Y el control positivo tiene que seguir en verde: vinculo ACTIVO, catalogo
+    // propio de A, con el servicio de A dentro y sin el de B.
+    expect(catalogoVinculado.status, 'cliente vinculado: /catalogo/servicios').toBe(200);
+    expect(combosVinculado.status, 'cliente vinculado: /catalogo/combos').toBe(200);
     expect(
-      (catalogoSuelto.body as { id: string }[]).map((s) => s.id),
-      'el catalogo que lee es el de la sede que pide, no el de todas',
+      (catalogoVinculado.body as { id: string }[]).map((s) => s.id),
+      'el cliente vinculado ve el servicio de su sede',
+    ).toContain(servicioA);
+    expect(
+      (catalogoVinculado.body as { id: string }[]).map((s) => s.id),
+      'el cliente vinculado NO ve el catalogo de la sede ajena',
     ).not.toContain(servicioB);
+    expect(
+      (combosVinculado.body as { id: string }[]).map((c) => c.id),
+      'el cliente vinculado ve el combo de su sede',
+    ).toContain(comboA);
+
+    // Vinculo SUSPENDIDO con B: mismo cliente, otra sede, 403.
+    expect(catalogoVinculadoB.status, 'vinculo suspendido: no lee el catalogo de B').toBe(403);
 
     for (const c of casos) {
       expect.soft([403, 404], `${c.ruta} · ${c.intento} → ${c.estado}`).toContain(c.estado);
