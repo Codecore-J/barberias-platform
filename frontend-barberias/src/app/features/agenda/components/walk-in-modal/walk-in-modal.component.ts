@@ -148,7 +148,8 @@ export class WalkInModalComponent implements OnInit {
       nombreInvitado: this.nombreInvitado || 'Cliente Walk-In'
     };
 
-    this.reservasService.crearReserva(payload).subscribe({
+    // E3-03: el walk-in ya no comparte la ruta con el wizard del cliente.
+    this.reservasService.crearReservaWalkIn(payload).subscribe({
       next: () => {
         this.guardando.set(false);
         this.creado.emit();

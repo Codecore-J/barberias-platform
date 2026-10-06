@@ -71,7 +71,14 @@ const CASOS: Caso[] = [
   { verbo: 'post', ruta: '/cobros', permitidos: ['BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
 
   // ── reservas ─────────────────────────────────────────────────────────────
-  { verbo: 'post', ruta: '/reservas', permitidos: TODOS, cuerpo: {} },
+  // E3-03: el alias se parte en dos rutas con política distinta. `/reservas`
+  // queda para el wizard del CLIENTE (con el ADMINISTRADOR, que el guard
+  // concede por jerarquía, E1-04) y el walk-in de la agenda pasa a
+  // `/reservas/walk-in` con los tres roles de la sede. Ver también
+  // `test/reserva-walkin-split.e2e-spec.ts` para el efecto real sobre un
+  // recurso (aquí solo se mide el 403 del guard).
+  { verbo: 'post', ruta: '/reservas', permitidos: ['CLIENTE', 'ADMINISTRADOR'], cuerpo: {} },
+  { verbo: 'post', ruta: '/reservas/walk-in', permitidos: ['BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
   { verbo: 'get', ruta: '/reservas/mis-reservas', permitidos: ['CLIENTE', 'ADMINISTRADOR'] },
   { verbo: 'get', ruta: '/reservas/agenda?fecha=2026-10-05', permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR'] },
   { verbo: 'get', ruta: `/reservas/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR'] },
