@@ -73,7 +73,13 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       prisma.rol.upsert({
         where: { nombre: 'CLIENTE' },
         update: {},
-        create: { nombre: 'CLIENTE', ambito: 'BARBERIA' },
+        // `ambito: 'GLOBAL'` es la convencion del producto (prisma/seed.ts:56) y
+        // la que ya usa `e1-06-sede-del-tenant`: el CLIENTE es global con
+        // `barberia_id` nulo y su pertenencia a una sede va por `cliente_barberias`.
+        // Sembrarlo BARBERIA con `barberia_id` nulo hace que `alcanceCumple` lo
+        // deniegue siempre, y como el upsert lleva `update: {}`, el primer
+        // fichero que corre en una BD limpia decide el ambito para los demas.
+        create: { nombre: 'CLIENTE', ambito: 'GLOBAL' },
       }),
     ]);
 
