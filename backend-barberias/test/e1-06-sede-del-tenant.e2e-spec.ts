@@ -82,7 +82,14 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
       prisma.rol.upsert({
         where: { nombre: 'CLIENTE' },
         update: {},
-        create: { nombre: 'CLIENTE', ambito: 'BARBERIA' },
+        // `ambito: 'GLOBAL'` es la convención del producto (prisma/seed.ts:56):
+        // el CLIENTE es global con `barberia_id` nulo y su pertenencia a una
+        // sede va por `cliente_barberias`. Sembrarlo BARBERIA con barberia_id
+        // nulo hace que `alcanceCumple` lo deniegue SIEMPRE y los dos tests de
+        // "la sede propia" den 403 en una BD limpia (el fallo del primer run de
+        // CI del PR #32). En una BD usada no se veía: el upsert con `update: {}`
+        // heredaba el rol GLOBAL ya existente.
+        create: { nombre: 'CLIENTE', ambito: 'GLOBAL' },
       }),
       prisma.rol.upsert({
         where: { nombre: 'ADMINISTRADOR' },
