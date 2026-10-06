@@ -101,7 +101,7 @@ describe('AntecedenteService', () => {
         origen: 'ADMIN',
       });
 
-      const res = await service.crear(usuarioId, barberiaId, {
+      await service.crear(usuarioId, barberiaId, {
         usuarioId: clienteId,
         categoria: 'CONDUCTA',
         contenido: 'Excelente puntualidad',

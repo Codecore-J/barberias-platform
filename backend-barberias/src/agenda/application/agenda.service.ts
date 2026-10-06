@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { CreateBloqueoDto } from './dto/create-bloqueo.dto.js';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -99,7 +99,7 @@ export class AgendaService {
         if (job && await job.isActive() === false && await job.isCompleted() === false) {
            await job.remove();
         }
-      } catch (err) {
+      } catch {
         this.logger.warn(`No se pudo eliminar el job ${bloqueo.jobId} en BullMQ`);
       }
     }

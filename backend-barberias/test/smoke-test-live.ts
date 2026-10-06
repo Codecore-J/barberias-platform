@@ -23,7 +23,7 @@ const BASE_URL = 'http://localhost:3000/api/v1';
 async function request(path: string, options: { method?: string; body?: any; token?: string; headers?: Record<string, string> } = {}) {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers || {}),
+    ...options.headers,
   };
 
   if (options.token) {
@@ -128,7 +128,7 @@ async function runSmokeTest() {
     body: { correo: barberoEmail, password: defaultPassword },
   });
   const barberoToken = loginBarbero.data.accessToken;
-  const barberoUser = loginBarbero.data.usuario;
+  void barberoToken;
 
   const loginCliente = await request('/auth/login', {
     method: 'POST',
