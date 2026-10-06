@@ -68,6 +68,25 @@ export class ReservasService {
   }
 
   /**
+   * Crea un turno walk-in desde la pantalla de agenda (E3-03).
+   * Ruta aparte de `crearReserva`: ese alias es exclusivo del CLIENTE y este
+   * lo usan el BARBERO / ADMIN de la sede, así que no comparten decorador.
+   */
+  crearReservaWalkIn(dto: CrearReservaDto): Observable<any> {
+    this.isLoading.set(true);
+    this.error.set(null);
+
+    return this.http.post(`${this.apiUrl}/reservas/walk-in`, dto).pipe(
+      tap(() => this.isLoading.set(false)),
+      catchError(err => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.message || 'Error al crear la reserva walk-in');
+        return throwError(() => err);
+      })
+    );
+  }
+
+  /**
    * Obtiene las reservas del cliente actual
    */
   obtenerMisReservas(): Observable<any[]> {

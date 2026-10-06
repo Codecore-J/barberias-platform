@@ -114,7 +114,16 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // describe E3-09 de `src/pago/application/pago.service.spec.ts`.
   'POST /barberias/:barberiaId/pagos,cobros,pagos/en-persona,': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
-  'POST /barberias/:barberiaId/reservas,reservas/': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // E3-03 (2026-10): la única fila de cuatro roles se parte en dos. El alias
+  // `/reservas` lo usaban DOS pantallas: el wizard del cliente
+  // (`reserva-wizard.component.ts`, manda `barberoId: null`) y el modal de
+  // walk-in de la agenda (`walk-in-modal.component.ts`, exige `barberoId`).
+  // Con la ruta walk-in separada, cada una recibe su política real: el alias
+  // vuelve a ser exclusivo del CLIENTE y el walk-in, que solo ocurre en la
+  // sede y siempre con barbero, queda para el staff. No se debilita ninguna
+  // de las dos: se sustituyen 4 aserciones mezcladas por 2 + 2 más estrictas.
+  'POST /barberias/:barberiaId/reservas,reservas/': [ROL_CLIENTE],
+  'POST /barberias/:barberiaId/reservas,reservas/walk-in': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /barberias/:barberiaId/reservas,reservas/mis-reservas': [ROL_CLIENTE],
   'GET /barberias/:barberiaId/reservas,reservas/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE],
   'PATCH /barberias/:barberiaId/reservas,reservas/:id/estado': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -264,9 +273,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
   }
 
-  it('descubrir las 54 rutas del servidor y todas tienen decision', () => {
+  it('descubrir las 55 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(54);
+    expect(claves.length).toBe(55);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -350,7 +359,8 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
     console.log('');
 
-    expect(evaluaciones).toBe(216);
+    // 55 rutas × 4 roles: la partición de E3-03 añade POST /reservas/walk-in.
+    expect(evaluaciones).toBe(220);
     expect(
       desviaciones.length === 0
         ? ''

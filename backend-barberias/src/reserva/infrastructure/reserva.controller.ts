@@ -59,15 +59,33 @@ export class ReservaController {
 
   /**
    * POST /reservas
-   * Crear reserva: los cuatro roles (decisión 10). El alias `/reservas` lo usan
-   * tanto el wizard del cliente como el modal de walk-in de la pantalla de
-   * agenda, de modo que restringirlo a CLIENTE dejaría sin walk-in a la
-   * pantalla que más lo usa.
+   * Crear reserva desde el wizard del cliente (decisión 10 + E3-03).
+   * Hasta E3-03 este alias lo compartía el walk-in de la pantalla de agenda,
+   * y por eso declaraba los cuatro roles; con la ruta walk-in separada, el
+   * alias vuelve a lo que es: la reserva del propio CLIENTE.
    */
-  // TODO(E3-03): restringir a CLIENTE y crear una ruta aparte para el walk-in.
-  @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('CLIENTE')
   @Post()
   crearReserva(
+    @CurrentBarberiaId() barberiaId: string,
+    @Body() dto: CreateReservaDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.reservaService.crearReserva(user.id, barberiaId, dto);
+  }
+
+  /**
+   * POST /reservas/walk-in
+   * Turno manual para un cliente sin app, creado desde la pantalla de agenda
+   * (E3-03). Es el mismo servicio que el wizard, pero la ruta es aparte porque
+   * el caminante SIEMPRE lleva barbero asignado (`walk-in-modal.component.ts`
+   * lo exige en su formulario) y quien lo crea es el staff de la sede, nunca
+   * un cliente. El decorador separa lo que hasta E3-03 eran dos pantallas
+   * compartiendo UNA sola ruta con los cuatro roles.
+   */
+  @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Post('walk-in')
+  crearReservaWalkIn(
     @CurrentBarberiaId() barberiaId: string,
     @Body() dto: CreateReservaDto,
     @CurrentUser() user: UsuarioAutenticado,
