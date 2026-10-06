@@ -48,7 +48,7 @@
 4. **E1-05 no cambia lógica de negocio.** Solo sustituye decoradores, con la excepción del DTO de lectura
    de `GET /barberias/:id` (decisión 3). Lo que exigía lógica nueva queda anotado como `TODO` con su
    tarea: E1-06 (vinculación en disponibilidad), E1-07 (límite de 2 barberías), E3-03 (walk-in) y
-   E3-09 (cobro de reservas asignadas).
+   E3-09 (cobro de reservas asignadas; este último cerrado en `4b62cf7`).
 
 ## La matriz
 
@@ -91,7 +91,7 @@
 | 35 | POST | `/barberias/:barberiaId/horarios/excepciones` | HorarioController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** — `validateAccess` | no | sí — `core/services/horarios.service.ts:72` | `test/permisos-matriz.e2e-spec.ts` |
 | 36 | POST | `/barberias/:barberiaId/horarios/barberos/:barberoId/excepciones` | HorarioController | `@Autenticado` | `@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** | **sí** — un barbero solo sobre su propio `barberoId` | sí — `core/services/horarios.service.ts:76` | `test/permisos-matriz.e2e-spec.ts` |
 | 37 | GET | `/barberias/:barberiaId/pagos/auditoria` · `/cobros/auditoria` · `/pagos/auditoria` | PagoController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** — `validateAccess` | no | sí — `core/services/pagos.service.ts:38` (`obtenerHistorial`), desde `admin-tickets.component.ts:329` y `home.component.ts:465` | `src/pago/application/pago.service.spec.ts` |
-| 38 | POST | `/barberias/:barberiaId/pagos/en-persona` · `/cobros` · `/pagos` | PagoController | `@Autenticado` | `@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **9** | **sí** — `validateAccess` | pendiente — E3-09, solo reservas asignadas | sí — `core/services/reservas.service.ts:131` | `src/pago/application/pago.service.spec.ts` |
+| 38 | POST | `/barberias/:barberiaId/pagos/en-persona` · `/cobros` · `/pagos` | PagoController | `@Autenticado` | `@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **9** | **sí** — `validateAccess` | **sí** — E3-09: el BARBERO solo cobra sus reservas (las sin asignar, solo un ADMIN) | sí — `core/services/reservas.service.ts:131` | `src/pago/application/pago.service.spec.ts`; `test/pago-barbero-asignado.e2e-spec.ts` |
 | 39 | POST | `/barberias/:barberiaId/reservas` · `/reservas` | ReservaController | `@Autenticado` | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **10** | **sí** | **sí** — cliente vinculado, no restringido | sí — `core/services/reservas.service.ts:60`, que llama al alias `/reservas`, desde `reserva-wizard` y `walk-in-modal` | `test/hallazgo14-idor-reserva.e2e-spec.ts` |
 | 40 | GET | `/barberias/:barberiaId/reservas/:id` · `/reservas/:id` | ReservaController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | — | **sí** | **sí** — un `CLIENTE` solo ve la suya | no | `test/hallazgo14-idor-reserva.e2e-spec.ts`; `src/reserva/application/reserva.service.spec.ts` |
 | 41 | PATCH | `/barberias/:barberiaId/reservas/:id/estado` · `/reservas/:id/estado` | ReservaController | `@Roles(ADMIN_BARBERIA, BARBERO, ADMINISTRADOR)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **11** | **sí** | no | sí — `core/services/reservas.service.ts:111`; el botón «No Asistió» ya se oculta al BARBERO | `src/reserva/application/reserva.service.spec.ts` |
@@ -188,7 +188,10 @@ que no lee horarios.
 
 **9. `POST /cobros` (y alias `/pagos`) — `@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)`.** Es el botón
 «Cobrar» del modal de cobro, en una pantalla cuyo `roleGuard` sigue admitiendo BARBERO. La condición de
-«reservas asignadas» que la sección 4 exige al barbero no se implementa: queda como `TODO(E3-09)`.
+«reservas asignadas» que la sección 4 exige al barbero se implementa en E3-09: el guard no cambia (solo
+ve el rol), la comprobación vive en `PagoService.registrarPagoEnPersona`, que con el perfil que devuelve
+`validateAccess` exige a un BARBERO que `reserva.barberoId` sea el suyo y rechaza con 403 las reservas sin
+asignar; el ADMIN_BARBERIA y el ADMINISTRADOR conservan su bypass.
 
 **10. `POST /reservas` — `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)`.** La sección 4 pide
 solo CLIENTE, pero el frontend usa el mismo alias `/reservas` para el walk-in del modal de la pantalla de
@@ -310,7 +313,7 @@ negocio y cada uno necesita su propia tarea.
 | E1-06 | ~~Resolver el vínculo de la sede seleccionada~~ — cerrado en `d93e9af` | `barberia.controller.ts`, `PATCH /barberias/:id/seleccionar` |
 | E1-07 | Límite de 2 barberías por usuario al crear | `barberia.controller.ts`, `POST /barberias` |
 | E3-03 | Reservar la creación de reservas al CLIENTE y crear la ruta de walk-in | `reserva.controller.ts`, `POST /reservas` |
-| E3-09 | Un BARBERO solo cobra las reservas que tiene asignadas | `pago.controller.ts`, `POST /cobros` |
+| E3-09 | ~~Un BARBERO solo cobra las reservas que tiene asignadas~~ — cerrado en `4b62cf7` | `pago.controller.ts`, `POST /cobros` |
 | D43 | Declaración propia del cliente con su ruta y su campo de origen | `antecedente.controller.ts`, `POST /antecedentes` |
 
 ### E1-06 · estado de verificación de la parte 3

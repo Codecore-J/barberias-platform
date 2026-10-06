@@ -720,7 +720,7 @@ No hagas merge. Espera aprobación.
 1. Validar que `CONFIRMADA → COMPLETADA` solo ocurra desde `hora_inicio` (máquina de estados) y fijar `completada_at`.
 2. `PATCH /barberias/:barberiaId/pagos/:id {estado_pago, motivo}` para corregir `PAGADA` ↔ `PENDIENTE_DE_PAGO` con auditoría (valor anterior, nuevo y motivo). El `monto` es el snapshot `total_pagar` y no se edita.
 3. Las métricas de ingresos del dashboard cuentan solo `PAGADA`.
-4. Registran el pago: ADMIN_BARBERIA, BARBERO asignado y ADMINISTRADOR.
+4. Registran el pago: ADMIN_BARBERIA, BARBERO asignado y ADMINISTRADOR. **Cumplido el 2026-10-06:** un BARBERO solo cobra reservas con `barberoId` propio, y una reserva sin asignar solo puede cobrarla un ADMIN (403 en caso contrario); los puntos 1 a 3 de esta tarea siguen pendientes. **Evidencia:** `test/pago-barbero-asignado.e2e-spec.ts` (5 tests, rojo→verde) y el describe E3-09 de `src/pago/application/pago.service.spec.ts` (4 tests).
 **Aceptación:**
 - [ ] Un cobro antes de la hora de inicio → 422.
 - [ ] El total de ingresos excluye `PENDIENTE_DE_PAGO` (test).
