@@ -82,7 +82,14 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
       prisma.rol.upsert({
         where: { nombre: 'CLIENTE' },
         update: {},
-        create: { nombre: 'CLIENTE', ambito: 'BARBERIA' },
+        // `ambito: 'GLOBAL'` es la convención del producto (prisma/seed.ts:56):
+        // el CLIENTE es global con `barberia_id` nulo y su pertenencia a una
+        // sede va por `cliente_barberias`. Sembrarlo BARBERIA con barberia_id
+        // nulo hace que `alcanceCumple` lo deniegue SIEMPRE y los dos tests de
+        // "la sede propia" den 403 en una BD limpia (el fallo del primer run de
+        // CI del PR #32). En una BD usada no se veía: el upsert con `update: {}`
+        // heredaba el rol GLOBAL ya existente.
+        create: { nombre: 'CLIENTE', ambito: 'GLOBAL' },
       }),
       prisma.rol.upsert({
         where: { nombre: 'ADMINISTRADOR' },
@@ -465,14 +472,20 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
       expect(res.status).toBe(403);
     });
 
-    it('el POST con la sede propia responde 200 (el alias ya no exige params.barberiaId)', async () => {
+    it('el POST con la sede propia resuelve el alias (ya no exige params.barberiaId)', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/agenda/disponibilidad')
         .set('Authorization', `Bearer ${tokenCliente}`)
         .set('x-barberia-id', barberiaA)
         .send({ fecha: '2026-10-05', duracionTotal: 30 });
 
-      expect(res.status).toBe(200);
+      // 201, no 200: `@Post('disponibilidad')` no lleva `@HttpCode`, asi que Nest
+      // aplica el 201 que da por defecto a POST. Esta asercion pedia 200 y era el
+      // unico rojo del fichero la primera vez que se ejecuto (E1-06, 2026-10-05);
+      // el fallo era de la expectativa, no de la ruta. Corregir el codigo de
+      // estado del endpoint seria cambiar el contrato que ya consume el frontend
+      // (`core/services/reservas.service.ts:38`), asi que fuera de alcance.
+      expect(res.status).toBe(201);
     });
 
     it('el ADMINISTRADOR global sí lee cualquier sede: es transversal', async () => {
