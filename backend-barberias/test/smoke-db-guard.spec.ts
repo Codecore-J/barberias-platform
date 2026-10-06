@@ -10,15 +10,19 @@ import { fileURLToPath } from 'node:url';
  */
 
 const SCRIPT = fileURLToPath(new URL('./smoke-test-live.ts', import.meta.url));
-const TSX_CLI = fileURLToPath(new URL('../node_modules/tsx/dist/cli.mjs', import.meta.url));
+const PAQUETE = fileURLToPath(new URL('..', import.meta.url));
 const BANNER = 'INICIANDO PRUEBA DE INTEGRACIÓN E2E EN VIVO';
 
+// `node --import tsx` en vez de una ruta a node_modules: en CI las dependencias se
+// instalan en la raíz del monorepo y `backend-barberias/node_modules` no existe.
+// Node resuelve el especificador `tsx` desde PAQUETE, así que da igual dónde esté.
 function ejecutarSmokeTest(env: Record<string, string>): Promise<{ codigo: number | null; salida: string }> {
   return new Promise((resolve) => {
     execFile(
       process.execPath,
-      [TSX_CLI, SCRIPT],
+      ['--import', 'tsx', SCRIPT],
       {
+        cwd: PAQUETE,
         env: { ...process.env, ...env },
         timeout: 60_000,
       },
