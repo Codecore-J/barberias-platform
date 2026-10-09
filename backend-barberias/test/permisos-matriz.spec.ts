@@ -124,9 +124,11 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // de las dos: se sustituyen 4 aserciones mezcladas por 2 + 2 más estrictas.
   'POST /barberias/:barberiaId/reservas,reservas/': [ROL_CLIENTE],
   'POST /barberias/:barberiaId/reservas,reservas/walk-in': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  // D44: la cotización sin persistir la usan tanto el wizard del cliente como
-  // el modal de walk-in, así que declara la matriz de creación de reserva.
-  'POST /barberias/:barberiaId/reservas,reservas/cotizar': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // D44: la cotización sin persistir la usan tanto el wizard del cliente (que
+  // necesita cotizar antes de crear su propia reserva) como el modal de
+  // walk-in, así que declara los cuatro roles: cotizar no persiste nada y el
+  // CLIENTE debe poder consultar el precio de su futura reserva.
+  'POST /barberias/:barberiaId/reservas,reservas/cotizar': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /barberias/:barberiaId/reservas,reservas/mis-reservas': [ROL_CLIENTE],
   'GET /barberias/:barberiaId/reservas,reservas/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE],
   'PATCH /barberias/:barberiaId/reservas,reservas/:id/estado': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
