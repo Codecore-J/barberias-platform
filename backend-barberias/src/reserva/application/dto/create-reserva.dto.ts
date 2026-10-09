@@ -1,4 +1,4 @@
-import { ArrayNotEmpty, IsArray, IsDateString, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Matches, Min } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsDateString, IsIn, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Matches, Min } from 'class-validator';
 
 export class CreateReservaDto {
   @IsDateString()
@@ -30,5 +30,10 @@ export class CreateReservaDto {
   @IsOptional()
   @IsString()
   nombreInvitado?: string;
-}
 
+  /** E3-03/2: el tipo de reserva es obligatorio; nunca se asume en silencio. */
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(['INDIVIDUAL', 'GRUPAL', 'AUTOMATICO', 'MANUAL'])
+  tipo: string;
+}

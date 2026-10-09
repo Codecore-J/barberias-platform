@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { CreateReservaDto } from './dto/create-reserva.dto.js';
+import { CotizacionResponse, BloqueCalculado } from './dto/cotizacion.dto.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
 import { validateTimeRange } from '../../horario/domain/time.utils.js';
 import { DisponibilidadService } from '../../agenda/application/disponibilidad.service.js';
@@ -28,6 +29,67 @@ export class ReservaService {
     @Optional() private readonly notificacionService?: NotificacionService,
   ) {}
 
+  /**
+   * Cálculo PURO del bloque y su cotización (E2-05/D44). Devuelve el bloque total,
+   * la hora de fin, el margen y el desglose de servicios SIN tocar la BD.
+   * Se reutiliza en crearReserva y en el endpoint de cotización.
+   */
+  private calcularBloque(dto: CreateReservaDto, config: { margenGrupalMinutos: number; serviciosCatalogo: any[] }): BloqueCalculado {
+    const duracionTotal = (parseInt(dto.horaFin.slice(0, 2), 10) - parseInt(dto.horaInicio.slice(0, 2), 10)) * 60
+      + (parseInt(dto.horaFin.slice(3, 5), 10) - parseInt(dto.horaInicio.slice(3, 5), 10));
+    const margenTotal = config.serviciosCatalogo.reduce((acc, s) => acc + (s.margenOperativo ?? 0), 0) + (config.margenGrupalMinutos ?? 10);
+    const precioTotal = config.serviciosCatalogo.reduce((acc, s) => acc + Number(s.precio), 0);
+    return { duracionTotal, margenTotal, precioTotal };
+  }
+
+  /**
+   * Cotización sin persistir (D44): devuelve bloque total, hora de fin, margen,
+   * precio total y desglose de servicios. No graba nada en la BD.
+   */
+  async cotizar(barberiaId: string, dto: CreateReservaDto) {
+    const config = await this.prisma.configuracionBarberia.findUnique({
+      where: { barberiaId },
+    });
+    if (!config) {
+      throw new NotFoundException('Configuración de barbería no encontrada');
+    }
+
+    const serviciosCatalogo = await this.prisma.servicio.findMany({
+      where: {
+        id: { in: dto.serviciosIds },
+        barberiaId,
+        estado: 'ACTIVO',
+      },
+    });
+    if (serviciosCatalogo.length !== dto.serviciosIds.length) {
+      throw new BadRequestException(
+        'Uno o más servicios seleccionados no existen, no pertenecen a esta barbería o están inactivos',
+      );
+    }
+
+    const { duracionTotal, margenTotal, precioTotal } = this.calcularBloque(dto, {
+      margenGrupalMinutos: config.margenGrupalMinutos,
+      serviciosCatalogo,
+    });
+
+    const [hFin] = dto.horaFin.split(':').map(Number);
+    const horaFin = new Date(dto.fecha + 'T' + String(hFin).padStart(2, '0') + ':00:00');
+
+    return {
+      barberiaId,
+      fecha: dto.fecha,
+      horaFin: horaFin.toISOString().slice(11, 16),
+      bloqueTotal: { duracionTotal, margenTotal, precioTotal },
+      desgloseServicios: serviciosCatalogo.map((s) => ({
+        servicioId: s.id,
+        nombre: s.nombre,
+        precio: Number(s.precio),
+        duracionEstimada: s.duracionEstimada,
+        margenOperativo: s.margenOperativo ?? 0,
+      })),
+    };
+  }
+
   async crearReserva(clienteId: string, barberiaId: string, dto: CreateReservaDto) {
     const { inicio, fin } = validateTimeRange(dto.horaInicio, dto.horaFin);
     const fecha = new Date(dto.fecha);
@@ -37,8 +99,12 @@ export class ReservaService {
     return withSerializableTransaction(this.prisma, async (tx) => {
       // Bloqueo pesimista sobre la barbería (row-level lock) para evitar Race Conditions
       await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
-      
-      // 0. Validar que el cliente no esté restringido en esta barbería (T5.4)
+
+      // 0. Orden de validaciones (principio 9): sesión → rol → DTO → vinculación
+      //    ACTIVO con esa barbería → no restringido → configuración (pausa, tipo
+      //    aceptado, horizonte, max_pendientes) → servicios y combos activos de
+      //    ESA barbería → bloque → disponibilidad bajo SERIALIZABLE y FOR UPDATE
+      //    → persistir con snapshots y modo_confirmacion.
       const vinculo = await tx.clienteBarberia.findUnique({
         where: {
           uk_cliente_barberia: {
@@ -48,8 +114,12 @@ export class ReservaService {
         },
       });
 
-      if (vinculo?.estaRestringido) {
-        throw new ForbiddenException(`Usuario restringido en esta barbería: ${vinculo.motivoRestriccion ?? 'Superó el límite de inasistencias'}`);
+      if (!vinculo) {
+        throw new ForbiddenException(`NO_VINCULADO: cliente no vinculado a esta barbería`);
+      }
+
+      if (vinculo.estaRestringido) {
+        throw new ForbiddenException(`CLIENTE_RESTRINGIDO: ${vinculo.motivoRestriccion ?? 'Superó el límite de inasistencias'}`);
       }
 
       const config = await tx.configuracionBarberia.findUnique({
@@ -61,11 +131,11 @@ export class ReservaService {
       }
 
       if (!config.nuevasReservasActivas) {
-        throw new BadRequestException('La barbería no está aceptando nuevas reservas actualmente');
+        throw new BadRequestException('RESERVAS_PAUSADAS: la barbería no está aceptando nuevas reservas actualmente');
       }
 
       if (!config.aceptaIndividual) {
-        throw new BadRequestException('La barbería no acepta reservas de tipo individual');
+        throw new BadRequestException('RESERVAS_PAUSADAS: la barbería no acepta reservas de tipo individual');
       }
 
       // 1. Obtener y validar servicios del catálogo (T6.2 Snapshot Histórico Inmutable)
@@ -97,6 +167,12 @@ export class ReservaService {
         );
       }
 
+      // 2. Verificamos el tipo de reserva contra la configuración de la barbería;
+      //    GRUPAL responde 422 GRUPAL_NO_DISPONIBLE hasta E4-01 (no se ignora en silencio).
+      if (dto.tipo === 'GRUPAL' && !config.aceptaGrupal) {
+        throw new BadRequestException('GRUPAL_NO_DISPONIBLE: la barbería no acepta reservas grupales');
+      }
+
       // D42 (2026-10-02): el margen grupal es un campo propio de la barbería
       // (configuracion_barberia.margen_grupal_minutos, default 10, rango 0-60).
       // Se ignoran tanto la suma de márgenes individuales (D01) como cualquier
@@ -122,8 +198,8 @@ export class ReservaService {
       finCita.setHours(hFin, mFin, 0, 0);
 
       const finConMargen = new Date(finCita.getTime() + margenFinal * 60000);
-      
-      const isAvailable = disponibilidades.some(slot => 
+
+      const isAvailable = disponibilidades.some(slot =>
         inicioCita >= slot.inicio && finConMargen <= slot.fin
       );
 

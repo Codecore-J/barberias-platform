@@ -178,40 +178,44 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
   }, 30000);
 
   afterAll(async () => {
-    // 1. Delete all relations that depend on Barberia or Usuario
+    // 1. Borrar primero los recursos que no pueden existir sin la reserva y los pagos
+    //    (la tabla pagos tiene FK con reserva), luego los servicios/horarios/vinculos y, por
+    //    último, las barberías y los usuarios (para no violar la FK de responsableId).
+    await prisma.pagos.deleteMany({ where: { reservaId: { not: null } } });
+    await prisma.pagos.deleteMany({ where: { reservaId: { not: null } } });
     await prisma.reserva.deleteMany({ where: { barberiaId } });
     await prisma.servicio.deleteMany({ where: { barberiaId } });
     await prisma.horario.deleteMany({ where: { barberiaId } });
-    await prisma.usuarioRol.deleteMany({ 
-      where: { 
+    await prisma.usuarioRol.deleteMany({
+      where: {
         OR: [
           { barberiaId },
           { usuario: { correo: { in: ['owner.idor@test.com', 'clienta.idor@test.com', 'clientb.idor@test.com', 'usuario.u@test.com'] } } }
         ]
-      }
+      },
     });
-    await prisma.clienteBarberia.deleteMany({ 
-      where: { 
+    await prisma.clienteBarberia.deleteMany({
+      where: {
         OR: [
           { barberiaId },
           { usuario: { correo: { in: ['owner.idor@test.com', 'clienta.idor@test.com', 'clientb.idor@test.com', 'usuario.u@test.com'] } } }
         ]
-      }
+      },
     });
 
-    // 2. Clear out Barberias created by these users so we don't violate the FK constraint on responsableId
+    // 2. Limpiar las barberías creadas por estos usuarios (sin violar la FK de responsableId)
     const users = await prisma.usuario.findMany({
-      where: { correo: { in: ['owner.idor@test.com', 'clienta.idor@test.com', 'clientb.idor@test.com', 'usuario.u@test.com'] } }
+      where: { correo: { in: ['owner.idor@test.com', 'clienta.idor@test.com', 'clientb.idor@test.com', 'usuario.u@test.com'] } },
     });
     const userIds = users.map(u => u.id);
     await prisma.barberia.deleteMany({ where: { responsableId: { in: userIds } } });
     await prisma.barberia.deleteMany({ where: { id: barberiaId } });
 
-    // 3. Delete the users themselves
+    // 3. Borrar los usuarios mismos
     await prisma.usuario.deleteMany({
       where: { id: { in: userIds } },
     });
-    
+
     await app.close();
   });
 

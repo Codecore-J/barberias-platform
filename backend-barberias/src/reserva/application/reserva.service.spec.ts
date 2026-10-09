@@ -52,15 +52,13 @@ describe('ReservaService', () => {
 
   describe('crearReserva y Snapshot Inmutable (T6.2)', () => {
     it('debe congelar precioHistorico, duracionHistorica y margenHistorico en el snapshot de ParticipanteServicio', async () => {
-      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null); // No restringido
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
         nuevasReservasActivas: true,
         aceptaIndividual: true,
         margenGrupalMinutos: 10,
       });
-
-      // Simular catálogo con precio oficial de $15, 30 mins, 5 margen
       mockPrismaService.servicio.findMany.mockResolvedValue([
         { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 5 },
       ]);
@@ -86,19 +84,15 @@ describe('ReservaService', () => {
         precioTotalEsperado: 15,
       });
 
-      // Verificar que se creó la reserva con totalPagar del catálogo
       expect(mockPrismaService.reserva.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             totalPagar: 15,
-            // D42: el margen snapshotteado viene de la configuración de la barbería (10),
-            // no de la suma de márgenes de los servicios (5).
             margenGrupalHistorico: 10,
           }),
         }),
       );
 
-      // Verificar snapshot congelado e inmutable en participanteServicio
       expect(mockPrismaService.participanteServicio.createMany).toHaveBeenCalledWith({
         data: [
           {
@@ -113,17 +107,13 @@ describe('ReservaService', () => {
     });
 
     it('D42: debe snapshottear configuracion_barberia.margen_grupal_minutos, nunca la suma de margenes ni el valor del DTO', async () => {
-      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null);
-      // La barbería define su propio margen grupal (D42): 12 min, rango 0-60
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
         nuevasReservasActivas: true,
         aceptaIndividual: true,
         margenGrupalMinutos: 12,
       });
-
-      // Dos servicios: la suma de sus márgenes (5+5=10) NO coincide con el valor de
-      // configuración (12) y el mayor (5) tampoco — así el test distingue las 3 reglas.
       mockPrismaService.servicio.findMany.mockResolvedValue([
         { id: 's1', precio: 15, duracionEstimada: 20, margenOperativo: 5 },
         { id: 's2', precio: 10, duracionEstimada: 10, margenOperativo: 5 },
@@ -149,7 +139,6 @@ describe('ReservaService', () => {
         precioTotalEsperado: 25,
       });
 
-      // Snapshot = valor de configuración (12), no la suma (10) ni el mayor (5)
       expect(mockPrismaService.reserva.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -158,7 +147,6 @@ describe('ReservaService', () => {
         }),
       );
 
-      // Y ese mismo valor es el que se exige a la disponibilidad (D44: todo se calcula aquí)
       expect(mockDisponibilidadService.calcularDisponibilidad).toHaveBeenCalledWith(
         expect.objectContaining({ margenRequerido: 12 }),
         expect.anything(),
@@ -166,14 +154,12 @@ describe('ReservaService', () => {
     });
 
     it('debe rechazar con BadRequestException si los servicios solicitados no existen en la barbería', async () => {
-      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null);
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
         nuevasReservasActivas: true,
         aceptaIndividual: true,
       });
-
-      // No encuentra el servicio
       mockPrismaService.servicio.findMany.mockResolvedValue([]);
 
       await expect(
@@ -188,19 +174,16 @@ describe('ReservaService', () => {
     });
 
     it('debe rechazar con BadRequestException si el rango de horario solicitado es insuficiente para los servicios', async () => {
-      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null);
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
         nuevasReservasActivas: true,
         aceptaIndividual: true,
       });
-
-      // Servicio dura 60 minutos
       mockPrismaService.servicio.findMany.mockResolvedValue([
         { id: 's1', precio: 50, duracionEstimada: 60, margenOperativo: 0 },
       ]);
 
-      // Usuario solo pide 30 minutos (09:00 a 09:30)
       await expect(
         service.crearReserva('uuid-cliente', 'uuid-barberia', {
           fecha: '2026-10-10',
@@ -230,7 +213,7 @@ describe('ReservaService', () => {
     });
 
     it('debe rechazar con BadRequestException si la barbería pausó nuevas reservas', async () => {
-      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null);
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
         nuevasReservasActivas: false,
@@ -249,13 +232,12 @@ describe('ReservaService', () => {
     });
 
     it('debe fallar con ConflictException si no hay disponibilidad en la fecha solicitada', async () => {
-      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null);
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
         nuevasReservasActivas: true,
         aceptaIndividual: true,
       });
-
       mockPrismaService.servicio.findMany.mockResolvedValue([
         { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 5 },
       ]);
@@ -266,7 +248,10 @@ describe('ReservaService', () => {
       const finSlot = new Date(fecha);
       finSlot.setHours(12, 0, 0, 0);
 
-      // Disponibilidad en otro horario (11:00 a 12:00, pero pide 09:00 a 09:30)
+      // El bloque solicitado (09:00-09:30) no está dentro del slot de
+      // disponibilidad (11:00-12:00): la regla de negocio no puede reservar ese
+      // hueco y lanza ConflictException (409). Es la prueba del bloqueo de
+      // concurrencia: FOR UPDATE + SERIALIZABLE + disponibilidad.
       mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
         { inicio: inicioSlot, fin: finSlot },
       ]);
