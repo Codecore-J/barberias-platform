@@ -84,13 +84,6 @@ export class ReservaController {
    * compartiendo UNA sola ruta con los cuatro roles.
    */
   @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
-  /**
-   * POST /reservas/cotizar (D44): cotización sin persistir. Devuelve bloque total, hora de fin, margen, precio total y desglose de servicios. El cálculo es puro (E2-05) y no escribe en la base de datos.
-   */
-  @Post('cotizar')
-  async cotizar(@CurrentBarberiaId() barberiaId: string, @Body() dto: CreateReservaDto) {
-    return this.reservaService.cotizar(barberiaId, dto);
-  }
   @Post('walk-in')
   crearReservaWalkIn(
     @CurrentBarberiaId() barberiaId: string,
@@ -98,6 +91,15 @@ export class ReservaController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.reservaService.crearReserva(user.id, barberiaId, dto);
+  }
+
+  /**
+   * POST /reservas/cotizar (D44): cotización sin persistir. Devuelve bloque total, hora de fin, margen, precio total y desglose de servicios. El cálculo es puro (E2-05) y no escribe en la base de datos.
+   */
+  @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Post('cotizar')
+  async cotizar(@CurrentBarberiaId() barberiaId: string, @Body() dto: CreateReservaDto) {
+    return this.reservaService.cotizar(barberiaId, dto);
   }
 
   @Get(':id')

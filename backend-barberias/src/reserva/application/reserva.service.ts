@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { errorDePermiso, errorDeSolicitud, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { CreateReservaDto } from './dto/create-reserva.dto.js';
 import { CotizacionResponse, BloqueCalculado } from './dto/cotizacion.dto.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
@@ -62,8 +63,9 @@ export class ReservaService {
       },
     });
     if (serviciosCatalogo.length !== dto.serviciosIds.length) {
-      throw new BadRequestException(
-        'Uno o más servicios seleccionados no existen, no pertenecen a esta barbería o están inactivos',
+      throw errorDeSolicitud(
+        'SERVICIO_FUERA_DE_BARBERIA',
+        'Uno o más servicios seleccionados no existen, no pertenecen a esta barbería o están inactivos.',
       );
     }
 
@@ -97,14 +99,14 @@ export class ReservaService {
     const duracionSolicitada = (fin.getTime() - inicio.getTime()) / 60000;
 
     return withSerializableTransaction(this.prisma, async (tx) => {
-      // Bloqueo pesimista sobre la barbería (row-level lock) para evitar Race Conditions
-      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
-
       // 0. Orden de validaciones (principio 9): sesión → rol → DTO → vinculación
       //    ACTIVO con esa barbería → no restringido → configuración (pausa, tipo
-      //    aceptado, horizonte, max_pendientes) → servicios y combos activos de
-      //    ESA barbería → bloque → disponibilidad bajo SERIALIZABLE y FOR UPDATE
+      //    aceptado, horizonte, max_pendientes) → bloque → servicios y combos
+      //    activos de ESA barbería → disponibilidad bajo SERIALIZABLE y FOR UPDATE
       //    → persistir con snapshots y modo_confirmacion.
+      //
+      //    Las reglas de negocio se resuelven ANTES del lock FOR UPDATE: un
+      //    rechazo por D40 (403/422) no necesita serializar la barbería entera.
       const vinculo = await tx.clienteBarberia.findUnique({
         where: {
           uk_cliente_barberia: {
@@ -115,11 +117,14 @@ export class ReservaService {
       });
 
       if (!vinculo) {
-        throw new ForbiddenException(`NO_VINCULADO: cliente no vinculado a esta barbería`);
+        throw errorDePermiso('NO_VINCULADO', 'No estás vinculado a esta barbería.');
       }
 
       if (vinculo.estaRestringido) {
-        throw new ForbiddenException(`CLIENTE_RESTRINGIDO: ${vinculo.motivoRestriccion ?? 'Superó el límite de inasistencias'}`);
+        throw errorDePermiso(
+          'CLIENTE_RESTRINGIDO',
+          vinculo.motivoRestriccion ?? 'Superaste el límite de inasistencias en esta barbería.',
+        );
       }
 
       const config = await tx.configuracionBarberia.findUnique({
@@ -131,12 +136,59 @@ export class ReservaService {
       }
 
       if (!config.nuevasReservasActivas) {
-        throw new BadRequestException('RESERVAS_PAUSADAS: la barbería no está aceptando nuevas reservas actualmente');
+        throw reglaDeNegocio(
+          'RESERVAS_PAUSADAS',
+          'La barbería no está aceptando nuevas reservas actualmente.',
+        );
       }
 
       if (!config.aceptaIndividual) {
         throw new BadRequestException('RESERVAS_PAUSADAS: la barbería no acepta reservas de tipo individual');
       }
+
+      // GRUPAL responde 422 GRUPAL_NO_DISPONIBLE hasta E4-01 (no se ignora en silencio).
+      if (dto.tipo === 'GRUPAL' && !config.aceptaGrupal) {
+        throw reglaDeNegocio('GRUPAL_NO_DISPONIBLE', 'La barbería no acepta reservas grupales.');
+      }
+
+      // Horizonte de reserva: la fecha de la cita no puede superar "hoy +
+      // horizonte_reserva_dias". Se compara por día de calendario (YYYY-MM-DD)
+      // para no depender de la zona horaria del servidor.
+      if (config.horizonteReservaDias != null) {
+        const hoy = new Date();
+        const limite = new Date(
+          hoy.getFullYear(),
+          hoy.getMonth(),
+          hoy.getDate() + config.horizonteReservaDias,
+        );
+        const limiteStr = `${limite.getFullYear()}-${String(limite.getMonth() + 1).padStart(2, '0')}-${String(limite.getDate()).padStart(2, '0')}`;
+
+        if (String(dto.fecha).slice(0, 10) > limiteStr) {
+          throw reglaDeNegocio(
+            'FUERA_DE_HORIZONTE',
+            `Solo se puede reservar hasta ${config.horizonteReservaDias} días de antelación.`,
+          );
+        }
+      }
+
+      // Límite de reservas pendientes de la SEDE: mientras la barbería acumule
+      // max_pendientes sin resolver (PENDIENTE o PROPUESTA_PENDIENTE) no admite
+      // más, sea de quien sea la solicitud.
+      if (config.maxPendientes != null) {
+        const pendientes = await tx.reserva.count({
+          where: { barberiaId, estado: { in: ['PENDIENTE', 'PROPUESTA_PENDIENTE'] } },
+        });
+
+        if (pendientes >= config.maxPendientes) {
+          throw reglaDeNegocio(
+            'LIMITE_PENDIENTES',
+            `La barbería ya tiene ${pendientes} reservas pendientes (máximo ${config.maxPendientes}).`,
+          );
+        }
+      }
+
+      // Bloqueo pesimista sobre la barbería (row-level lock) para evitar Race Conditions
+      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
 
       // 1. Obtener y validar servicios del catálogo (T6.2 Snapshot Histórico Inmutable)
       const serviciosCatalogo = await tx.servicio.findMany({
@@ -148,8 +200,9 @@ export class ReservaService {
       });
 
       if (serviciosCatalogo.length !== dto.serviciosIds.length) {
-        throw new BadRequestException(
-          'Uno o más servicios seleccionados no existen, no pertenecen a esta barbería o están inactivos',
+        throw errorDeSolicitud(
+          'SERVICIO_FUERA_DE_BARBERIA',
+          'Uno o más servicios seleccionados no existen, no pertenecen a esta barbería o están inactivos.',
         );
       }
 
@@ -165,12 +218,6 @@ export class ReservaService {
         throw new BadRequestException(
           `La duración solicitada (${duracionSolicitada} min) es insuficiente para los servicios seleccionados (mínimo ${duracionTotalServicios} min)`,
         );
-      }
-
-      // 2. Verificamos el tipo de reserva contra la configuración de la barbería;
-      //    GRUPAL responde 422 GRUPAL_NO_DISPONIBLE hasta E4-01 (no se ignora en silencio).
-      if (dto.tipo === 'GRUPAL' && !config.aceptaGrupal) {
-        throw new BadRequestException('GRUPAL_NO_DISPONIBLE: la barbería no acepta reservas grupales');
       }
 
       // D42 (2026-10-02): el margen grupal es un campo propio de la barbería

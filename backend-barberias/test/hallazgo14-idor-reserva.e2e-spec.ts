@@ -181,8 +181,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     // 1. Borrar primero los recursos que no pueden existir sin la reserva y los pagos
     //    (la tabla pagos tiene FK con reserva), luego los servicios/horarios/vinculos y, por
     //    último, las barberías y los usuarios (para no violar la FK de responsableId).
-    await prisma.pagos.deleteMany({ where: { reservaId: { not: null } } });
-    await prisma.pagos.deleteMany({ where: { reservaId: { not: null } } });
+    await prisma.pago.deleteMany({ where: { reserva: { barberiaId } } });
     await prisma.reserva.deleteMany({ where: { barberiaId } });
     await prisma.servicio.deleteMany({ where: { barberiaId } });
     await prisma.horario.deleteMany({ where: { barberiaId } });
@@ -234,7 +233,8 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
         fecha: dateString,
         horaInicio: '10:00',
         horaFin: '10:30',
-        precioTotalEsperado: 10
+        precioTotalEsperado: 10,
+        tipo: 'INDIVIDUAL'
       });
       
     if (response.status !== 201) {

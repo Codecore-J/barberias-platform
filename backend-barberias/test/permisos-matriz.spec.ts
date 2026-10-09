@@ -124,6 +124,9 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // de las dos: se sustituyen 4 aserciones mezcladas por 2 + 2 más estrictas.
   'POST /barberias/:barberiaId/reservas,reservas/': [ROL_CLIENTE],
   'POST /barberias/:barberiaId/reservas,reservas/walk-in': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // D44: la cotización sin persistir la usan tanto el wizard del cliente como
+  // el modal de walk-in, así que declara la matriz de creación de reserva.
+  'POST /barberias/:barberiaId/reservas,reservas/cotizar': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /barberias/:barberiaId/reservas,reservas/mis-reservas': [ROL_CLIENTE],
   'GET /barberias/:barberiaId/reservas,reservas/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE],
   'PATCH /barberias/:barberiaId/reservas,reservas/:id/estado': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -273,9 +276,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
   }
 
-  it('descubrir las 55 rutas del servidor y todas tienen decision', () => {
+  it('descubrir las 56 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(55);
+    expect(claves.length).toBe(56);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -359,8 +362,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
     console.log('');
 
-    // 55 rutas × 4 roles: la partición de E3-03 añade POST /reservas/walk-in.
-    expect(evaluaciones).toBe(220);
+    // 56 rutas × 4 roles: la partición de E3-03 añade POST /reservas/walk-in y
+    // el endpoint de cotización (D44) añade POST /reservas/cotizar.
+    expect(evaluaciones).toBe(224);
     expect(
       desviaciones.length === 0
         ? ''

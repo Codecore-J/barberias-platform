@@ -61,6 +61,7 @@ describe('E3-03 · partición de POST /reservas: cliente vs walk-in', () => {
       horaFin,
       serviciosIds: [servicioId],
       precioTotalEsperado: 30,
+      tipo: 'INDIVIDUAL',
       ...extra,
     };
   }
@@ -176,6 +177,17 @@ describe('E3-03 · partición de POST /reservas: cliente vs walk-in', () => {
         { usuarioId: cliente.id, rolId: roles['CLIENTE'].id, barberiaId: null },
         { usuarioId: global.id, rolId: roles['ADMINISTRADOR'].id, barberiaId: null },
       ],
+    });
+
+    // La creación de reserva (E3-03/2) exige vínculo ACTIVO entre quien la
+    // crea y la sede (`NO_VINCULADO`). Aquí el creador es el propio cliente o
+    // el staff de la sede, así que los tres llevan su fila en cliente_barberias.
+    await prisma.clienteBarberia.createMany({
+      data: [cliente.id, barbero.id, adminSede.id].map((usuarioId) => ({
+        usuarioId,
+        barberiaId,
+        estadoVinculacion: 'ACTIVO',
+      })),
     });
 
     servicioId = (

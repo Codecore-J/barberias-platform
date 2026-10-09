@@ -3,7 +3,7 @@
  *
  * Solo con APP_ENV=dev. Pedidos:
  *   403 NO_VINCULADO · 403 CLIENTE_RESTRINGIDO
- *   422 RESERVAS_PAUSADAS · 422 FUERO_DE_HORIZONTE · 422 LIMITE_PENDIENTES
+ *   422 RESERVAS_PAUSADAS · 422 FUERA_DE_HORIZONTE · 422 LIMITE_PENDIENTES
  *   422 GRUPAL_NO_DISPONIBLE · 400 servicio de otra barbería
  *   MANUAL → PENDIENTE + expira_at = ahora + 10 min · AUTOMATICO → CONFIRMADA
  *
@@ -13,6 +13,7 @@
  */
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { BadRequestException } from '@nestjs/common';
+import { ThrottlerStorage } from '@nestjs/throttler';
 import request from 'supertest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppModule } from '../src/app.module.js';
@@ -57,11 +58,11 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
   /** Registrarse + loguearse y dejar el token en `tokens[correo]` (modo async). */
   const registrarYLogin = async (correo: string, telefono: string) => {
     const r = await request(app.getHttpServer())
-      .post('/auth/register')
+      .post(`${api}/auth/register`)
       .send({ nombreCompleto: correo, correo, telefono, password: 'Password1!' });
     expect([200, 201, 409]).toContain(r.status);
     const l = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post(`${api}/auth/login`)
       .send({ correo, password: 'Password1!' });
     expect(l.status).toBe(200);
     tokens[correo] = l.body.accessToken;
@@ -69,7 +70,10 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
   };
 
   const configs: Record<string, Record<string, unknown>> = {
-    A: { modoReserva: 'MANUAL', nuevasReservasActivas: true, aceptaIndividual: true, aceptaGrupal: true, maxPendientes: 3, horizonteReservaDias: 30 },
+    // La sede A aloja el test de carrera (10 peticiones concurrentes al mismo hueco):
+    // se queda SIN tope de pendientes para que la carrera se resuelva por
+    // disponibilidad (1×201 / 9×409) y no por LIMITE_PENDIENTES.
+    A: { modoReserva: 'MANUAL', nuevasReservasActivas: true, aceptaIndividual: true, aceptaGrupal: true, horizonteReservaDias: 30 },
     B: { modoReserva: 'MANUAL', nuevasReservasActivas: true, aceptaIndividual: true, aceptaGrupal: false, maxPendientes: 3, horizonteReservaDias: 30 },
     C: { modoReserva: 'MANUAL', nuevasReservasActivas: false, aceptaIndividual: true, aceptaGrupal: true, maxPendientes: 3, horizonteReservaDias: 30 },
     D: { modoReserva: 'MANUAL', nuevasReservasActivas: true, aceptaIndividual: true, aceptaGrupal: true, maxPendientes: 3, horizonteReservaDias: 2 },
@@ -81,19 +85,41 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider('ThrottlerStorage')
+      .overrideProvider(ThrottlerStorage)
       .useValue({
         increment: async () => ({ totalHits: 0, timeToExpire: 0, isBlocked: false, timeToBlockExpire: 0 }),
       })
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.setGlobalPrefix('api/v1');
     // La regla de dominio devuelve 422 para fallos de validación de DTO.
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, exceptionFactory: (errors) => new ValidadorException(errors) }),
     );
     await app.init();
     prisma = app.get(PrismaService);
+
+    // Limpieza idempotente de las sedes E303 y sus dependencias: el afterAll solo
+    // desconecta, así que una segunda ejecución no debe chocar con la primera
+    // (la sede se recrea con el mismo codigo_acceso, que es único).
+    const sedesPrevias = await prisma.barberia.findMany({
+      where: { codigoAcceso: { startsWith: 'E303' } },
+      select: { id: true },
+    });
+    const idsSede = sedesPrevias.map((s) => s.id);
+    if (idsSede.length > 0) {
+      const reservasPrevias = await prisma.reserva.findMany({
+        where: { barberiaId: { in: idsSede } },
+        select: { id: true },
+      });
+      await prisma.pago.deleteMany({
+        where: { reservaId: { in: reservasPrevias.map((r) => r.id) } },
+      });
+      await prisma.reserva.deleteMany({ where: { barberiaId: { in: idsSede } } });
+      await prisma.usuarioRol.deleteMany({ where: { barberiaId: { in: idsSede } } });
+      await prisma.barberia.deleteMany({ where: { id: { in: idsSede } } });
+    }
 
     // Limpieza por si se vuelve a ejecutar en la misma base.
     // Borrar el usuario antes que los vínculos/roles: si eliminas los vínculos primero
@@ -151,7 +177,7 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
         },
       });
       barberia[nombre] = barberiaId.id;
-      await prisma.configuracionBarberia.create({ data: { barberiaId, ...configs[nombre] } });
+      await prisma.configuracionBarberia.create({ data: { barberiaId: barberiaId.id, ...configs[nombre] } });
     }
 
     // Servicios y horarios
@@ -164,6 +190,10 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
       servicio.F = sF.id;
       const sD = await prisma.servicio.create({ data: { barberiaId: barberia.D, nombre: 'Corte D', precio: 30, duracionEstimada: 30, margenOperativo: 0 } });
       servicio.D = sD.id;
+      // La sede E aloja el test de LIMITE_PENDIENTES: necesita su propio servicio,
+      // si no la primera reserva (la que llena el cupo) cae en un 400 falso.
+      const sE = await prisma.servicio.create({ data: { barberiaId: barberia.E, nombre: 'Corte E', precio: 30, duracionEstimada: 30, margenOperativo: 0 } });
+      servicio.E = sE.id;
     }
     for (const nombre of Object.keys(configs)) {
       await prisma.horario.createMany({ data: Array.from({ length: 7 }, (_, dia) => ({ barberiaId: barberia[nombre], diaSemana: dia + 1, horaInicio: new Date('1970-01-01T00:00:00.000Z'), horaFin: new Date('1970-01-01T23:59:00.000Z') })) });
@@ -190,7 +220,7 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
     for (const [mail, sede, conRestringido] of [
       ['cA.e303@test.com', 'A', false],
       ['cB.e303@test.com', 'A', false],
-      ['cX.e303@test.com', 'A', false],
+      // cX NO se vincula a propósito: es el caso NO_VINCULADO.
       ['cY.e303@test.com', 'A', true],
       ['cD.e303@test.com', 'B', false],
       ['cE.e303@test.com', 'C', false],
@@ -220,9 +250,10 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
     await prisma.$disconnect();
   });
 
-  const headers = (correo: string, barberiaId: string) => [
-    { Authorization: `Bearer ${tokens[correo]}`, 'x-barberia-id': barberiaId },
-  ];
+  const headers = (correo: string, barberiaId: string) => ({
+    Authorization: `Bearer ${tokens[correo]}`,
+    'x-barberia-id': barberiaId,
+  });
 
   const reserva = (correo: string, barberiaId: string, { tipo, fecha, services, barberoId }: { tipo: 'INDIVIDUAL' | 'AUTOMATICO' | 'GRUPAL'; fecha: string; services: string; barberoId?: string }) =>
     request(app.getHttpServer())
@@ -233,45 +264,45 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
   it('ROJO: NO_VINCULADO 403 cuando el cliente no está vinculado a esa barbería', async () => {
     const res = await reserva('cX.e303@test.com', barberia.A, { tipo: 'INDIVIDUAL', fecha: fecha(1), services: servicio.A });
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe('NO_VINCULADO');
+    expect(res.body.codigo).toBe('NO_VINCULADO');
   });
 
   it('ROJO: CLIENTE_RESTRINGIDO 403 cuando el cliente está restringido en esa barbería', async () => {
     const res = await reserva('cY.e303@test.com', barberia.A, { tipo: 'INDIVIDUAL', fecha: fecha(1), services: servicio.A });
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe('CLIENTE_RESTRINGIDO');
+    expect(res.body.codigo).toBe('CLIENTE_RESTRINGIDO');
   });
 
   it('ROJO: RESERVAS_PAUSADAS 422 cuando la barbería tiene nuevasReservasActivas=false', async () => {
     const res = await reserva('cE.e303@test.com', barberia.C, { tipo: 'INDIVIDUAL', fecha: fecha(1), services: servicio.A });
     expect(res.status).toBe(422);
-    expect(res.body.code).toBe('RESERVAS_PAUSADAS');
+    expect(res.body.codigo).toBe('RESERVAS_PAUSADAS');
   });
 
-  it('ROJO: FUERO_DE_HORIZONTE 422 cuando la fecha está fuera del horizonte', async () => {
+  it('ROJO: FUERA_DE_HORIZONTE 422 cuando la fecha está fuera del horizonte', async () => {
     const res = await reserva('cF.e303@test.com', barberia.D, { tipo: 'INDIVIDUAL', fecha: fecha(6), services: servicio.A });
     expect(res.status).toBe(422);
-    expect(res.body.code).toBe('FUERO_DE_HORIZONTE');
+    expect(res.body.codigo).toBe('FUERA_DE_HORIZONTE');
   });
 
   it('ROJO: LIMITE_PENDIENTES 422 cuando ya alcanza max_pendientes', async () => {
-    const primero = await reserva('cG.e303@test.com', barberia.E, { tipo: 'INDIVIDUAL', fecha: fecha(1), services: servicio.A });
+    const primero = await reserva('cG.e303@test.com', barberia.E, { tipo: 'INDIVIDUAL', fecha: fecha(1), services: servicio.E });
     expect(primero.status).toBe(201);
-    const segundo = await reserva('cH.e303@test.com', barberia.E, { tipo: 'INDIVIDUAL', fecha: fecha(1), services: servicio.A });
+    const segundo = await reserva('cH.e303@test.com', barberia.E, { tipo: 'INDIVIDUAL', fecha: fecha(1), services: servicio.E });
     expect(segundo.status).toBe(422);
-    expect(segundo.body.code).toBe('LIMITE_PENDIENTES');
+    expect(segundo.body.codigo).toBe('LIMITE_PENDIENTES');
   });
 
   it('ROJO: GRUPAL_NO_DISPONIBLE 422 cuando el tipo GRUPAL no está permitido en la barbería', async () => {
     const res = await reserva('cD.e303@test.com', barberia.B, { tipo: 'GRUPAL', fecha: fecha(1), services: servicio.B });
     expect(res.status).toBe(422);
-    expect(res.body.code).toBe('GRUPAL_NO_DISPONIBLE');
+    expect(res.body.codigo).toBe('GRUPAL_NO_DISPONIBLE');
   });
 
   it('ROJO: servicio de otra barbería → 400', async () => {
     const res = await reserva('cA.e303@test.com', barberia.A, { tipo: 'INDIVIDUAL', fecha: fecha(1), services: servicio.B });
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe('SERVICIO_FUERA_DE_BARBERIA');
+    expect(res.body.codigo).toBe('SERVICIO_FUERA_DE_BARBERIA');
   });
 
   it('CONTROL: MANUAL → PENDIENTE, expira_at = ahora + 10 min y job de expiración', async () => {
@@ -279,7 +310,7 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
     expect(res.status).toBe(201);
     expect(res.body.estado).toBe('PENDIENTE');
     expect(typeof res.body.expiraAt).toBe('string');
-    expect(Number(res.body.expiraAt) > Date.now()).toBe(true);
+    expect(new Date(res.body.expiraAt).getTime() > Date.now()).toBe(true);
   });
 
   /** Control D44: cotización sin persistir, mismo blanco que crear. */
@@ -314,7 +345,11 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
     expect(cot.body.desgloseServicios[0].servicioId).toBe(servicio.A);
   })
   it('Race: 10 solicitudes simultáneas al mismo hueco → exactamente una 201 y nueve 409', async () => {
-    const peticiones = Array.from({ length: 10 }, () => reserva('cA.e303@test.com', barberia.A, { tipo: 'INDIVIDUAL', fecha: fecha(1), services: servicio.A }));
+    // La carrera usa fecha(3): el CONTROL de arriba ya dejó una reserva PENDIENTE
+    // en la sede A para fecha(1) 10:00-10:30, y `calcularDisponibilidad` cuenta
+    // PENDIENTE/CONFIRMADA sin filtrar por barbero, así que ese hueco ya está
+    // ocupado y la carrera daría 0×201.
+    const peticiones = Array.from({ length: 10 }, () => reserva('cA.e303@test.com', barberia.A, { tipo: 'INDIVIDUAL', fecha: fecha(3), services: servicio.A }));
     const resultados = await Promise.all(peticiones);
     const cuentas: Record<number, number> = {};
     for (const r of resultados) cuentas[r.status] = (cuentas[r.status] || 0) + 1;

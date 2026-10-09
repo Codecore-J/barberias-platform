@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ReservaService } from './reserva.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { DisponibilidadService } from '../../agenda/application/disponibilidad.service.js';
-import { ConflictException, ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 
 describe('ReservaService', () => {
@@ -12,7 +12,7 @@ describe('ReservaService', () => {
     $queryRaw: vi.fn(),
     configuracionBarberia: { findUnique: vi.fn() },
     clienteBarberia: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
-    reserva: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
+    reserva: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), count: vi.fn() },
     participanteReserva: { create: vi.fn() },
     participanteServicio: { createMany: vi.fn() },
     servicio: { findMany: vi.fn() },
@@ -212,7 +212,7 @@ describe('ReservaService', () => {
       ).rejects.toThrowError(ForbiddenException);
     });
 
-    it('debe rechazar con BadRequestException si la barbería pausó nuevas reservas', async () => {
+    it('debe rechazar con UnprocessableEntityException (422 D40) si la barbería pausó nuevas reservas', async () => {
       mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
@@ -228,7 +228,7 @@ describe('ReservaService', () => {
           serviciosIds: ['s1'],
           precioTotalEsperado: 15,
         }),
-      ).rejects.toThrowError(BadRequestException);
+      ).rejects.toThrowError(UnprocessableEntityException);
     });
 
     it('debe fallar con ConflictException si no hay disponibilidad en la fecha solicitada', async () => {
