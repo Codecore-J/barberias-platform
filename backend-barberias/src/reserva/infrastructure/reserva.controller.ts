@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ReservaService } from '../application/reserva.service.js';
 import { CreateReservaDto } from '../application/dto/create-reserva.dto.js';
+import { RechazarReservaDto } from '../application/dto/rechazar-reserva.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
@@ -100,6 +101,39 @@ export class ReservaController {
   @Post('cotizar')
   async cotizar(@CurrentBarberiaId() barberiaId: string, @Body() dto: CreateReservaDto) {
     return this.reservaService.cotizar(barberiaId, dto);
+  }
+
+  /**
+   * POST /reservas/:id/aceptar (E3-04)
+   * Confirmar una solicitud MANUAL: `PENDIENTE → CONFIRMADA`. Solo el responsable
+   * de la sede y el ADMINISTRADOR global (la decisión D02 aplicada a aceptar).
+   * El `RolesGuard` acota la ruta al `barberiaId` del parámetro, así que un
+   * admin de otra sede recibe 403 antes de llegar al servicio.
+   */
+  @Post(':id/aceptar')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  aceptarReserva(
+    @CurrentBarberiaId() barberiaId: string,
+    @Param('id', ParseUUIDPipe) reservaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.reservaService.aceptarReserva(barberiaId, reservaId, user);
+  }
+
+  /**
+   * POST /reservas/:id/rechazar (E3-04)
+   * `PENDIENTE → RECHAZADA` con `motivoCodigo` obligatorio del catálogo §5.5.
+   * Mismos roles que aceptar.
+   */
+  @Post(':id/rechazar')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  rechazarReserva(
+    @CurrentBarberiaId() barberiaId: string,
+    @Param('id', ParseUUIDPipe) reservaId: string,
+    @Body() dto: RechazarReservaDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.reservaService.rechazarReserva(barberiaId, reservaId, dto, user);
   }
 
   @Get(':id')

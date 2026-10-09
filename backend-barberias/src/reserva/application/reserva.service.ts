@@ -1,7 +1,14 @@
 import { Injectable, BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
-import { errorDePermiso, errorDeSolicitud, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
+import { errorDeConflicto, errorDePermiso, errorDeSolicitud, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { CreateReservaDto } from './dto/create-reserva.dto.js';
+import {
+  LONGITUD_MINIMA_DETALLE,
+  MOTIVOS_RECHAZO,
+  RechazarReservaDto,
+  type MotivoRechazo,
+} from './dto/rechazar-reserva.dto.js';
+import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { CotizacionResponse, BloqueCalculado } from './dto/cotizacion.dto.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
 import { validateTimeRange } from '../../horario/domain/time.utils.js';
@@ -19,14 +26,27 @@ import {
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 
+/** Texto del catálogo §5.5 para la notificación, en el idioma del usuario. */
+const TEXTO_MOTIVO_RECHAZO: Record<string, string> = {
+  HORARIO_NO_DISPONIBLE: 'el horario ya no está disponible',
+  SERVICIO_NO_DISPONIBLE: 'el servicio solicitado ya no está disponible',
+  RESPONSABLE_AUSENTE: 'el responsable de la sede no está disponible',
+  CLIENTE_RESTRINGIDO: 'existe una restricción sobre tu cuenta en esta barbería',
+  OTRO: 'no fue posible atender la solicitud',
+};
+
 @Injectable()
 export class ReservaService {
   private readonly logger = new Logger(ReservaService.name);
+
+  /** Nombre real del job que consume `ReservaProcessor` (literal de BullMQ). */
+  private static readonly JOB_EXPIRAR_RESERVA = 'expirar-reserva';
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly disponibilidadService: DisponibilidadService,
     @InjectQueue('reservas-pendientes') private readonly reservasQueue: Queue,
+    private readonly auditoriaService: AuditoriaService,
     @Optional() private readonly notificacionService?: NotificacionService,
   ) {}
 
@@ -298,7 +318,15 @@ export class ReservaService {
       this.logger.log(`Reserva ${reserva.id} creada para barbería ${barberiaId} con snapshot financiero de $${precioTotalCatalogo}`);
 
       if (config.modoReserva === 'MANUAL') {
-        await this.reservasQueue.add('expirar-reserva', { reservaId: reserva.id }, { delay: 10 * 60000 });
+        // E3-04: el job lleva un `jobId` DETERMINISTA para que aceptar o
+        // rechazar puedan cancelarlo. Con un id aleatorio de BullMQ no habría
+        // forma de encontrarlo después. Además es idempotente: reencolar la
+        // misma reserva no duplica el job.
+        await this.reservasQueue.add(
+          ReservaService.JOB_EXPIRAR_RESERVA,
+          { reservaId: reserva.id },
+          { delay: 10 * 60000, jobId: this.jobIdDeExpiracion(reserva.id) },
+        );
         this.logger.log(`Job de expiración programado para reserva ${reserva.id} en 10 minutos`);
       }
 
@@ -634,6 +662,282 @@ export class ReservaService {
         ),
       };
     });
+  }
+
+  /**
+   * E3-04 · Aceptar una solicitud MANUAL: `PENDIENTE → CONFIRMADA`.
+   *
+   * El orden importa y es el mismo que en la creación: primero el lock de la
+   * sede (`FOR UPDATE` bajo SERIALIZABLE) y solo después la revalidación de la
+   * disponibilidad. Si se revalidara antes de bloquear, otra petición podría
+   * ocupar el hueco entre la comprobación y la escritura.
+   *
+   * `expira_at` se mira ANTES de revalidar: una solicitud caducada responde 409
+   * `SOLICITUD_EXPIRADA` y no un conflicto de horario, que es el error que el
+   * admin necesita leer para saber qué pasó.
+   */
+  async aceptarReserva(barberiaId: string, reservaId: string, user: UsuarioAutenticado) {
+    const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+
+      const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
+
+      if (!actual) {
+        throw new NotFoundException('Reserva no encontrada');
+      }
+
+      if (actual.estado !== 'PENDIENTE') {
+        throw errorDeConflicto(
+          'ESTADO_INVALIDO',
+          `Solo se puede aceptar una solicitud en estado PENDIENTE (estado actual: ${actual.estado}).`,
+        );
+      }
+
+      if (actual.expiraAt && actual.expiraAt.getTime() <= Date.now()) {
+        throw errorDeConflicto(
+          'SOLICITUD_EXPIRADA',
+          'La solicitud expiró antes de ser aceptada: ya no se puede confirmar.',
+        );
+      }
+
+      const config = await tx.configuracionBarberia.findUnique({ where: { barberiaId } });
+      const margenFinal = config?.margenGrupalMinutos ?? actual.margenGrupalHistorico ?? 10;
+
+      // Las horas se leen con getUTC* porque `parseTime` las escribió con
+      // `setUTCHours` (`time.utils.ts`): así se recupera el mismo instante.
+      const inicioMin = actual.horaInicio.getUTCHours() * 60 + actual.horaInicio.getUTCMinutes();
+      const finMin = actual.horaFin.getUTCHours() * 60 + actual.horaFin.getUTCMinutes();
+      const duracionTotal = finMin - inicioMin;
+
+      const disponibilidades = await this.disponibilidadService.calcularDisponibilidad(
+        {
+          barberiaId,
+          fecha: new Date(actual.fechaCita),
+          duracionTotal,
+          margenRequerido: margenFinal,
+          // La reserva sigue PENDIENTE mientras se revalida: sin excluirla se
+          // bloquearía a sí misma y ningún aceptar legítimo cabría.
+          excluirReservaId: actual.id,
+        },
+        tx,
+      );
+
+      const fechaCita = new Date(actual.fechaCita);
+      const inicioCita = new Date(fechaCita);
+      inicioCita.setHours(actual.horaInicio.getUTCHours(), actual.horaInicio.getUTCMinutes(), 0, 0);
+      const finCita = new Date(fechaCita);
+      finCita.setHours(actual.horaFin.getUTCHours(), actual.horaFin.getUTCMinutes(), 0, 0);
+      const finConMargen = new Date(finCita.getTime() + margenFinal * 60000);
+
+      const sigueDisponible = disponibilidades.some(
+        (slot) => inicioCita >= slot.inicio && finConMargen <= slot.fin,
+      );
+
+      if (!sigueDisponible) {
+        throw errorDeConflicto(
+          'CONFLICTO_HORARIO',
+          'El horario de la solicitud ya no está disponible: otra reserva o un bloqueo ocupa ese hueco.',
+        );
+      }
+
+      const actualizada = await tx.reserva.update({
+        where: { id: reservaId },
+        data: { estado: 'CONFIRMADA' },
+      });
+
+      await this.auditoriaService.registrarEvento(
+        {
+          usuarioId: user.id,
+          accion: 'RESERVA_CONFIRMADA',
+          entidad: 'Reserva',
+          entidadId: reservaId,
+          contexto: { barberiaId, estadoAnterior: 'PENDIENTE', estadoNuevo: 'CONFIRMADA' },
+        },
+        tx,
+      );
+
+      return actualizada;
+    });
+
+    // El job de expiración se cancela fuera de la transacción: BullMQ no
+    // participa en ella. El processor solo expira reservas en PENDIENTE, así
+    // que si la cancelación fallara la reserva ya CONFIRMADA seguiría a salvo.
+    await this.cancelarJobExpiracion(reservaId);
+
+    if (this.notificacionService) {
+      this.notificacionService
+        .enviarNotificacion({
+          usuarioId: reserva.clienteId,
+          tipo: 'RESERVA_CONFIRMADA',
+          contenido: `Tu reserva del ${this.fechaISO(reserva.fechaCita)} a las ${this.horaHHMM(reserva.horaInicio)} fue confirmada.`,
+        })
+        .catch((err) =>
+          this.logger.warn(`No se pudo notificar la confirmación: ${err.message}`),
+        );
+    }
+
+    return reserva;
+  }
+
+  /**
+   * E3-04 · Rechazar una solicitud MANUAL: `PENDIENTE → RECHAZADA`.
+   *
+   * El `motivo_codigo` es obligatorio y del catálogo §5.5. Se valida en el
+   * servicio ADEMÁS del DTO: así la regla de negocio no depende de que la ruta
+   * tenga el `ValidationPipe` global bien configurado, y el 400 sale también
+   * cuando el servicio se llama desde otro sitio.
+   *
+   * `RECHAZADA` no ocupa agenda (§5.3), así que liberar el espacio es
+   * consecuencia del propio cambio de estado, no una escritura aparte.
+   */
+  async rechazarReserva(
+    barberiaId: string,
+    reservaId: string,
+    dto: RechazarReservaDto,
+    user: UsuarioAutenticado,
+  ) {
+    const motivo = this.validarMotivoRechazo(dto);
+
+    const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+
+      const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
+
+      if (!actual) {
+        throw new NotFoundException('Reserva no encontrada');
+      }
+
+      if (actual.estado !== 'PENDIENTE') {
+        throw errorDeConflicto(
+          'ESTADO_INVALIDO',
+          `Solo se puede rechazar una solicitud en estado PENDIENTE (estado actual: ${actual.estado}).`,
+        );
+      }
+
+      const actualizada = await tx.reserva.update({
+        where: { id: reservaId },
+        data: {
+          estado: 'RECHAZADA',
+          motivoCodigo: motivo.codigo,
+          motivoDetalle: motivo.detalle,
+        },
+      });
+
+      await this.auditoriaService.registrarEvento(
+        {
+          usuarioId: user.id,
+          accion: 'RESERVA_RECHAZADA',
+          entidad: 'Reserva',
+          entidadId: reservaId,
+          contexto: {
+            barberiaId,
+            estadoAnterior: 'PENDIENTE',
+            estadoNuevo: 'RECHAZADA',
+            motivoCodigo: motivo.codigo,
+            motivoDetalle: motivo.detalle,
+          },
+        },
+        tx,
+      );
+
+      return actualizada;
+    });
+
+    await this.cancelarJobExpiracion(reservaId);
+
+    if (this.notificacionService) {
+      const razon = motivo.codigo === 'OTRO' ? motivo.detalle : TEXTO_MOTIVO_RECHAZO[motivo.codigo];
+      this.notificacionService
+        .enviarNotificacion({
+          usuarioId: reserva.clienteId,
+          tipo: 'RESERVA_RECHAZADA',
+          contenido: `Tu solicitud del ${this.fechaISO(reserva.fechaCita)} a las ${this.horaHHMM(reserva.horaInicio)} fue rechazada: ${razon}.`,
+        })
+        .catch((err) =>
+          this.logger.warn(`No se pudo notificar el rechazo: ${err.message}`),
+        );
+    }
+
+    return reserva;
+  }
+
+  /**
+   * Catálogo §5.5 en el dominio: obligatorio, cerrado y con la regla de `OTRO`
+   * (detalle de al menos 5 caracteres). Devuelve el valor ya normalizado.
+   */
+  private validarMotivoRechazo(dto: RechazarReservaDto): {
+    codigo: MotivoRechazo;
+    detalle: string | null;
+  } {
+    const codigo = dto?.motivoCodigo;
+
+    if (!codigo || !MOTIVOS_RECHAZO.includes(codigo as MotivoRechazo)) {
+      throw errorDeSolicitud(
+        'MOTIVO_INVALIDO',
+        `motivoCodigo es obligatorio y debe pertenecer al catálogo de rechazo: ${MOTIVOS_RECHAZO.join(', ')}.`,
+      );
+    }
+
+    const detalle = typeof dto.motivoDetalle === 'string' ? dto.motivoDetalle.trim() : '';
+
+    if (codigo === 'OTRO' && detalle.length < LONGITUD_MINIMA_DETALLE) {
+      throw errorDeSolicitud(
+        'MOTIVO_INVALIDO',
+        `Cuando el motivo es OTRO, motivoDetalle debe tener al menos ${LONGITUD_MINIMA_DETALLE} caracteres.`,
+      );
+    }
+
+    return { codigo: codigo as MotivoRechazo, detalle: detalle || null };
+  }
+
+  /**
+   * Cancela el job de expiración de una reserva (E3-04 §4).
+   *
+   * Es best-effort a propósito: BullMQ es un sistema aparte y no puede tumbar
+   * una transición de estado ya confirmada. El processor vuelve a comprobar
+   * `estado === 'PENDIENTE'` antes de expirar, así que un job que sobreviva no
+   * puede mover una reserva que ya dejó de estar pendiente.
+   */
+  private async cancelarJobExpiracion(reservaId: string): Promise<void> {
+    const jobId = this.jobIdDeExpiracion(reservaId);
+
+    try {
+      const job = await this.reservasQueue.getJob(jobId);
+      if (!job) {
+        this.logger.log(`No había job de expiración que cancelar para la reserva ${reservaId}.`);
+        return;
+      }
+
+      await job.remove();
+      this.logger.log(`Job de expiración ${jobId} cancelado para la reserva ${reservaId}.`);
+    } catch (err: any) {
+      this.logger.warn(
+        `No se pudo cancelar el job de expiración ${jobId}: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /**
+   * El `jobId` es determinista para poder cancelarlo después. Se lee del mismo
+   * literal que usa el processor (`'expirar-reserva'`), no de
+   * `queue.constants.ts`, cuyas constantes (`QUEUES.RESERVAS =
+   * 'queue:reservas'`, `JOBS.EXPIRAR_RESERVA = 'job:expirar-reserva'`) no
+   * coinciden con la cola real `'reservas-pendientes'` ni con el nombre real
+   * del job. Ver HALLAZGO-E304-01 en el reporte.
+   */
+  private jobIdDeExpiracion(reservaId: string): string {
+    // Sin `:` a propósito: BullMQ reserva ese carácter para separar las claves
+    // de Redis y rechaza cualquier `jobId` propio que lo contenga
+    // ("Custom Id cannot contain :").
+    return `expirar-reserva-${reservaId}`;
+  }
+
+  private fechaISO(fecha: Date): string {
+    return new Date(fecha).toISOString().slice(0, 10);
+  }
+
+  private horaHHMM(hora: Date): string {
+    return `${String(hora.getUTCHours()).padStart(2, '0')}:${String(hora.getUTCMinutes()).padStart(2, '0')}`;
   }
 
   async cambiarEstado(barberiaId: string, reservaId: string, nuevoEstado: string, user: UsuarioAutenticado) {

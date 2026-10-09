@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -24,6 +25,14 @@ export function errorDePermiso(codigo: string, mensaje: string): ForbiddenExcept
 /** 400 · la petición es válida pero referencia algo que no aplica (D40). */
 export function errorDeSolicitud(codigo: string, mensaje: string): BadRequestException {
   return new BadRequestException({ statusCode: 400, codigo, mensaje });
+}
+
+/**
+ * 409 · conflicto: concurrencia o transición de estado no permitida (D40).
+ * `ESTADO_INVALIDO` y `SOLICITUD_EXPIRADA` viajan por aquí (E3-04).
+ */
+export function errorDeConflicto(codigo: string, mensaje: string): ConflictException {
+  return new ConflictException({ statusCode: 409, codigo, mensaje });
 }
 
 /** 422 · regla de negocio violada (D40). */
