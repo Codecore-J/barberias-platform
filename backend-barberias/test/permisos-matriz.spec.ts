@@ -139,6 +139,11 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // del parámetro, así que un admin de otra sede recibe 403.
   'POST /barberias/:barberiaId/reservas,reservas/:id/aceptar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'POST /barberias/:barberiaId/reservas,reservas/:id/rechazar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // E3-05 (2026-10-09): cancelar la declaran los tres roles. El CLIENTE dueño
+  // cancela lo suyo y la sede cancela por mostrador; lo que el guard NO puede
+  // ver —que la reserva sea del CLIENTE que la cancela— lo exige el servicio
+  // (403 RESERVA_AJENA) y lo cubren las pruebas de servicio y el E2E.
+  'POST /barberias/:barberiaId/reservas,reservas/:id/cancelar': [ROL_CLIENTE, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /barberias/:barberiaId/reservas,reservas/agenda': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_ADMINISTRADOR],
 
   'GET /catalogo/servicios,servicios/': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
@@ -284,9 +289,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
   }
 
-  it('descubrir las 58 rutas del servidor y todas tienen decision', () => {
+  it('descubrir las 59 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(58);
+    expect(claves.length).toBe(59);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -370,10 +375,11 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
     console.log('');
 
-    // 58 rutas × 4 roles: la partición de E3-03 añadió POST /reservas/walk-in,
-    // el endpoint de cotización (D44) añadió POST /reservas/cotizar y E3-04
-    // añade POST /reservas/:id/aceptar y POST /reservas/:id/rechazar.
-    expect(evaluaciones).toBe(232);
+    // 59 rutas × 4 roles: la partición de E3-03 añadió POST /reservas/walk-in,
+    // el endpoint de cotización (D44) añadió POST /reservas/cotizar, E3-04
+    // añade POST /reservas/:id/aceptar y POST /reservas/:id/rechazar, y E3-05
+    // añade POST /reservas/:id/cancelar.
+    expect(evaluaciones).toBe(236);
     expect(
       desviaciones.length === 0
         ? ''

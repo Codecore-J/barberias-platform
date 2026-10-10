@@ -137,6 +137,24 @@ export class ReservaController {
     return this.reservaService.rechazarReserva(barberiaId, reservaId, dto, user);
   }
 
+  /**
+   * POST /reservas/:id/cancelar (E3-05)
+   * Cancelación manual de una reserva vigente: `→ CANCELADA`. La declaran los
+   * tres roles porque el CLIENTE dueño cancela lo suyo y la sede cancela por
+   * teléfono o mostrador; la pertenencia de la reserva (que el guard no puede
+   * ver) la valida el servicio, que exige que sea suya cuando no hay rol de
+   * sede. Cancela el job de expiración y audita `RESERVA_CANCELADA`.
+   */
+  @Post(':id/cancelar')
+  @Roles('CLIENTE', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
+  cancelarReserva(
+    @CurrentBarberiaId() barberiaId: string,
+    @Param('id', ParseUUIDPipe) reservaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.reservaService.cancelarReserva(barberiaId, reservaId, user);
+  }
+
   @Get(':id')
   @Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE') // SEC-E2: requiere rol en la barbería del parámetro
   obtenerDetalle(

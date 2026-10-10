@@ -509,3 +509,40 @@ Identificadores provisionales, libres hasta H21. Documentados sin arreglar: cada
 - **Estado:** abierto
 - **Que consta:** segun el dueño, el Build Command del panel de Render se edito a mano y ya no coincide con `render.yaml` (que declara `rm -f ../package.json && npm install --include=dev && npm run build`). *Pendiente de verificar*: sin acceso al panel de Render no se puede leer el valor real
 - **Causa raíz:** el `postinstall` del backend es `prisma skills sync || exit 0`, que **no** genera el cliente de Prisma; el CI lo resuelve con un paso explicito `npx prisma generate`. En el despliegue hay que confirmar que el Build Command del panel hace lo mismo
+
+## HALLAZGOS DE E3-05 (H31 a H34)
+
+Identificadores provisionales, libres desde H30. Registrados al iniciar E3-05 (2026-10-09). Igual que en la fase 0, la severidad solo se escribe cuando consta en la evidencia.
+
+### H31: Constantes de cola y job imposibles de cumplir, y sin usar
+- **Módulo / Ruta afectada:** Backend, `src/shared/queues/queue.constants.ts`, `src/reserva/infrastructure/reserva.module.ts`, `src/reserva/application/reserva.service.ts`, `src/reserva/application/reserva.processor.ts`
+- **Tipo:** Job asíncrono / deuda técnica con riesgo de job huérfano
+- **Severidad:** Media — no causaba pérdida de datos, pero sí el fallo silencioso que la tarea E3-05 tenía por delante: un cambio de nombre en el productor o en el consumidor dejaba el job encolado sin quien lo consuma
+- **Estado:** resuelto en E3-05 (rama `feat/e3-05-expiracion-cancelacion`)
+- **Qué constaba antes:** el archivo declaraba `QUEUES.RESERVAS = 'queue:reservas'`, `JOBS.EXPIRAR_RESERVA = 'job:expirar-reserva'` y `JOBS.NOTIFICACION_RESERVA_CREADA = 'job:notificacion-reserva-creada'`, y **ningún** archivo lo importaba: la cola real era el literal `'reservas-pendientes'` y el job real, `'expirar-reserva'`. Además esos valores no eran implementables: BullMQ rechaza en el constructor cualquier nombre de cola con `:` (`node_modules/bullmq/dist/cjs/classes/queue-base.js`) y cualquier `jobId` propio con `:` (`classes/job.js`), así que `QUEUES.RESERVAS` habría hecho caer el arranque
+- **Causa raíz:** se escribió la convención con prefijos (`queue:`, `job:`) y nunca se cableó, y el código real quedó en kebab-case sin prefijos
+- **Evidencia:** test `src/shared/queues/queue.constants.spec.ts` (5 casos, rojo→verde): contra HEAD fallaba con `expected 'QUEUES.RESERVAS=queue:reservas contiene ':'` y `expected 'reservas-pendientes' to be 'queue:reservas'`; ahora los valores son los nombres reales, el consumidor declara la misma cola y el `jobId` sigue siendo determinista
+
+### H32: El esquema no tiene `informacion_adicional`, que el backlog manda borrar
+- **Módulo / Ruta afectada:** Backend, `prisma/schema.prisma` (`model Reserva`) y los flujos de rechazo (E3-04), expiración y cancelación (E3-05)
+- **Tipo:** Divergencia entre el diseño y el esquema
+- **Severidad:** Baja
+- **Estado:** abierto
+- **Qué consta:** el backlog pide «borra la información adicional» al rechazar (§E3-04 punto 2) y al expirar (§E3-05 punto 5), pero no existe ninguna columna `informacion_adicional` ni tabla equivalente: `grep` sobre `*.ts`, `*.prisma` y `*.sql` no devuelve ninguna coincidencia. En E3-04 tampoco se implementó, y en E3-05 no se pudo: no hay nada que borrar
+- **Causa raíz:** la columna se añadirá con el flujo de reserva grupal o de información adicional (E4-01/E4-05); hasta entonces el requisito no es ejecutable y no debe declararse cumplido
+
+### H33: No hay forma de registrar quién canceló ni el flujo de cancelación especial (D17)
+- **Módulo / Ruta afectada:** Backend, `prisma/schema.prisma` (`model Reserva`, `model ConfiguracionBarberia`)
+- **Tipo:** Trazabilidad / alcance pendiente de E3-07
+- **Severidad:** Baja
+- **Estado:** abierto
+- **Qué consta:** el diseño (E3-07, D17) añade `reservas.cancelado_por`, `cancelacion_especial_estado` y `cancelacion_especial_motivo`, más `configuracion_barberia.permite_cancelacion_especial`. Nada de eso existe todavía. En E3-05 la trazabilidad de quién canceló vive solo en `auditoria.contexto.canceladoPor` (`'CLIENTE'` o `'STAFF'`)
+- **Evidencia:** `POST /barberias/:barberiaId/reservas/:id/cancelar` audita `RESERVA_CANCELADA` con `canceladoPor`; la columna llega con la migración de E3-07
+
+### H34: Comentarios corruptos en `roles.ts`
+- **Módulo / Ruta afectada:** Backend, `src/iam/domain/roles.ts` (líneas 75 y 107)
+- **Tipo:** Documentación
+- **Severidad:** Informativa
+- **Estado:** abierto — no se toca aquí porque E3-05 no modifica ese archivo
+- **Qué consta:** dos palabras del comentario están destrozadas: línea 75 `el guard laractable como comodín` (debería ser «lo trata como comodín») y línea 107 `el decorador de la ruta y el guard yailtersan el ROL` («el decorador … y el guard ya filtran el ROL»). El código de esas funciones es correcto; solo el comentario está dañado
+- **Evidencia:** `grep -n "laractable\|yailtersan" src/iam/domain/roles.ts` devuelve las líneas 75 y 107

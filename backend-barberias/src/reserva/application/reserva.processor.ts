@@ -1,35 +1,51 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
-import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { ExpiracionReservaService } from './expiracion-reserva.service.js';
+import {
+  JOBS,
+  QUEUES,
+  type ExpirarReservaJobPayload,
+} from '../../shared/queues/queue.constants.js';
 
-@Processor('reservas-pendientes')
+/**
+ * E3-05 · Consumidor del job de expiración.
+ *
+ * La cola y el nombre del job salen de `queue.constants.ts`: antes eran dos
+ * literales sueltos ('reservas-pendientes' / 'expirar-reserva') que había que
+ * mantener sincronizados a mano con el productor (`ReservaService`) y con el
+ * `registerQueue` del módulo. Ver HALLAZGO-E305-01.
+ *
+ * El processor no decide nada: delega en `ExpiracionReservaService`, que sí es
+ * idempotente y comprueba estado y `expira_at` bajo la misma transacción.
+ */
+@Processor(QUEUES.RESERVAS)
 export class ReservaProcessor extends WorkerHost {
   private readonly logger = new Logger(ReservaProcessor.name);
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(private readonly expiracionService: ExpiracionReservaService) {
     super();
   }
 
-  async process(job: Job<any, any, string>): Promise<any> {
+  async process(job: Job<ExpirarReservaJobPayload>): Promise<string> {
     this.logger.log(`Procesando job ${job.id} de tipo ${job.name}`);
 
-    if (job.name === 'expirar-reserva') {
-      const { reservaId } = job.data;
-      
-      const reserva = await this.prisma.reserva.findUnique({
-        where: { id: reservaId },
-      });
-
-      if (reserva && reserva.estado === 'PENDIENTE') {
-        await this.prisma.reserva.update({
-          where: { id: reservaId },
-          data: { estado: 'EXPIRADA' },
-        });
-        this.logger.log(`Reserva ${reservaId} expirada tras agotar el tiempo manual.`);
-      } else {
-        this.logger.log(`Reserva ${reservaId} no expirada (Estado actual: ${reserva?.estado}).`);
-      }
+    if (job.name !== JOBS.EXPIRAR_RESERVA) {
+      this.logger.warn(
+        `Job ${job.name} no reconocido por ${ReservaProcessor.name}: se ignora sin reintento.`,
+      );
+      return 'JOB_DESCONOCIDO';
     }
+
+    const reservaId = job.data?.reservaId;
+
+    if (!reservaId) {
+      this.logger.warn(
+        `Job ${job.id} de ${JOBS.EXPIRAR_RESERVA} sin reservaId en el payload: se ignora.`,
+      );
+      return 'PAYLOAD_INVALIDO';
+    }
+
+    return this.expiracionService.expirarSiCorresponde(reservaId);
   }
 }

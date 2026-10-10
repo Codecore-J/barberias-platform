@@ -488,7 +488,7 @@ describe('ReservaService', () => {
 
       expect(mockQueue.add).toHaveBeenCalledWith(
         'expirar-reserva',
-        { reservaId: 'uuid-reserva' },
+        { reservaId: 'uuid-reserva', barberiaId: 'uuid-barberia' },
         expect.objectContaining({ jobId: 'expirar-reserva-uuid-reserva' }),
       );
     });
@@ -591,6 +591,133 @@ describe('ReservaService', () => {
       await expect(
         service.marcarInasistencia('uuid-barberia', 'uuid-reserva', 'admin-ajeno'),
       ).rejects.toThrowError(ForbiddenException);
+    });
+  });
+
+  describe('E3-05 cancelación manual', () => {
+    const usuarioCliente = {
+      id: 'uuid-cliente',
+      correo: 'cliente@test.com',
+      roles: ['CLIENTE'],
+      rolesDetallados: [{ nombre: 'CLIENTE', barberiaId: null, ambito: 'GLOBAL' }],
+    };
+
+    const usuarioAdmin = {
+      id: 'uuid-admin',
+      correo: 'admin@test.com',
+      roles: ['ADMIN_BARBERIA'],
+      rolesDetallados: [
+        { nombre: 'ADMIN_BARBERIA', barberiaId: 'uuid-barberia', ambito: 'BARBERIA' },
+      ],
+    };
+
+    const reservaVigente = (extra: Record<string, unknown> = {}) => ({
+      id: 'uuid-reserva',
+      barberiaId: 'uuid-barberia',
+      clienteId: 'uuid-cliente',
+      estado: 'PENDIENTE',
+      fechaCita: new Date('2026-10-10'),
+      horaInicio: hora(10, 0),
+      horaFin: hora(10, 30),
+      margenGrupalHistorico: 10,
+      totalPagar: 30,
+      expiraAt: new Date(Date.now() + 5 * 60000),
+      ...extra,
+    });
+
+    beforeEach(() => {
+      mockQueue.getJob.mockResolvedValue(null);
+      mockAuditoriaService.registrarEvento.mockResolvedValue({ id: 'uuid-auditoria' });
+    });
+
+    it('VERDE: el CLIENTE dueño cancela su PENDIENTE → CANCELADA, audita y borra el job', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reservaVigente());
+      mockPrismaService.reserva.update.mockResolvedValue({
+        id: 'uuid-reserva',
+        estado: 'CANCELADA',
+        clienteId: 'uuid-cliente',
+      });
+      const remove = vi.fn().mockResolvedValue(undefined);
+      mockQueue.getJob.mockResolvedValue({ remove });
+
+      const res = await service.cancelarReserva(
+        'uuid-barberia',
+        'uuid-reserva',
+        usuarioCliente as any,
+      );
+
+      expect(res.estado).toBe('CANCELADA');
+      expect(mockPrismaService.reserva.update).toHaveBeenCalledWith({
+        where: { id: 'uuid-reserva' },
+        data: { estado: 'CANCELADA' },
+      });
+      expect(mockAuditoriaService.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accion: 'RESERVA_CANCELADA',
+          entidadId: 'uuid-reserva',
+          contexto: expect.objectContaining({ canceladoPor: 'CLIENTE' }),
+        }),
+        expect.anything(),
+      );
+      expect(mockQueue.getJob).toHaveBeenCalledWith('expirar-reserva-uuid-reserva');
+      expect(remove).toHaveBeenCalled();
+    });
+
+    it('ROJO: un CLIENTE no puede cancelar la reserva de OTRO cliente → 403 RESERVA_AJENA', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(
+        reservaVigente({ clienteId: 'otro-cliente' }),
+      );
+
+      await expect(
+        service.cancelarReserva('uuid-barberia', 'uuid-reserva', usuarioCliente as any),
+      ).rejects.toMatchObject({ response: { codigo: 'RESERVA_AJENA', statusCode: 403 } });
+
+      expect(mockPrismaService.reserva.update).not.toHaveBeenCalled();
+    });
+
+    it('ROJO: cancelar una reserva ya terminal → 409 ESTADO_INVALIDO', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(
+        reservaVigente({ estado: 'EXPIRADA' }),
+      );
+
+      await expect(
+        service.cancelarReserva('uuid-barberia', 'uuid-reserva', usuarioAdmin as any),
+      ).rejects.toMatchObject({ response: { codigo: 'ESTADO_INVALIDO', statusCode: 409 } });
+    });
+
+    it('ROJO: sin rol en esa barbería → 403 antes de tocar la reserva', async () => {
+      await expect(
+        service.cancelarReserva('uuid-barberia', 'uuid-reserva', {
+          ...usuarioCliente,
+          rolesDetallados: [],
+        } as any),
+      ).rejects.toThrowError(ForbiddenException);
+
+      expect(mockPrismaService.reserva.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('VERDE: el staff de la sede cancela una CONFIRMADA y la auditoría lo marca como STAFF', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(
+        reservaVigente({ estado: 'CONFIRMADA' }),
+      );
+      mockPrismaService.reserva.update.mockResolvedValue({
+        id: 'uuid-reserva',
+        estado: 'CANCELADA',
+      });
+
+      await service.cancelarReserva('uuid-barberia', 'uuid-reserva', usuarioAdmin as any);
+
+      expect(mockAuditoriaService.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accion: 'RESERVA_CANCELADA',
+          usuarioId: 'uuid-admin',
+          contexto: expect.objectContaining({
+            estadoAnterior: 'CONFIRMADA',
+            canceladoPor: 'STAFF',
+          }),
+        }),
+        expect.anything(),
+      );
     });
   });
 });
