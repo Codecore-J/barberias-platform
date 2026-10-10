@@ -106,6 +106,7 @@
 | 44b | POST | `/barberias/:barberiaId/reservas/:id/aceptar` · `/reservas/:id/aceptar` | ReservaController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-04** (decisión 12) | **sí** | **sí** — revalida el hueco bajo `FOR UPDATE` y rechaza con 409 si `expira_at` ya pasó | no | `test/e3-04-aceptar-rechazar.e2e-spec.ts`; `src/reserva/application/reserva.service.spec.ts` |
 | 44c | POST | `/barberias/:barberiaId/reservas/:id/rechazar` · `/reservas/:id/rechazar` | ReservaController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-04** (decisión 12) | **sí** | **sí** — `motivo_codigo` obligatorio del catálogo §5.5 | no | `test/e3-04-aceptar-rechazar.e2e-spec.ts`; `src/reserva/application/reserva.service.spec.ts` |
 | 44d | POST | `/barberias/:barberiaId/reservas/cotizar` · `/reservas/cotizar` | ReservaController | — no existía | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-03/D44** (decisión 13) | **sí** | no — cálculo puro, no persiste ni consulta el recurso | sí — `core/services/reservas.service.ts`, wizard del cliente y walk-in | `test/e3-03-validaciones.e2e-spec.ts` (control D44); `test/permisos-matriz.spec.ts` |
+| 44e | POST | `/barberias/:barberiaId/reservas/:id/cancelar` · `/reservas/:id/cancelar` | ReservaController | — no existía | `@Roles(CLIENTE, ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-05** (decisión 14) | **sí** | **sí** — un `CLIENTE` solo cancela la suya (403 `RESERVA_AJENA`); el guard no puede ver la reserva | no — pendiente del botón de cancelación del cliente (E3-07) | `test/e3-05-expiracion-cancelacion.e2e-spec.ts`; `src/reserva/application/reserva.service.spec.ts` |
 | 45 | GET | `/catalogo/servicios` · `/servicios` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` + `VinculoBarberiaGuard` | **decisión del dueño** — el CLIENTE requiere fila ACTIVA en `cliente_barberias` | **sí** | **sí** — desde `81db5dc` | sí — `core/services/servicios.service.ts:32` | `src/catalogo/application/servicios.service.spec.ts`; `src/iam/infrastructure/vinculo-barberia.guard.spec.ts` |
 | 46 | POST | `/catalogo/servicios` · `/servicios` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D16) | **sí** | no | sí — `core/services/servicios.service.ts:58` | `test/permisos-matriz.e2e-spec.ts` |
 | 47 | GET | `/catalogo/servicios/:id` · `/servicios/:id` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` + `VinculoBarberiaGuard` | **decisión del dueño** — el CLIENTE requiere fila ACTIVA | **sí** | **sí** — desde `81db5dc` | no | `test/permisos-matriz.e2e-spec.ts`; `src/iam/infrastructure/vinculo-barberia.guard.spec.ts` |
@@ -137,6 +138,11 @@ negocio: `GET /`, `GET /auth/me`, `POST /barberias`, `GET /barberias` y `GET /no
 (`@Public` 6 · `@Autenticado` 5 · `@Roles` 47 · ninguna 0). Sobre las 55 del cuadro de arriba: `+1` por
 `POST /reservas/cotizar` (D44) y `+2` por `POST /reservas/:id/aceptar` y `POST /reservas/:id/rechazar` (E3-04).
 `test/permisos-matriz.spec.ts` comprueba ahora **58 rutas × 4 roles = 232** decisiones.
+
+**Estado real tras E3-05 (2026-10-09):** `test/route-security.spec.ts` cuenta **59 rutas**
+(`@Public` 6 · `@Autenticado` 5 · `@Roles` 48 · ninguna 0). Sobre las 58 de E3-04, `+1` por
+`POST /reservas/:id/cancelar` (E3-05, fila 44e). `test/permisos-matriz.spec.ts` comprueba ahora
+**59 rutas × 4 roles = 236** decisiones.
 
 ## Decisiones tomadas
 
@@ -235,6 +241,14 @@ precios. Restringirla al staff como el walk-in dejaba al CLIENTE sin poder cotiz
 reserva, y el wizard del cliente comparte este blanco. El `RolesGuard` la acota al `barberiaId` del
 parámetro. Cubierto por el control D44 de `test/e3-03-validaciones.e2e-spec.ts` (usa un token de CLIENTE y
 espera 201) y por la fila 44d de la matriz de permisos.
+
+**14. `POST /reservas/:id/cancelar` (E3-05) — `@Roles(CLIENTE, ADMIN_BARBERIA, ADMINISTRADOR)`.**
+Cancelar la declaran los tres roles porque son dos flujos distintos sobre el mismo recurso: el CLIENTE
+cancela SU reserva y la sede cancela por teléfono o mostrador. El `RolesGuard` no puede distinguirlos
+—solo mira el rol y el `barberiaId` del parámetro, y el `CLIENTE` es de ámbito GLOBAL—, así que la
+pertenencia la resuelve el servicio: sin rol de sede en esa barbería, la reserva tiene que ser suya o
+responde 403 `RESERVA_AJENA` (mismo criterio que la fila 40 para el detalle). La ventana de 30 minutos
+del §5.7 es E3-07 y NO se implementa aquí.
 
 ### Ajustes sobre las decisiones, decididos con el dueño
 

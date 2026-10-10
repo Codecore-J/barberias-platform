@@ -25,6 +25,19 @@ import {
 
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import {
+  JOBS,
+  QUEUES,
+  jobIdExpiracionReserva,
+  type ExpirarReservaJobPayload,
+} from '../../shared/queues/queue.constants.js';
+
+/**
+ * Estados desde los que el cliente o la sede todavía pueden cancelar (E3-05).
+ * Todo lo demás es terminal (`EXPIRADA`, `CANCELADA`, `RECHAZADA`, `NO_ASISTIO`,
+ * `COMPLETADA`) y volver a cancelarlo es un 409 `ESTADO_INVALIDO`.
+ */
+export const ESTADOS_CANCELABLES = ['PENDIENTE', 'CONFIRMADA', 'PROPUESTA_PENDIENTE'] as const;
 
 /** Texto del catálogo §5.5 para la notificación, en el idioma del usuario. */
 const TEXTO_MOTIVO_RECHAZO: Record<string, string> = {
@@ -39,13 +52,10 @@ const TEXTO_MOTIVO_RECHAZO: Record<string, string> = {
 export class ReservaService {
   private readonly logger = new Logger(ReservaService.name);
 
-  /** Nombre real del job que consume `ReservaProcessor` (literal de BullMQ). */
-  private static readonly JOB_EXPIRAR_RESERVA = 'expirar-reserva';
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly disponibilidadService: DisponibilidadService,
-    @InjectQueue('reservas-pendientes') private readonly reservasQueue: Queue,
+    @InjectQueue(QUEUES.RESERVAS) private readonly reservasQueue: Queue,
     private readonly auditoriaService: AuditoriaService,
     @Optional() private readonly notificacionService?: NotificacionService,
   ) {}
@@ -327,9 +337,9 @@ export class ReservaService {
         // forma de encontrarlo después. Además es idempotente: reencolar la
         // misma reserva no duplica el job.
         await this.reservasQueue.add(
-          ReservaService.JOB_EXPIRAR_RESERVA,
-          { reservaId: reserva.id },
-          { delay: 10 * 60000, jobId: this.jobIdDeExpiracion(reserva.id) },
+          JOBS.EXPIRAR_RESERVA,
+          { reservaId: reserva.id, barberiaId } satisfies ExpirarReservaJobPayload,
+          { delay: 10 * 60000, jobId: jobIdExpiracionReserva(reserva.id) },
         );
         this.logger.log(`Job de expiración programado para reserva ${reserva.id} en 10 minutos`);
       }
@@ -903,7 +913,7 @@ export class ReservaService {
    * puede mover una reserva que ya dejó de estar pendiente.
    */
   private async cancelarJobExpiracion(reservaId: string): Promise<void> {
-    const jobId = this.jobIdDeExpiracion(reservaId);
+    const jobId = jobIdExpiracionReserva(reservaId);
 
     try {
       const job = await this.reservasQueue.getJob(jobId);
@@ -921,20 +931,6 @@ export class ReservaService {
     }
   }
 
-  /**
-   * El `jobId` es determinista para poder cancelarlo después. Se lee del mismo
-   * literal que usa el processor (`'expirar-reserva'`), no de
-   * `queue.constants.ts`, cuyas constantes (`QUEUES.RESERVAS =
-   * 'queue:reservas'`, `JOBS.EXPIRAR_RESERVA = 'job:expirar-reserva'`) no
-   * coinciden con la cola real `'reservas-pendientes'` ni con el nombre real
-   * del job. Ver HALLAZGO-E304-01 en el reporte.
-   */
-  private jobIdDeExpiracion(reservaId: string): string {
-    // Sin `:` a propósito: BullMQ reserva ese carácter para separar las claves
-    // de Redis y rechaza cualquier `jobId` propio que lo contenga
-    // ("Custom Id cannot contain :").
-    return `expirar-reserva-${reservaId}`;
-  }
 
   private fechaISO(fecha: Date): string {
     return new Date(fecha).toISOString().slice(0, 10);
@@ -942,6 +938,111 @@ export class ReservaService {
 
   private horaHHMM(hora: Date): string {
     return `${String(hora.getUTCHours()).padStart(2, '0')}:${String(hora.getUTCMinutes()).padStart(2, '0')}`;
+  }
+
+  /**
+   * E3-05 · Cancelación manual: `→ CANCELADA`.
+   *
+   * La ruta la declaran los tres roles (`CLIENTE`, `ADMIN_BARBERIA`,
+   * `ADMINISTRADOR`), pero el `RolesGuard` solo mira el ROL y el `barberiaId`
+   * del parámetro: un CLIENTE de la sede pasaría el guard con la reserva de
+   * OTRO cliente. La pertenencia se resuelve aquí, con el mismo criterio que
+   * `obtenerDetalleReserva` usa para el detalle (HALLAZGO-14): si el solicitante
+   * no es staff de la sede, la reserva tiene que ser suya.
+   *
+   * El estado destino es `CANCELADA` —el valor del dominio (§5.7) y el que ya
+   * tratan como terminal `pago.service` y `notificacion.processor`—, no un
+   * `CANCELADA_CLIENTE` nuevo que esos consumidores no reconocerían.
+   *
+   * Liberar el horario es consecuencia del propio cambio de estado: `CANCELADA`
+   * no ocupa agenda (§5.3) y la disponibilidad se calcula, no se almacena.
+   */
+  async cancelarReserva(barberiaId: string, reservaId: string, user: UsuarioAutenticado) {
+    const rolesEnBarberia =
+      user.rolesDetallados?.filter((rol) => alcanceCumple(rol, barberiaId)) ?? [];
+
+    if (rolesEnBarberia.length === 0) {
+      throw new ForbiddenException('No tienes acceso a las reservas de esta barbería.');
+    }
+
+    const esStaff = rolesEnBarberia.some((rol) =>
+      [ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA].includes(rol.nombre),
+    );
+
+    const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+
+      const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
+
+      if (!actual) {
+        throw new NotFoundException('Reserva no encontrada');
+      }
+
+      if (!esStaff && actual.clienteId !== user.id) {
+        throw errorDePermiso(
+          'RESERVA_AJENA',
+          'Solo puedes cancelar tus propias reservas.',
+        );
+      }
+
+      if (
+        !ESTADOS_CANCELABLES.includes(
+          actual.estado as (typeof ESTADOS_CANCELABLES)[number],
+        )
+      ) {
+        throw errorDeConflicto(
+          'ESTADO_INVALIDO',
+          `Solo se puede cancelar una reserva vigente (estado actual: ${actual.estado}).`,
+        );
+      }
+
+      const actualizada = await tx.reserva.update({
+        where: { id: reservaId },
+        data: { estado: 'CANCELADA' },
+      });
+
+      await this.auditoriaService.registrarEvento(
+        {
+          usuarioId: user.id,
+          accion: 'RESERVA_CANCELADA',
+          entidad: 'Reserva',
+          entidadId: reservaId,
+          contexto: {
+            barberiaId,
+            estadoAnterior: actual.estado,
+            estadoNuevo: 'CANCELADA',
+            canceladoPor: esStaff ? 'STAFF' : 'CLIENTE',
+          },
+        },
+        tx,
+      );
+
+      return actualizada;
+    });
+
+    // BullMQ no participa en la transacción: se cancela el job de expiración
+    // después, best-effort. Si sobreviviera, el processor lo ignora porque la
+    // reserva ya no está en `ESTADOS_EXPIRABLES`.
+    await this.cancelarJobExpiracion(reservaId);
+
+    if (this.notificacionService) {
+      const destinatario = esStaff ? reserva.clienteId : user.id;
+      const contenido = esStaff
+        ? `Tu reserva del ${this.fechaISO(reserva.fechaCita)} a las ${this.horaHHMM(reserva.horaInicio)} fue cancelada por la sede.`
+        : `Tu reserva del ${this.fechaISO(reserva.fechaCita)} a las ${this.horaHHMM(reserva.horaInicio)} quedó cancelada.`;
+
+      this.notificacionService
+        .enviarNotificacion({
+          usuarioId: destinatario,
+          tipo: 'RESERVA_CANCELADA',
+          contenido,
+        })
+        .catch((err) =>
+          this.logger.warn(`No se pudo notificar la cancelación: ${err.message}`),
+        );
+    }
+
+    return reserva;
   }
 
   async cambiarEstado(barberiaId: string, reservaId: string, nuevoEstado: string, user: UsuarioAutenticado) {
