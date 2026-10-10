@@ -2,6 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { ESTADOS } from '../../shared/domain/estados.js';
 
 @Processor('notificaciones')
 export class NotificacionProcessor extends WorkerHost {
@@ -41,7 +42,16 @@ export class NotificacionProcessor extends WorkerHost {
         where: { id: reservaId },
       });
 
-      if (!reserva || ['CANCELADA', 'NO_ASISTIO', 'EXPIRADA'].includes(reserva.estado)) {
+      // E2-02: mismos tres estados de antes, ahora desde el catálogo único.
+      // `NO_ASISTIO` no pertenecía a los 8 de §5.1: el estado real es
+      // `NO_PRESENTADO` (H45).
+      const estadosSinRecordatorio: readonly string[] = [
+        ESTADOS.CANCELADA,
+        ESTADOS.NO_PRESENTADO,
+        ESTADOS.EXPIRADA,
+      ];
+
+      if (!reserva || estadosSinRecordatorio.includes(reserva.estado)) {
         this.logger.log(
           `Recordatorio descartado: la reserva ${reservaId} ya no está activa (Estado: ${reserva?.estado})`,
         );

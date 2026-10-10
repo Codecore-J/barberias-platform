@@ -199,11 +199,16 @@ import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.c
                          <button (click)="iniciarCobro(turno)" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors">
                            Cobrar
                          </button>
-                         @if (puedeMarcarInasistencia()) {
-                           <button (click)="cambiarEstado(turno.id, 'NO_ASISTIO')" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
-                             No Asistió
-                           </button>
-                         }
+                      </div>
+                    }
+                    <!-- E2-02: el no presentado de §5.2 solo existe desde CONFIRMADA
+                         (la sede RECHAZA una PENDIENTE); antes el botón aparecía en
+                         PENDIENTE y el backend lo aceptaba desde cualquier estado. -->
+                    @if (turno.estado === 'CONFIRMADA' && puedeMarcarInasistencia()) {
+                      <div class="flex items-center justify-end gap-2 pt-2 mt-2 border-t border-white/5">
+                        <button (click)="marcarInasistencia(turno.id)" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
+                          No Asistió
+                        </button>
                       </div>
                     }
                   </div>
@@ -294,9 +299,10 @@ export class AdminAgendaComponent implements OnInit {
   turnoACobrar = signal<any | null>(null);
   clienteSeleccionado = signal<any | null>(null);
 
-  // E1-05 · D02: PATCH /reservas/:id/estado es del ADMIN_BARBERIA y del
-  // ADMINISTRADOR global, así que el barbero no ve el botón «No Asistió»
-  // (la pantalla le deja cobrar y registrar el walk-in, que sí puede).
+  // E1-05 · D02: el no presentado (`POST /reservas/:id/inasistencia` desde
+  // E2-02) es del ADMIN_BARBERIA y del ADMINISTRADOR global, así que el barbero
+  // no ve el botón «No Asistió» (la pantalla le deja cobrar y registrar el
+  // walk-in, que sí puede).
   puedeMarcarInasistencia = computed(() => {
     const roles = this.authService.authState().user?.roles ?? [];
     return !roles.includes('BARBERO') || roles.includes('ADMIN_BARBERIA') || roles.includes('ADMINISTRADOR');
@@ -375,9 +381,13 @@ export class AdminAgendaComponent implements OnInit {
       .sort((a, b) => new Date(a.fechaHoraInicio).getTime() - new Date(b.fechaHoraInicio).getTime());
   }
 
-  cambiarEstado(id: string, nuevoEstado: string) {
-    if (confirm(`¿Confirmas que deseas marcar este turno como ${nuevoEstado}?`)) {
-      this.reservasService.cambiarEstado(id, nuevoEstado).subscribe(() => {
+  /**
+   * E2-02: `PATCH /reservas/:id/estado` ya no existe. El no presentado tiene su
+   * ruta dedicada y solo se admite desde `CONFIRMADA` (§5.2).
+   */
+  marcarInasistencia(id: string) {
+    if (confirm('¿Confirmas que el cliente no se presentó a este turno?')) {
+      this.reservasService.marcarInasistencia(id).subscribe(() => {
         this.cargarDatos();
       });
     }

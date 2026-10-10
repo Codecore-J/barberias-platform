@@ -43,22 +43,13 @@ export class ReservaController {
     return this.reservaService.obtenerMisReservas(user.id);
   }
 
-  /**
-   * PATCH /reservas/:id/estado
-   * Cambiar el estado de una reserva queda restringido al responsable de la
-   * barbería y al ADMINISTRADOR global (decisión 11): el no presentado es una
-   * decisión de la sede, no del barbero.
-   */
-  @Patch(':id/estado')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  cambiarEstado(
-    @CurrentBarberiaId() barberiaId: string,
-    @Param('id', ParseUUIDPipe) reservaId: string,
-    @Body('estado') estado: string,
-    @CurrentUser() user: UsuarioAutenticado,
-  ) {
-    return this.reservaService.cambiarEstado(barberiaId, reservaId, estado, user);
-  }
+  // E2-02: aquí vivía `PATCH /reservas/:id/estado`, un «pon el estado que
+  // quieras» que escribía directo sobre `reservas.estado` sin comprobar el
+  // grafo de §5.2 (H45). Se eliminó: los flujos de E3-03 a E3-08 son los caminos
+  // válidos y cada uno trae sus condiciones (ventana de 30 min, motivo
+  // obligatorio, bandera D17, revalidación del hueco), y el no presentado tiene
+  // su propia ruta (`POST :id/inasistencia`). El único punto de escritura de
+  // estado es ahora `ReservaService.cambiarEstado`, privado.
 
   /**
    * POST /reservas

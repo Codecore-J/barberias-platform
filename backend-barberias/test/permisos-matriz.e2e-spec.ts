@@ -82,7 +82,9 @@ const CASOS: Caso[] = [
   { verbo: 'get', ruta: '/reservas/mis-reservas', permitidos: ['CLIENTE', 'ADMINISTRADOR'] },
   { verbo: 'get', ruta: '/reservas/agenda?fecha=2026-10-05', permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR'] },
   { verbo: 'get', ruta: `/reservas/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR'] },
-  { verbo: 'patch', ruta: `/reservas/${randomUUID()}/estado`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: { estado: 'CANCELADA' } },
+  // E2-02 (2026-10-11): `PATCH /reservas/:id/estado` ya no existe (el caso se
+  // quitó de la matriz; con él, cualquier rol recibía 404). El no presentado
+  // conserva su ruta dedicada.
   { verbo: 'post', ruta: `/reservas/${randomUUID()}/inasistencia`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
 
   // ── catálogo ─────────────────────────────────────────────────────────────

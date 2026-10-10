@@ -131,12 +131,18 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /barberias/:barberiaId/reservas,reservas/cotizar': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /barberias/:barberiaId/reservas,reservas/mis-reservas': [ROL_CLIENTE],
   'GET /barberias/:barberiaId/reservas,reservas/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE],
-  'PATCH /barberias/:barberiaId/reservas,reservas/:id/estado': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // E2-02 (2026-10-11): `PATCH .../reservas/:id/estado` se eliminó. Era un
+  // «pon el estado que quieras» que escribía directo sobre `reservas.estado`
+  // sin comprobar el grafo de §5.2: con ella, un ADMIN podía saltarse
+  // aceptar/rechazar/cancelar y hasta cobrar sin pasar por caja. La matriz
+  // pierde esa fila (64 → 63 rutas) y el único escritor de estado es ahora
+  // `ReservaService.cambiarEstado`, privado y con la máquina delante.
   'POST /barberias/:barberiaId/reservas,reservas/:id/inasistencia': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // E3-04 (2026-10-09): aceptar y rechazar una solicitud son decisiones de la
   // SEDE, no del barbero: la misma matriz que el no presentado (D02) y que el
-  // cambio de estado (decisión 11). El `RolesGuard` las acota al `barberiaId`
-  // del parámetro, así que un admin de otra sede recibe 403.
+  // cambio de estado (decisión 11, hoy ya sin ruta genérica). El `RolesGuard`
+  // las acota al `barberiaId` del parámetro, así que un admin de otra sede
+  // recibe 403.
   'POST /barberias/:barberiaId/reservas,reservas/:id/aceptar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'POST /barberias/:barberiaId/reservas,reservas/:id/rechazar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // E3-05 (2026-10-09): cancelar la declaran los tres roles. El CLIENTE dueño
@@ -303,9 +309,11 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
   }
 
-  it('descubrir las 64 rutas del servidor y todas tienen decision', () => {
+  // E2-02 (2026-10-11): eran 64 rutas; `PATCH /reservas/:id/estado` se eliminó
+  // (ver la nota del diccionario), así que quedan 63.
+  it('descubrir las 63 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(64);
+    expect(claves.length).toBe(63);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -389,13 +397,14 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
     console.log('');
 
-    // 64 rutas × 4 roles: la partición de E3-03 añadió POST /reservas/walk-in,
+    // 63 rutas × 4 roles: la partición de E3-03 añadió POST /reservas/walk-in,
     // el endpoint de cotización (D44) añadió POST /reservas/cotizar, E3-04
     // añadió POST /reservas/:id/aceptar y POST /reservas/:id/rechazar, E3-05
     // añadió POST /reservas/:id/cancelar, E3-06 añadió
-    // PATCH /reservas/:id/reprogramar y E3-08 añade cuatro: cancelación especial,
-    // proponer-horario y su bandeja de aceptar/rechazar.
-    expect(evaluaciones).toBe(256);
+    // PATCH /reservas/:id/reprogramar, E3-08 añadió cuatro (cancelación
+    // especial, proponer-horario y su bandeja de aceptar/rechazar) y E2-02
+    // quitó PATCH /reservas/:id/estado.
+    expect(evaluaciones).toBe(252);
     expect(
       desviaciones.length === 0
         ? ''
