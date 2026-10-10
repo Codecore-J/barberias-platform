@@ -225,10 +225,15 @@ describe('E3-04 · aceptar y rechazar solicitudes MANUALES', () => {
     ).id;
 
     // Horario de sede 00:00-23:59 todos los días: cualquier hora cuadra.
+    // `diaSemana` del dominio es 1=Lunes … 7=Domingo (el DTO lo valida con
+    // @Min(1) @Max(7) y el servicio pregunta por 7 el domingo). Insertando 0..6
+    // el domingo (7) se quedaba SIN horario y toda creación de ese día recibía
+    // 409 «ya no está disponible», que es exactamente lo que rompía el E2E los
+    // domingos.
     await prisma.horario.createMany({
       data: Array.from({ length: 7 }, (_, diaSemana) => ({
         barberiaId: sede,
-        diaSemana,
+        diaSemana: diaSemana + 1,
         horaInicio: new Date('1970-01-01T00:00:00.000Z'),
         horaFin: new Date('1970-01-01T23:59:00.000Z'),
       })),

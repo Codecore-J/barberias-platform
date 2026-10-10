@@ -198,10 +198,12 @@ describe('E3-03 · partición de POST /reservas: cliente vs walk-in', () => {
     ).id;
 
     // Horario de sede 00:00-23:59 todos los días: cualquier hora cuadra.
+    // `diaSemana` es 1=Lunes … 7=Domingo: con 0..6 el domingo (7) se quedaba sin
+    // horario y ese día toda creación de reserva devolvía 409.
     await prisma.horario.createMany({
       data: Array.from({ length: 7 }, (_, diaSemana) => ({
         barberiaId,
-        diaSemana,
+        diaSemana: diaSemana + 1,
         horaInicio: new Date('1970-01-01T00:00:00.000Z'),
         horaFin: new Date('1970-01-01T23:59:00.000Z'),
       })),

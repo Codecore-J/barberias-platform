@@ -124,7 +124,9 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     // Crear Horario para todos los dias de la semana para evitar problemas de UTC
-    for (let i = 0; i <= 6; i++) {
+    // `diaSemana` es 1=Lunes … 7=Domingo: con 0..6 el domingo (7) quedaba sin
+    // horario y ese día toda creación de reserva devolvía 409.
+    for (let i = 1; i <= 7; i++) {
       await prisma.horario.create({
         data: {
           barberiaId,
