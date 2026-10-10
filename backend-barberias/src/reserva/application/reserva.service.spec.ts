@@ -2,8 +2,16 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ReservaService } from './reserva.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { DisponibilidadService } from '../../agenda/application/disponibilidad.service.js';
-import { ConflictException, ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
+import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
+
+/** Hora UTC, igual que la escribe `parseTime` (setUTCHours). */
+function hora(h: number, m: number): Date {
+  const d = new Date('1970-01-01T00:00:00Z');
+  d.setUTCHours(h, m, 0, 0);
+  return d;
+}
 
 describe('ReservaService', () => {
   let service: ReservaService;
@@ -12,7 +20,7 @@ describe('ReservaService', () => {
     $queryRaw: vi.fn(),
     configuracionBarberia: { findUnique: vi.fn() },
     clienteBarberia: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
-    reserva: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
+    reserva: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), count: vi.fn() },
     participanteReserva: { create: vi.fn() },
     participanteServicio: { createMany: vi.fn() },
     servicio: { findMany: vi.fn() },
@@ -29,6 +37,11 @@ describe('ReservaService', () => {
 
   const mockQueue = {
     add: vi.fn(),
+    getJob: vi.fn(),
+  };
+
+  const mockAuditoriaService = {
+    registrarEvento: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -40,6 +53,7 @@ describe('ReservaService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: DisponibilidadService, useValue: mockDisponibilidadService },
         { provide: getQueueToken('reservas-pendientes'), useValue: mockQueue },
+        { provide: AuditoriaService, useValue: mockAuditoriaService },
       ],
     }).compile();
 
@@ -52,15 +66,13 @@ describe('ReservaService', () => {
 
   describe('crearReserva y Snapshot Inmutable (T6.2)', () => {
     it('debe congelar precioHistorico, duracionHistorica y margenHistorico en el snapshot de ParticipanteServicio', async () => {
-      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null); // No restringido
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
         nuevasReservasActivas: true,
         aceptaIndividual: true,
         margenGrupalMinutos: 10,
       });
-
-      // Simular catálogo con precio oficial de $15, 30 mins, 5 margen
       mockPrismaService.servicio.findMany.mockResolvedValue([
         { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 5 },
       ]);
@@ -86,19 +98,15 @@ describe('ReservaService', () => {
         precioTotalEsperado: 15,
       });
 
-      // Verificar que se creó la reserva con totalPagar del catálogo
       expect(mockPrismaService.reserva.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             totalPagar: 15,
-            // D42: el margen snapshotteado viene de la configuración de la barbería (10),
-            // no de la suma de márgenes de los servicios (5).
             margenGrupalHistorico: 10,
           }),
         }),
       );
 
-      // Verificar snapshot congelado e inmutable en participanteServicio
       expect(mockPrismaService.participanteServicio.createMany).toHaveBeenCalledWith({
         data: [
           {
@@ -113,17 +121,13 @@ describe('ReservaService', () => {
     });
 
     it('D42: debe snapshottear configuracion_barberia.margen_grupal_minutos, nunca la suma de margenes ni el valor del DTO', async () => {
-      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null);
-      // La barbería define su propio margen grupal (D42): 12 min, rango 0-60
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
         nuevasReservasActivas: true,
         aceptaIndividual: true,
         margenGrupalMinutos: 12,
       });
-
-      // Dos servicios: la suma de sus márgenes (5+5=10) NO coincide con el valor de
-      // configuración (12) y el mayor (5) tampoco — así el test distingue las 3 reglas.
       mockPrismaService.servicio.findMany.mockResolvedValue([
         { id: 's1', precio: 15, duracionEstimada: 20, margenOperativo: 5 },
         { id: 's2', precio: 10, duracionEstimada: 10, margenOperativo: 5 },
@@ -149,7 +153,6 @@ describe('ReservaService', () => {
         precioTotalEsperado: 25,
       });
 
-      // Snapshot = valor de configuración (12), no la suma (10) ni el mayor (5)
       expect(mockPrismaService.reserva.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -158,7 +161,6 @@ describe('ReservaService', () => {
         }),
       );
 
-      // Y ese mismo valor es el que se exige a la disponibilidad (D44: todo se calcula aquí)
       expect(mockDisponibilidadService.calcularDisponibilidad).toHaveBeenCalledWith(
         expect.objectContaining({ margenRequerido: 12 }),
         expect.anything(),
@@ -166,14 +168,12 @@ describe('ReservaService', () => {
     });
 
     it('debe rechazar con BadRequestException si los servicios solicitados no existen en la barbería', async () => {
-      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null);
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
         nuevasReservasActivas: true,
         aceptaIndividual: true,
       });
-
-      // No encuentra el servicio
       mockPrismaService.servicio.findMany.mockResolvedValue([]);
 
       await expect(
@@ -188,19 +188,16 @@ describe('ReservaService', () => {
     });
 
     it('debe rechazar con BadRequestException si el rango de horario solicitado es insuficiente para los servicios', async () => {
-      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null);
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
         nuevasReservasActivas: true,
         aceptaIndividual: true,
       });
-
-      // Servicio dura 60 minutos
       mockPrismaService.servicio.findMany.mockResolvedValue([
         { id: 's1', precio: 50, duracionEstimada: 60, margenOperativo: 0 },
       ]);
 
-      // Usuario solo pide 30 minutos (09:00 a 09:30)
       await expect(
         service.crearReserva('uuid-cliente', 'uuid-barberia', {
           fecha: '2026-10-10',
@@ -229,8 +226,8 @@ describe('ReservaService', () => {
       ).rejects.toThrowError(ForbiddenException);
     });
 
-    it('debe rechazar con BadRequestException si la barbería pausó nuevas reservas', async () => {
-      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null);
+    it('debe rechazar con UnprocessableEntityException (422 D40) si la barbería pausó nuevas reservas', async () => {
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
         nuevasReservasActivas: false,
@@ -245,17 +242,16 @@ describe('ReservaService', () => {
           serviciosIds: ['s1'],
           precioTotalEsperado: 15,
         }),
-      ).rejects.toThrowError(BadRequestException);
+      ).rejects.toThrowError(UnprocessableEntityException);
     });
 
     it('debe fallar con ConflictException si no hay disponibilidad en la fecha solicitada', async () => {
-      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null);
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
         nuevasReservasActivas: true,
         aceptaIndividual: true,
       });
-
       mockPrismaService.servicio.findMany.mockResolvedValue([
         { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 5 },
       ]);
@@ -266,7 +262,10 @@ describe('ReservaService', () => {
       const finSlot = new Date(fecha);
       finSlot.setHours(12, 0, 0, 0);
 
-      // Disponibilidad en otro horario (11:00 a 12:00, pero pide 09:00 a 09:30)
+      // El bloque solicitado (09:00-09:30) no está dentro del slot de
+      // disponibilidad (11:00-12:00): la regla de negocio no puede reservar ese
+      // hueco y lanza ConflictException (409). Es la prueba del bloqueo de
+      // concurrencia: FOR UPDATE + SERIALIZABLE + disponibilidad.
       mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
         { inicio: inicioSlot, fin: finSlot },
       ]);
@@ -280,6 +279,218 @@ describe('ReservaService', () => {
           precioTotalEsperado: 15,
         }),
       ).rejects.toThrowError(ConflictException);
+    });
+  });
+
+  describe('E3-04 aceptar y rechazar solicitudes', () => {
+    const usuarioAdmin = { id: 'uuid-admin', correo: 'admin@test.com', roles: ['ADMIN_BARBERIA'] };
+
+    /** Reserva PENDIENTE coherente: fecha UTC y horas UTC como `parseTime`. */
+    const reservaPendiente = (extra: Record<string, unknown> = {}) => ({
+      id: 'uuid-reserva',
+      barberiaId: 'uuid-barberia',
+      clienteId: 'uuid-cliente',
+      estado: 'PENDIENTE',
+      fechaCita: new Date('2026-10-10'),
+      horaInicio: hora(10, 0),
+      horaFin: hora(10, 30),
+      margenGrupalHistorico: 10,
+      totalPagar: 30,
+      expiraAt: new Date(Date.now() + 5 * 60000),
+      ...extra,
+    });
+
+    /** Único slot que cubre el bloque 10:00-10:40 del día completo. */
+    const slotDelDia = () => {
+      const inicio = new Date('2026-10-10');
+      inicio.setHours(0, 0, 0, 0);
+      const fin = new Date('2026-10-10');
+      fin.setHours(23, 59, 0, 0);
+      return { inicio, fin };
+    };
+
+    it('ROJO: aceptar una solicitud expirada → 409 SOLICITUD_EXPIRADA', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(
+        reservaPendiente({ expiraAt: new Date(Date.now() - 60_000) }),
+      );
+
+      await expect(
+        service.aceptarReserva('uuid-barberia', 'uuid-reserva', usuarioAdmin as any),
+      ).rejects.toMatchObject({ response: { codigo: 'SOLICITUD_EXPIRADA', statusCode: 409 } });
+
+      expect(mockPrismaService.reserva.update).not.toHaveBeenCalled();
+    });
+
+    it('ROJO: aceptar una reserva que ya no está PENDIENTE → 409 ESTADO_INVALIDO', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(
+        reservaPendiente({ estado: 'CONFIRMADA' }),
+      );
+
+      await expect(
+        service.aceptarReserva('uuid-barberia', 'uuid-reserva', usuarioAdmin as any),
+      ).rejects.toMatchObject({ response: { codigo: 'ESTADO_INVALIDO', statusCode: 409 } });
+    });
+
+    it('ROJO: aceptar sin hueco disponible → 409 CONFLICTO_HORARIO', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reservaPendiente());
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({ margenGrupalMinutos: 10 });
+      // El hueco lo ocupa otro bloque: no hay slots. Se revalida ANTES de escribir.
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([]);
+
+      await expect(
+        service.aceptarReserva('uuid-barberia', 'uuid-reserva', usuarioAdmin as any),
+      ).rejects.toMatchObject({ response: { codigo: 'CONFLICTO_HORARIO', statusCode: 409 } });
+
+      expect(mockPrismaService.reserva.update).not.toHaveBeenCalled();
+    });
+
+    it('VERDE: aceptar PENDIENTE → CONFIRMADA, revalida excluyendo la propia reserva, audita y cancela el job', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reservaPendiente());
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({ margenGrupalMinutos: 10 });
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([slotDelDia()]);
+      mockPrismaService.reserva.update.mockResolvedValue({ id: 'uuid-reserva', estado: 'CONFIRMADA' });
+      mockAuditoriaService.registrarEvento.mockResolvedValue({ id: 'uuid-auditoria' });
+      const remove = vi.fn().mockResolvedValue(undefined);
+      mockQueue.getJob.mockResolvedValue({ remove });
+
+      const res = await service.aceptarReserva('uuid-barberia', 'uuid-reserva', usuarioAdmin as any);
+
+      expect(res.estado).toBe('CONFIRMADA');
+      expect(mockPrismaService.reserva.update).toHaveBeenCalledWith({
+        where: { id: 'uuid-reserva' },
+        data: { estado: 'CONFIRMADA' },
+      });
+
+      // La revalidación excluye la propia reserva: sigue PENDIENTE al medirse.
+      expect(mockDisponibilidadService.calcularDisponibilidad).toHaveBeenCalledWith(
+        expect.objectContaining({ barberiaId: 'uuid-barberia', excluirReservaId: 'uuid-reserva' }),
+        expect.anything(),
+      );
+
+      expect(mockAuditoriaService.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({ accion: 'RESERVA_CONFIRMADA', entidadId: 'uuid-reserva' }),
+        expect.anything(),
+      );
+
+      // El job se busca por el id determinista del job de expiración.
+      expect(mockQueue.getJob).toHaveBeenCalledWith('expirar-reserva-uuid-reserva');
+      expect(remove).toHaveBeenCalled();
+    });
+
+    it('ROJO: rechazar sin motivo → 400 MOTIVO_INVALIDO (regla de dominio, no solo del DTO)', async () => {
+      await expect(
+        service.rechazarReserva('uuid-barberia', 'uuid-reserva', {} as any, usuarioAdmin as any),
+      ).rejects.toMatchObject({ response: { codigo: 'MOTIVO_INVALIDO', statusCode: 400 } });
+
+      expect(mockPrismaService.reserva.update).not.toHaveBeenCalled();
+    });
+
+    it('ROJO: rechazar con un código fuera del catálogo §5.5 → 400', async () => {
+      await expect(
+        service.rechazarReserva(
+          'uuid-barberia',
+          'uuid-reserva',
+          { motivoCodigo: 'LO_QUE_SEA' } as any,
+          usuarioAdmin as any,
+        ),
+      ).rejects.toMatchObject({ response: { codigo: 'MOTIVO_INVALIDO', statusCode: 400 } });
+    });
+
+    it('ROJO: rechazar con OTRO y detalle corto → 400', async () => {
+      await expect(
+        service.rechazarReserva(
+          'uuid-barberia',
+          'uuid-reserva',
+          { motivoCodigo: 'OTRO', motivoDetalle: 'ab' } as any,
+          usuarioAdmin as any,
+        ),
+      ).rejects.toMatchObject({ response: { codigo: 'MOTIVO_INVALIDO', statusCode: 400 } });
+    });
+
+    it('VERDE: rechazar PENDIENTE → RECHAZADA con motivo persistido, audita y cancela el job', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reservaPendiente());
+      mockPrismaService.reserva.update.mockResolvedValue({
+        id: 'uuid-reserva',
+        estado: 'RECHAZADA',
+        motivoCodigo: 'OTRO',
+        motivoDetalle: 'El barbero se ausentó',
+        clienteId: 'uuid-cliente',
+      });
+      mockAuditoriaService.registrarEvento.mockResolvedValue({ id: 'uuid-auditoria' });
+      mockQueue.getJob.mockResolvedValue(null);
+
+      const res = await service.rechazarReserva(
+        'uuid-barberia',
+        'uuid-reserva',
+        { motivoCodigo: 'OTRO', motivoDetalle: 'El barbero se ausentó' } as any,
+        usuarioAdmin as any,
+      );
+
+      expect(res.estado).toBe('RECHAZADA');
+      expect(mockPrismaService.reserva.update).toHaveBeenCalledWith({
+        where: { id: 'uuid-reserva' },
+        data: { estado: 'RECHAZADA', motivoCodigo: 'OTRO', motivoDetalle: 'El barbero se ausentó' },
+      });
+      expect(mockAuditoriaService.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({ accion: 'RESERVA_RECHAZADA', entidadId: 'uuid-reserva' }),
+        expect.anything(),
+      );
+    });
+
+    it('VERDE: rechazar con un código válido distinto de OTRO guarda el detalle en nulo', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reservaPendiente());
+      mockPrismaService.reserva.update.mockResolvedValue({ id: 'uuid-reserva', estado: 'RECHAZADA' });
+      mockAuditoriaService.registrarEvento.mockResolvedValue({ id: 'uuid-auditoria' });
+      mockQueue.getJob.mockResolvedValue(null);
+
+      await service.rechazarReserva(
+        'uuid-barberia',
+        'uuid-reserva',
+        { motivoCodigo: 'HORARIO_NO_DISPONIBLE' } as any,
+        usuarioAdmin as any,
+      );
+
+      expect(mockPrismaService.reserva.update).toHaveBeenCalledWith({
+        where: { id: 'uuid-reserva' },
+        data: { estado: 'RECHAZADA', motivoCodigo: 'HORARIO_NO_DISPONIBLE', motivoDetalle: null },
+      });
+    });
+
+    it('el job de expiración se encola con un jobId determinista (E3-04 §4)', async () => {
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
+        modoReserva: 'MANUAL',
+        nuevasReservasActivas: true,
+        aceptaIndividual: true,
+        margenGrupalMinutos: 10,
+      });
+      mockPrismaService.servicio.findMany.mockResolvedValue([
+        { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 0 },
+      ]);
+      const inicioSlot = new Date('2026-10-10');
+      inicioSlot.setHours(9, 0, 0, 0);
+      const finSlot = new Date('2026-10-10');
+      finSlot.setHours(10, 30, 0, 0);
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
+        { inicio: inicioSlot, fin: finSlot },
+      ]);
+      mockPrismaService.reserva.create.mockResolvedValue({ id: 'uuid-reserva' });
+      mockPrismaService.participanteReserva.create.mockResolvedValue({ id: 'uuid-part' });
+
+      await service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        fecha: '2026-10-10',
+        horaInicio: '09:00',
+        horaFin: '09:30',
+        serviciosIds: ['s1'],
+        precioTotalEsperado: 15,
+        tipo: 'INDIVIDUAL',
+      } as any);
+
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'expirar-reserva',
+        { reservaId: 'uuid-reserva' },
+        expect.objectContaining({ jobId: 'expirar-reserva-uuid-reserva' }),
+      );
     });
   });
 

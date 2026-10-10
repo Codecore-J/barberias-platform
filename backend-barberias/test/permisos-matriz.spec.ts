@@ -124,10 +124,21 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // de las dos: se sustituyen 4 aserciones mezcladas por 2 + 2 más estrictas.
   'POST /barberias/:barberiaId/reservas,reservas/': [ROL_CLIENTE],
   'POST /barberias/:barberiaId/reservas,reservas/walk-in': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // D44: la cotización sin persistir la usan tanto el wizard del cliente (que
+  // necesita cotizar antes de crear su propia reserva) como el modal de
+  // walk-in, así que declara los cuatro roles: cotizar no persiste nada y el
+  // CLIENTE debe poder consultar el precio de su futura reserva.
+  'POST /barberias/:barberiaId/reservas,reservas/cotizar': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /barberias/:barberiaId/reservas,reservas/mis-reservas': [ROL_CLIENTE],
   'GET /barberias/:barberiaId/reservas,reservas/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE],
   'PATCH /barberias/:barberiaId/reservas,reservas/:id/estado': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'POST /barberias/:barberiaId/reservas,reservas/:id/inasistencia': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // E3-04 (2026-10-09): aceptar y rechazar una solicitud son decisiones de la
+  // SEDE, no del barbero: la misma matriz que el no presentado (D02) y que el
+  // cambio de estado (decisión 11). El `RolesGuard` las acota al `barberiaId`
+  // del parámetro, así que un admin de otra sede recibe 403.
+  'POST /barberias/:barberiaId/reservas,reservas/:id/aceptar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /barberias/:barberiaId/reservas,reservas/:id/rechazar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /barberias/:barberiaId/reservas,reservas/agenda': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_ADMINISTRADOR],
 
   'GET /catalogo/servicios,servicios/': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
@@ -273,9 +284,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
   }
 
-  it('descubrir las 55 rutas del servidor y todas tienen decision', () => {
+  it('descubrir las 58 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(55);
+    expect(claves.length).toBe(58);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -359,8 +370,10 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
     console.log('');
 
-    // 55 rutas × 4 roles: la partición de E3-03 añade POST /reservas/walk-in.
-    expect(evaluaciones).toBe(220);
+    // 58 rutas × 4 roles: la partición de E3-03 añadió POST /reservas/walk-in,
+    // el endpoint de cotización (D44) añadió POST /reservas/cotizar y E3-04
+    // añade POST /reservas/:id/aceptar y POST /reservas/:id/rechazar.
+    expect(evaluaciones).toBe(232);
     expect(
       desviaciones.length === 0
         ? ''

@@ -103,6 +103,9 @@
 | 42 | POST | `/barberias/:barberiaId/reservas/:id/inasistencia` · `/reservas/:id/inasistencia` | ReservaController | `@Roles(ADMIN_BARBERIA, BARBERO, ADMINISTRADOR)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D02) | **sí** | no | no | `test/permisos-matriz.e2e-spec.ts` |
 | 43 | GET | `/barberias/:barberiaId/reservas/agenda` · `/reservas/agenda` | ReservaController | `@Roles(ADMIN_BARBERIA, BARBERO, ADMINISTRADOR)` | `@Roles(ADMIN_BARBERIA, BARBERO, ADMINISTRADOR)` | matriz (D16) | **sí** | **sí** — el barbero solo la suya | sí — `core/services/reservas.service.ts:94` | `test/hallazgo16-rolesguard-global.e2e-spec.ts` |
 | 44 | GET | `/barberias/:barberiaId/reservas/mis-reservas` · `/reservas/mis-reservas` | ReservaController | `@Autenticado` | `@Roles(CLIENTE)` | matriz | no | **sí** — `clienteId` del token | sí — `core/services/reservas.service.ts:77`, y los enlaces «Mis Citas» solo se muestran a CLIENTE | `test/permisos-matriz.e2e-spec.ts` |
+| 44b | POST | `/barberias/:barberiaId/reservas/:id/aceptar` · `/reservas/:id/aceptar` | ReservaController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-04** (decisión 12) | **sí** | **sí** — revalida el hueco bajo `FOR UPDATE` y rechaza con 409 si `expira_at` ya pasó | no | `test/e3-04-aceptar-rechazar.e2e-spec.ts`; `src/reserva/application/reserva.service.spec.ts` |
+| 44c | POST | `/barberias/:barberiaId/reservas/:id/rechazar` · `/reservas/:id/rechazar` | ReservaController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-04** (decisión 12) | **sí** | **sí** — `motivo_codigo` obligatorio del catálogo §5.5 | no | `test/e3-04-aceptar-rechazar.e2e-spec.ts`; `src/reserva/application/reserva.service.spec.ts` |
+| 44d | POST | `/barberias/:barberiaId/reservas/cotizar` · `/reservas/cotizar` | ReservaController | — no existía | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-03/D44** (decisión 13) | **sí** | no — cálculo puro, no persiste ni consulta el recurso | sí — `core/services/reservas.service.ts`, wizard del cliente y walk-in | `test/e3-03-validaciones.e2e-spec.ts` (control D44); `test/permisos-matriz.spec.ts` |
 | 45 | GET | `/catalogo/servicios` · `/servicios` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` + `VinculoBarberiaGuard` | **decisión del dueño** — el CLIENTE requiere fila ACTIVA en `cliente_barberias` | **sí** | **sí** — desde `81db5dc` | sí — `core/services/servicios.service.ts:32` | `src/catalogo/application/servicios.service.spec.ts`; `src/iam/infrastructure/vinculo-barberia.guard.spec.ts` |
 | 46 | POST | `/catalogo/servicios` · `/servicios` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D16) | **sí** | no | sí — `core/services/servicios.service.ts:58` | `test/permisos-matriz.e2e-spec.ts` |
 | 47 | GET | `/catalogo/servicios/:id` · `/servicios/:id` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` + `VinculoBarberiaGuard` | **decisión del dueño** — el CLIENTE requiere fila ACTIVA | **sí** | **sí** — desde `81db5dc` | no | `test/permisos-matriz.e2e-spec.ts`; `src/iam/infrastructure/vinculo-barberia.guard.spec.ts` |
@@ -129,6 +132,11 @@ E3-03 (`758a70d`), que añade `POST /reservas/walk-in`:
 
 Las 5 rutas que siguen en `@Autenticado` son las que devuelven datos del propio solicitante o no son de
 negocio: `GET /`, `GET /auth/me`, `POST /barberias`, `GET /barberias` y `GET /notificaciones/mis-notificaciones`.
+
+**Estado real tras E3-04 (2026-10-09):** `test/route-security.spec.ts` cuenta **58 rutas**
+(`@Public` 6 · `@Autenticado` 5 · `@Roles` 47 · ninguna 0). Sobre las 55 del cuadro de arriba: `+1` por
+`POST /reservas/cotizar` (D44) y `+2` por `POST /reservas/:id/aceptar` y `POST /reservas/:id/rechazar` (E3-04).
+`test/permisos-matriz.spec.ts` comprueba ahora **58 rutas × 4 roles = 232** decisiones.
 
 ## Decisiones tomadas
 
@@ -214,6 +222,19 @@ por `walk-in-modal.component.ts` vía `ReservasService.crearReservaWalkIn`. Cubi
 el estado de una reserva. El botón «No Asistió» de `/admin/agenda` lo llama a esta ruta y el componente no
 tenía condición de rol, así que ahora se oculta cuando el usuario es BARBERO: puede seguir cobrando y
 registrando walk-ins, pero no le ofrezca una acción que el backend le va a denegar.
+
+**12. `POST /reservas/:id/aceptar` y `POST /reservas/:id/rechazar` — `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)`.**
+Aceptar o rechazar una solicitud es una decisión de la SEDE, igual que marcar el no presentado (D02, fila 42)
+y que cambiar el estado (decisión 11, fila 41): el BARBERO queda fuera. La ruta se acota al `barberiaId` del
+parámetro, así que un admin de otra sede recibe 403 antes de llegar al servicio. E3-04 no toca el
+`PATCH /reservas/:id/estado` genérico: sigue existiendo tal cual.
+
+**13. `POST /reservas/cotizar` (D44) — `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)`.**
+La cotización no persiste nada: es el cálculo puro que el frontend usa para nunca calcular bloques ni
+precios. Restringirla al staff como el walk-in dejaba al CLIENTE sin poder cotizar antes de crear su propia
+reserva, y el wizard del cliente comparte este blanco. El `RolesGuard` la acota al `barberiaId` del
+parámetro. Cubierto por el control D44 de `test/e3-03-validaciones.e2e-spec.ts` (usa un token de CLIENTE y
+espera 201) y por la fila 44d de la matriz de permisos.
 
 ### Ajustes sobre las decisiones, decididos con el dueño
 
@@ -330,6 +351,8 @@ negocio y cada uno necesita su propia tarea.
 | E3-03 | **El resto de E3-03 sigue abierto** (no es alcance de la partición de rutas): orden de validaciones `NO_VINCULADO`/`CLIENTE_RESTRINGIDO`/pausa/horizonte/`max_pendientes`, 422 `GRUPAL_NO_DISPONIBLE`, `FOR UPDATE` bajo SERIALIZABLE y `POST /reservas/cotizar` (D44) | `BACKLOG_BARBERIAS_V1.md` → E3-03; `reserva.service.ts` |
 | E3-09 | ~~Un BARBERO solo cobra las reservas que tiene asignadas~~ — cerrado en `4b62cf7` | `pago.controller.ts`, `POST /cobros` |
 | D43 | Declaración propia del cliente con su ruta y su campo de origen | `antecedente.controller.ts`, `POST /antecedentes` |
+| E3-04 | ~~Aceptar y rechazar solicitudes~~ — cerrado en la rama `feat/e3-04-aceptar-rechazar`: rutas, `motivo_codigo`/`motivo_detalle` con CHECK, cancelación del job de expiración y auditoría | `reserva.controller.ts`, `reserva.service.ts`, migración `20261009000000_e304_motivos_reserva` |
+| E3-04 | **No implementado:** «borrar la información adicional» al cerrar la reserva (§5) — no existe ninguna columna de información adicional en `reservas` | `BACKLOG_BARBERIAS_V1.md` → §7; `schema.prisma` |
 
 ### E1-06 · estado de verificación de la parte 3
 

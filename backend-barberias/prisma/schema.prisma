@@ -270,6 +270,10 @@ model Reserva {
   totalPagar            Decimal   @map("total_pagar") @db.Decimal(10, 2)
   expiraAt              DateTime? @map("expira_at") @db.Timestamptz
   creadoAt              DateTime? @default(now()) @map("creado_at") @db.Timestamptz
+  // E3-04/D19: motivo estructurado del rechazo (§5.5). El CHECK del catálogo
+  // vive en la migración; Prisma no sabe expresarlo.
+  motivoCodigo          String?   @map("motivo_codigo") @db.VarChar(40)
+  motivoDetalle         String?   @map("motivo_detalle") @db.Text
 
   barberia Barberia @relation(fields: [barberiaId], references: [id])
   cliente  Usuario  @relation("ClienteReserva", fields: [clienteId], references: [id])

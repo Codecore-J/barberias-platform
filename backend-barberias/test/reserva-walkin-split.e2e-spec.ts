@@ -61,6 +61,7 @@ describe('E3-03 · partición de POST /reservas: cliente vs walk-in', () => {
       horaFin,
       serviciosIds: [servicioId],
       precioTotalEsperado: 30,
+      tipo: 'INDIVIDUAL',
       ...extra,
     };
   }
@@ -178,6 +179,17 @@ describe('E3-03 · partición de POST /reservas: cliente vs walk-in', () => {
       ],
     });
 
+    // La creación de reserva (E3-03/2) exige vínculo ACTIVO entre quien la
+    // crea y la sede (`NO_VINCULADO`). Aquí el creador es el propio cliente o
+    // el staff de la sede, así que los tres llevan su fila en cliente_barberias.
+    await prisma.clienteBarberia.createMany({
+      data: [cliente.id, barbero.id, adminSede.id].map((usuarioId) => ({
+        usuarioId,
+        barberiaId,
+        estadoVinculacion: 'ACTIVO',
+      })),
+    });
+
     servicioId = (
       await prisma.servicio.create({
         data: { barberiaId, nombre: 'Corte Split', precio: 30, duracionEstimada: 30, margenOperativo: 0 },
@@ -186,10 +198,12 @@ describe('E3-03 · partición de POST /reservas: cliente vs walk-in', () => {
     ).id;
 
     // Horario de sede 00:00-23:59 todos los días: cualquier hora cuadra.
+    // `diaSemana` es 1=Lunes … 7=Domingo: con 0..6 el domingo (7) se quedaba sin
+    // horario y ese día toda creación de reserva devolvía 409.
     await prisma.horario.createMany({
       data: Array.from({ length: 7 }, (_, diaSemana) => ({
         barberiaId,
-        diaSemana,
+        diaSemana: diaSemana + 1,
         horaInicio: new Date('1970-01-01T00:00:00.000Z'),
         horaFin: new Date('1970-01-01T23:59:00.000Z'),
       })),

@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ReservaService } from '../application/reserva.service.js';
 import { CreateReservaDto } from '../application/dto/create-reserva.dto.js';
+import { RechazarReservaDto } from '../application/dto/rechazar-reserva.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
@@ -93,6 +94,49 @@ export class ReservaController {
     return this.reservaService.crearReserva(user.id, barberiaId, dto);
   }
 
+  /**
+   * POST /reservas/cotizar (D44): cotización sin persistir. Devuelve bloque total, hora de fin, margen, precio total y desglose de servicios. El cálculo es puro (E2-05) y no escribe en la base de datos.
+   * Declara los cuatro roles: el CLIENTE consume la cotización como paso previo a su propia reserva; el wizard del cliente y el modal de walk-in comparten este mismo blanco.
+   */
+  @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Post('cotizar')
+  async cotizar(@CurrentBarberiaId() barberiaId: string, @Body() dto: CreateReservaDto) {
+    return this.reservaService.cotizar(barberiaId, dto);
+  }
+
+  /**
+   * POST /reservas/:id/aceptar (E3-04)
+   * Confirmar una solicitud MANUAL: `PENDIENTE → CONFIRMADA`. Solo el responsable
+   * de la sede y el ADMINISTRADOR global (la decisión D02 aplicada a aceptar).
+   * El `RolesGuard` acota la ruta al `barberiaId` del parámetro, así que un
+   * admin de otra sede recibe 403 antes de llegar al servicio.
+   */
+  @Post(':id/aceptar')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  aceptarReserva(
+    @CurrentBarberiaId() barberiaId: string,
+    @Param('id', ParseUUIDPipe) reservaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.reservaService.aceptarReserva(barberiaId, reservaId, user);
+  }
+
+  /**
+   * POST /reservas/:id/rechazar (E3-04)
+   * `PENDIENTE → RECHAZADA` con `motivoCodigo` obligatorio del catálogo §5.5.
+   * Mismos roles que aceptar.
+   */
+  @Post(':id/rechazar')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  rechazarReserva(
+    @CurrentBarberiaId() barberiaId: string,
+    @Param('id', ParseUUIDPipe) reservaId: string,
+    @Body() dto: RechazarReservaDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.reservaService.rechazarReserva(barberiaId, reservaId, dto, user);
+  }
+
   @Get(':id')
   @Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE') // SEC-E2: requiere rol en la barbería del parámetro
   obtenerDetalle(
@@ -117,4 +161,5 @@ export class ReservaController {
   ) {
     return this.reservaService.marcarInasistencia(barberiaId, reservaId, user.id);
   }
-}
+}  
+

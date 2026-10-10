@@ -13,6 +13,14 @@ export interface SolicitudDisponibilidad {
   fecha: Date;
   duracionTotal: number; // en minutos
   margenRequerido: number; // en minutos (solo al final de todo el bloque)
+  /**
+   * E3-04: reserva que NO debe contar como ocupación.
+   *
+   * Aceptar una solicitud revalida su propio hueco bajo el lock de la sede, y
+   * esa reserva sigue en `PENDIENTE` mientras se revalida: sin excluirla se
+   * bloquearía a sí misma y un aceptar legítimo daría siempre 409.
+   */
+  excluirReservaId?: string;
 }
 
 @Injectable()
@@ -55,7 +63,7 @@ export class DisponibilidadService {
    */
   async calcularDisponibilidad(solicitud: SolicitudDisponibilidad, txClient?: any): Promise<Intervalo[]> {
     const db = txClient ?? this.prisma;
-    const { barberiaId, fecha, duracionTotal, margenRequerido } = solicitud;
+    const { barberiaId, fecha, duracionTotal, margenRequerido, excluirReservaId } = solicitud;
     const duracionConMargen = duracionTotal + margenRequerido;
     
     // 1. Obtener horario base para el día de la semana
@@ -100,6 +108,7 @@ export class DisponibilidadService {
         barberiaId,
         fechaCita: fecha,
         estado: { in: ['PENDIENTE', 'CONFIRMADA'] },
+        ...(excluirReservaId ? { id: { not: excluirReservaId } } : {}),
       },
     });
 
