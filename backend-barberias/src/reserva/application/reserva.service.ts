@@ -9,6 +9,11 @@ import {
   type MotivoRechazo,
 } from './dto/rechazar-reserva.dto.js';
 import { ReprogramarReservaDto } from './dto/reprogramar-reserva.dto.js';
+import {
+  CancelacionEspecialDto,
+  MOTIVOS_CANCELACION_ESPECIAL,
+  type MotivoCancelacionEspecial,
+} from './dto/cancelacion-especial.dto.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { CotizacionResponse, BloqueCalculado } from './dto/cotizacion.dto.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
@@ -55,6 +60,22 @@ export const ESTADOS_REPROGRAMABLES = ESTADOS_CANCELABLES;
  * a la sede (E3-08).
  */
 export const VENTANA_CANCELACION_CLIENTE_MIN = 30;
+
+/**
+ * E3-08/D18 §5.4 · ventana para resolver una propuesta de horario. El CLIENTE
+ * dueño propone y la sede tiene 10 minutos para aceptarla; pasado el plazo la
+ * propuesta queda vencida y hay que pedir una nueva.
+ */
+export const VENTANA_PROPUESTA_HORARIO_MIN = 10;
+
+/** Texto del catálogo §5.5 de cancelación, para la notificación al cliente. */
+const TEXTO_MOTIVO_CANCELACION_ESPECIAL: Record<string, string> = {
+  EMERGENCIA: 'una emergencia en la sede',
+  ENFERMEDAD: 'una indisposición del personal',
+  CIERRE_IMPREVISTO: 'un cierre imprevisto de la sede',
+  FUERZA_MAYOR: 'un caso de fuerza mayor',
+  OTRO: 'una causa justificada de la sede',
+};
 
 /** Texto del catálogo §5.5 para la notificación, en el idioma del usuario. */
 const TEXTO_MOTIVO_RECHAZO: Record<string, string> = {
@@ -949,6 +970,141 @@ export class ReservaService {
   }
 
 
+  /**
+   * E3-08 §5.4 · validación del BLOQUE NUEVO de una propuesta de horario.
+   *
+   * Es la misma batería que aplica la reprogramación directa del staff, en el
+   * orden del principio 9: configuración de la sede (pausa → horizonte) →
+   * duración frente a los servicios CONGELADOS → disponibilidad excluyendo la
+   * propia reserva. NO escribe nada: quien la llama decide si persiste el
+   * bloque, porque proponer no ocupa agenda y aceptar sí.
+   */
+  private async validarBloqueNuevo(
+    tx: any,
+    barberiaId: string,
+    actual: { id: string; margenGrupalHistorico: number | null },
+    dto: ReprogramarReservaDto,
+  ): Promise<{ fecha: Date; inicio: Date; fin: Date }> {
+    const { inicio, fin } = validateTimeRange(dto.horaInicio, dto.horaFin);
+    const fecha = new Date(dto.fecha);
+    const duracionSolicitada = (fin.getTime() - inicio.getTime()) / 60000;
+
+    const config = await tx.configuracionBarberia.findUnique({ where: { barberiaId } });
+
+    if (!config) {
+      throw new NotFoundException('Configuración de barbería no encontrada');
+    }
+
+    if (!config.nuevasReservasActivas) {
+      throw reglaDeNegocio(
+        'RESERVAS_PAUSADAS',
+        'La barbería no está aceptando cambios de horario actualmente.',
+      );
+    }
+
+    // Mismo horizonte que crearReserva, comparado por día de calendario
+    // (YYYY-MM-DD) para no depender de la zona horaria del servidor.
+    if (config.horizonteReservaDias != null) {
+      const hoy = new Date();
+      const limite = new Date(
+        hoy.getFullYear(),
+        hoy.getMonth(),
+        hoy.getDate() + config.horizonteReservaDias,
+      );
+      const limiteStr = `${limite.getFullYear()}-${String(limite.getMonth() + 1).padStart(2, '0')}-${String(limite.getDate()).padStart(2, '0')}`;
+
+      if (String(dto.fecha).slice(0, 10) > limiteStr) {
+        throw reglaDeNegocio(
+          'FUERA_DE_HORIZONTE',
+          `Solo se puede agendar hasta ${config.horizonteReservaDias} días de antelación.`,
+        );
+      }
+    }
+
+    // Los servicios están congelados en el snapshot: el bloque nuevo tiene que
+    // seguir cubriendo lo que se pactó.
+    const serviciosCongelados = await tx.participanteServicio.findMany({
+      where: { participante: { reservaId: actual.id } },
+      select: { duracionHistorica: true },
+    });
+
+    const duracionMinima = serviciosCongelados.reduce(
+      (acc: number, s: { duracionHistorica: number }) => acc + s.duracionHistorica,
+      0,
+    );
+
+    if (duracionSolicitada < duracionMinima) {
+      throw new BadRequestException(
+        `La duración solicitada (${duracionSolicitada} min) es insuficiente para los servicios de la reserva (mínimo ${duracionMinima} min)`,
+      );
+    }
+
+    const margenFinal = actual.margenGrupalHistorico ?? config.margenGrupalMinutos ?? 10;
+
+    const disponibilidades = await this.disponibilidadService.calcularDisponibilidad(
+      {
+        barberiaId,
+        fecha,
+        duracionTotal: duracionSolicitada,
+        margenRequerido: margenFinal,
+        excluirReservaId: actual.id,
+      },
+      tx,
+    );
+
+    const [hInicio, mInicio] = dto.horaInicio.split(':').map(Number);
+    const [hFin, mFin] = dto.horaFin.split(':').map(Number);
+
+    const inicioCita = new Date(fecha);
+    inicioCita.setHours(hInicio, mInicio, 0, 0);
+    const finCita = new Date(fecha);
+    finCita.setHours(hFin, mFin, 0, 0);
+    const finConMargen = new Date(finCita.getTime() + margenFinal * 60000);
+
+    const libre = disponibilidades.some(
+      (slot: { inicio: Date; fin: Date }) => inicioCita >= slot.inicio && finConMargen <= slot.fin,
+    );
+
+    if (!libre) {
+      throw errorDeConflicto(
+        'CONFLICTO_HORARIO',
+        'El horario nuevo ya no está disponible: otra reserva o un bloqueo ocupa ese hueco.',
+      );
+    }
+
+    return { fecha, inicio, fin };
+  }
+
+  /**
+   * Catálogo §5.5 de cancelación en el dominio: obligatorio, cerrado y con la
+   * regla de `OTRO` (detalle de al menos 5 caracteres). Mismo criterio que la
+   * validación del rechazo, aplicada a su propio catálogo.
+   */
+  private validarMotivoCancelacionEspecial(dto: CancelacionEspecialDto): {
+    codigo: MotivoCancelacionEspecial;
+    detalle: string | null;
+  } {
+    const codigo = dto?.motivoCodigo;
+
+    if (!codigo || !MOTIVOS_CANCELACION_ESPECIAL.includes(codigo as MotivoCancelacionEspecial)) {
+      throw errorDeSolicitud(
+        'MOTIVO_INVALIDO',
+        `motivoCodigo es obligatorio y debe pertenecer al catálogo de cancelación: ${MOTIVOS_CANCELACION_ESPECIAL.join(', ')}.`,
+      );
+    }
+
+    const detalle = typeof dto.motivoDetalle === 'string' ? dto.motivoDetalle.trim() : '';
+
+    if (codigo === 'OTRO' && detalle.length < LONGITUD_MINIMA_DETALLE) {
+      throw errorDeSolicitud(
+        'MOTIVO_INVALIDO',
+        `Cuando el motivo es OTRO, motivoDetalle debe tener al menos ${LONGITUD_MINIMA_DETALLE} caracteres.`,
+      );
+    }
+
+    return { codigo: codigo as MotivoCancelacionEspecial, detalle: detalle || null };
+  }
+
   private fechaISO(fecha: Date): string {
     return new Date(fecha).toISOString().slice(0, 10);
   }
@@ -1309,6 +1465,378 @@ export class ReservaService {
     }
 
     return reserva;
+  }
+
+  /**
+   * E3-08/D17 · Cancelación especial: `→ CANCELADA` con motivo del catálogo §5.5.
+   *
+   * Es la salida de la sede para una cita que ya no cabe en la ventana de los
+   * 30 minutos (§5.7). La resuelve directamente el staff de la sede, así que:
+   *
+   *  - exige que la sede tenga habilitada `permite_cancelacion_especial` (D17,
+   *    por defecto FALSE): sin la bandera responde 422 y la reserva no se toca;
+   *  - registra QUIÉN la ejecutó (`cancelado_por_id`) y con qué motivo, además
+   *    de dejarlo en la auditoría;
+   *  - libera el horario como consecuencia del estado `CANCELADA` (§5.3) y
+   *    cancela el job de expiración fuera de la transacción, como el resto de
+   *    transiciones (BullMQ no participa de la transacción).
+   */
+  async cancelacionEspecial(
+    barberiaId: string,
+    reservaId: string,
+    dto: CancelacionEspecialDto,
+    user: UsuarioAutenticado,
+  ) {
+    const motivo = this.validarMotivoCancelacionEspecial(dto);
+
+    const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+
+      const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
+
+      if (!actual) {
+        throw new NotFoundException('Reserva no encontrada');
+      }
+
+      const config = await tx.configuracionBarberia.findUnique({ where: { barberiaId } });
+
+      if (!config?.permiteCancelacionEspecial) {
+        throw reglaDeNegocio(
+          'CANCELACION_ESPECIAL_NO_HABILITADA',
+          'Esta barbería no acepta cancelaciones especiales.',
+        );
+      }
+
+      if (
+        !ESTADOS_CANCELABLES.includes(
+          actual.estado as (typeof ESTADOS_CANCELABLES)[number],
+        )
+      ) {
+        throw errorDeConflicto(
+          'ESTADO_INVALIDO',
+          `Solo se puede cancelar una reserva vigente (estado actual: ${actual.estado}).`,
+        );
+      }
+
+      const actualizada = await tx.reserva.update({
+        where: { id: reservaId },
+        data: {
+          estado: 'CANCELADA',
+          canceladoPorId: user.id,
+          cancelacionEspecialEstado: 'APROBADA',
+          cancelacionEspecialMotivo: motivo.codigo,
+          cancelacionEspecialDetalle: motivo.detalle,
+        },
+      });
+
+      await this.auditoriaService.registrarEvento(
+        {
+          usuarioId: user.id,
+          accion: 'RESERVA_CANCELACION_ESPECIAL',
+          entidad: 'Reserva',
+          entidadId: reservaId,
+          contexto: {
+            barberiaId,
+            estadoAnterior: actual.estado,
+            estadoNuevo: 'CANCELADA',
+            canceladoPor: 'STAFF',
+            canceladoPorId: user.id,
+            motivoCodigo: motivo.codigo,
+            motivoDetalle: motivo.detalle,
+          },
+        },
+        tx,
+      );
+
+      return actualizada;
+    });
+
+    await this.cancelarJobExpiracion(reservaId);
+
+    if (this.notificacionService) {
+      const razon =
+        motivo.codigo === 'OTRO'
+          ? motivo.detalle
+          : TEXTO_MOTIVO_CANCELACION_ESPECIAL[motivo.codigo];
+
+      this.notificacionService
+        .enviarNotificacion({
+          usuarioId: reserva.clienteId,
+          tipo: 'RESERVA_CANCELADA',
+          contenido: `Tu cita del ${this.fechaISO(reserva.fechaCita)} a las ${this.horaHHMM(reserva.horaInicio)} fue cancelada por la sede por ${razon}.`,
+        })
+        .catch((err) =>
+          this.logger.warn(`No se pudo notificar la cancelación especial: ${err.message}`),
+        );
+    }
+
+    return reserva;
+  }
+
+  /**
+   * E3-08/D18 §5.4 · el CLIENTE dueño propone un bloque nuevo para su cita.
+   *
+   * Proponer NO mueve la cita ni ocupa el hueco: deja una propuesta `PENDIENTE`
+   * con una ventana de 10 minutos para que el staff la resuelva. La ocupación
+   * real ocurre al aceptarla, donde el bloque se revalida bajo el lock de la
+   * sede (por eso aquí la validación es informativa y puede caducar).
+   *
+   * La ruta declara `@Roles('CLIENTE')`, pero el `RolesGuard` deja pasar al
+   * ADMINISTRADOR por jerarquía; la pertenencia la resuelve el servicio: sin ser
+   * el dueño de la reserva, responde 403 `RESERVA_AJENA`. Solo puede haber UNA
+   * propuesta viva por reserva; una vencida ya no bloquea.
+   */
+  async proponerHorario(
+    barberiaId: string,
+    reservaId: string,
+    dto: ReprogramarReservaDto,
+    user: UsuarioAutenticado,
+  ) {
+    return withSerializableTransaction(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+
+      const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
+
+      if (!actual) {
+        throw new NotFoundException('Reserva no encontrada');
+      }
+
+      if (actual.clienteId !== user.id) {
+        throw errorDePermiso(
+          'RESERVA_AJENA',
+          'Solo puedes proponer un horario para tus propias reservas.',
+        );
+      }
+
+      if (
+        !ESTADOS_REPROGRAMABLES.includes(
+          actual.estado as (typeof ESTADOS_REPROGRAMABLES)[number],
+        )
+      ) {
+        throw errorDeConflicto(
+          'ESTADO_INVALIDO',
+          `Solo se puede proponer un horario para una reserva vigente (estado actual: ${actual.estado}).`,
+        );
+      }
+
+      const viva = await tx.propuestaHorario.findFirst({
+        where: { reservaId, estado: 'PENDIENTE', expiraAt: { gt: new Date() } },
+      });
+
+      if (viva) {
+        throw errorDeConflicto(
+          'PROPUESTA_PENDIENTE',
+          'Ya tienes una propuesta de horario esperando respuesta.',
+        );
+      }
+
+      const bloque = await this.validarBloqueNuevo(tx, barberiaId, actual, dto);
+      const expiraAt = new Date(Date.now() + VENTANA_PROPUESTA_HORARIO_MIN * 60000);
+
+      const creada = await tx.propuestaHorario.create({
+        data: {
+          reservaId,
+          fechaCita: bloque.fecha,
+          horaInicio: bloque.inicio,
+          horaFin: bloque.fin,
+          tipo: 'REPROGRAMACION',
+          estado: 'PENDIENTE',
+          expiraAt,
+          creadoPor: user.id,
+        },
+      });
+
+      await this.auditoriaService.registrarEvento(
+        {
+          usuarioId: user.id,
+          accion: 'RESERVA_PROPUESTA_HORARIO',
+          entidad: 'Reserva',
+          entidadId: reservaId,
+          contexto: {
+            barberiaId,
+            propuestaId: creada.id,
+            fechaAnterior: this.fechaISO(actual.fechaCita),
+            horaAnterior: `${this.horaHHMM(actual.horaInicio)}-${this.horaHHMM(actual.horaFin)}`,
+            fechaPropuesta: this.fechaISO(bloque.fecha),
+            horaPropuesta: `${dto.horaInicio}-${dto.horaFin}`,
+            expiraAt: expiraAt.toISOString(),
+          },
+        },
+        tx,
+      );
+
+      return creada;
+    });
+  }
+
+  /**
+   * E3-08/D18 · la sede acepta la propuesta de horario: mueve la cita y marca la
+   * propuesta `ACEPTADA`, todo bajo el lock de la sede.
+   *
+   * El bloque se REVALIDA aquí: entre proponer y aceptar pueden pasar hasta 10
+   * minutos y el hueco pudo ocuparse. Si ya no está libre, 409 `CONFLICTO_HORARIO`
+   * y la cita no se mueve. Si la ventana venció, 409 `PROPUESTA_EXPIRADA`.
+   */
+  async aceptarPropuestaHorario(
+    barberiaId: string,
+    reservaId: string,
+    user: UsuarioAutenticado,
+  ) {
+    const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+
+      const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
+
+      if (!actual) {
+        throw new NotFoundException('Reserva no encontrada');
+      }
+
+      if (
+        !ESTADOS_REPROGRAMABLES.includes(
+          actual.estado as (typeof ESTADOS_REPROGRAMABLES)[number],
+        )
+      ) {
+        throw errorDeConflicto(
+          'ESTADO_INVALIDO',
+          `Solo se puede aceptar una propuesta de una reserva vigente (estado actual: ${actual.estado}).`,
+        );
+      }
+
+      const propuesta = await tx.propuestaHorario.findFirst({
+        where: { reservaId, estado: 'PENDIENTE' },
+        orderBy: { creadoAt: 'desc' },
+      });
+
+      if (!propuesta) {
+        throw errorDeConflicto(
+          'SIN_PROPUESTA',
+          'No hay ninguna propuesta de horario esperando respuesta.',
+        );
+      }
+
+      if (propuesta.expiraAt && propuesta.expiraAt.getTime() <= Date.now()) {
+        await tx.propuestaHorario.update({
+          where: { id: propuesta.id },
+          data: { estado: 'EXPIRADA' },
+        });
+
+        throw errorDeConflicto(
+          'PROPUESTA_EXPIRADA',
+          'La propuesta de horario venció: el cliente debe proponer un horario nuevo.',
+        );
+      }
+
+      const bloque = await this.validarBloqueNuevo(tx, barberiaId, actual, {
+        fecha: this.fechaISO(propuesta.fechaCita),
+        horaInicio: this.horaHHMM(propuesta.horaInicio),
+        horaFin: this.horaHHMM(propuesta.horaFin),
+      });
+
+      const actualizada = await tx.reserva.update({
+        where: { id: reservaId },
+        data: {
+          fechaCita: bloque.fecha,
+          horaInicio: bloque.inicio,
+          horaFin: bloque.fin,
+        },
+      });
+
+      await tx.propuestaHorario.update({
+        where: { id: propuesta.id },
+        data: { estado: 'ACEPTADA' },
+      });
+
+      await this.auditoriaService.registrarEvento(
+        {
+          usuarioId: user.id,
+          accion: 'RESERVA_REPROGRAMADA',
+          entidad: 'Reserva',
+          entidadId: reservaId,
+          contexto: {
+            barberiaId,
+            propuestaId: propuesta.id,
+            origen: 'PROPUESTA_HORARIO',
+            estadoAnterior: actual.estado,
+            estadoNuevo: actual.estado,
+            fechaAnterior: this.fechaISO(actual.fechaCita),
+            horaAnterior: `${this.horaHHMM(actual.horaInicio)}-${this.horaHHMM(actual.horaFin)}`,
+            fechaNueva: this.fechaISO(bloque.fecha),
+            horaNueva: `${this.horaHHMM(bloque.inicio)}-${this.horaHHMM(bloque.fin)}`,
+          },
+        },
+        tx,
+      );
+
+      return actualizada;
+    });
+
+    if (this.notificacionService) {
+      this.notificacionService
+        .enviarNotificacion({
+          usuarioId: reserva.clienteId,
+          tipo: 'RESERVA_REPROGRAMADA',
+          contenido: `Tu propuesta fue aceptada: la cita quedó el ${this.fechaISO(reserva.fechaCita)} a las ${this.horaHHMM(reserva.horaInicio)}.`,
+        })
+        .catch((err) =>
+          this.logger.warn(`No se pudo notificar la propuesta aceptada: ${err.message}`),
+        );
+    }
+
+    return reserva;
+  }
+
+  /**
+   * E3-08/D18 · la sede rechaza la propuesta de horario. No mueve la cita ni
+   * cambia el estado de la reserva: solo cierra la propuesta.
+   */
+  async rechazarPropuestaHorario(
+    barberiaId: string,
+    reservaId: string,
+    user: UsuarioAutenticado,
+  ) {
+    return withSerializableTransaction(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+
+      const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
+
+      if (!actual) {
+        throw new NotFoundException('Reserva no encontrada');
+      }
+
+      const propuesta = await tx.propuestaHorario.findFirst({
+        where: { reservaId, estado: 'PENDIENTE' },
+        orderBy: { creadoAt: 'desc' },
+      });
+
+      if (!propuesta) {
+        throw errorDeConflicto(
+          'SIN_PROPUESTA',
+          'No hay ninguna propuesta de horario esperando respuesta.',
+        );
+      }
+
+      const rechazada = await tx.propuestaHorario.update({
+        where: { id: propuesta.id },
+        data: { estado: 'RECHAZADA' },
+      });
+
+      await this.auditoriaService.registrarEvento(
+        {
+          usuarioId: user.id,
+          accion: 'RESERVA_PROPUESTA_RECHAZADA',
+          entidad: 'Reserva',
+          entidadId: reservaId,
+          contexto: {
+            barberiaId,
+            propuestaId: propuesta.id,
+            estadoPropuesta: 'RECHAZADA',
+          },
+        },
+        tx,
+      );
+
+      return rechazada;
+    });
   }
 
   async cambiarEstado(barberiaId: string, reservaId: string, nuevoEstado: string, user: UsuarioAutenticado) {

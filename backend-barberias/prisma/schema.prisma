@@ -31,6 +31,10 @@ model Usuario {
   excepcionesBarbero ExcepcionHorarioBarbero[] @relation("ExcepcionDeBarbero")
   reservasBarbero    Reserva[]                 @relation("BarberoReserva")
   bloqueosBarbero    BloqueosAgenda[]          @relation("BloqueoDeBarbero")
+  // E3-08/D17: quién ejecutó la cancelación especial de una reserva.
+  reservasCanceladas Reserva[]                 @relation("CanceladoPorReserva")
+  // E3-08/D18: quién creó una propuesta de horario (el CLIENTE dueño).
+  propuestasHorario  PropuestaHorario[]
 
   @@map("usuarios")
 }
@@ -274,16 +278,49 @@ model Reserva {
   // vive en la migración; Prisma no sabe expresarlo.
   motivoCodigo          String?   @map("motivo_codigo") @db.VarChar(40)
   motivoDetalle         String?   @map("motivo_detalle") @db.Text
+  // E3-08/D17 · cancelación especial: quién canceló, en qué estado quedó la
+  // solicitud y con qué motivo del catálogo de cancelación (§5.5). Los CHECK
+  // de estado y motivo viven en la migración.
+  canceladoPorId           String?   @map("cancelado_por_id") @db.Uuid
+  cancelacionEspecialEstado String?  @map("cancelacion_especial_estado") @db.VarChar(20)
+  cancelacionEspecialMotivo String?  @map("cancelacion_especial_motivo") @db.VarChar(40)
+  cancelacionEspecialDetalle String? @map("cancelacion_especial_detalle") @db.Text
 
-  barberia Barberia @relation(fields: [barberiaId], references: [id])
-  cliente  Usuario  @relation("ClienteReserva", fields: [clienteId], references: [id])
-  barbero  Usuario? @relation("BarberoReserva", fields: [barberoId], references: [id])
+  barberia     Barberia  @relation(fields: [barberiaId], references: [id])
+  cliente      Usuario   @relation("ClienteReserva", fields: [clienteId], references: [id])
+  barbero      Usuario?  @relation("BarberoReserva", fields: [barberoId], references: [id])
+  canceladoPor Usuario?  @relation("CanceladoPorReserva", fields: [canceladoPorId], references: [id])
 
   participantes ParticipanteReserva[]
+  propuestas    PropuestaHorario[]
   pago          Pago?
 
   @@index([barberiaId, fechaCita, estado, horaInicio, horaFin], name: "idx_reservas_concurrencia")
   @@map("reservas")
+}
+
+/// E3-08/D18 · propuesta de un bloque horario nuevo para una reserva.
+///
+/// La crea el CLIENTE dueño (§5.4) y la resuelve el staff en una ventana de 10
+/// minutos. A diferencia de D37, una propuesta PENDIENTE NO ocupa agenda: el
+/// hueco propuesto se revalida y se toma solo al aceptarla.
+model PropuestaHorario {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservaId  String    @map("reserva_id") @db.Uuid
+  fechaCita  DateTime  @map("fecha_cita") @db.Date
+  horaInicio DateTime  @map("hora_inicio") @db.Time
+  horaFin    DateTime  @map("hora_fin") @db.Time
+  tipo       String    @db.VarChar(30)
+  estado     String    @default("PENDIENTE") @db.VarChar(20)
+  expiraAt   DateTime? @map("expira_at") @db.Timestamptz
+  creadoPor  String    @map("creado_por") @db.Uuid
+  creadoAt   DateTime? @default(now()) @map("creado_at") @db.Timestamptz
+
+  reserva   Reserva @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+  creador   Usuario @relation(fields: [creadoPor], references: [id])
+
+  @@index([reservaId], name: "idx_propuestas_horario_reserva")
+  @@map("propuestas_horario")
 }
 
 model ParticipanteReserva {
@@ -405,6 +442,10 @@ model ConfiguracionBarberia {
   // D42 (2026-10-02): margen grupal propio de la barbería, default 10, rango 0-60.
   // Se snapshottea en reservas.margen_grupal_historico al crear (nunca suma ni DTO).
   margenGrupalMinutos    Int       @default(10) @map("margen_grupal_minutos")
+  // D17: habilita la cancelación especial (fuera de la ventana de 30 min).
+  // Por defecto FALSE: una sede no acepta cancelaciones especiales hasta que
+  // lo activa explícitamente (E3-11 expondrá el PATCH de configuración).
+  permiteCancelacionEspecial Boolean @default(false) @map("permite_cancelacion_especial")
 
   barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
 

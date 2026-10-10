@@ -269,6 +269,29 @@ necesita la tabla `propuestas_horario` y sus tres rutas propias y **sigue pendie
 la fila 44e (`cancelarReserva`), porque depende del ESTADO de la reserva y de la hora de la cita —dos
 cosas que el `RolesGuard` no consulta—. La política de la 44e no cambia: sigue declarando los tres roles.
 
+**17. `POST /reservas/:id/cancelacion-especial` (E3-08) — `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)`.**
+Cancelar fuera de la ventana de los 30 minutos es una decisión de la SEDE con motivo obligatorio del
+catálogo §5.5, así que declara los mismos dos roles que aceptar, rechazar o reprogramar (filas 12 y 15);
+el `RolesGuard` la acota al `barberiaId` del parámetro. La pertenencia no llega al servicio porque el guard
+ya la resolvió: un admin de otra sede recibe 403 antes de entrar. La bandera D17
+(`configuracion_barberia.permite_cancelacion_especial`, por defecto FALSE) NO la ve el guard —necesita
+consultar la configuración—, así que el servicio responde 422 `CANCELACION_ESPECIAL_NO_HABILITADA` cuando
+la sede no la tiene activada. Cubierto por el E2E de E3-08 (rojo→verde) y por el describe E3-08 del spec
+unitario.
+
+**18. `POST /reservas/:id/proponer-horario` (E3-08 / §5.4) — `@Roles(CLIENTE)`.**
+Es la vía del CLIENTE dueño para pedir un bloque nuevo sin ocupar agenda. El `RolesGuard` deja pasar
+también al `ADMINISTRADOR` por jerarquía, pero la pertenencia la resuelve el servicio: solo el `clienteId`
+de la reserva puede proponer, y cualquier otro (incluido un admin que no sea el dueño) recibe 403
+`RESERVA_AJENA`, el mismo criterio de las filas 14 y 40. Proponer no mueve la cita ni cambia su estado:
+deja una fila `PENDIENTE` en `propuestas_horario` con 10 minutos de ventana.
+
+**19. `POST /reservas/:id/propuesta-horario/aceptar|rechazar` (E3-08 / §5.4) — `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)`.**
+Resolver la propuesta vuelve a ser de la SEDE, con los mismos dos roles que la reprogramación directa.
+Aceptar revalida el hueco bajo el lock de la sede y solo entonces mueve la cita; rechazar no la toca. La
+propuesta PENDIENTE **no** reserva el hueco (a diferencia de D37), así que la revalidación puede devolver
+409 `CONFLICTO_HORARIO`.
+
 ### Ajustes sobre las decisiones, decididos con el dueño
 
 - **Decisión 2 ampliada dos veces**: `/seleccionar` admite además a `ADMIN_BARBERIA` y `ADMINISTRADOR`
