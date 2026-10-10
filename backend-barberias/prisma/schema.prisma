@@ -98,8 +98,13 @@ model Barberia {
   // E2-04 / D15: zona horaria de la sede. Las fechas y horas de cita
   // (`fecha_cita`, `hora_inicio`, `hora_fin`) son ETIQUETAS locales a esta zona
   // y los instantes (`expira_at`, `creado_at`) son UTC. La columna llega con la
-  // migración `e204_zona_horaria`; E2-03 la dejará con su CHECK (D15).
+  // migración `e204_zona_horaria`; E2-03 fijó su CHECK (`barberias_zona_horaria_check`),
+  // que Prisma no modela.
   zonaHoraria   String  @default("America/Santo_Domingo") @map("zona_horaria") @db.VarChar(50)
+  // E2-03: fecha de alta y logotipo (D25: solo URL HTTPS). Los CHECK de
+  // `estado` viven en la migración (Prisma no expresa CHECK).
+  creadoAt      DateTime? @default(now()) @map("creado_at") @db.Timestamptz
+  logoUrl       String?   @map("logo_url") @db.Text
 
   responsable Usuario @relation("Responsable", fields: [responsableId], references: [id])
 
@@ -279,6 +284,9 @@ model Reserva {
   totalPagar            Decimal   @map("total_pagar") @db.Decimal(10, 2)
   expiraAt              DateTime? @map("expira_at") @db.Timestamptz
   creadoAt              DateTime? @default(now()) @map("creado_at") @db.Timestamptz
+  // E2-03: instante real en que la cita se completó (§5.2, transición a
+  // COMPLETADA). Se deja NULL hasta que el flujo de atención lo escriba.
+  completadaAt          DateTime? @map("completada_at") @db.Timestamptz
   // E3-04/D19: motivo estructurado del rechazo (§5.5). El CHECK del catálogo
   // vive en la migración; Prisma no sabe expresarlo.
   motivoCodigo          String?   @map("motivo_codigo") @db.VarChar(40)

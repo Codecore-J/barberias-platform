@@ -150,7 +150,7 @@ describe('Barberias Endpoints (e2e)', () => {
       expect(response.body.esBarberiaActiva).toBe(true);
     });
 
-    it('debe generar PENDIENTE a partir de la 6ta vinculación', async () => {
+    it('debe generar PENDIENTE_APROBACION a partir de la 6ta vinculación', async () => {
       // Creamos 5 barberías más (ya tenemos 1 vinculada)
       const barberiasExtra = [];
       for (let i = 1; i <= 5; i++) {
@@ -183,7 +183,7 @@ describe('Barberias Endpoints (e2e)', () => {
         .send({ codigoAcceso: barberiasExtra[4].codigoAcceso })
         .expect(201);
 
-      expect(res6.body.estadoVinculacion).toBe('PENDIENTE');
+      expect(res6.body.estadoVinculacion).toBe('PENDIENTE_APROBACION');
       expect(res6.body.esBarberiaActiva).toBe(false);
     }, 30000); // 30 seconds timeout
   });
