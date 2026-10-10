@@ -13,7 +13,7 @@ export interface BarberiaResumen {
   responsableId: string;
   estado: string;
   esBarberiaActiva?: boolean;
-  estadoVinculacion?: 'ACTIVO' | 'PENDIENTE';
+  estadoVinculacion?: 'ACTIVO' | 'PENDIENTE_APROBACION' | 'DESVINCULADO';
 }
 
 import { API_URL } from '../constants/api.constants.js';

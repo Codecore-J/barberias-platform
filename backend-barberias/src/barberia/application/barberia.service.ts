@@ -407,7 +407,11 @@ export class BarberiaService {
         where: { usuarioId },
       });
 
-      const estadoVinculacion = count >= 5 ? 'PENDIENTE' : 'ACTIVO';
+      // E2-03/D10: el estado de la 6ª vinculación es `PENDIENTE_APROBACION`
+      // (catálogo cerrado de `cliente_barberias.estado_vinculacion`). Antes se
+      // escribía `PENDIENTE`, un valor fuera de catálogo que el CHECK de la base
+      // ahora rechaza.
+      const estadoVinculacion = count >= 5 ? 'PENDIENTE_APROBACION' : 'ACTIVO';
       const esBarberiaActiva = count === 0; // Si es la primera, la marcamos como activa por defecto
 
       const nuevaVinculacion = await tx.clienteBarberia.create({

@@ -668,3 +668,23 @@ Identificadores provisionales, libres desde H44. Registrados al cerrar E2-02 (20
 - **Estado:** abierto — a decisión del dueño
 - **Qué consta:** la ruta funciona a cualquier distancia de la cita mientras la sede tenga la bandera, incluso con semanas de antelación. Es coherente con que la sede cancela cuando necesita (la cancelación normal del staff tampoco tiene ventana), pero conviene decidir si la cancelación especial debe limitarse al tramo de menos de 30 minutos para no convertirla en una vía ordinaria de cancelación con motivo
 - **Evidencia:** el E2E la ejecuta sobre citas a 2 y 3 días vista y responde 201
+
+## HALLAZGOS DE E2-03 (H49 y H50)
+
+Identificadores provisionales, libres desde H48. Registrados al cerrar E2-03 (2026-10-11). Ambos los destapó esta tarea al añadir los `CHECK`: son valores que el código y los datos escribían fuera de los catálogos de D04/D10 y que, sin `CHECK`, pasaban inadvertidos.
+
+### H49: `barberias.estado` tenía 6 filas con `'ACTIVA'`, fuera del catálogo D04
+- **Módulo / Ruta afectada:** Datos, `barberias.estado` (D04: `ACTIVO`, `INACTIVO`)
+- **Tipo:** Integridad de datos
+- **Severidad:** Media — la `SELECT DISTINCT` previa mandada por E2-03 la encontró antes de crear el `CHECK`
+- **Estado:** resuelto en E2-03 (2026-10-11)
+- **Qué consta:** la consulta de solo lectura devolvió `{"ACTIVA": 6, "ACTIVO": 38}`. `'ACTIVA'` no pertenece al catálogo: era una variante ortográfica de `'ACTIVO'` (esas sedes operaban como activas), no un estado de negocio distinto. Sin la corrección, el `CHECK` habría abortado la migración
+- **Evidencia:** `SELECT estado, count(*) FROM barberias GROUP BY 1` → `ACTIVA=6, ACTIVO=38` antes; `ACTIVO=44` después. La migración `20261011130000_e203_integridad_base` incluye `UPDATE "barberias" SET "estado" = 'ACTIVO' WHERE "estado" = 'ACTIVA'` antes del `CHECK`
+
+### H50: `vincularCliente` escribía `estado_vinculacion = 'PENDIENTE'` (fuera de D10)
+- **Módulo / Ruta afectada:** Backend, `src/barberia/application/barberia.service.ts` (`vincularCliente`, la 6ª vinculación); contrato del API (`estadoVinculacion`) y tipo del frontend
+- **Tipo:** Integridad de estados / divergencia con D10
+- **Severidad:** Media — D10 define `ACTIVO`, `PENDIENTE_APROBACION`, `DESVINCULADO`; el código escribía un cuarto valor
+- **Estado:** resuelto en E2-03 (2026-10-11)
+- **Qué consta:** a partir de la 5ª vinculación previa, el servicio guardaba `'PENDIENTE'`. El `CHECK` `cliente_barberias_estado_vinculacion_check` lo rechazó y tumbó el fixture del E2E (`barberia.e2e-spec.ts` T2.2). Además, varios E2E creaban `barberias` con `estado: 'ACTIVA'` y un vínculo con `'SUSPENDIDO'` (tampoco en D10): datos de prueba que el esquema viejo toleraba
+- **Evidencia:** `git grep "'PENDIENTE'" src/barberia` mostraba el literal; hoy `vincularCliente` escribe `'PENDIENTE_APROBACION'`, el unitario y el E2E lo esperan así, y el tipo `estadoVinculacion` del frontend se alineó con D10. Los fixtures pasaron a `'ACTIVO'`/`'DESVINCULADO'`

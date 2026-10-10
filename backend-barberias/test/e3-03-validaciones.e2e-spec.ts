@@ -170,7 +170,7 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
           nombre: `Sede ${nombre} E303`,
           telefono: `600${1000 + Number(nombre)}2222`,
           ubicacion: nombre,
-          estado: 'ACTIVA',
+          estado: 'ACTIVO',
           codigoAcceso: `E303${nombre}`,
           enlaceUnico: `https://${nombre}.e303.test`,
           responsableId: (await prisma.usuario.findUnique({ where: { correo: `admin.e303@test.com` } })).id,

@@ -56,7 +56,7 @@ describe('Hallazgo 16 - RolesGuard Global (e2e)', () => {
       data: {
         nombre: 'Barberia Hallazgo 16',
         telefono: '12345678',
-        estado: 'ACTIVA',
+        estado: 'ACTIVO',
         ubicacion: 'Lat, Long',
         codigoAcceso: 'TEST16',
         enlaceUnico: 'hallazgo16',

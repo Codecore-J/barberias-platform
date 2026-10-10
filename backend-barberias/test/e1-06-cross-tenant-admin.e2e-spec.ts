@@ -134,10 +134,11 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       data: { usuarioId: vinculado.id, barberiaId: barberiaA, estadoVinculacion: 'ACTIVO' },
     });
 
-    // Vínculo SUSPENDIDO con A: ni rol en usuario_roles ni fila ACTIVA. Debe
+    // Vínculo DESVINCULADO con A: ni rol en usuario_roles ni fila ACTIVA. Debe
     // recibir 403 igual que el cliente sin vínculo, que es el caso que se arregla.
+    // (E2-03/D10: `SUSPENDIDO` no pertenece al catálogo de `estado_vinculacion`.)
     await prisma.clienteBarberia.create({
-      data: { usuarioId: vinculado.id, barberiaId: barberiaB, estadoVinculacion: 'SUSPENDIDO' },
+      data: { usuarioId: vinculado.id, barberiaId: barberiaB, estadoVinculacion: 'DESVINCULADO' },
     });
 
     servicioA = (
