@@ -106,7 +106,8 @@
 | 44b | POST | `/barberias/:barberiaId/reservas/:id/aceptar` · `/reservas/:id/aceptar` | ReservaController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-04** (decisión 12) | **sí** | **sí** — revalida el hueco bajo `FOR UPDATE` y rechaza con 409 si `expira_at` ya pasó | no | `test/e3-04-aceptar-rechazar.e2e-spec.ts`; `src/reserva/application/reserva.service.spec.ts` |
 | 44c | POST | `/barberias/:barberiaId/reservas/:id/rechazar` · `/reservas/:id/rechazar` | ReservaController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-04** (decisión 12) | **sí** | **sí** — `motivo_codigo` obligatorio del catálogo §5.5 | no | `test/e3-04-aceptar-rechazar.e2e-spec.ts`; `src/reserva/application/reserva.service.spec.ts` |
 | 44d | POST | `/barberias/:barberiaId/reservas/cotizar` · `/reservas/cotizar` | ReservaController | — no existía | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-03/D44** (decisión 13) | **sí** | no — cálculo puro, no persiste ni consulta el recurso | sí — `core/services/reservas.service.ts`, wizard del cliente y walk-in | `test/e3-03-validaciones.e2e-spec.ts` (control D44); `test/permisos-matriz.spec.ts` |
-| 44e | POST | `/barberias/:barberiaId/reservas/:id/cancelar` · `/reservas/:id/cancelar` | ReservaController | — no existía | `@Roles(CLIENTE, ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-05** (decisión 14) | **sí** | **sí** — un `CLIENTE` solo cancela la suya (403 `RESERVA_AJENA`); el guard no puede ver la reserva | no — pendiente del botón de cancelación del cliente (E3-07) | `test/e3-05-expiracion-cancelacion.e2e-spec.ts`; `src/reserva/application/reserva.service.spec.ts` |
+| 44e | POST | `/barberias/:barberiaId/reservas/:id/cancelar` · `/reservas/:id/cancelar` | ReservaController | — no existía | `@Roles(CLIENTE, ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-05** (decisión 14) | **sí** | **sí** — un `CLIENTE` solo cancela la suya (403 `RESERVA_AJENA`); el guard no puede ver la reserva | no — pendiente del botón de cancelación del cliente (E3-07) | `test/e3-05-expiracion-cancelacion.e2e-spec.ts`; `test/e3-06-07-reprogramacion-reglas.e2e-spec.ts`; `src/reserva/application/reserva.service.spec.ts` |
+| 44f | PATCH | `/barberias/:barberiaId/reservas/:id/reprogramar` · `/reservas/:id/reprogramar` | ReservaController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-06** (decisión 15) | **sí** | **sí** — valida el bloque nuevo con `excluirReservaId`, así que la reserva no se bloquea a sí misma | no — pendiente del botón de reprogramación de la agenda | `test/e3-06-07-reprogramacion-reglas.e2e-spec.ts`; `src/reserva/application/reserva.service.spec.ts` |
 | 45 | GET | `/catalogo/servicios` · `/servicios` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` + `VinculoBarberiaGuard` | **decisión del dueño** — el CLIENTE requiere fila ACTIVA en `cliente_barberias` | **sí** | **sí** — desde `81db5dc` | sí — `core/services/servicios.service.ts:32` | `src/catalogo/application/servicios.service.spec.ts`; `src/iam/infrastructure/vinculo-barberia.guard.spec.ts` |
 | 46 | POST | `/catalogo/servicios` · `/servicios` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D16) | **sí** | no | sí — `core/services/servicios.service.ts:58` | `test/permisos-matriz.e2e-spec.ts` |
 | 47 | GET | `/catalogo/servicios/:id` · `/servicios/:id` | ServiciosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` + `VinculoBarberiaGuard` | **decisión del dueño** — el CLIENTE requiere fila ACTIVA | **sí** | **sí** — desde `81db5dc` | no | `test/permisos-matriz.e2e-spec.ts`; `src/iam/infrastructure/vinculo-barberia.guard.spec.ts` |
@@ -143,6 +144,13 @@ negocio: `GET /`, `GET /auth/me`, `POST /barberias`, `GET /barberias` y `GET /no
 (`@Public` 6 · `@Autenticado` 5 · `@Roles` 48 · ninguna 0). Sobre las 58 de E3-04, `+1` por
 `POST /reservas/:id/cancelar` (E3-05, fila 44e). `test/permisos-matriz.spec.ts` comprueba ahora
 **59 rutas × 4 roles = 236** decisiones.
+
+**Estado real tras E3-06/E3-07 (2026-10-09):** `test/route-security.spec.ts` cuenta **60 rutas**
+(`@Public` 6 · `@Autenticado` 5 · `@Roles` 49 · ninguna 0). Sobre las 59 de E3-05, `+1` por
+`PATCH /reservas/:id/reprogramar` (E3-06, fila 44f). `test/permisos-matriz.spec.ts` comprueba ahora
+**60 rutas × 4 roles = 240** decisiones. **E3-07 no añade rutas:** cambia el COMPORTAMIENTO de la 44e
+(la ventana de 30 minutos del CLIENTE), que es una regla de negocio del servicio, no una decisión de
+permisos nueva.
 
 ## Decisiones tomadas
 
@@ -249,6 +257,17 @@ cancela SU reserva y la sede cancela por teléfono o mostrador. El `RolesGuard` 
 pertenencia la resuelve el servicio: sin rol de sede en esa barbería, la reserva tiene que ser suya o
 responde 403 `RESERVA_AJENA` (mismo criterio que la fila 40 para el detalle). La ventana de 30 minutos
 del §5.7 es E3-07 y NO se implementa aquí.
+
+**15. `PATCH /reservas/:id/reprogramar` (E3-06) — `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)`.**
+Mover una cita es una decisión de la SEDE, igual que aceptar (12), rechazar (12) o marcar el no
+presentado (D02): el decorador declara solo esos dos roles y el `RolesGuard` acota la ruta al `barberiaId`
+del parámetro, así que un admin de otra sede recibe 403. El CLIENTE **no** reprograma por su cuenta: su
+vía para cambiar de horario es la propuesta con ventana de 10 minutos del §5.4 (E3-06 del backlog), que
+necesita la tabla `propuestas_horario` y sus tres rutas propias y **sigue pendiente** (ver H35).
+
+**16. E3-07 no añade ninguna ruta.** La barrera de los 30 minutos del CLIENTE vive dentro del servicio de
+la fila 44e (`cancelarReserva`), porque depende del ESTADO de la reserva y de la hora de la cita —dos
+cosas que el `RolesGuard` no consulta—. La política de la 44e no cambia: sigue declarando los tres roles.
 
 ### Ajustes sobre las decisiones, decididos con el dueño
 

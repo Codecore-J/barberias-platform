@@ -546,3 +546,36 @@ Identificadores provisionales, libres desde H30. Registrados al iniciar E3-05 (2
 - **Estado:** abierto — no se toca aquí porque E3-05 no modifica ese archivo
 - **Qué consta:** dos palabras del comentario están destrozadas: línea 75 `el guard laractable como comodín` (debería ser «lo trata como comodín») y línea 107 `el decorador de la ruta y el guard yailtersan el ROL` («el decorador … y el guard ya filtran el ROL»). El código de esas funciones es correcto; solo el comentario está dañado
 - **Evidencia:** `grep -n "laractable\|yailtersan" src/iam/domain/roles.ts` devuelve las líneas 75 y 107
+
+### H35: La reprogramación entregada no es la propuesta de horario que pide el backlog
+- **Módulo / Ruta afectada:** Backend, `src/reserva/application/reserva.service.ts` (`reprogramarReserva`), `src/reserva/infrastructure/reserva.controller.ts`, `prisma/schema.prisma`, BACKLOG §E3-06
+- **Tipo:** Divergencia entre el pedido de la rama y el alcance del backlog
+- **Severidad:** Media — la capacidad que describe el §5.4 sigue sin existir para nadie
+- **Estado:** abierto (E3-06 del backlog)
+- **Qué consta:** el backlog pide la tabla `propuestas_horario` (D18: `tipo` `PROPUESTA_INICIAL`/`REPROGRAMACION`/`ADELANTO`, `estado` `PENDIENTE`/`ACEPTADA`/`RECHAZADA`/`EXPIRADA`, `expira_at`) y tres rutas (`POST .../proponer`, `POST .../propuesta/aceptar`, `POST .../propuesta/rechazar`) con ventana de 10 minutos y el hueco propuesto retenido hasta que caduque (D37). El pedido de esta rama fue otro: un `PATCH .../reprogramar` transaccional para el staff, que es lo que se implementó. No existe ninguna tabla `propuestas_horario`; `PROPUESTA_PENDIENTE` sigue siendo un estado alcanzable solo por escritura directa, aunque la expiración de E3-05 ya lo contempla
+- **Evidencia:** `grep -rn "propuestas_horario" src prisma` → sin coincidencias; la matriz de rutas descubre 60 rutas y ninguna contiene `proponer` ni `propuesta`
+
+### H36: La ventana de 30 minutos del CLIENTE no usa la zona horaria de la barbería
+- **Módulo / Ruta afectada:** Backend, `src/reserva/application/reserva.service.ts` (`instanteInicioCita`, `exigirVentanaDeCancelacion`), ruta de la fila 44e
+- **Tipo:** Zona horaria (D15 / E2-04 pendientes)
+- **Severidad:** Media — con la sede en UTC-4 y el servidor en UTC la ventana cierra unas 4 h tarde
+- **Estado:** abierto (E2-04)
+- **Qué consta:** el §5.7 pide el límite «con la zona de la barbería». No hay `luxon`, ni `src/shared/time/tiempo.service.ts`, ni `barberias.zona_horaria`, así que el instante se compone con la zona del SERVIDOR y anclado al DÍA ETIQUETADO de `fecha_cita` (partes UTC) + la hora etiquetada. En producción (Render corre en UTC) eso equivale a interpretar «10:00» como UTC: para una sede en America/Santo_Domingo la cita real es 4 h antes, así que la barrera se cierra ~4 h tarde y un CLIENTE podría cancelar hasta 3 h 30 min después del inicio. La versión exacta necesita `tiempo.service.aInstante(fecha, hora, tz)` de E2-04 y la zona de la sede
+- **Evidencia:** `grep -rn "zonaHoraria\|zona_horaria" src prisma` → sin coincidencias; `grep -n luxon package.json` → sin coincidencias; en el E2E de E3-07 la cita colocada a 29 min responde 422 y la de 31 min responde 201
+
+### H37: La base de datos de desarrollo estaba desincronizada del ledger de migraciones
+- **Módulo / Ruta afectada:** Backend, `prisma/migrations/20261002000000_add_margen_grupal_minutos`, `_prisma_migrations`, BD de desarrollo `neondb`
+- **Tipo:** Integridad de esquema / drift entre la BD y las migraciones
+- **Severidad:** Media — impedía ejecutar CUALQUIER E2E contra esa base (P2022 → 500)
+- **Estado:** reconciliado el 2026-10-09 con aprobación explícita del dueño
+- **Qué consta:** `prisma migrate status` listaba dos migraciones pendientes, ambas ya en `main`: `20261002000000_add_margen_grupal_minutos` y `20261009000000_e304_motivos_reserva`. Al aplicarlas, la primera falló con P3018 / SQLSTATE 42701 (`column "margen_grupal_minutos" of relation "configuracion_barberia" already exists`): la columna existía pero la migración no estaba registrada, lo que deja la BD en estado fallido y bloquea las siguientes. Se comprobó que la restricción `configuracion_barberia_margen_grupal_minutos_check` **no** existía (`pg_constraint` devolvía 0 filas), señal de que la columna se creó fuera del ledger (probable `db push` o SQL a mano). Reconciliación: se añadió el CHECK que faltaba tomándolo del propio `migration.sql`, `prisma migrate resolve --applied 20261002000000_add_margen_grupal_minutos` y `prisma migrate deploy` para la de E3-04
+- **Evidencia:** `migrate status` → `Database schema is up to date!`; `prisma migrate diff --from-schema-datasource --to-schema-datamodel` → `-- This is an empty migration.` (drift cerrado); el E2E de E3-06/E3-07 pasa de 6 fallos con 500/P2022 a 9 casos verdes
+- **Nota:** los CHECK no los modela Prisma, así que `migrate diff` no los cubre y la comprobación hubo de hacerse contra `pg_constraint`
+
+### H38: Los E2E no tienen `testTimeout` y el default de 5 s no alcanza contra una BD remota
+- **Módulo / Ruta afectada:** Backend, `vitest.config.e2e.ts`
+- **Tipo:** Configuración de pruebas (E2-06 pendiente)
+- **Severidad:** Baja (falsos negativos en la lectura de los fallos)
+- **Estado:** abierto (E2-06 ya pide `testTimeout` de 30 s)
+- **Qué consta:** el archivo E2E fija `fileParallelism: false` pero no `testTimeout`. Con la BD de desarrollo en Neon y Redis remotos, cada caso tarda entre 3 y 7 s y cualquiera que haga cuatro o más llamadas supera los 5 s del default: la primera ejecución del E2E de E3-06/E3-07 dio `6 failed` con duraciones de ~5005 ms, que parecen fallos de regla de negocio y son timeouts
+- **Evidencia:** ejecución con el default → `Tests 6 failed (9)`, tiempos 5005/5012/5015 ms; con `--testTimeout=30000` → `Tests 9 passed (9)`

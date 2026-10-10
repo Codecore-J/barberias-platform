@@ -22,7 +22,7 @@ describe('ReservaService', () => {
     clienteBarberia: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     reserva: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), count: vi.fn() },
     participanteReserva: { create: vi.fn() },
-    participanteServicio: { createMany: vi.fn() },
+    participanteServicio: { createMany: vi.fn(), findMany: vi.fn() },
     servicio: { findMany: vi.fn() },
     barberia: { findUnique: vi.fn() },
     usuarioRol: { findFirst: vi.fn(), findMany: vi.fn() },
@@ -718,6 +718,338 @@ describe('ReservaService', () => {
         }),
         expect.anything(),
       );
+    });
+  });
+
+  // ── E3-07 · ventana de cancelación del CLIENTE (§5.7) ────────────────────
+  describe('E3-07 ventana de cancelación del CLIENTE', () => {
+    const usuarioCliente = {
+      id: 'uuid-cliente',
+      correo: 'cliente@test.com',
+      roles: ['CLIENTE'],
+      rolesDetallados: [{ nombre: 'CLIENTE', barberiaId: null, ambito: 'GLOBAL' }],
+    };
+
+    const usuarioAdmin = {
+      id: 'uuid-admin',
+      correo: 'admin@test.com',
+      roles: ['ADMIN_BARBERIA'],
+      rolesDetallados: [
+        { nombre: 'ADMIN_BARBERIA', barberiaId: 'uuid-barberia', ambito: 'BARBERIA' },
+      ],
+    };
+
+    /**
+     * Cita a las 12:00 del 2026-10-10. `fechaCita` es la medianoche UTC del día
+     * guardado (es lo que devuelve Prisma para un `@db.Date`) y `horaInicio` va en
+     * convención UTC, como la escribe `parseTime`; el instante que mide la ventana
+     * es, entonces, el 2026-10-10 a las 12:00 en la zona del servidor.
+     */
+    const reservaVigente = (extra: Record<string, unknown> = {}) => ({
+      id: 'uuid-reserva',
+      barberiaId: 'uuid-barberia',
+      clienteId: 'uuid-cliente',
+      estado: 'CONFIRMADA',
+      fechaCita: new Date('2026-10-10T00:00:00.000Z'),
+      horaInicio: hora(12, 0),
+      horaFin: hora(12, 30),
+      margenGrupalHistorico: 10,
+      totalPagar: 30,
+      expiraAt: null,
+      ...extra,
+    });
+
+    /** Reloj fijo: la ventana se mide contra `Date.now()`, no contra la base. */
+    const aLas = (h: number, m: number) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 9, 10, h, m, 0));
+    };
+
+    beforeEach(() => {
+      mockQueue.getJob.mockResolvedValue(null);
+      mockAuditoriaService.registrarEvento.mockResolvedValue({ id: 'uuid-auditoria' });
+      mockPrismaService.reserva.update.mockResolvedValue({
+        id: 'uuid-reserva',
+        estado: 'CANCELADA',
+        clienteId: 'uuid-cliente',
+      });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('VERDE: a 31 minutos del inicio el CLIENTE aún cancela su CONFIRMADA', async () => {
+      aLas(11, 29);
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reservaVigente());
+
+      const res = await service.cancelarReserva(
+        'uuid-barberia',
+        'uuid-reserva',
+        usuarioCliente as any,
+      );
+
+      expect(res.estado).toBe('CANCELADA');
+      expect(mockPrismaService.reserva.update).toHaveBeenCalled();
+    });
+
+    it('VERDE: exactamente a 30 minutos todavía entra (el límite es «ahora <= inicio − 30»)', async () => {
+      aLas(11, 30);
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reservaVigente());
+
+      const res = await service.cancelarReserva(
+        'uuid-barberia',
+        'uuid-reserva',
+        usuarioCliente as any,
+      );
+
+      expect(res.estado).toBe('CANCELADA');
+    });
+
+    it('ROJO: a 29 minutos → 422 FUERA_DE_VENTANA y la reserva no se toca', async () => {
+      aLas(11, 31);
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reservaVigente());
+
+      await expect(
+        service.cancelarReserva('uuid-barberia', 'uuid-reserva', usuarioCliente as any),
+      ).rejects.toMatchObject({ response: { codigo: 'FUERA_DE_VENTANA', statusCode: 422 } });
+
+      expect(mockPrismaService.reserva.update).not.toHaveBeenCalled();
+      expect(mockAuditoriaService.registrarEvento).not.toHaveBeenCalled();
+    });
+
+    it('ROJO: una CONFIRMADA que ya empezó → 422 FUERA_DE_VENTANA', async () => {
+      aLas(12, 5);
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reservaVigente());
+
+      await expect(
+        service.cancelarReserva('uuid-barberia', 'uuid-reserva', usuarioCliente as any),
+      ).rejects.toMatchObject({ response: { codigo: 'FUERA_DE_VENTANA', statusCode: 422 } });
+    });
+
+    it('VERDE: una solicitud PENDIENTE se cancela siempre, aunque falten 5 minutos', async () => {
+      aLas(11, 55);
+      mockPrismaService.reserva.findFirst.mockResolvedValue(
+        reservaVigente({ estado: 'PENDIENTE' }),
+      );
+
+      const res = await service.cancelarReserva(
+        'uuid-barberia',
+        'uuid-reserva',
+        usuarioCliente as any,
+      );
+
+      expect(res.estado).toBe('CANCELADA');
+    });
+
+    it('VERDE: el STAFF no tiene ventana — el admin cancela a 5 minutos del inicio', async () => {
+      aLas(11, 55);
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reservaVigente());
+
+      const res = await service.cancelarReserva(
+        'uuid-barberia',
+        'uuid-reserva',
+        usuarioAdmin as any,
+      );
+
+      expect(res.estado).toBe('CANCELADA');
+      expect(mockAuditoriaService.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contexto: expect.objectContaining({ canceladoPor: 'STAFF' }),
+        }),
+        expect.anything(),
+      );
+    });
+  });
+
+  // ── E3-06 · reprogramación de una reserva vigente ────────────────────────
+  describe('E3-06 reprogramación', () => {
+    const usuarioAdmin = {
+      id: 'uuid-admin',
+      correo: 'admin@test.com',
+      roles: ['ADMIN_BARBERIA'],
+      rolesDetallados: [
+        { nombre: 'ADMIN_BARBERIA', barberiaId: 'uuid-barberia', ambito: 'BARBERIA' },
+      ],
+    };
+
+    const CONFIG = {
+      margenGrupalMinutos: 10,
+      nuevasReservasActivas: true,
+      horizonteReservaDias: 30,
+    };
+
+    const reserva = (extra: Record<string, unknown> = {}) => ({
+      id: 'uuid-reserva',
+      barberiaId: 'uuid-barberia',
+      clienteId: 'uuid-cliente',
+      estado: 'CONFIRMADA',
+      fechaCita: new Date('2026-10-12'),
+      horaInicio: hora(9, 0),
+      horaFin: hora(9, 30),
+      margenGrupalHistorico: 10,
+      totalPagar: 30,
+      expiraAt: null,
+      ...extra,
+    });
+
+    const dto = { fecha: '2026-10-12', horaInicio: '10:00', horaFin: '10:30' };
+
+    /** Slot del 2026-10-12 a la hora local indicada (mismo armado que el servicio). */
+    const slot = (h: number, m: number) => {
+      const d = new Date('2026-10-12');
+      d.setHours(h, m, 0, 0);
+      return d;
+    };
+
+    beforeEach(() => {
+      // Reloj fijo del 2026-10-10 09:00 local: el horizonte de 30 días y el
+      // «día de calendario» de la sede quedan deterministas.
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 9, 10, 9, 0, 0));
+
+      mockQueue.getJob.mockResolvedValue(null);
+      mockAuditoriaService.registrarEvento.mockResolvedValue({ id: 'uuid-auditoria' });
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue(CONFIG);
+      mockPrismaService.participanteServicio.findMany.mockResolvedValue([
+        { duracionHistorica: 30 },
+      ]);
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
+        { inicio: slot(0, 0), fin: slot(23, 59) },
+      ]);
+      mockPrismaService.reserva.update.mockImplementation(
+        async ({ data }: { data: Record<string, unknown> }) => ({
+          id: 'uuid-reserva',
+          estado: 'CONFIRMADA',
+          ...data,
+        }),
+      );
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('VERDE: mueve la cita al bloque nuevo, excluye su propio hueco y audita el cambio', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reserva());
+
+      const res = await service.reprogramarReserva(
+        'uuid-barberia',
+        'uuid-reserva',
+        dto,
+        usuarioAdmin as any,
+      );
+
+      expect(res.horaInicio).toEqual(hora(10, 0));
+
+      // La revalidación tiene que ignorar el hueco ACTUAL de la propia reserva:
+      // sin `excluirReservaId` se bloquearía a sí misma.
+      expect(mockDisponibilidadService.calcularDisponibilidad).toHaveBeenCalledWith(
+        expect.objectContaining({
+          barberiaId: 'uuid-barberia',
+          duracionTotal: 30,
+          margenRequerido: 10,
+          excluirReservaId: 'uuid-reserva',
+        }),
+        expect.anything(),
+      );
+
+      // Lo ÚNICO que cambia es el cuándo: ni estado, ni snapshots, ni total.
+      expect(mockPrismaService.reserva.update).toHaveBeenCalledWith({
+        where: { id: 'uuid-reserva' },
+        data: {
+          fechaCita: new Date('2026-10-12'),
+          horaInicio: hora(10, 0),
+          horaFin: hora(10, 30),
+        },
+      });
+
+      expect(mockAuditoriaService.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accion: 'RESERVA_REPROGRAMADA',
+          entidadId: 'uuid-reserva',
+          usuarioId: 'uuid-admin',
+          contexto: expect.objectContaining({
+            estadoAnterior: 'CONFIRMADA',
+            estadoNuevo: 'CONFIRMADA',
+            horaAnterior: '09:00-09:30',
+            horaNueva: '10:00-10:30',
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('ROJO: colisión con otro hueco ocupado → 409 CONFLICTO_HORARIO y la cita no se mueve', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reserva());
+      // Solo queda libre de 06:00 a 08:00: el bloque nuevo (10:00-10:30+10) no cabe.
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
+        { inicio: slot(6, 0), fin: slot(8, 0) },
+      ]);
+
+      await expect(
+        service.reprogramarReserva('uuid-barberia', 'uuid-reserva', dto, usuarioAdmin as any),
+      ).rejects.toMatchObject({ response: { codigo: 'CONFLICTO_HORARIO', statusCode: 409 } });
+
+      expect(mockPrismaService.reserva.update).not.toHaveBeenCalled();
+      expect(mockAuditoriaService.registrarEvento).not.toHaveBeenCalled();
+    });
+
+    it('ROJO: una reserva terminal → 409 ESTADO_INVALIDO', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(
+        reserva({ estado: 'CANCELADA' }),
+      );
+
+      await expect(
+        service.reprogramarReserva('uuid-barberia', 'uuid-reserva', dto, usuarioAdmin as any),
+      ).rejects.toMatchObject({ response: { codigo: 'ESTADO_INVALIDO', statusCode: 409 } });
+    });
+
+    it('ROJO: con la sede en pausa no se aceptan cambios de horario → 422 RESERVAS_PAUSADAS', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reserva());
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
+        ...CONFIG,
+        nuevasReservasActivas: false,
+      });
+
+      await expect(
+        service.reprogramarReserva('uuid-barberia', 'uuid-reserva', dto, usuarioAdmin as any),
+      ).rejects.toMatchObject({ response: { codigo: 'RESERVAS_PAUSADAS', statusCode: 422 } });
+    });
+
+    it('ROJO: fuera del horizonte de la sede → 422 FUERA_DE_HORIZONTE', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reserva());
+
+      await expect(
+        service.reprogramarReserva(
+          'uuid-barberia',
+          'uuid-reserva',
+          { ...dto, fecha: '2026-12-15' },
+          usuarioAdmin as any,
+        ),
+      ).rejects.toMatchObject({ response: { codigo: 'FUERA_DE_HORIZONTE', statusCode: 422 } });
+    });
+
+    it('ROJO: un bloque más corto que los servicios congelados → 400', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reserva());
+      mockPrismaService.participanteServicio.findMany.mockResolvedValue([
+        { duracionHistorica: 30 },
+        { duracionHistorica: 40 },
+      ]);
+
+      await expect(
+        service.reprogramarReserva('uuid-barberia', 'uuid-reserva', dto, usuarioAdmin as any),
+      ).rejects.toThrowError(BadRequestException);
+
+      expect(mockPrismaService.reserva.update).not.toHaveBeenCalled();
+    });
+
+    it('ROJO: una reserva inexistente en esa sede → 404', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.reprogramarReserva('uuid-barberia', 'uuid-reserva', dto, usuarioAdmin as any),
+      ).rejects.toThrowError(NotFoundException);
     });
   });
 });

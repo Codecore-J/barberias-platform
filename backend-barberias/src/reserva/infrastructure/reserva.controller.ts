@@ -11,6 +11,7 @@ import {
 import { ReservaService } from '../application/reserva.service.js';
 import { CreateReservaDto } from '../application/dto/create-reserva.dto.js';
 import { RechazarReservaDto } from '../application/dto/rechazar-reserva.dto.js';
+import { ReprogramarReservaDto } from '../application/dto/reprogramar-reserva.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
@@ -153,6 +154,27 @@ export class ReservaController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.reservaService.cancelarReserva(barberiaId, reservaId, user);
+  }
+
+  /**
+   * PATCH /reservas/:id/reprogramar (E3-06)
+   * Mover una reserva vigente a otro bloque horario: `→` mismo estado, nueva
+   * fecha y rango. Es una decisión de la SEDE —igual que aceptar, rechazar o
+   * marcar el no presentado— y no del barbero: el `RolesGuard` la acota al
+   * `barberiaId` del parámetro, así que un admin de otra sede recibe 403 antes de
+   * llegar al servicio. El CLIENTE no reprograma por su cuenta: la vía del cliente
+   * es la propuesta de horario con sus 10 minutos de ventana (§5.4 / E3-06 del
+   * backlog), que todavía no existe.
+   */
+  @Patch(':id/reprogramar')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  reprogramarReserva(
+    @CurrentBarberiaId() barberiaId: string,
+    @Param('id', ParseUUIDPipe) reservaId: string,
+    @Body() dto: ReprogramarReservaDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.reservaService.reprogramarReserva(barberiaId, reservaId, dto, user);
   }
 
   @Get(':id')

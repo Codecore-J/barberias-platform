@@ -8,6 +8,7 @@ import {
   RechazarReservaDto,
   type MotivoRechazo,
 } from './dto/rechazar-reserva.dto.js';
+import { ReprogramarReservaDto } from './dto/reprogramar-reserva.dto.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { CotizacionResponse, BloqueCalculado } from './dto/cotizacion.dto.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
@@ -38,6 +39,22 @@ import {
  * `COMPLETADA`) y volver a cancelarlo es un 409 `ESTADO_INVALIDO`.
  */
 export const ESTADOS_CANCELABLES = ['PENDIENTE', 'CONFIRMADA', 'PROPUESTA_PENDIENTE'] as const;
+
+/**
+ * E3-06 · una cita ya agendada solo se mueve desde los mismos estados desde los
+ * que se cancela: una terminal (`EXPIRADA`, `CANCELADA`, `RECHAZADA`,
+ * `NO_ASISTIO`, `COMPLETADA`) no tiene agenda que reprogramar.
+ */
+export const ESTADOS_REPROGRAMABLES = ESTADOS_CANCELABLES;
+
+/**
+ * E3-07 §5.7 · ventana del CLIENTE para cancelar por su cuenta una cita ya
+ * agendada. Una solicitud todavía en `PENDIENTE` se cancela siempre; una
+ * `CONFIRMADA` (o con propuesta viva) solo hasta 30 minutos antes del inicio.
+ * Pasado el límite queda la cancelación especial (E3-07 §3, pendiente) o llamar
+ * a la sede (E3-08).
+ */
+export const VENTANA_CANCELACION_CLIENTE_MIN = 30;
 
 /** Texto del catálogo §5.5 para la notificación, en el idioma del usuario. */
 const TEXTO_MOTIVO_RECHAZO: Record<string, string> = {
@@ -941,6 +958,245 @@ export class ReservaService {
   }
 
   /**
+   * Instante del inicio de la cita, que es lo que decide la ventana de los 30
+   * minutos (§5.7).
+   *
+   * `fecha_cita` es `DATE` y `hora_inicio` es `TIME`: dos ETIQUETAS de calendario
+   * sin zona, no dos instantes. Se recomponen leyendo el DÍA por sus partes UTC
+   * (Prisma devuelve la medianoche UTC del día guardado) y montando la hora
+   * etiquetada en la zona del SERVIDOR.
+   *
+   * Lo importante es que el DÍA no se derive del instante: `new Date(fecha);
+   * setHours(...)` —la composición que usa `aceptarReserva`— cae al día anterior
+   * cuando el servidor está al oeste de UTC, y ahí ese corrimiento se cancela solo
+   * porque los dos lados de la comparación se construyen igual. Esta ventana se
+   * compara contra el reloj real (`Date.now()`), así que un día de menos no se
+   * compensa: cerraría la cancelación de una cita de mañana.
+   *
+   * En el servidor de producción (UTC) el resultado coincide con el de
+   * `aceptarReserva`. La versión exacta —hora local de la SEDE, que es lo que pide
+   * el backlog— necesita `barberias.zona_horaria` y el `tiempo.service` de
+   * E2-04/D15, que todavía no existen: ver HALLAZGO-E30607-02.
+   */
+  private instanteInicioCita(reserva: { fechaCita: Date; horaInicio: Date }): Date {
+    const fecha = new Date(reserva.fechaCita);
+    return new Date(
+      fecha.getUTCFullYear(),
+      fecha.getUTCMonth(),
+      fecha.getUTCDate(),
+      reserva.horaInicio.getUTCHours(),
+      reserva.horaInicio.getUTCMinutes(),
+      0,
+      0,
+    );
+  }
+
+  /**
+   * E3-07 §5.7 · la barrera de los 30 minutos, en un solo sitio.
+   *
+   * Se permite cancelar cuando faltan 30 minutos O MÁS (`ahora <= inicio − 30`),
+   * tal como lo fija el backlog; a 29 minutos ya es 422 `FUERA_DE_VENTANA`.
+   */
+  private exigirVentanaDeCancelacion(reserva: { fechaCita: Date; horaInicio: Date }): void {
+    const minutosRestantes = Math.floor(
+      (this.instanteInicioCita(reserva).getTime() - Date.now()) / 60000,
+    );
+
+    if (minutosRestantes >= VENTANA_CANCELACION_CLIENTE_MIN) {
+      return;
+    }
+
+    const detalle =
+      minutosRestantes < 0
+        ? 'La cita ya comenzó'
+        : `Faltan ${minutosRestantes} minutos para la cita`;
+
+    throw reglaDeNegocio(
+      'FUERA_DE_VENTANA',
+      `${detalle} y el límite para cancelar por tu cuenta es de ${VENTANA_CANCELACION_CLIENTE_MIN} minutos. Contacta con la barbería para una cancelación especial.`,
+    );
+  }
+
+  /**
+   * E3-06 · Reprogramación de una reserva vigente.
+   *
+   * Mueve la cita a otro bloque SIN tocar nada más: el estado, los snapshots de
+   * los servicios y el total a pagar se conservan. Lo único que cambia es CUÁNDO.
+   *
+   * ORDEN (principio 9, el mismo de `crearReserva`): DTO → estado → configuración
+   * de la sede (pausa, horizonte) → duración frente a los servicios CONGELADOS →
+   * disponibilidad bajo SERIALIZABLE y `FOR UPDATE` → persistir → auditar.
+   *
+   * "LIBERAR EL HORARIO ACTUAL Y ADQUIRIR EL NUEVO" es UNA sola escritura: la
+   * ocupación de la agenda es la propia fila de `reservas` (la disponibilidad se
+   * CALCULA, no se almacena, y no hay tabla de huecos intermedios). Con el lock
+   * de la sede tomado, el `update` de `fecha_cita`/`hora_inicio`/`hora_fin`
+   * suelta el bloque viejo y toma el nuevo en el mismo instante: no existe una
+   * ventana en la que la reserva ocupe los dos huecos ni ninguno. Por eso la
+   * revalidación EXCLUYE esta reserva (`excluirReservaId`): sin eso se bloquearía
+   * a sí misma al solaparse con su propio hueco anterior.
+   *
+   * El job de expiración NO se reencola: su `delay` sale de `expira_at`, que no
+   * cambia al reprogramar, y su `jobId` es determinístico, así que sigue siendo
+   * el mismo job.
+   */
+  async reprogramarReserva(
+    barberiaId: string,
+    reservaId: string,
+    dto: ReprogramarReservaDto,
+    user: UsuarioAutenticado,
+  ) {
+    const { inicio, fin } = validateTimeRange(dto.horaInicio, dto.horaFin);
+    const fecha = new Date(dto.fecha);
+    const duracionSolicitada = (fin.getTime() - inicio.getTime()) / 60000;
+
+    const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+
+      const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
+
+      if (!actual) {
+        throw new NotFoundException('Reserva no encontrada');
+      }
+
+      if (
+        !ESTADOS_REPROGRAMABLES.includes(
+          actual.estado as (typeof ESTADOS_REPROGRAMABLES)[number],
+        )
+      ) {
+        throw errorDeConflicto(
+          'ESTADO_INVALIDO',
+          `Solo se puede reprogramar una reserva vigente (estado actual: ${actual.estado}).`,
+        );
+      }
+
+      const config = await tx.configuracionBarberia.findUnique({ where: { barberiaId } });
+
+      if (!config) {
+        throw new NotFoundException('Configuración de barbería no encontrada');
+      }
+
+      if (!config.nuevasReservasActivas) {
+        throw reglaDeNegocio(
+          'RESERVAS_PAUSADAS',
+          'La barbería no está aceptando cambios de horario actualmente.',
+        );
+      }
+
+      // Mismo horizonte que crearReserva, comparado por día de calendario
+      // (YYYY-MM-DD) para no depender de la zona horaria del servidor.
+      if (config.horizonteReservaDias != null) {
+        const hoy = new Date();
+        const limite = new Date(
+          hoy.getFullYear(),
+          hoy.getMonth(),
+          hoy.getDate() + config.horizonteReservaDias,
+        );
+        const limiteStr = `${limite.getFullYear()}-${String(limite.getMonth() + 1).padStart(2, '0')}-${String(limite.getDate()).padStart(2, '0')}`;
+
+        if (String(dto.fecha).slice(0, 10) > limiteStr) {
+          throw reglaDeNegocio(
+            'FUERA_DE_HORIZONTE',
+            `Solo se puede agendar hasta ${config.horizonteReservaDias} días de antelación.`,
+          );
+        }
+      }
+
+      // Los servicios están congelados en el snapshot: el bloque nuevo tiene que
+      // seguir cubriendo lo que se pactó. Reprogramar NO cambia servicios.
+      const serviciosCongelados = await tx.participanteServicio.findMany({
+        where: { participante: { reservaId } },
+        select: { duracionHistorica: true },
+      });
+
+      const duracionMinima = serviciosCongelados.reduce(
+        (acc, s) => acc + s.duracionHistorica,
+        0,
+      );
+
+      if (duracionSolicitada < duracionMinima) {
+        throw new BadRequestException(
+          `La duración solicitada (${duracionSolicitada} min) es insuficiente para los servicios de la reserva (mínimo ${duracionMinima} min)`,
+        );
+      }
+
+      const margenFinal = actual.margenGrupalHistorico ?? config.margenGrupalMinutos ?? 10;
+
+      const disponibilidades = await this.disponibilidadService.calcularDisponibilidad(
+        {
+          barberiaId,
+          fecha,
+          duracionTotal: duracionSolicitada,
+          margenRequerido: margenFinal,
+          excluirReservaId: actual.id,
+        },
+        tx,
+      );
+
+      const [hInicio, mInicio] = dto.horaInicio.split(':').map(Number);
+      const [hFin, mFin] = dto.horaFin.split(':').map(Number);
+
+      const inicioCita = new Date(fecha);
+      inicioCita.setHours(hInicio, mInicio, 0, 0);
+      const finCita = new Date(fecha);
+      finCita.setHours(hFin, mFin, 0, 0);
+      const finConMargen = new Date(finCita.getTime() + margenFinal * 60000);
+
+      const libre = disponibilidades.some(
+        (slot) => inicioCita >= slot.inicio && finConMargen <= slot.fin,
+      );
+
+      if (!libre) {
+        throw errorDeConflicto(
+          'CONFLICTO_HORARIO',
+          'El horario nuevo ya no está disponible: otra reserva o un bloqueo ocupa ese hueco.',
+        );
+      }
+
+      const actualizada = await tx.reserva.update({
+        where: { id: reservaId },
+        data: { fechaCita: fecha, horaInicio: inicio, horaFin: fin },
+      });
+
+      await this.auditoriaService.registrarEvento(
+        {
+          usuarioId: user.id,
+          accion: 'RESERVA_REPROGRAMADA',
+          entidad: 'Reserva',
+          entidadId: reservaId,
+          contexto: {
+            barberiaId,
+            estadoAnterior: actual.estado,
+            estadoNuevo: actual.estado,
+            fechaAnterior: this.fechaISO(actual.fechaCita),
+            horaAnterior: `${this.horaHHMM(actual.horaInicio)}-${this.horaHHMM(actual.horaFin)}`,
+            fechaNueva: this.fechaISO(fecha),
+            horaNueva: `${dto.horaInicio}-${dto.horaFin}`,
+            origen: 'REPROGRAMACION',
+          },
+        },
+        tx,
+      );
+
+      return actualizada;
+    });
+
+    if (this.notificacionService) {
+      this.notificacionService
+        .enviarNotificacion({
+          usuarioId: reserva.clienteId,
+          tipo: 'RESERVA_REPROGRAMADA',
+          contenido: `Tu cita se movió al ${this.fechaISO(reserva.fechaCita)} a las ${this.horaHHMM(reserva.horaInicio)}.`,
+        })
+        .catch((err) =>
+          this.logger.warn(`No se pudo notificar la reprogramación: ${err.message}`),
+        );
+    }
+
+    return reserva;
+  }
+
+  /**
    * E3-05 · Cancelación manual: `→ CANCELADA`.
    *
    * La ruta la declaran los tres roles (`CLIENTE`, `ADMIN_BARBERIA`,
@@ -994,6 +1250,16 @@ export class ReservaService {
           'ESTADO_INVALIDO',
           `Solo se puede cancelar una reserva vigente (estado actual: ${actual.estado}).`,
         );
+      }
+
+      // E3-07 §5.7 · ventana del CLIENTE: una solicitud `PENDIENTE` se cancela
+      // siempre; una cita ya agendada, solo hasta 30 minutos antes del inicio.
+      // El staff no tiene ventana: la sede cancela por teléfono o mostrador
+      // (E3-08 le añadirá el motivo obligatorio). La comprobación va dentro de la
+      // transacción, con el lock de la sede tomado, para que el reloj que decide
+      // sea el del instante de la escritura y no el de la petición.
+      if (!esStaff && actual.estado !== 'PENDIENTE') {
+        this.exigirVentanaDeCancelacion(actual);
       }
 
       const actualizada = await tx.reserva.update({

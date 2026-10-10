@@ -144,6 +144,12 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // ver —que la reserva sea del CLIENTE que la cancela— lo exige el servicio
   // (403 RESERVA_AJENA) y lo cubren las pruebas de servicio y el E2E.
   'POST /barberias/:barberiaId/reservas,reservas/:id/cancelar': [ROL_CLIENTE, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // E3-06 (2026-10-09): reprogramar una reserva vigente es una decisión de la
+  // SEDE, como aceptar, rechazar o marcar el no presentado: la misma política y
+  // el mismo acotado por `barberiaId` del parámetro. La vía del CLIENTE para
+  // cambiar de horario es la propuesta con ventana de 10 minutos (§5.4), que
+  // sigue pendiente como tarea del backlog.
+  'PATCH /barberias/:barberiaId/reservas,reservas/:id/reprogramar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /barberias/:barberiaId/reservas,reservas/agenda': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_ADMINISTRADOR],
 
   'GET /catalogo/servicios,servicios/': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
@@ -289,9 +295,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
   }
 
-  it('descubrir las 59 rutas del servidor y todas tienen decision', () => {
+  it('descubrir las 60 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(59);
+    expect(claves.length).toBe(60);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -375,11 +381,12 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
     console.log('');
 
-    // 59 rutas × 4 roles: la partición de E3-03 añadió POST /reservas/walk-in,
+    // 60 rutas × 4 roles: la partición de E3-03 añadió POST /reservas/walk-in,
     // el endpoint de cotización (D44) añadió POST /reservas/cotizar, E3-04
-    // añade POST /reservas/:id/aceptar y POST /reservas/:id/rechazar, y E3-05
-    // añade POST /reservas/:id/cancelar.
-    expect(evaluaciones).toBe(236);
+    // añadió POST /reservas/:id/aceptar y POST /reservas/:id/rechazar, E3-05
+    // añadió POST /reservas/:id/cancelar y E3-06 añade
+    // PATCH /reservas/:id/reprogramar.
+    expect(evaluaciones).toBe(240);
     expect(
       desviaciones.length === 0
         ? ''
