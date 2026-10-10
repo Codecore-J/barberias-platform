@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Optional } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { TiempoService } from '../../shared/time/tiempo.service.js';
 import { CreateHorarioDto } from './dto/create-horario.dto.js';
 import { CreateExcepcionHorarioDto, TipoExcepcionHorario } from './dto/create-excepcion-horario.dto.js';
 import { validateTimeRange, parseTime } from '../domain/time.utils.js';
@@ -7,7 +8,13 @@ import { esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
 
 @Injectable()
 export class HorarioService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    // E2-04: las fechas de excepción son etiquetas `DATE`; se construyen por el
+    // servicio central para no depender de `new Date(str)` ni de la zona del
+    // servidor al escribirlas.
+    @Optional() private readonly tiempo: TiempoService = new TiempoService(),
+  ) {}
 
   private async validateAccess(usuarioId: string, barberiaId: string) {
     const barberia = await this.prisma.barberia.findUnique({
@@ -85,7 +92,7 @@ export class HorarioService {
       fin = parsed.fin;
     }
 
-    const fecha = new Date(dto.fecha);
+    const fecha = this.tiempo.fechaDeCalendario(dto.fecha);
 
     return this.prisma.excepcionHorario.upsert({
       where: {
@@ -187,7 +194,7 @@ export class HorarioService {
       fin = parsed.fin;
     }
 
-    const fecha = new Date(dto.fecha);
+    const fecha = this.tiempo.fechaDeCalendario(dto.fecha);
 
     return this.prisma.excepcionHorarioBarbero.upsert({
       where: {

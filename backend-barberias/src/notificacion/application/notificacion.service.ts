@@ -1,8 +1,14 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { EnviarNotificacionDto } from './dto/enviar-notificacion.dto.js';
+import {
+  TiempoService,
+  ZONA_POR_DEFECTO,
+  fechaCalendarioISO,
+  horaRelojHHMM,
+} from '../../shared/time/tiempo.service.js';
 
 export interface ProgramarRecordatorioPayload {
   usuarioId: string;
@@ -10,6 +16,8 @@ export interface ProgramarRecordatorioPayload {
   fechaCita: Date;
   horaInicio: Date;
   nombreBarberia: string;
+  /** E2-04: zona de la sede para recomponer el instante real de la cita. */
+  zonaHoraria?: string;
 }
 
 @Injectable()
@@ -19,6 +27,7 @@ export class NotificacionService {
   constructor(
     private readonly prisma: PrismaService,
     @InjectQueue('notificaciones') private readonly notificacionesQueue: Queue,
+    @Optional() private readonly tiempo: TiempoService = new TiempoService(),
   ) {}
 
   /**
@@ -68,17 +77,20 @@ export class NotificacionService {
    * Programa un recordatorio automático con BullMQ 1 hora antes de la cita (T8.1).
    */
   async programarRecordatorio(payload: ProgramarRecordatorioPayload) {
-    const citaDateTime = new Date(payload.fechaCita);
-    citaDateTime.setHours(
-      payload.horaInicio.getUTCHours(),
-      payload.horaInicio.getUTCMinutes(),
-      0,
-      0,
+    // E2-04/H36: el instante real de la cita se compone con la zona de la SEDE.
+    // Antes `new Date(fechaCita); setHours(...)` usaba la zona del servidor, y en
+    // Render (UTC) el recordatorio habría saltado 4 h antes para una sede en
+    // UTC-4 (o la cita se habría registrado como si fuera de otro día).
+    const tz = payload.zonaHoraria || ZONA_POR_DEFECTO;
+    const citaDateTime = this.tiempo.aInstante(
+      fechaCalendarioISO(payload.fechaCita),
+      horaRelojHHMM(payload.horaInicio),
+      tz,
     );
 
     // 1 hora antes de la cita
     const recordatorioTime = new Date(citaDateTime.getTime() - 60 * 60 * 1000);
-    const delay = Math.max(0, recordatorioTime.getTime() - Date.now());
+    const delay = Math.max(0, recordatorioTime.getTime() - this.tiempo.ahora().getTime());
 
     const job = await this.notificacionesQueue.add(
       'recordatorio-cita',

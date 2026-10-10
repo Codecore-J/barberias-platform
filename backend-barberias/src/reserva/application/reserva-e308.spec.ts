@@ -5,12 +5,24 @@ import { ReservaService } from './reserva.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { DisponibilidadService } from '../../agenda/application/disponibilidad.service.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
+import { TiempoService, ZONA_POR_DEFECTO } from '../../shared/time/tiempo.service.js';
 
 /** Hora UTC, igual que la escribe `parseTime` (setUTCHours). */
 function hora(h: number, m: number): Date {
   const d = new Date('1970-01-01T00:00:00Z');
   d.setUTCHours(h, m, 0, 0);
   return d;
+}
+
+/** E2-04: instantes en la zona de la SEDE, igual que los compone el servicio. */
+const TZ_SEDE = ZONA_POR_DEFECTO;
+const tiempoTest = new TiempoService();
+function enSede(fecha: string, h: number, m = 0): Date {
+  return tiempoTest.aInstante(
+    fecha,
+    `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+    TZ_SEDE,
+  );
 }
 
 /**
@@ -24,6 +36,7 @@ describe('ReservaService · E3-08 cancelación especial y propuesta de horario',
 
   const mockPrismaService = {
     $queryRaw: vi.fn(),
+    barberia: { findUnique: vi.fn() },
     configuracionBarberia: { findUnique: vi.fn() },
     reserva: { findFirst: vi.fn(), update: vi.fn() },
     participanteServicio: { findMany: vi.fn() },
@@ -87,11 +100,7 @@ describe('ReservaService · E3-08 cancelación especial y propuesta de horario',
     ],
   };
 
-  const slot = (h: number, m: number) => {
-    const d = new Date('2026-10-12');
-    d.setHours(h, m, 0, 0);
-    return d;
-  };
+  const slot = (h: number, m: number) => enSede('2026-10-12', h, m);
 
   const dto = { fecha: '2026-10-12', horaInicio: '10:00', horaFin: '10:30' };
 

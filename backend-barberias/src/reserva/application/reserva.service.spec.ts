@@ -5,12 +5,29 @@ import { DisponibilidadService } from '../../agenda/application/disponibilidad.s
 import { ConflictException, ForbiddenException, BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
+import { TiempoService, ZONA_POR_DEFECTO } from '../../shared/time/tiempo.service.js';
 
 /** Hora UTC, igual que la escribe `parseTime` (setUTCHours). */
 function hora(h: number, m: number): Date {
   const d = new Date('1970-01-01T00:00:00Z');
   d.setUTCHours(h, m, 0, 0);
   return d;
+}
+
+/**
+ * E2-04: zona de la sede del catálogo D15. Los slots esperados se componen con
+ * el MISMO reloj central que usa el servicio, así el armado depende de la zona
+ * de la sede y no de la del servidor que corre la suite (TZ=UTC o
+ * TZ=America/Santo_Domingo, ambos deben pasar).
+ */
+const TZ_SEDE = ZONA_POR_DEFECTO;
+const tiempoTest = new TiempoService();
+function enSede(fecha: string, h: number, m = 0): Date {
+  return tiempoTest.aInstante(
+    fecha,
+    `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+    TZ_SEDE,
+  );
 }
 
 describe('ReservaService', () => {
@@ -77,11 +94,9 @@ describe('ReservaService', () => {
         { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 5 },
       ]);
 
-      const fecha = new Date('2026-10-10');
-      const inicioSlot = new Date(fecha);
-      inicioSlot.setHours(9, 0, 0, 0);
-      const finSlot = new Date(fecha);
-      finSlot.setHours(10, 0, 0, 0);
+      // E2-04: instantes en la zona de la SEDE (mismo armado que el servicio).
+      const inicioSlot = enSede('2026-10-10', 9);
+      const finSlot = enSede('2026-10-10', 10);
 
       mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
         { inicio: inicioSlot, fin: finSlot },
@@ -133,11 +148,9 @@ describe('ReservaService', () => {
         { id: 's2', precio: 10, duracionEstimada: 10, margenOperativo: 5 },
       ]);
 
-      const fecha = new Date('2026-10-10');
-      const inicioSlot = new Date(fecha);
-      inicioSlot.setHours(9, 0, 0, 0);
-      const finSlot = new Date(fecha);
-      finSlot.setHours(10, 0, 0, 0);
+      // E2-04: instantes en la zona de la SEDE (mismo armado que el servicio).
+      const inicioSlot = enSede('2026-10-10', 9);
+      const finSlot = enSede('2026-10-10', 10);
 
       mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
         { inicio: inicioSlot, fin: finSlot },
@@ -256,11 +269,9 @@ describe('ReservaService', () => {
         { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 5 },
       ]);
 
-      const fecha = new Date('2026-10-10');
-      const inicioSlot = new Date(fecha);
-      inicioSlot.setHours(11, 0, 0, 0);
-      const finSlot = new Date(fecha);
-      finSlot.setHours(12, 0, 0, 0);
+      // E2-04: instantes en la zona de la SEDE.
+      const inicioSlot = enSede('2026-10-10', 11);
+      const finSlot = enSede('2026-10-10', 12);
 
       // El bloque solicitado (09:00-09:30) no está dentro del slot de
       // disponibilidad (11:00-12:00): la regla de negocio no puede reservar ese
@@ -301,13 +312,10 @@ describe('ReservaService', () => {
     });
 
     /** Único slot que cubre el bloque 10:00-10:40 del día completo. */
-    const slotDelDia = () => {
-      const inicio = new Date('2026-10-10');
-      inicio.setHours(0, 0, 0, 0);
-      const fin = new Date('2026-10-10');
-      fin.setHours(23, 59, 0, 0);
-      return { inicio, fin };
-    };
+    const slotDelDia = () => ({
+      inicio: enSede('2026-10-10', 0),
+      fin: enSede('2026-10-10', 23, 59),
+    });
 
     it('ROJO: aceptar una solicitud expirada → 409 SOLICITUD_EXPIRADA', async () => {
       mockPrismaService.reserva.findFirst.mockResolvedValue(
@@ -467,10 +475,9 @@ describe('ReservaService', () => {
       mockPrismaService.servicio.findMany.mockResolvedValue([
         { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 0 },
       ]);
-      const inicioSlot = new Date('2026-10-10');
-      inicioSlot.setHours(9, 0, 0, 0);
-      const finSlot = new Date('2026-10-10');
-      finSlot.setHours(10, 30, 0, 0);
+      // E2-04: instantes en la zona de la SEDE.
+      const inicioSlot = enSede('2026-10-10', 9);
+      const finSlot = enSede('2026-10-10', 10, 30);
       mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
         { inicio: inicioSlot, fin: finSlot },
       ]);
@@ -761,10 +768,17 @@ describe('ReservaService', () => {
       ...extra,
     });
 
-    /** Reloj fijo: la ventana se mide contra `Date.now()`, no contra la base. */
+    /**
+     * Reloj fijo: la ventana se mide contra `Date.now()`, no contra la base.
+     *
+     * E2-04: la hora es LOCAL DE LA SEDE. Antes se fijaba con
+     * `new Date(2026, 9, 10, h, m)`, que es la zona del servidor; con la cita
+     * compuesta en la zona de la sede la cuenta de minutos salía desplazada y las
+     * aserciones de 29/30/31 minutos medían otra cosa. Re-anclado al nuevo reloj.
+     */
     const aLas = (h: number, m: number) => {
       vi.useFakeTimers();
-      vi.setSystemTime(new Date(2026, 9, 10, h, m, 0));
+      vi.setSystemTime(enSede('2026-10-10', h, m));
     };
 
     beforeEach(() => {
@@ -806,6 +820,36 @@ describe('ReservaService', () => {
       );
 
       expect(res.estado).toBe('CANCELADA');
+    });
+
+    it('H36: la ventana de una cita a las 21:00 locales se mide contra la SEDE, no contra el servidor', async () => {
+      // Regresión de H36. A las 16:35 locales faltan 4 h 25 min para las 21:00
+      // locales: el CLIENTE debe poder cancelar. Con el código viejo, en un
+      // servidor UTC (Render) el instante se componía como 21:00 UTC y la misma
+      // petición daba 422 a 25 min (ventana cerrada 4 h antes de tiempo). Es la
+      // prueba ROJA con TZ=UTC de la ficha E2-04.
+      mockPrismaService.reserva.findFirst.mockResolvedValue(
+        reservaVigente({ horaInicio: hora(21, 0), horaFin: hora(21, 30) }),
+      );
+      mockPrismaService.reserva.update.mockResolvedValue({
+        id: 'uuid-reserva',
+        estado: 'CANCELADA',
+        clienteId: 'uuid-cliente',
+      });
+
+      aLas(16, 35);
+      const res = await service.cancelarReserva(
+        'uuid-barberia',
+        'uuid-reserva',
+        usuarioCliente as any,
+      );
+      expect(res.estado).toBe('CANCELADA');
+
+      // Y a las 20:31 locales (29 minutos reales) la ventana ya está cerrada.
+      vi.setSystemTime(enSede('2026-10-10', 20, 31));
+      await expect(
+        service.cancelarReserva('uuid-barberia', 'uuid-reserva', usuarioCliente as any),
+      ).rejects.toMatchObject({ response: { codigo: 'FUERA_DE_VENTANA', statusCode: 422 } });
     });
 
     it('ROJO: a 29 minutos → 422 FUERA_DE_VENTANA y la reserva no se toca', async () => {
@@ -897,18 +941,15 @@ describe('ReservaService', () => {
 
     const dto = { fecha: '2026-10-12', horaInicio: '10:00', horaFin: '10:30' };
 
-    /** Slot del 2026-10-12 a la hora local indicada (mismo armado que el servicio). */
-    const slot = (h: number, m: number) => {
-      const d = new Date('2026-10-12');
-      d.setHours(h, m, 0, 0);
-      return d;
-    };
+    /** Slot del 2026-10-12 a la hora local de la SEDE (E2-04). */
+    const slot = (h: number, m: number) => enSede('2026-10-12', h, m);
 
     beforeEach(() => {
-      // Reloj fijo del 2026-10-10 09:00 local: el horizonte de 30 días y el
-      // «día de calendario» de la sede quedan deterministas.
+      // Reloj fijo del 2026-10-10 09:00 LOCAL DE LA SEDE (E2-04): el horizonte de
+      // 30 días y el «día de calendario» de la sede quedan deterministas en
+      // cualquier TZ del servidor que corre la suite.
       vi.useFakeTimers();
-      vi.setSystemTime(new Date(2026, 9, 10, 9, 0, 0));
+      vi.setSystemTime(enSede('2026-10-10', 9));
 
       mockQueue.getJob.mockResolvedValue(null);
       mockAuditoriaService.registrarEvento.mockResolvedValue({ id: 'uuid-auditoria' });

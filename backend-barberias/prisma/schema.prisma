@@ -95,6 +95,11 @@ model Barberia {
   enlaceUnico   String  @unique @map("enlace_unico") @db.VarChar(100)
   responsableId String  @map("responsable_id") @db.Uuid
   estado        String  @default("ACTIVO") @db.VarChar(20)
+  // E2-04 / D15: zona horaria de la sede. Las fechas y horas de cita
+  // (`fecha_cita`, `hora_inicio`, `hora_fin`) son ETIQUETAS locales a esta zona
+  // y los instantes (`expira_at`, `creado_at`) son UTC. La columna llega con la
+  // migración `e204_zona_horaria`; E2-03 la dejará con su CHECK (D15).
+  zonaHoraria   String  @default("America/Santo_Domingo") @map("zona_horaria") @db.VarChar(50)
 
   responsable Usuario @relation("Responsable", fields: [responsableId], references: [id])
 

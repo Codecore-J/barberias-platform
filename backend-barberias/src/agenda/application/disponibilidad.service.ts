@@ -1,8 +1,14 @@
-import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, ForbiddenException, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { TipoExcepcionHorario } from '../../horario/application/dto/create-excepcion-horario.dto.js';
 import { esAdministradorGlobalPorId, perteneceABarberia } from '../../iam/domain/roles.js';
 import { ESTADOS } from '../../shared/domain/estados.js';
+import {
+  TiempoService,
+  ZONA_POR_DEFECTO,
+  fechaCalendarioISO,
+  horaRelojHHMM,
+} from '../../shared/time/tiempo.service.js';
 
 export interface Intervalo {
   inicio: Date;
@@ -11,7 +17,11 @@ export interface Intervalo {
 
 export interface SolicitudDisponibilidad {
   barberiaId: string;
-  fecha: Date;
+  /**
+   * E2-04: acepta la etiqueta `YYYY-MM-DD` (preferida) o un `Date` de calendario;
+   * si falta, se usa "hoy" en la zona de la sede.
+   */
+  fecha?: Date | string;
   duracionTotal: number; // en minutos
   margenRequerido: number; // en minutos (solo al final de todo el bloque)
   /**
@@ -28,7 +38,34 @@ export interface SolicitudDisponibilidad {
 export class DisponibilidadService {
   private readonly logger = new Logger(DisponibilidadService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // E2-04: el reloj/zona es inyectable; el fallback permite construir el
+    // servicio en pruebas unitarias que no montan el módulo compartido.
+    @Optional() private readonly tiempo: TiempoService = new TiempoService(),
+  ) {}
+
+  /**
+   * E2-04: la zona horaria de la sede sale de `barberias.zona_horaria`. El
+   * `DEFAULT` de la columna ya trae la del catálogo; el fallback aquí cubre una
+   * fila creada antes de la migración o un mock de prueba.
+   */
+  private async zonaDeSede(db: any, barberiaId: string): Promise<string> {
+    const barberia = await db.barberia.findUnique({
+      where: { id: barberiaId },
+      select: { zonaHoraria: true },
+    });
+    return barberia?.zonaHoraria || ZONA_POR_DEFECTO;
+  }
+
+  /**
+   * Compone el instante real de una etiqueta de calendario (`fecha`) más una
+   * etiqueta horaria (`TIME`) en la zona de la sede. Es la sustitución directa
+   * del viejo `mergeDateAndTime`, que usaba `setHours` del servidor.
+   */
+  private instanteDeEtiqueta(fechaIso: string, hora: Date, tz: string): Date {
+    return this.tiempo.aInstante(fechaIso, horaRelojHHMM(hora), tz);
+  }
 
   /**
    * E1-06 · parte 3: la disponibilidad es lectura de agenda de UNA sede.
@@ -61,35 +98,55 @@ export class DisponibilidadService {
 
   /**
    * Calcula los Time Slots (intervalos) disponibles en una fecha para una duración dada.
+   *
+   * E2-04/H36: el día de la semana y la jornada se leen en la zona de la SEDE.
+   * `fecha.getDay()` usaba la zona del servidor y con Render en UTC-4 (o el
+   * proceso en `America/Santo_Domingo`) devolvía el día anterior; los slots se
+   * componían con `setHours` del servidor, no como instantes reales.
    */
   async calcularDisponibilidad(solicitud: SolicitudDisponibilidad, txClient?: any): Promise<Intervalo[]> {
     const db = txClient ?? this.prisma;
     const { barberiaId, fecha, duracionTotal, margenRequerido, excluirReservaId } = solicitud;
     const duracionConMargen = duracionTotal + margenRequerido;
-    
+
+    const tz = await this.zonaDeSede(db, barberiaId);
+
+    // E2-04: la fecha es una ETIQUETA de calendario. Si llega como cadena se usa
+    // tal cual; si llega como `Date` se toman sus partes UTC (como la guarda un
+    // `DATE`); si no llega, se resuelve "hoy" en la zona de la SEDE.
+    let fechaIso: string;
+    if (typeof fecha === 'string' && fecha.length >= 10) {
+      fechaIso = fecha.slice(0, 10);
+    } else if (fecha instanceof Date) {
+      fechaIso = fechaCalendarioISO(fecha);
+    } else {
+      fechaIso = this.tiempo.fechaLocal(this.tiempo.ahora(), tz);
+    }
+    const fechaEtiqueta = this.tiempo.fechaDeCalendario(fechaIso);
+
     // 1. Obtener horario base para el día de la semana
-    const diaSemana = fecha.getDay() === 0 ? 7 : fecha.getDay(); // Ajustar Domingo a 7 si aplica, o 0-6 según convención (asumimos 1=Lunes, 7=Domingo)
-    
+    const diaSemana = this.tiempo.diaSemana(fechaIso, tz);
+
     const horarioBase = await db.horario.findFirst({
       where: { barberiaId, diaSemana },
     });
 
     // 2. Obtener excepciones para ese día
     const excepcion = await db.excepcionHorario.findFirst({
-      where: { barberiaId, fecha },
+      where: { barberiaId, fecha: fechaEtiqueta },
     });
 
     if (excepcion && excepcion.tipo === TipoExcepcionHorario.CERRADA) {
       return []; // No hay disponibilidad
     }
 
-    let inicioJornada = horarioBase ? this.mergeDateAndTime(fecha, horarioBase.horaInicio) : null;
-    let finJornada = horarioBase ? this.mergeDateAndTime(fecha, horarioBase.horaFin) : null;
+    let inicioJornada = horarioBase ? this.instanteDeEtiqueta(fechaIso, horarioBase.horaInicio, tz) : null;
+    let finJornada = horarioBase ? this.instanteDeEtiqueta(fechaIso, horarioBase.horaFin, tz) : null;
 
     if (excepcion && excepcion.tipo === TipoExcepcionHorario.HORARIO_ESPECIAL) {
       if (excepcion.horaInicio && excepcion.horaFin) {
-        inicioJornada = this.mergeDateAndTime(fecha, excepcion.horaInicio);
-        finJornada = this.mergeDateAndTime(fecha, excepcion.horaFin);
+        inicioJornada = this.instanteDeEtiqueta(fechaIso, excepcion.horaInicio, tz);
+        finJornada = this.instanteDeEtiqueta(fechaIso, excepcion.horaFin, tz);
       }
     }
 
@@ -99,7 +156,7 @@ export class DisponibilidadService {
 
     // 3. Obtener bloqueos de agenda
     const bloqueos = await db.bloqueosAgenda.findMany({
-      where: { barberiaId, fecha },
+      where: { barberiaId, fecha: fechaEtiqueta },
     });
 
     // 4. Obtener reservas confirmadas/pendientes
@@ -107,7 +164,7 @@ export class DisponibilidadService {
     const reservas = await db.reserva.findMany({
       where: {
         barberiaId,
-        fechaCita: fecha,
+        fechaCita: fechaEtiqueta,
         // E2-02: los dos estados desde los que una reserva ocupa agenda hoy
         // (§5.3). El conjunto NO cambia aquí: sumar PROPUESTA_PENDIENTE es la
         // decisión de D37/E3-02, documentada como H41.
@@ -118,23 +175,19 @@ export class DisponibilidadService {
 
     // 5. Construir los rangos ocupados
     const ocupados: Intervalo[] = [];
-    
+
     for (const b of bloqueos) {
       ocupados.push({
-        inicio: this.mergeDateAndTime(fecha, b.horaInicio),
-        fin: this.mergeDateAndTime(fecha, b.horaFin),
+        inicio: this.instanteDeEtiqueta(fechaIso, b.horaInicio, tz),
+        fin: this.instanteDeEtiqueta(fechaIso, b.horaFin, tz),
       });
     }
 
     for (const r of reservas) {
-      const finOcupado = this.mergeDateAndTime(fecha, r.horaFin);
-      if (r.margenGrupalHistorico) {
-        finOcupado.setMinutes(finOcupado.getMinutes() + r.margenGrupalHistorico);
-      }
-      ocupados.push({
-        inicio: this.mergeDateAndTime(fecha, r.horaInicio),
-        fin: finOcupado,
-      });
+      const inicioOcupado = this.instanteDeEtiqueta(fechaIso, r.horaInicio, tz);
+      const finBase = this.instanteDeEtiqueta(fechaIso, r.horaFin, tz);
+      const finOcupado = new Date(finBase.getTime() + (r.margenGrupalHistorico ?? 0) * 60000);
+      ocupados.push({ inicio: inicioOcupado, fin: finOcupado });
     }
 
     // Fusionar intervalos ocupados solapados
@@ -143,28 +196,26 @@ export class DisponibilidadService {
     // 6. Extraer los rangos libres y dividirlos en Time Slots
     const disponibles: Intervalo[] = [];
     const duracionSlot = 30; // Intervalos de 30 mins (o 15, configurable)
-    
-    let cursor = new Date(inicioJornada);
 
-    while (cursor < finJornada) {
-      const intentoFin = new Date(cursor);
-      intentoFin.setMinutes(intentoFin.getMinutes() + duracionConMargen);
+    let cursor = inicioJornada.getTime();
+    const finJornadaMs = finJornada.getTime();
 
-      if (intentoFin <= finJornada && !this.estaSolapado({ inicio: cursor, fin: intentoFin }, ocupadosFusionados)) {
-        disponibles.push({ inicio: new Date(cursor), fin: new Date(intentoFin) });
+    while (cursor < finJornadaMs) {
+      const intentoInicio = new Date(cursor);
+      const intentoFin = new Date(cursor + duracionConMargen * 60000);
+
+      if (
+        intentoFin.getTime() <= finJornadaMs &&
+        !this.estaSolapado({ inicio: intentoInicio, fin: intentoFin }, ocupadosFusionados)
+      ) {
+        disponibles.push({ inicio: intentoInicio, fin: intentoFin });
       }
 
       // Avanzar el cursor
-      cursor.setMinutes(cursor.getMinutes() + duracionSlot);
+      cursor += duracionSlot * 60000;
     }
 
     return disponibles;
-  }
-
-  private mergeDateAndTime(date: Date, timeInfo: Date): Date {
-    const result = new Date(date);
-    result.setHours(timeInfo.getUTCHours(), timeInfo.getUTCMinutes(), 0, 0);
-    return result;
   }
 
   private fusionarIntervalos(intervalos: Intervalo[]): Intervalo[] {

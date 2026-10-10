@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { CreateBloqueoDto } from './dto/create-bloqueo.dto.js';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { validateTimeRange } from '../../horario/domain/time.utils.js';
 import { esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
+import { TiempoService } from '../../shared/time/tiempo.service.js';
 
 @Injectable()
 export class AgendaService {
@@ -13,6 +14,9 @@ export class AgendaService {
   constructor(
     private readonly prisma: PrismaService,
     @InjectQueue('agenda-bloqueos') private readonly bloqueosQueue: Queue,
+    // E2-04: la fecha de un bloqueo es una etiqueta `DATE`; se construye por el
+    // servicio central de tiempo.
+    @Optional() private readonly tiempo: TiempoService = new TiempoService(),
   ) {}
 
   private async validateAccess(usuarioId: string, barberiaId: string) {
@@ -44,7 +48,7 @@ export class AgendaService {
     await this.validateAccess(usuarioId, barberiaId);
 
     const { inicio, fin } = validateTimeRange(dto.horaInicio, dto.horaFin);
-    const fecha = new Date(dto.fecha);
+    const fecha = this.tiempo.fechaDeCalendario(dto.fecha);
 
     // TODO: Comprobar solapamiento con reservas existentes
 

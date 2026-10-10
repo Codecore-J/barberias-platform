@@ -15,6 +15,10 @@ import {
   type EstadoReserva,
 } from '../../shared/domain/estados.js';
 import { ReservaStateMachine } from '../../shared/domain/reserva-state-machine.js';
+import {
+  fechaCalendarioISO,
+  horaRelojHHMM,
+} from '../../shared/time/tiempo.service.js';
 
 /**
  * Estados desde los que una reserva todavía PUEDE expirar (E3-05 §2).
@@ -252,10 +256,10 @@ export class ExpiracionReservaService implements OnApplicationBootstrap {
       return;
     }
 
-    const fecha = new Date(reserva.fechaCita).toISOString().slice(0, 10);
-    const hora = `${String(reserva.horaInicio.getUTCHours()).padStart(2, '0')}:${String(
-      reserva.horaInicio.getUTCMinutes(),
-    ).padStart(2, '0')}`;
+    // E2-04: las etiquetas DATE/TIME se leen por sus partes UTC del
+    // almacenamiento, sin `toISOString().slice` (prohibido sobre fechas de cita).
+    const fecha = fechaCalendarioISO(reserva.fechaCita);
+    const hora = horaRelojHHMM(reserva.horaInicio);
 
     await this.notificacionService
       .enviarNotificacion({

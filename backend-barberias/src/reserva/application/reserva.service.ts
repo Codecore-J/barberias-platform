@@ -32,6 +32,12 @@ import { AuditoriaService } from '../../auditoria/application/auditoria.service.
 import { CotizacionResponse, BloqueCalculado } from './dto/cotizacion.dto.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
 import { validateTimeRange } from '../../horario/domain/time.utils.js';
+import {
+  TiempoService,
+  ZONA_POR_DEFECTO,
+  fechaCalendarioISO,
+  horaRelojHHMM,
+} from '../../shared/time/tiempo.service.js';
 import { DisponibilidadService } from '../../agenda/application/disponibilidad.service.js';
 import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
@@ -118,8 +124,52 @@ export class ReservaService {
     private readonly disponibilidadService: DisponibilidadService,
     @InjectQueue(QUEUES.RESERVAS) private readonly reservasQueue: Queue,
     private readonly auditoriaService: AuditoriaService,
+    // E2-04: reloj y zona centralizados. El fallback permite pruebas unitarias
+    // que no montan el módulo compartido; en producción lo inyecta Nest.
+    @Optional() private readonly tiempo: TiempoService = new TiempoService(),
     @Optional() private readonly notificacionService?: NotificacionService,
   ) {}
+
+  /**
+   * E2-04: zona horaria de la sede desde `barberias.zona_horaria`. Es la única
+   * fuente de la zona; el fallback solo cubre una fila anterior a la migración o
+   * un mock de prueba.
+   */
+  private async zonaDeSede(barberiaId: string, db: any = this.prisma): Promise<string> {
+    const barberia = await db.barberia.findUnique({
+      where: { id: barberiaId },
+      select: { zonaHoraria: true },
+    });
+    return barberia?.zonaHoraria || ZONA_POR_DEFECTO;
+  }
+
+  /**
+   * Horizonte de reserva medido en días de la SEDE (E2-04). Antes usaba
+   * `new Date()` + `getFullYear/getMonth/getDate` (zona del servidor) y comparaba
+   * contra la etiqueta `YYYY-MM-DD` del DTO: con el servidor al oeste de la sede
+   * «hoy» podía ser el día anterior.
+   */
+  private exigirHorizonteDeSede(
+    fechaIso: string,
+    horizonteDias: number | null | undefined,
+    tz: string,
+    verbo: 'reservar' | 'agendar',
+  ): void {
+    if (horizonteDias == null) {
+      return;
+    }
+    const limite = this.tiempo.sumarDias(
+      this.tiempo.fechaLocal(this.tiempo.ahora(), tz),
+      horizonteDias,
+    );
+
+    if (fechaIso.slice(0, 10) > limite) {
+      throw reglaDeNegocio(
+        'FUERA_DE_HORIZONTE',
+        `Solo se puede ${verbo} hasta ${horizonteDias} días de antelación.`,
+      );
+    }
+  }
 
   /**
    * Cálculo PURO del bloque y su cotización (E2-05/D44). Devuelve el bloque total,
@@ -189,7 +239,8 @@ export class ReservaService {
 
   async crearReserva(clienteId: string, barberiaId: string, dto: CreateReservaDto) {
     const { inicio, fin } = validateTimeRange(dto.horaInicio, dto.horaFin);
-    const fecha = new Date(dto.fecha);
+    // E2-04: la fecha es una etiqueta `DATE`; se normaliza con el servicio central.
+    const fecha = this.tiempo.fechaDeCalendario(dto.fecha);
 
     const duracionSolicitada = (fin.getTime() - inicio.getTime()) / 60000;
 
@@ -230,6 +281,10 @@ export class ReservaService {
         throw new NotFoundException('Configuración de barbería no encontrada');
       }
 
+      // E2-04: la zona de la sede se lee una vez y gobierna TODAS las
+      // conversiones etiqueta ↔ instante de esta reserva.
+      const tz = await this.zonaDeSede(barberiaId, tx);
+
       if (!config.nuevasReservasActivas) {
         throw reglaDeNegocio(
           'RESERVAS_PAUSADAS',
@@ -247,24 +302,8 @@ export class ReservaService {
       }
 
       // Horizonte de reserva: la fecha de la cita no puede superar "hoy +
-      // horizonte_reserva_dias". Se compara por día de calendario (YYYY-MM-DD)
-      // para no depender de la zona horaria del servidor.
-      if (config.horizonteReservaDias != null) {
-        const hoy = new Date();
-        const limite = new Date(
-          hoy.getFullYear(),
-          hoy.getMonth(),
-          hoy.getDate() + config.horizonteReservaDias,
-        );
-        const limiteStr = `${limite.getFullYear()}-${String(limite.getMonth() + 1).padStart(2, '0')}-${String(limite.getDate()).padStart(2, '0')}`;
-
-        if (String(dto.fecha).slice(0, 10) > limiteStr) {
-          throw reglaDeNegocio(
-            'FUERA_DE_HORIZONTE',
-            `Solo se puede reservar hasta ${config.horizonteReservaDias} días de antelación.`,
-          );
-        }
-      }
+      // horizonte_reserva_dias", con "hoy" medido en la zona de la SEDE (E2-04).
+      this.exigirHorizonteDeSede(dto.fecha, config.horizonteReservaDias, tz, 'reservar');
 
       // Límite de reservas pendientes de la SEDE: mientras la barbería acumule
       // max_pendientes sin resolver (PENDIENTE o PROPUESTA_PENDIENTE) no admite
@@ -332,15 +371,12 @@ export class ReservaService {
         margenRequerido: margenFinal,
       }, tx);
 
-      // Reconciliamos la fecha de la cita con las horas para comparar exactamente con los slots
-      const [hInicio, mInicio] = dto.horaInicio.split(':').map(Number);
-      const [hFin, mFin] = dto.horaFin.split(':').map(Number);
-
-      const inicioCita = new Date(fecha);
-      inicioCita.setHours(hInicio, mInicio, 0, 0);
-
-      const finCita = new Date(fecha);
-      finCita.setHours(hFin, mFin, 0, 0);
+      // E2-04/H36: el bloque solicitado se compone como INSTANTE en la zona de la
+      // sede. Antes `new Date(fecha); setHours(...)` usaba la zona del servidor y
+      // comparaba contra slots igual de desplazados: el día equivocado no se
+      // notaba, pero el instante real de la cita quedaba 4 h fuera de lugar.
+      const inicioCita = this.tiempo.aInstante(dto.fecha, dto.horaInicio, tz);
+      const finCita = this.tiempo.aInstante(dto.fecha, dto.horaFin, tz);
 
       const finConMargen = new Date(finCita.getTime() + margenFinal * 60000);
 
@@ -352,7 +388,10 @@ export class ReservaService {
         throw new ConflictException('El horario seleccionado ya no está disponible o se solapa con un bloqueo/reserva');
       }
 
-      const expiraAt = config.modoReserva === 'MANUAL' ? new Date(Date.now() + 10 * 60000) : null;
+      const expiraAt =
+        config.modoReserva === 'MANUAL'
+          ? new Date(this.tiempo.ahora().getTime() + 10 * 60000)
+          : null;
 
       // E2-02 §5.2 (filas 1 y 2): MANUAL nace `PENDIENTE` con temporizador de 10
       // minutos; AUTOMATICA nace `CONFIRMADA` sin temporizador. La creación pasa
@@ -441,6 +480,7 @@ export class ReservaService {
             fechaCita: fecha,
             horaInicio: inicio,
             nombreBarberia: 'Barbería',
+            zonaHoraria: tz,
           })
           .catch((err) =>
             this.logger.warn(`No se pudo programar recordatorio: ${err.message}`),
@@ -595,7 +635,7 @@ export class ReservaService {
     return resultado;
   }
 
-  async obtenerAgendaDiaria(barberiaId: string, fechaStr: string, user: UsuarioAutenticado) {
+  async obtenerAgendaDiaria(barberiaId: string, fechaStr: string | undefined, user: UsuarioAutenticado) {
     if (!barberiaId) {
       throw new BadRequestException('ID de barbería es requerido');
     }
@@ -608,8 +648,15 @@ export class ReservaService {
       throw new ForbiddenException('No tienes acceso a la agenda de esta barbería.');
     }
 
-    const startOfDay = new Date(`${fechaStr}T00:00:00.000Z`);
-    const endOfDay = new Date(`${fechaStr}T23:59:59.999Z`);
+    // E2-04: sin `fecha`, el día por defecto es HOY en la zona de la SEDE; antes
+    // lo resolvía el controller con `new Date().toISOString()`, que es el día del
+    // servidor (UTC en Render).
+    const tz = await this.zonaDeSede(barberiaId);
+    const fechaLocal =
+      fechaStr?.slice(0, 10) || this.tiempo.fechaLocal(this.tiempo.ahora(), tz);
+
+    const startOfDay = new Date(`${fechaLocal}T00:00:00.000Z`);
+    const endOfDay = new Date(`${fechaLocal}T23:59:59.999Z`);
 
     const reservas = await this.prisma.reserva.findMany({
       where: {
@@ -662,10 +709,10 @@ export class ReservaService {
     });
 
     return reservas.map((r) => {
-      const fechaPart = r.fechaCita instanceof Date ? r.fechaCita.toISOString().split('T')[0] : fechaStr;
-      const horaPart = r.horaInicio instanceof Date
-        ? r.horaInicio.toISOString().split('T')[1].substring(0, 5)
-        : '00:00';
+      // E2-04: las etiquetas DATE/TIME se leen por partes UTC del almacenamiento,
+      // no con `toISOString().split(...)`.
+      const fechaPart = r.fechaCita instanceof Date ? fechaCalendarioISO(r.fechaCita) : fechaLocal;
+      const horaPart = r.horaInicio instanceof Date ? horaRelojHHMM(r.horaInicio) : '00:00';
 
       return {
         id: r.id,
@@ -729,10 +776,8 @@ export class ReservaService {
     });
 
     return reservas.map((r) => {
-      const fechaPart = r.fechaCita instanceof Date ? r.fechaCita.toISOString().split('T')[0] : '';
-      const horaPart = r.horaInicio instanceof Date
-        ? r.horaInicio.toISOString().split('T')[1].substring(0, 5)
-        : '00:00';
+      const fechaPart = r.fechaCita instanceof Date ? fechaCalendarioISO(r.fechaCita) : '';
+      const horaPart = r.horaInicio instanceof Date ? horaRelojHHMM(r.horaInicio) : '00:00';
 
       return {
         id: r.id,
@@ -774,6 +819,8 @@ export class ReservaService {
         throw new NotFoundException('Reserva no encontrada');
       }
 
+      const tz = await this.zonaDeSede(barberiaId, tx);
+
       // E2-02 §5.2: solo PENDIENTE → CONFIRMADA y solo con el actor STAFF. Va
       // ANTES de la revalidación de disponibilidad: una reserva terminal no es
       // «conflicto de horario», es una transición inválida (409 ESTADO_INVALIDO).
@@ -783,7 +830,7 @@ export class ReservaService {
         ACTORES.STAFF,
       );
 
-      if (actual.expiraAt && actual.expiraAt.getTime() <= Date.now()) {
+      if (actual.expiraAt && actual.expiraAt.getTime() <= this.tiempo.ahora().getTime()) {
         throw errorDeConflicto(
           'SOLICITUD_EXPIRADA',
           'La solicitud expiró antes de ser aceptada: ya no se puede confirmar.',
@@ -802,7 +849,7 @@ export class ReservaService {
       const disponibilidades = await this.disponibilidadService.calcularDisponibilidad(
         {
           barberiaId,
-          fecha: new Date(actual.fechaCita),
+          fecha: actual.fechaCita,
           duracionTotal,
           margenRequerido: margenFinal,
           // La reserva sigue PENDIENTE mientras se revalida: sin excluirla se
@@ -812,11 +859,12 @@ export class ReservaService {
         tx,
       );
 
-      const fechaCita = new Date(actual.fechaCita);
-      const inicioCita = new Date(fechaCita);
-      inicioCita.setHours(actual.horaInicio.getUTCHours(), actual.horaInicio.getUTCMinutes(), 0, 0);
-      const finCita = new Date(fechaCita);
-      finCita.setHours(actual.horaFin.getUTCHours(), actual.horaFin.getUTCMinutes(), 0, 0);
+      // E2-04: el bloque almacenado (etiquetas DATE + TIME) se recompone como
+      // INSTANTE en la zona de la sede para comparar con los slots, que ya vienen
+      // como instantes reales.
+      const fechaIso = fechaCalendarioISO(actual.fechaCita);
+      const inicioCita = this.tiempo.aInstante(fechaIso, horaRelojHHMM(actual.horaInicio), tz);
+      const finCita = this.tiempo.aInstante(fechaIso, horaRelojHHMM(actual.horaFin), tz);
       const finConMargen = new Date(finCita.getTime() + margenFinal * 60000);
 
       const sigueDisponible = disponibilidades.some(
@@ -1017,7 +1065,8 @@ export class ReservaService {
     dto: ReprogramarReservaDto,
   ): Promise<{ fecha: Date; inicio: Date; fin: Date }> {
     const { inicio, fin } = validateTimeRange(dto.horaInicio, dto.horaFin);
-    const fecha = new Date(dto.fecha);
+    // E2-04: la fecha es una etiqueta `DATE`; se normaliza con el servicio central.
+    const fecha = this.tiempo.fechaDeCalendario(dto.fecha);
     const duracionSolicitada = (fin.getTime() - inicio.getTime()) / 60000;
 
     const config = await tx.configuracionBarberia.findUnique({ where: { barberiaId } });
@@ -1026,6 +1075,8 @@ export class ReservaService {
       throw new NotFoundException('Configuración de barbería no encontrada');
     }
 
+    const tz = await this.zonaDeSede(barberiaId, tx);
+
     if (!config.nuevasReservasActivas) {
       throw reglaDeNegocio(
         'RESERVAS_PAUSADAS',
@@ -1033,24 +1084,8 @@ export class ReservaService {
       );
     }
 
-    // Mismo horizonte que crearReserva, comparado por día de calendario
-    // (YYYY-MM-DD) para no depender de la zona horaria del servidor.
-    if (config.horizonteReservaDias != null) {
-      const hoy = new Date();
-      const limite = new Date(
-        hoy.getFullYear(),
-        hoy.getMonth(),
-        hoy.getDate() + config.horizonteReservaDias,
-      );
-      const limiteStr = `${limite.getFullYear()}-${String(limite.getMonth() + 1).padStart(2, '0')}-${String(limite.getDate()).padStart(2, '0')}`;
-
-      if (String(dto.fecha).slice(0, 10) > limiteStr) {
-        throw reglaDeNegocio(
-          'FUERA_DE_HORIZONTE',
-          `Solo se puede agendar hasta ${config.horizonteReservaDias} días de antelación.`,
-        );
-      }
-    }
+    // Mismo horizonte que crearReserva, con "hoy" en la zona de la SEDE (E2-04).
+    this.exigirHorizonteDeSede(dto.fecha, config.horizonteReservaDias, tz, 'agendar');
 
     // Los servicios están congelados en el snapshot: el bloque nuevo tiene que
     // seguir cubriendo lo que se pactó.
@@ -1083,13 +1118,9 @@ export class ReservaService {
       tx,
     );
 
-    const [hInicio, mInicio] = dto.horaInicio.split(':').map(Number);
-    const [hFin, mFin] = dto.horaFin.split(':').map(Number);
-
-    const inicioCita = new Date(fecha);
-    inicioCita.setHours(hInicio, mInicio, 0, 0);
-    const finCita = new Date(fecha);
-    finCita.setHours(hFin, mFin, 0, 0);
+    // E2-04: el bloque nuevo se compone como instante en la zona de la sede.
+    const inicioCita = this.tiempo.aInstante(dto.fecha, dto.horaInicio, tz);
+    const finCita = this.tiempo.aInstante(dto.fecha, dto.horaFin, tz);
     const finConMargen = new Date(finCita.getTime() + margenFinal * 60000);
 
     const libre = disponibilidades.some(
@@ -1136,12 +1167,18 @@ export class ReservaService {
     return { codigo: codigo as MotivoCancelacionEspecial, detalle: detalle || null };
   }
 
+  /**
+   * E2-04: la etiqueta `YYYY-MM-DD` de un `DATE` (Prisma la entrega a medianoche
+   * UTC) se lee por sus partes UTC. Sustituye a
+   * `new Date(fecha).toISOString().slice(0, 10)`, que el backlog prohíbe sobre
+   * fechas de cita.
+   */
   private fechaISO(fecha: Date): string {
-    return new Date(fecha).toISOString().slice(0, 10);
+    return fechaCalendarioISO(fecha);
   }
 
   private horaHHMM(hora: Date): string {
-    return `${String(hora.getUTCHours()).padStart(2, '0')}:${String(hora.getUTCMinutes()).padStart(2, '0')}`;
+    return horaRelojHHMM(hora);
   }
 
   /**
@@ -1149,32 +1186,22 @@ export class ReservaService {
    * minutos (§5.7).
    *
    * `fecha_cita` es `DATE` y `hora_inicio` es `TIME`: dos ETIQUETAS de calendario
-   * sin zona, no dos instantes. Se recomponen leyendo el DÍA por sus partes UTC
-   * (Prisma devuelve la medianoche UTC del día guardado) y montando la hora
-   * etiquetada en la zona del SERVIDOR.
+   * sin zona, no dos instantes. E2-04 las recompone con `TiempoService.aInstante`
+   * en la zona de la SEDE (`barberias.zona_horaria`).
    *
-   * Lo importante es que el DÍA no se derive del instante: `new Date(fecha);
-   * setHours(...)` —la composición que usa `aceptarReserva`— cae al día anterior
-   * cuando el servidor está al oeste de UTC, y ahí ese corrimiento se cancela solo
-   * porque los dos lados de la comparación se construyen igual. Esta ventana se
-   * compara contra el reloj real (`Date.now()`), así que un día de menos no se
-   * compensa: cerraría la cancelación de una cita de mañana.
-   *
-   * En el servidor de producción (UTC) el resultado coincide con el de
-   * `aceptarReserva`. La versión exacta —hora local de la SEDE, que es lo que pide
-   * el backlog— necesita `barberias.zona_horaria` y el `tiempo.service` de
-   * E2-04/D15, que todavía no existen: ver HALLAZGO-E30607-02.
+   * Antes se leían las partes UTC del día y se montaba la hora con la zona del
+   * SERVIDOR. Con Render en UTC el instante quedaba 4 h después del real para una
+   * sede en UTC-4, así que la ventana de §5.7 cerraba ~4 h tarde: el CLIENTE podía
+   * cancelar hasta 3 h 30 min DESPUÉS del inicio (H36).
    */
-  private instanteInicioCita(reserva: { fechaCita: Date; horaInicio: Date }): Date {
-    const fecha = new Date(reserva.fechaCita);
-    return new Date(
-      fecha.getUTCFullYear(),
-      fecha.getUTCMonth(),
-      fecha.getUTCDate(),
-      reserva.horaInicio.getUTCHours(),
-      reserva.horaInicio.getUTCMinutes(),
-      0,
-      0,
+  private instanteInicioCita(
+    reserva: { fechaCita: Date; horaInicio: Date },
+    tz: string,
+  ): Date {
+    return this.tiempo.aInstante(
+      fechaCalendarioISO(reserva.fechaCita),
+      horaRelojHHMM(reserva.horaInicio),
+      tz,
     );
   }
 
@@ -1184,9 +1211,12 @@ export class ReservaService {
    * Se permite cancelar cuando faltan 30 minutos O MÁS (`ahora <= inicio − 30`),
    * tal como lo fija el backlog; a 29 minutos ya es 422 `FUERA_DE_VENTANA`.
    */
-  private exigirVentanaDeCancelacion(reserva: { fechaCita: Date; horaInicio: Date }): void {
+  private exigirVentanaDeCancelacion(
+    reserva: { fechaCita: Date; horaInicio: Date },
+    tz: string,
+  ): void {
     const minutosRestantes = Math.floor(
-      (this.instanteInicioCita(reserva).getTime() - Date.now()) / 60000,
+      (this.instanteInicioCita(reserva, tz).getTime() - this.tiempo.ahora().getTime()) / 60000,
     );
 
     if (minutosRestantes >= VENTANA_CANCELACION_CLIENTE_MIN) {
@@ -1234,7 +1264,8 @@ export class ReservaService {
     user: UsuarioAutenticado,
   ) {
     const { inicio, fin } = validateTimeRange(dto.horaInicio, dto.horaFin);
-    const fecha = new Date(dto.fecha);
+    // E2-04: la fecha es una etiqueta `DATE`; se normaliza con el servicio central.
+    const fecha = this.tiempo.fechaDeCalendario(dto.fecha);
     const duracionSolicitada = (fin.getTime() - inicio.getTime()) / 60000;
 
     const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
@@ -1263,6 +1294,8 @@ export class ReservaService {
         throw new NotFoundException('Configuración de barbería no encontrada');
       }
 
+      const tz = await this.zonaDeSede(barberiaId, tx);
+
       if (!config.nuevasReservasActivas) {
         throw reglaDeNegocio(
           'RESERVAS_PAUSADAS',
@@ -1270,24 +1303,8 @@ export class ReservaService {
         );
       }
 
-      // Mismo horizonte que crearReserva, comparado por día de calendario
-      // (YYYY-MM-DD) para no depender de la zona horaria del servidor.
-      if (config.horizonteReservaDias != null) {
-        const hoy = new Date();
-        const limite = new Date(
-          hoy.getFullYear(),
-          hoy.getMonth(),
-          hoy.getDate() + config.horizonteReservaDias,
-        );
-        const limiteStr = `${limite.getFullYear()}-${String(limite.getMonth() + 1).padStart(2, '0')}-${String(limite.getDate()).padStart(2, '0')}`;
-
-        if (String(dto.fecha).slice(0, 10) > limiteStr) {
-          throw reglaDeNegocio(
-            'FUERA_DE_HORIZONTE',
-            `Solo se puede agendar hasta ${config.horizonteReservaDias} días de antelación.`,
-          );
-        }
-      }
+      // Mismo horizonte que crearReserva, con "hoy" en la zona de la SEDE (E2-04).
+      this.exigirHorizonteDeSede(dto.fecha, config.horizonteReservaDias, tz, 'agendar');
 
       // Los servicios están congelados en el snapshot: el bloque nuevo tiene que
       // seguir cubriendo lo que se pactó. Reprogramar NO cambia servicios.
@@ -1320,13 +1337,9 @@ export class ReservaService {
         tx,
       );
 
-      const [hInicio, mInicio] = dto.horaInicio.split(':').map(Number);
-      const [hFin, mFin] = dto.horaFin.split(':').map(Number);
-
-      const inicioCita = new Date(fecha);
-      inicioCita.setHours(hInicio, mInicio, 0, 0);
-      const finCita = new Date(fecha);
-      finCita.setHours(hFin, mFin, 0, 0);
+      // E2-04: el bloque nuevo se compone como instante en la zona de la sede.
+      const inicioCita = this.tiempo.aInstante(dto.fecha, dto.horaInicio, tz);
+      const finCita = this.tiempo.aInstante(dto.fecha, dto.horaFin, tz);
       const finConMargen = new Date(finCita.getTime() + margenFinal * 60000);
 
       const libre = disponibilidades.some(
@@ -1421,6 +1434,8 @@ export class ReservaService {
         throw new NotFoundException('Reserva no encontrada');
       }
 
+      const tz = await this.zonaDeSede(barberiaId, tx);
+
       if (!esStaff && actual.clienteId !== user.id) {
         throw errorDePermiso(
           'RESERVA_AJENA',
@@ -1445,7 +1460,7 @@ export class ReservaService {
       // transacción, con el lock de la sede tomado, para que el reloj que decide
       // sea el del instante de la escritura y no el de la petición.
       if (!esStaff && actual.estado !== ESTADOS.PENDIENTE) {
-        this.exigirVentanaDeCancelacion(actual);
+        this.exigirVentanaDeCancelacion(actual, tz);
       }
 
       const actualizada = await this.cambiarEstado(tx, actual, ESTADOS.CANCELADA, actor);
@@ -1644,7 +1659,7 @@ export class ReservaService {
         where: {
           reservaId,
           estado: ESTADOS_PROPUESTA.PENDIENTE,
-          expiraAt: { gt: new Date() },
+          expiraAt: { gt: this.tiempo.ahora() },
         },
       });
 
@@ -1656,7 +1671,9 @@ export class ReservaService {
       }
 
       const bloque = await this.validarBloqueNuevo(tx, barberiaId, actual, dto);
-      const expiraAt = new Date(Date.now() + VENTANA_PROPUESTA_HORARIO_MIN * 60000);
+      const expiraAt = new Date(
+        this.tiempo.ahora().getTime() + VENTANA_PROPUESTA_HORARIO_MIN * 60000,
+      );
 
       const creada = await tx.propuestaHorario.create({
         data: {
@@ -1739,7 +1756,7 @@ export class ReservaService {
         );
       }
 
-      if (propuesta.expiraAt && propuesta.expiraAt.getTime() <= Date.now()) {
+      if (propuesta.expiraAt && propuesta.expiraAt.getTime() <= this.tiempo.ahora().getTime()) {
         await tx.propuestaHorario.update({
           where: { id: propuesta.id },
           data: { estado: ESTADOS_PROPUESTA.EXPIRADA },

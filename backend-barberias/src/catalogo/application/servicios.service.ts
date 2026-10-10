@@ -6,6 +6,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { ESTADOS } from '../../shared/domain/estados.js';
+import {
+  fechaCalendarioISO,
+  horaRelojHHMM,
+} from '../../shared/time/tiempo.service.js';
 import { CreateServicioDto } from './dto/create-servicio.dto.js';
 import { UpdateServicioDto } from './dto/update-servicio.dto.js';
 
@@ -112,8 +116,10 @@ export class ServiciosService {
     });
 
     if (reservasPendientes.length > 0) {
+      // E2-04: etiquetas DATE/TIME por partes UTC, sin `toISOString()` sobre
+      // fechas de cita (prohibido por el backlog).
       const citasDesc = reservasPendientes
-        .map((r) => `${r.fechaCita.toISOString().split('T')[0]} a las ${r.horaInicio.toISOString().split('T')[1].substring(0, 5)}`)
+        .map((r) => `${fechaCalendarioISO(r.fechaCita)} a las ${horaRelojHHMM(r.horaInicio)}`)
         .join(', ');
       throw new BadRequestException(
         `No se puede desactivar el servicio porque tiene ${reservasPendientes.length} solicitud(es) de reserva pendiente(s) por confirmar: ${citasDesc}`
