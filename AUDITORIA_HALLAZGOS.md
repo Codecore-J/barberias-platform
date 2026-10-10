@@ -620,6 +620,45 @@ Identificadores provisionales, libres desde H39. Registrados al cerrar E3-08 (20
 - **Qué consta:** el CHECK admite `SOLICITADA`, `APROBADA` y `RECHAZADA`, pero la única ruta de E3-08 es del staff y escribe siempre `APROBADA`. El flujo de D17 en el que el CLIENTE solicita y la sede resuelve no está implementado: se implementó la variante que pidió el dueño (ruta exclusiva de `ADMIN_BARBERIA`/`ADMINISTRADOR`). `permite_cancelacion_especial` sí tiene consumidor (422 si está en FALSE)
 - **Evidencia:** E2E E3-08 «sin la bandera D17 → 422 CANCELACION_ESPECIAL_NO_HABILITADA» y «con la bandera, la sede cancela con motivo»
 
+## HALLAZGOS DE E2-02 (H45 a H48)
+
+Identificadores provisionales, libres desde H44. Registrados al cerrar E2-02 (2026-10-11). Igual que en las fases anteriores, la severidad solo se escribe cuando consta en la evidencia.
+
+### H45: `NO_ASISTIO`, un noveno estado fuera del catálogo, sin ningún `CHECK` que lo detuviera
+- **Módulo / Ruta afectada:** Backend, `src/reserva/application/reserva.service.ts` (`marcarInasistencia`), `src/notificacion/application/notificacion.processor.ts`, `src/pago/application/pago.service.ts`; Frontend, `admin-agenda.component.ts`
+- **Tipo:** Integridad de estados / divergencia con D08
+- **Severidad:** Media — D08 y D14 definen OCHO estados (§5.1) y el sistema escribía un noveno
+- **Estado:** resuelto parcialmente en E2-02 (2026-10-11)
+- **Qué consta:** `marcarInasistencia` escribía `'NO_ASISTIO'` y lo hacía desde CUALQUIER estado —solo bloqueaba la repetición—, de modo que una reserva `CANCELADA` o `PENDIENTE` podía pasar a «no asistió»; `notificacion.processor` y `pago.service` lo trataban como terminal junto a `CANCELADA`/`EXPIRADA`; y el frontend lo ofrecía justo en `PENDIENTE` (el único origen que §5.2 NO admite). `NO_PRESENTADO` es el nombre del catálogo, y E2-03 tampoco puso el `CHECK` de `reservas.estado`, así que ninguna capa lo impedía
+- **Evidencia:** el unitario E1-04 esperaba `data: { estado: 'NO_ASISTIO' }`; hoy espera `NO_PRESENTADO` y hay dos casos nuevos (`marcar inasistencia sobre una CANCELADA → 409 ESTADO_INVALIDO`, `dos veces → 409`); `src/cliente/application/cliente.service.ts:21-22` (módulo contenido por H22) sigue citando `NO_ASISTIO` y `CANCELADA_TARDE`
+- **Medición (2026-10-11, solo lectura contra `dev`):** `reservas` agrupadas por estado devuelve únicamente `[{"EXPIRADA": 3}, {"CONFIRMADA": 1}]` y `propuestas_horario` está vacía, así que **hoy no existe ninguna fila con `NO_ASISTIO`** y el renombrado es neutral sobre los datos existentes; quedan 0 filas que migrar por este motivo
+- **Queda abierto:** la normalización de datos sigue siendo de E2-03 para el día en que aparezcan filas escritas por una versión anterior del código (por ejemplo, una restauración de la base de producción)
+
+### H46: `PATCH /reservas/:id/estado` permitía saltarse el ciclo de vida entero
+- **Módulo / Ruta afectada:** Backend, `reserva.controller.ts` (`PATCH :id/estado`), `reserva.service.ts` (`cambiarEstado`); Frontend, `core/services/reservas.service.ts`
+- **Tipo:** Integridad de negocio / ausencia de máquina de estados
+- **Severidad:** Media — el rol exigido era `ADMIN_BARBERIA`/`ADMINISTRADOR` de esa sede (sin escalada de privilegios), pero se saltaba el ciclo de vida completo
+- **Estado:** resuelto en E2-02 (2026-10-11)
+- **Qué consta:** el método hacía `prisma.reserva.update({ data: { estado: nuevoEstado } })` sin validar nada: con él un ADMIN podía pasar una reserva a `COMPLETADA` sin registrar el pago (§5.2 solo lo permite desde `CONFIRMADA` y desde `hora_inicio`), cancelarla sin motivo, o revivir una terminal. Era la ruta 41 de la matriz y la 64ª del inventario
+- **Evidencia:** la ruta ya no existe (`git grep "@Patch(':id/estado')"` sin coincidencias en `src/`); la matriz pasa de **64 rutas × 4 roles = 256** a **63 × 4 = 252** decisiones y el E2E HTTP de **41 a 40 rutas**; `ReservaService.cambiarEstado` es ahora privado y su primera línea es `ReservaStateMachine.assertTransition`; el botón «No Asistió» apunta a `POST /reservas/:id/inasistencia` y solo se muestra en `CONFIRMADA`
+- **Nota:** el `codigo` de D40 `PROPUESTA_PENDIENTE` (E3-08) coincide con el nombre de un estado y confunde; se deja como está porque renombrarlo es un cambio de contrato del API (debería entrar en una pasada del catálogo D40)
+
+### H47: `pago.service` marca `COMPLETADA` sin pasar por la máquina de estados
+- **Módulo / Ruta afectada:** Backend, `pago.service.ts` (`registrarPagoEnPersona`), §5.2 fila 11
+- **Tipo:** Integridad de negocio / transición fuera del grafo
+- **Severidad:** Media
+- **Estado:** abierto (E3-09)
+- **Qué consta:** el cobro escribe `estado: COMPLETADA` con un `update` directo: no consulta la máquina ni la hora de inicio, así que una reserva `PENDIENTE` (nunca aceptada) puede pasar a `COMPLETADA`. E2-02 solo le cambió los literales por constantes; su transición sigue sin pasar por la máquina porque E3-09 es la tarea que añade la condición de `hora_inicio` y la corrección del estado de pago
+- **Evidencia:** `pago.service.ts` con el comentario de E2-02 en el punto exacto; `test/pago-barbero-asignado.e2e-spec.ts` sigue verde porque no cubre estados, solo quién cobra
+
+### H48: El recordatorio de 1 h no tiene `jobId` determinístico y no se puede cancelar
+- **Módulo / Ruta afectada:** Backend, `src/notificacion/application/notificacion.service.ts` (`programarRecordatorio`), §5.2 (efectos al entrar en un estado terminal), D33
+- **Tipo:** Jobs / deuda de D33
+- **Severidad:** Baja — el processor descarta el recordatorio en tiempo de ejecución si la reserva ya no está activa, así que el daño es un job huérfano y no un aviso indebido
+- **Estado:** abierto — detectado al implementar el hook `onEnter` de E2-02
+- **Qué consta:** el job se encola con `attempts` y `delay` pero SIN `jobId`. El job de expiración sí lo tiene (`expirar-reserva-<uuid>`), y por eso se puede buscar y cancelar; el recordatorio no. Por eso el hook de E2-02 declara `CANCELAR_JOBS` y solo puede ejecutar la cancelación del job de expiración: la mitad «cancelar el recordatorio» del §E3-07 punto 4 sigue sin ser implementable
+- **Evidencia:** `programarRecordatorio` (`notificacionesQueue.add('recordatorio-cita', {...}, { delay, attempts: 3 })`, sin `jobId`); `ReservaService.cancelarJobExpiracion` solo conoce `jobIdExpiracionReserva`
+
 ### H44: La cancelación especial del staff no exige estar fuera de la ventana de los 30 minutos
 - **Módulo / Ruta afectada:** Backend, `ReservaService.cancelacionEspecial`
 - **Tipo:** Regla de negocio / decisión pendiente

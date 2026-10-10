@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { ESTADOS } from '../../shared/domain/estados.js';
 import { CreateServicioDto } from './dto/create-servicio.dto.js';
 import { UpdateServicioDto } from './dto/update-servicio.dto.js';
 
@@ -91,7 +92,7 @@ export class ServiciosService {
     const reservasPendientes = await this.prisma.reserva.findMany({
       where: {
         barberiaId,
-        estado: 'PENDIENTE',
+        estado: ESTADOS.PENDIENTE, // E2-02: estado de reserva desde el catálogo
         fechaCita: { gte: new Date() }, // Futuras o de hoy
         participantes: {
           some: {

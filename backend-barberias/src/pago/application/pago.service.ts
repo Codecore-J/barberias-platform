@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
+import { ESTADOS } from '../../shared/domain/estados.js';
 import { RegistrarPagoDto } from './dto/registrar-pago.dto.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
@@ -133,7 +134,17 @@ export class PagoService {
         }
       }
 
-      if (['CANCELADA', 'NO_ASISTIO', 'EXPIRADA'].includes(reserva.estado)) {
+      // E2-02: mismos estados de antes desde el catálogo único de §5.1
+      // (`NO_ASISTIO` → `NO_PRESENTADO`, H45). La transición a `COMPLETADA`
+      // sigue escribiéndose aquí sin pasar por la máquina: queda para E3-09, que
+      // es la tarea que añade la condición de `hora_inicio`.
+      const estadosNoCobrables: readonly string[] = [
+        ESTADOS.CANCELADA,
+        ESTADOS.NO_PRESENTADO,
+        ESTADOS.EXPIRADA,
+      ];
+
+      if (estadosNoCobrables.includes(reserva.estado)) {
         throw new BadRequestException(
           `No se puede cobrar una reserva en estado ${reserva.estado}`,
         );
@@ -165,7 +176,7 @@ export class PagoService {
       // 2. Marcar la reserva como COMPLETADA
       const reservaActualizada = await tx.reserva.update({
         where: { id: reserva.id },
-        data: { estado: 'COMPLETADA' },
+        data: { estado: ESTADOS.COMPLETADA },
       });
 
       // 3. Auditoría obligatoria delegada formalmente a AuditoriaService (AUDIT-01 / T6.1)
@@ -184,7 +195,7 @@ export class PagoService {
             fechaPago: new Date().toISOString(),
             estadoPrevioPago: reserva.pago?.estadoPago ?? 'PENDIENTE_DE_PAGO',
             nuevoEstadoPago: 'PAGADA',
-            estadoReserva: 'COMPLETADA',
+            estadoReserva: ESTADOS.COMPLETADA,
           },
         },
         tx,

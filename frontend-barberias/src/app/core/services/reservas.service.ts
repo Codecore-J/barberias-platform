@@ -121,13 +121,18 @@ export class ReservasService {
   }
 
   /**
-   * Cambia el estado de una reserva (Ej: NO_ASISTIO, CANCELADA)
+   * Marca un turno como no presentado (D02).
+   *
+   * E2-02: antes esto llamaba a `PATCH /reservas/:id/estado`, un endpoint
+   * genérico que escribía cualquier estado sin comprobar el grafo de §5.2 y que
+   * se eliminó. La ruta dedicada es `POST /reservas/:id/inasistencia`, y la
+   * máquina solo la admite desde `CONFIRMADA`.
    */
-  cambiarEstado(reservaId: string, estado: string): Observable<any> {
+  marcarInasistencia(reservaId: string): Observable<any> {
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.patch(`${this.apiUrl}/reservas/${reservaId}/estado`, { estado }).pipe(
+    return this.http.post(`${this.apiUrl}/reservas/${reservaId}/inasistencia`, {}).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);

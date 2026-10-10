@@ -577,9 +577,11 @@ describe('ReservaService', () => {
       );
 
       expect(result.contadorNoPresentado).toBe(1);
+      // E2-02: el estado del catálogo (D08) es NO_PRESENTADO; NO_ASISTIO nunca
+      // perteneció a los 8 de §5.1 y se escribía fuera del catálogo.
       expect(mockPrismaService.reserva.update).toHaveBeenCalledWith({
         where: { id: 'uuid-reserva' },
-        data: { estado: 'NO_ASISTIO' },
+        data: { estado: 'NO_PRESENTADO' },
       });
     });
 
@@ -1050,6 +1052,111 @@ describe('ReservaService', () => {
       await expect(
         service.reprogramarReserva('uuid-barberia', 'uuid-reserva', dto, usuarioAdmin as any),
       ).rejects.toThrowError(NotFoundException);
+    });
+  });
+
+  // ── E2-02 · la máquina de estados gobierna las transiciones (§5.2) ───────
+  describe('E2-02 máquina de estados', () => {
+    const usuarioAdmin = {
+      id: 'uuid-admin',
+      correo: 'admin@test.com',
+      roles: ['ADMIN_BARBERIA'],
+      rolesDetallados: [
+        { nombre: 'ADMIN_BARBERIA', barberiaId: 'uuid-barberia', ambito: 'BARBERIA' },
+      ],
+    };
+
+    const reserva = (estado: string) => ({
+      id: 'uuid-reserva',
+      barberiaId: 'uuid-barberia',
+      clienteId: 'uuid-cliente',
+      estado,
+      fechaCita: new Date('2026-10-10'),
+      horaInicio: hora(10, 0),
+      horaFin: hora(10, 30),
+      margenGrupalHistorico: 10,
+      totalPagar: 30,
+      expiraAt: new Date(Date.now() + 5 * 60000),
+    });
+
+    /** Deja pasar las comprobaciones de permiso de `marcarInasistencia` como ADMINISTRADOR global. */
+    const permitirAlSolicitante = () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ responsableId: 'otro-res' });
+      mockPrismaService.usuarioRol.findMany.mockResolvedValue([]);
+      mockPrismaService.usuarioRol.findFirst.mockImplementation(async (args: any) =>
+        args?.where?.rol?.nombre === 'ADMINISTRADOR' ? { id: 'ur-global' } : null,
+      );
+    };
+
+    beforeEach(() => {
+      mockQueue.getJob.mockResolvedValue(null);
+      mockAuditoriaService.registrarEvento.mockResolvedValue({ id: 'uuid-auditoria' });
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({
+        id: 'uuid-vinculo',
+        contadorNoPresentado: 0,
+        estaRestringido: false,
+        motivoRestriccion: null,
+      });
+      mockPrismaService.clienteBarberia.update.mockResolvedValue({});
+      mockPrismaService.clienteBarberia.create.mockResolvedValue({ id: 'uuid-vinculo' });
+    });
+
+    it('ROJO: marcar inasistencia sobre una CANCELADA → 409 ESTADO_INVALIDO y no se escribe', async () => {
+      permitirAlSolicitante();
+      mockPrismaService.reserva.findUnique.mockResolvedValue(reserva('CANCELADA'));
+
+      await expect(
+        service.marcarInasistencia('uuid-barberia', 'uuid-reserva', 'admin-global'),
+      ).rejects.toMatchObject({
+        response: { codigo: 'ESTADO_INVALIDO', statusCode: 409 },
+      });
+
+      expect(mockPrismaService.reserva.update).not.toHaveBeenCalled();
+      expect(mockPrismaService.clienteBarberia.update).not.toHaveBeenCalled();
+    });
+
+    it('ROJO: marcar inasistencia dos veces → 409 ESTADO_INVALIDO', async () => {
+      permitirAlSolicitante();
+      mockPrismaService.reserva.findUnique.mockResolvedValue(reserva('NO_PRESENTADO'));
+
+      await expect(
+        service.marcarInasistencia('uuid-barberia', 'uuid-reserva', 'admin-global'),
+      ).rejects.toMatchObject({
+        response: { codigo: 'ESTADO_INVALIDO', statusCode: 409 },
+      });
+
+      expect(mockPrismaService.clienteBarberia.update).not.toHaveBeenCalled();
+    });
+
+    it('ROJO: el staff no cancela una PENDIENTE (la sede la rechaza) → 409 ESTADO_INVALIDO', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reserva('PENDIENTE'));
+
+      await expect(
+        service.cancelarReserva('uuid-barberia', 'uuid-reserva', usuarioAdmin as any),
+      ).rejects.toMatchObject({
+        response: { codigo: 'ESTADO_INVALIDO', statusCode: 409 },
+      });
+
+      expect(mockPrismaService.reserva.update).not.toHaveBeenCalled();
+    });
+
+    it('VERDE: la inasistencia escribe NO_PRESENTADO y el hook cierra el temporizador', async () => {
+      permitirAlSolicitante();
+      mockPrismaService.reserva.findUnique.mockResolvedValue(reserva('CONFIRMADA'));
+      mockPrismaService.reserva.update.mockResolvedValue({ id: 'uuid-reserva' });
+
+      const result = await service.marcarInasistencia(
+        'uuid-barberia',
+        'uuid-reserva',
+        'admin-global',
+      );
+
+      expect(result.contadorNoPresentado).toBe(1);
+      expect(mockPrismaService.reserva.update).toHaveBeenCalledWith({
+        where: { id: 'uuid-reserva' },
+        data: { estado: 'NO_PRESENTADO' },
+      });
+      expect(mockQueue.getJob).toHaveBeenCalledWith('expirar-reserva-uuid-reserva');
     });
   });
 });

@@ -99,7 +99,7 @@
 | 39 | POST | `/barberias/:barberiaId/reservas` · `/reservas` | ReservaController | `@Autenticado` | `@Roles(CLIENTE)` | **10** — restricción cerrada en `758a70d` (E3-03) | **sí** | **sí** — cliente vinculado, no restringido | sí — `core/services/reservas.service.ts:60`, ahora **solo** desde `reserva-wizard` | `test/hallazgo14-idor-reserva.e2e-spec.ts`; `test/reserva-walkin-split.e2e-spec.ts` |
 | 39b | POST | `/barberias/:barberiaId/reservas/walk-in` · `/reservas/walk-in` | ReservaController | — no existía | `@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **10** — ruta nueva en `758a70d` (E3-03) | **sí** | **sí** — la misma comprobación de servicio que la fila 39 (restricción del actor); no hay recurso previo | sí — `core/services/reservas.service.ts:79`, desde `walk-in-modal` | `test/reserva-walkin-split.e2e-spec.ts`; `test/permisos-matriz.e2e-spec.ts` |
 | 40 | GET | `/barberias/:barberiaId/reservas/:id` · `/reservas/:id` | ReservaController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | — | **sí** | **sí** — un `CLIENTE` solo ve la suya | no | `test/hallazgo14-idor-reserva.e2e-spec.ts`; `src/reserva/application/reserva.service.spec.ts` |
-| 41 | PATCH | `/barberias/:barberiaId/reservas/:id/estado` · `/reservas/:id/estado` | ReservaController | `@Roles(ADMIN_BARBERIA, BARBERO, ADMINISTRADOR)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **11** | **sí** | no | sí — `core/services/reservas.service.ts:111`; el botón «No Asistió» ya se oculta al BARBERO | `src/reserva/application/reserva.service.spec.ts` |
+| ~~41~~ | ~~PATCH~~ | ~~`/barberias/:barberiaId/reservas/:id/estado` · `/reservas/:id/estado`~~ | ReservaController | — | — | — | — | — | **ELIMINADA en E2-02 (2026-10-11)** — era un «pon el estado que quieras»: el grafo de §5.2 sin comprobar. Ver H46 | — |
 | 42 | POST | `/barberias/:barberiaId/reservas/:id/inasistencia` · `/reservas/:id/inasistencia` | ReservaController | `@Roles(ADMIN_BARBERIA, BARBERO, ADMINISTRADOR)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D02) | **sí** | no | no | `test/permisos-matriz.e2e-spec.ts` |
 | 43 | GET | `/barberias/:barberiaId/reservas/agenda` · `/reservas/agenda` | ReservaController | `@Roles(ADMIN_BARBERIA, BARBERO, ADMINISTRADOR)` | `@Roles(ADMIN_BARBERIA, BARBERO, ADMINISTRADOR)` | matriz (D16) | **sí** | **sí** — el barbero solo la suya | sí — `core/services/reservas.service.ts:94` | `test/hallazgo16-rolesguard-global.e2e-spec.ts` |
 | 44 | GET | `/barberias/:barberiaId/reservas/mis-reservas` · `/reservas/mis-reservas` | ReservaController | `@Autenticado` | `@Roles(CLIENTE)` | matriz | no | **sí** — `clienteId` del token | sí — `core/services/reservas.service.ts:77`, y los enlaces «Mis Citas» solo se muestran a CLIENTE | `test/permisos-matriz.e2e-spec.ts` |
@@ -151,6 +151,19 @@ negocio: `GET /`, `GET /auth/me`, `POST /barberias`, `GET /barberias` y `GET /no
 **60 rutas × 4 roles = 240** decisiones. **E3-07 no añade rutas:** cambia el COMPORTAMIENTO de la 44e
 (la ventana de 30 minutos del CLIENTE), que es una regla de negocio del servicio, no una decisión de
 permisos nueva.
+
+**Estado real tras E3-08 (2026-10-10):** eran **64 rutas** (`@Public` 6 · `@Autenticado` 5 · `@Roles` 53)
+= **64 × 4 = 256** decisiones.
+
+**Estado real tras E2-02 (2026-10-11):** **63 rutas × 4 roles = 252** decisiones. Es la PRIMERA vez que
+la matriz encoge: `PATCH /reservas/:id/estado` (fila 41) se eliminó porque escribía `reservas.estado`
+directo, sin comprobar el grafo de §5.2 y saltándose las condiciones de cada flujo —un ADMIN podía pasar
+una reserva a `COMPLETADA` sin registrar el pago, o cancelarla sin motivo—. El único punto de escritura
+de estado es ahora `ReservaService.cambiarEstado`, privado y con `ReservaStateMachine` delante. El botón
+«No Asistió» del frontend, que era su único llamador, apunta a `POST /reservas/:id/inasistencia` (fila 42)
+y solo aparece en `CONFIRMADA`, que es el único origen que §5.2 admite para el no presentado. Evidencia:
+`test/permisos-matriz.spec.ts` (63 rutas, 252 decisiones) y `test/permisos-matriz.e2e-spec.ts`
+(`40 rutas × 4 roles` sobre HTTP).
 
 ## Decisiones tomadas
 

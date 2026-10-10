@@ -9,13 +9,19 @@ import {
   QUEUES,
   jobIdExpiracionReserva,
 } from '../../shared/queues/queue.constants.js';
+import {
+  ACTORES,
+  ESTADOS,
+  type EstadoReserva,
+} from '../../shared/domain/estados.js';
+import { ReservaStateMachine } from '../../shared/domain/reserva-state-machine.js';
 
 /**
  * Estados desde los que una reserva todavía PUEDE expirar (E3-05 §2).
  * `PROPUESTA_PENDIENTE` entra aquí porque una propuesta de horario también
  * caduca (§5.4 / E3-06): lo que expira es la solicitud, no solo el modo MANUAL.
  */
-export const ESTADOS_EXPIRABLES = ['PENDIENTE', 'PROPUESTA_PENDIENTE'] as const;
+export const ESTADOS_EXPIRABLES = [ESTADOS.PENDIENTE, ESTADOS.PROPUESTA_PENDIENTE] as const;
 
 /** Resultado observable de un intento de expiración (idempotente). */
 export type ResultadoExpiracion =
@@ -109,6 +115,15 @@ export class ExpiracionReservaService implements OnApplicationBootstrap {
       return 'NO_APLICA';
     }
 
+    // E2-02 §5.2 (filas 6 y 10): PENDIENTE o PROPUESTA_PENDIENTE → EXPIRADA con
+    // el actor SISTEMA. `ESTADOS_EXPIRABLES` es la condición (quedan 10 minutos),
+    // el grafo lo confirma la máquina.
+    ReservaStateMachine.assertTransition(
+      reserva.estado as EstadoReserva,
+      ESTADOS.EXPIRADA,
+      ACTORES.SISTEMA,
+    );
+
     if (!reserva.expiraAt) {
       this.logger.warn(
         `Reserva ${reservaId} está en ${reserva.estado} pero no tiene expira_at: no se expira.`,
@@ -133,7 +148,7 @@ export class ExpiracionReservaService implements OnApplicationBootstrap {
           estado: { in: [...ESTADOS_EXPIRABLES] },
           expiraAt: { lte: ahora },
         },
-        data: { estado: 'EXPIRADA' },
+        data: { estado: ESTADOS.EXPIRADA },
       });
 
       if (count === 0) {
@@ -148,7 +163,7 @@ export class ExpiracionReservaService implements OnApplicationBootstrap {
           entidadId: reservaId,
           contexto: {
             estadoAnterior: reserva.estado,
-            estadoNuevo: 'EXPIRADA',
+            estadoNuevo: ESTADOS.EXPIRADA,
             expiraAt: reserva.expiraAt?.toISOString() ?? null,
             origen: 'EXPIRACION_AUTOMATICA',
           },

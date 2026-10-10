@@ -2,6 +2,7 @@ import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { TipoExcepcionHorario } from '../../horario/application/dto/create-excepcion-horario.dto.js';
 import { esAdministradorGlobalPorId, perteneceABarberia } from '../../iam/domain/roles.js';
+import { ESTADOS } from '../../shared/domain/estados.js';
 
 export interface Intervalo {
   inicio: Date;
@@ -107,7 +108,10 @@ export class DisponibilidadService {
       where: {
         barberiaId,
         fechaCita: fecha,
-        estado: { in: ['PENDIENTE', 'CONFIRMADA'] },
+        // E2-02: los dos estados desde los que una reserva ocupa agenda hoy
+        // (§5.3). El conjunto NO cambia aquí: sumar PROPUESTA_PENDIENTE es la
+        // decisión de D37/E3-02, documentada como H41.
+        estado: { in: [ESTADOS.PENDIENTE, ESTADOS.CONFIRMADA] },
         ...(excluirReservaId ? { id: { not: excluirReservaId } } : {}),
       },
     });

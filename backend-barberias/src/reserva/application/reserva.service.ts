@@ -1,6 +1,20 @@
 import { Injectable, BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { errorDeConflicto, errorDePermiso, errorDeSolicitud, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
+import {
+  ACTORES,
+  ESTADOS,
+  ESTADOS_CANCELACION_ESPECIAL,
+  ESTADOS_PROPUESTA,
+  TIPOS_PROPUESTA,
+  type ActorTransicion,
+  type EstadoReserva,
+} from '../../shared/domain/estados.js';
+import {
+  ReservaStateMachine,
+  type EjecutoresDeEfectos,
+} from '../../shared/domain/reserva-state-machine.js';
+import type { Prisma } from '@prisma/client';
 import { CreateReservaDto } from './dto/create-reserva.dto.js';
 import {
   LONGITUD_MINIMA_DETALLE,
@@ -40,15 +54,24 @@ import {
 
 /**
  * Estados desde los que el cliente o la sede todavía pueden cancelar (E3-05).
- * Todo lo demás es terminal (`EXPIRADA`, `CANCELADA`, `RECHAZADA`, `NO_ASISTIO`,
- * `COMPLETADA`) y volver a cancelarlo es un 409 `ESTADO_INVALIDO`.
+ * Todo lo demás es terminal (`EXPIRADA`, `CANCELADA`, `RECHAZADA`,
+ * `NO_PRESENTADO`, `COMPLETADA`) y volver a cancelarlo es un 409
+ * `ESTADO_INVALIDO`.
+ *
+ * E2-02: la lista no decide la transición —eso es de §5.2 y vive en
+ * `estados.ts`—, pero sí expresa «reserva viva» para las operaciones que no
+ * cambian el estado (reprogramar y proponer un horario).
  */
-export const ESTADOS_CANCELABLES = ['PENDIENTE', 'CONFIRMADA', 'PROPUESTA_PENDIENTE'] as const;
+export const ESTADOS_CANCELABLES = [
+  ESTADOS.PENDIENTE,
+  ESTADOS.CONFIRMADA,
+  ESTADOS.PROPUESTA_PENDIENTE,
+] as const;
 
 /**
  * E3-06 · una cita ya agendada solo se mueve desde los mismos estados desde los
  * que se cancela: una terminal (`EXPIRADA`, `CANCELADA`, `RECHAZADA`,
- * `NO_ASISTIO`, `COMPLETADA`) no tiene agenda que reprogramar.
+ * `NO_PRESENTADO`, `COMPLETADA`) no tiene agenda que reprogramar.
  */
 export const ESTADOS_REPROGRAMABLES = ESTADOS_CANCELABLES;
 
@@ -248,7 +271,10 @@ export class ReservaService {
       // más, sea de quien sea la solicitud.
       if (config.maxPendientes != null) {
         const pendientes = await tx.reserva.count({
-          where: { barberiaId, estado: { in: ['PENDIENTE', 'PROPUESTA_PENDIENTE'] } },
+          where: {
+            barberiaId,
+            estado: { in: [ESTADOS.PENDIENTE, ESTADOS.PROPUESTA_PENDIENTE] },
+          },
         });
 
         if (pendientes >= config.maxPendientes) {
@@ -328,6 +354,14 @@ export class ReservaService {
 
       const expiraAt = config.modoReserva === 'MANUAL' ? new Date(Date.now() + 10 * 60000) : null;
 
+      // E2-02 §5.2 (filas 1 y 2): MANUAL nace `PENDIENTE` con temporizador de 10
+      // minutos; AUTOMATICA nace `CONFIRMADA` sin temporizador. La creación pasa
+      // por la máquina igual que el resto de transiciones; el actor es el CLIENTE
+      // porque la reserva es suya aunque la teclee el staff (walk-in).
+      const estadoInicial: EstadoReserva =
+        config.modoReserva === 'AUTOMATICA' ? ESTADOS.CONFIRMADA : ESTADOS.PENDIENTE;
+      ReservaStateMachine.assertTransition(null, estadoInicial, ACTORES.CLIENTE);
+
       // 3. Crear reserva con snapshot financiero inmutable congelado
       const reserva = await tx.reserva.create({
         data: {
@@ -340,7 +374,7 @@ export class ReservaService {
           horaFin: fin,
           margenGrupalHistorico: margenFinal,
           totalPagar: precioTotalCatalogo, // Fijado inmutablemente desde el catálogo
-          estado: config.modoReserva === 'AUTOMATICA' ? 'CONFIRMADA' : 'PENDIENTE',
+          estado: estadoInicial,
           modoConfirmacion: config.modoReserva,
           expiraAt,
         },
@@ -496,7 +530,7 @@ export class ReservaService {
       }
     }
 
-    return withSerializableTransaction(this.prisma, async (tx) => {
+    const resultado = await withSerializableTransaction(this.prisma, async (tx) => {
       const reserva = await tx.reserva.findUnique({
         where: { id: reservaId, barberiaId },
       });
@@ -505,15 +539,11 @@ export class ReservaService {
         throw new NotFoundException('Reserva no encontrada');
       }
 
-      if (reserva.estado === 'NO_ASISTIO') {
-        throw new BadRequestException('La reserva ya está marcada como inasistencia');
-      }
-
-      // Marcar la reserva
-      await tx.reserva.update({
-        where: { id: reservaId },
-        data: { estado: 'NO_ASISTIO' },
-      });
+      // E2-02 §5.2 (fila 12): CONFIRMADA → NO_PRESENTADO con el actor STAFF. La
+      // máquina cubre el doble marcado (NO_PRESENTADO es terminal → 409
+      // ESTADO_INVALIDO) y el intento sobre una reserva ya cerrada. Antes se
+      // escribía `NO_ASISTIO`, que NO pertenece a los 8 estados de §5.1 (H45).
+      await this.cambiarEstado(tx, reserva, ESTADOS.NO_PRESENTADO, ACTORES.STAFF);
 
       // Obtener o crear vínculo cliente-barbería
       let vinculo = await tx.clienteBarberia.findUnique({
@@ -557,6 +587,12 @@ export class ReservaService {
 
       return { success: true, contadorNoPresentado: nuevoContador, estaRestringido };
     });
+
+    // E2-02 §5.2: al entrar en NO_PRESENTADO el temporizador de expiración se
+    // cierra por el hook, fuera de la transacción (BullMQ no participa).
+    await this.aplicarEfectosPostCommit(reservaId, ESTADOS.NO_PRESENTADO);
+
+    return resultado;
   }
 
   async obtenerAgendaDiaria(barberiaId: string, fechaStr: string, user: UsuarioAutenticado) {
@@ -738,12 +774,14 @@ export class ReservaService {
         throw new NotFoundException('Reserva no encontrada');
       }
 
-      if (actual.estado !== 'PENDIENTE') {
-        throw errorDeConflicto(
-          'ESTADO_INVALIDO',
-          `Solo se puede aceptar una solicitud en estado PENDIENTE (estado actual: ${actual.estado}).`,
-        );
-      }
+      // E2-02 §5.2: solo PENDIENTE → CONFIRMADA y solo con el actor STAFF. Va
+      // ANTES de la revalidación de disponibilidad: una reserva terminal no es
+      // «conflicto de horario», es una transición inválida (409 ESTADO_INVALIDO).
+      ReservaStateMachine.assertTransition(
+        actual.estado as EstadoReserva,
+        ESTADOS.CONFIRMADA,
+        ACTORES.STAFF,
+      );
 
       if (actual.expiraAt && actual.expiraAt.getTime() <= Date.now()) {
         throw errorDeConflicto(
@@ -792,10 +830,9 @@ export class ReservaService {
         );
       }
 
-      const actualizada = await tx.reserva.update({
-        where: { id: reservaId },
-        data: { estado: 'CONFIRMADA' },
-      });
+      // E2-02 §5.2: PENDIENTE → CONFIRMADA con el actor STAFF. La máquina es la
+      // única que decide el grafo; el «no está PENDIENTE» pasa a ser su 409.
+      const actualizada = await this.cambiarEstado(tx, actual, ESTADOS.CONFIRMADA, ACTORES.STAFF);
 
       await this.auditoriaService.registrarEvento(
         {
@@ -803,7 +840,11 @@ export class ReservaService {
           accion: 'RESERVA_CONFIRMADA',
           entidad: 'Reserva',
           entidadId: reservaId,
-          contexto: { barberiaId, estadoAnterior: 'PENDIENTE', estadoNuevo: 'CONFIRMADA' },
+          contexto: {
+            barberiaId,
+            estadoAnterior: actual.estado,
+            estadoNuevo: ESTADOS.CONFIRMADA,
+          },
         },
         tx,
       );
@@ -814,7 +855,7 @@ export class ReservaService {
     // El job de expiración se cancela fuera de la transacción: BullMQ no
     // participa en ella. El processor solo expira reservas en PENDIENTE, así
     // que si la cancelación fallara la reserva ya CONFIRMADA seguiría a salvo.
-    await this.cancelarJobExpiracion(reservaId);
+    await this.aplicarEfectosPostCommit(reservaId, ESTADOS.CONFIRMADA);
 
     if (this.notificacionService) {
       this.notificacionService
@@ -859,20 +900,10 @@ export class ReservaService {
         throw new NotFoundException('Reserva no encontrada');
       }
 
-      if (actual.estado !== 'PENDIENTE') {
-        throw errorDeConflicto(
-          'ESTADO_INVALIDO',
-          `Solo se puede rechazar una solicitud en estado PENDIENTE (estado actual: ${actual.estado}).`,
-        );
-      }
-
-      const actualizada = await tx.reserva.update({
-        where: { id: reservaId },
-        data: {
-          estado: 'RECHAZADA',
-          motivoCodigo: motivo.codigo,
-          motivoDetalle: motivo.detalle,
-        },
+      // E2-02 §5.2: PENDIENTE → RECHAZADA con el actor STAFF.
+      const actualizada = await this.cambiarEstado(tx, actual, ESTADOS.RECHAZADA, ACTORES.STAFF, {
+        motivoCodigo: motivo.codigo,
+        motivoDetalle: motivo.detalle,
       });
 
       await this.auditoriaService.registrarEvento(
@@ -883,8 +914,8 @@ export class ReservaService {
           entidadId: reservaId,
           contexto: {
             barberiaId,
-            estadoAnterior: 'PENDIENTE',
-            estadoNuevo: 'RECHAZADA',
+            estadoAnterior: actual.estado,
+            estadoNuevo: ESTADOS.RECHAZADA,
             motivoCodigo: motivo.codigo,
             motivoDetalle: motivo.detalle,
           },
@@ -895,7 +926,7 @@ export class ReservaService {
       return actualizada;
     });
 
-    await this.cancelarJobExpiracion(reservaId);
+    await this.aplicarEfectosPostCommit(reservaId, ESTADOS.RECHAZADA);
 
     if (this.notificacionService) {
       const razon = motivo.codigo === 'OTRO' ? motivo.detalle : TEXTO_MOTIVO_RECHAZO[motivo.codigo];
@@ -947,7 +978,7 @@ export class ReservaService {
    *
    * Es best-effort a propósito: BullMQ es un sistema aparte y no puede tumbar
    * una transición de estado ya confirmada. El processor vuelve a comprobar
-   * `estado === 'PENDIENTE'` antes de expirar, así que un job que sobreviva no
+   * `estado === ESTADOS.PENDIENTE` antes de expirar, así que un job que sobreviva no
    * puede mover una reserva que ya dejó de estar pendiente.
    */
   private async cancelarJobExpiracion(reservaId: string): Promise<void> {
@@ -1397,16 +1428,15 @@ export class ReservaService {
         );
       }
 
-      if (
-        !ESTADOS_CANCELABLES.includes(
-          actual.estado as (typeof ESTADOS_CANCELABLES)[number],
-        )
-      ) {
-        throw errorDeConflicto(
-          'ESTADO_INVALIDO',
-          `Solo se puede cancelar una reserva vigente (estado actual: ${actual.estado}).`,
-        );
-      }
+      // E2-02 §5.2: quién puede cancelar y desde qué estado lo decide la matriz.
+      // La comprobación va ANTES de la ventana de §5.7: una reserva terminal no
+      // es «fuera de ventana», es una transición inválida (409 ESTADO_INVALIDO).
+      const actor: ActorTransicion = esStaff ? ACTORES.STAFF : ACTORES.CLIENTE;
+      ReservaStateMachine.assertTransition(
+        actual.estado as EstadoReserva,
+        ESTADOS.CANCELADA,
+        actor,
+      );
 
       // E3-07 §5.7 · ventana del CLIENTE: una solicitud `PENDIENTE` se cancela
       // siempre; una cita ya agendada, solo hasta 30 minutos antes del inicio.
@@ -1414,14 +1444,11 @@ export class ReservaService {
       // (E3-08 le añadirá el motivo obligatorio). La comprobación va dentro de la
       // transacción, con el lock de la sede tomado, para que el reloj que decide
       // sea el del instante de la escritura y no el de la petición.
-      if (!esStaff && actual.estado !== 'PENDIENTE') {
+      if (!esStaff && actual.estado !== ESTADOS.PENDIENTE) {
         this.exigirVentanaDeCancelacion(actual);
       }
 
-      const actualizada = await tx.reserva.update({
-        where: { id: reservaId },
-        data: { estado: 'CANCELADA' },
-      });
+      const actualizada = await this.cambiarEstado(tx, actual, ESTADOS.CANCELADA, actor);
 
       await this.auditoriaService.registrarEvento(
         {
@@ -1432,8 +1459,8 @@ export class ReservaService {
           contexto: {
             barberiaId,
             estadoAnterior: actual.estado,
-            estadoNuevo: 'CANCELADA',
-            canceladoPor: esStaff ? 'STAFF' : 'CLIENTE',
+            estadoNuevo: ESTADOS.CANCELADA,
+            canceladoPor: esStaff ? ACTORES.STAFF : ACTORES.CLIENTE,
           },
         },
         tx,
@@ -1445,7 +1472,7 @@ export class ReservaService {
     // BullMQ no participa en la transacción: se cancela el job de expiración
     // después, best-effort. Si sobreviviera, el processor lo ignora porque la
     // reserva ya no está en `ESTADOS_EXPIRABLES`.
-    await this.cancelarJobExpiracion(reservaId);
+    await this.aplicarEfectosPostCommit(reservaId, ESTADOS.CANCELADA);
 
     if (this.notificacionService) {
       const destinatario = esStaff ? reserva.clienteId : user.id;
@@ -1507,27 +1534,21 @@ export class ReservaService {
         );
       }
 
-      if (
-        !ESTADOS_CANCELABLES.includes(
-          actual.estado as (typeof ESTADOS_CANCELABLES)[number],
-        )
-      ) {
-        throw errorDeConflicto(
-          'ESTADO_INVALIDO',
-          `Solo se puede cancelar una reserva vigente (estado actual: ${actual.estado}).`,
-        );
-      }
-
-      const actualizada = await tx.reserva.update({
-        where: { id: reservaId },
-        data: {
-          estado: 'CANCELADA',
+      // E2-02 §5.2 (fila 15): la cancelación especial es la vía de la sede para
+      // pasar una CONFIRMADA a CANCELADA con motivo; desde cualquier otro estado
+      // la matriz responde 409 ESTADO_INVALIDO.
+      const actualizada = await this.cambiarEstado(
+        tx,
+        actual,
+        ESTADOS.CANCELADA,
+        ACTORES.STAFF,
+        {
           canceladoPorId: user.id,
-          cancelacionEspecialEstado: 'APROBADA',
+          cancelacionEspecialEstado: ESTADOS_CANCELACION_ESPECIAL.APROBADA,
           cancelacionEspecialMotivo: motivo.codigo,
           cancelacionEspecialDetalle: motivo.detalle,
         },
-      });
+      );
 
       await this.auditoriaService.registrarEvento(
         {
@@ -1538,8 +1559,8 @@ export class ReservaService {
           contexto: {
             barberiaId,
             estadoAnterior: actual.estado,
-            estadoNuevo: 'CANCELADA',
-            canceladoPor: 'STAFF',
+            estadoNuevo: ESTADOS.CANCELADA,
+            canceladoPor: ACTORES.STAFF,
             canceladoPorId: user.id,
             motivoCodigo: motivo.codigo,
             motivoDetalle: motivo.detalle,
@@ -1551,7 +1572,7 @@ export class ReservaService {
       return actualizada;
     });
 
-    await this.cancelarJobExpiracion(reservaId);
+    await this.aplicarEfectosPostCommit(reservaId, ESTADOS.CANCELADA);
 
     if (this.notificacionService) {
       const razon =
@@ -1620,7 +1641,11 @@ export class ReservaService {
       }
 
       const viva = await tx.propuestaHorario.findFirst({
-        where: { reservaId, estado: 'PENDIENTE', expiraAt: { gt: new Date() } },
+        where: {
+          reservaId,
+          estado: ESTADOS_PROPUESTA.PENDIENTE,
+          expiraAt: { gt: new Date() },
+        },
       });
 
       if (viva) {
@@ -1639,8 +1664,8 @@ export class ReservaService {
           fechaCita: bloque.fecha,
           horaInicio: bloque.inicio,
           horaFin: bloque.fin,
-          tipo: 'REPROGRAMACION',
-          estado: 'PENDIENTE',
+          tipo: TIPOS_PROPUESTA.REPROGRAMACION,
+          estado: ESTADOS_PROPUESTA.PENDIENTE,
           expiraAt,
           creadoPor: user.id,
         },
@@ -1703,7 +1728,7 @@ export class ReservaService {
       }
 
       const propuesta = await tx.propuestaHorario.findFirst({
-        where: { reservaId, estado: 'PENDIENTE' },
+        where: { reservaId, estado: ESTADOS_PROPUESTA.PENDIENTE },
         orderBy: { creadoAt: 'desc' },
       });
 
@@ -1717,7 +1742,7 @@ export class ReservaService {
       if (propuesta.expiraAt && propuesta.expiraAt.getTime() <= Date.now()) {
         await tx.propuestaHorario.update({
           where: { id: propuesta.id },
-          data: { estado: 'EXPIRADA' },
+          data: { estado: ESTADOS_PROPUESTA.EXPIRADA },
         });
 
         throw errorDeConflicto(
@@ -1743,7 +1768,7 @@ export class ReservaService {
 
       await tx.propuestaHorario.update({
         where: { id: propuesta.id },
-        data: { estado: 'ACEPTADA' },
+        data: { estado: ESTADOS_PROPUESTA.ACEPTADA },
       });
 
       await this.auditoriaService.registrarEvento(
@@ -1804,7 +1829,7 @@ export class ReservaService {
       }
 
       const propuesta = await tx.propuestaHorario.findFirst({
-        where: { reservaId, estado: 'PENDIENTE' },
+        where: { reservaId, estado: ESTADOS_PROPUESTA.PENDIENTE },
         orderBy: { creadoAt: 'desc' },
       });
 
@@ -1817,7 +1842,7 @@ export class ReservaService {
 
       const rechazada = await tx.propuestaHorario.update({
         where: { id: propuesta.id },
-        data: { estado: 'RECHAZADA' },
+        data: { estado: ESTADOS_PROPUESTA.RECHAZADA },
       });
 
       await this.auditoriaService.registrarEvento(
@@ -1829,7 +1854,7 @@ export class ReservaService {
           contexto: {
             barberiaId,
             propuestaId: propuesta.id,
-            estadoPropuesta: 'RECHAZADA',
+            estadoPropuesta: ESTADOS_PROPUESTA.RECHAZADA,
           },
         },
         tx,
@@ -1839,26 +1864,70 @@ export class ReservaService {
     });
   }
 
-  async cambiarEstado(barberiaId: string, reservaId: string, nuevoEstado: string, user: UsuarioAutenticado) {
-    const reserva = await this.prisma.reserva.findUnique({
-      where: { id: reservaId },
+  /**
+   * E2-02 §5.2 · ÚNICO punto de escritura de `reservas.estado`.
+   *
+   * Toda transición —la del cliente, la de la sede y la del sistema— pasa por
+   * aquí: la máquina comprueba que el grafo la permite para ese actor (409
+   * `ESTADO_INVALIDO` si no) y el hook `onEnter` aplica los efectos que §5.2
+   * asocia al estado nuevo. El `data` extra va en la MISMA escritura, para que
+   * estado y motivo no puedan quedar desacoplados.
+   *
+   * El endpoint genérico `PATCH :id/estado` se eliminó en E2-02: los flujos de
+   * E3-03 a E3-08 son los únicos caminos, cada uno con sus condiciones (ventana
+   * de 30 minutos, motivo obligatorio, bandera D17, revalidación del hueco).
+   */
+  private async cambiarEstado(
+    tx: Prisma.TransactionClient,
+    reserva: { id: string; estado: string },
+    hacia: EstadoReserva,
+    actor: ActorTransicion,
+    datos: Prisma.ReservaUncheckedUpdateInput = {},
+  ) {
+    ReservaStateMachine.assertTransition(reserva.estado as EstadoReserva, hacia, actor);
+
+    const actualizada = await tx.reserva.update({
+      where: { id: reserva.id },
+      data: { ...datos, estado: hacia },
     });
 
-    if (!reserva) {
-      throw new NotFoundException('Reserva no encontrada');
-    }
-
-    const bId = barberiaId || reserva.barberiaId;
-
-    if (nuevoEstado === 'NO_ASISTIO') {
-      return this.marcarInasistencia(bId, reservaId, user.id);
-    }
-
-    const updated = await this.prisma.reserva.update({
-      where: { id: reservaId },
-      data: { estado: nuevoEstado },
+    await ReservaStateMachine.onEnter(hacia, {
+      reservaId: reserva.id,
+      ejecutores: this.ejecutoresDeEfectos(),
     });
 
-    return updated;
+    return actualizada;
+  }
+
+  /**
+   * E2-02 §5.2 · efectos POSTERIORES a la transacción del hook `onEnter`.
+   * Existen aparte porque BullMQ no participa de la transacción de Postgres: si
+   * se cancelara el job dentro, un rollback dejaría la reserva sin temporizador.
+   */
+  private async aplicarEfectosPostCommit(
+    reservaId: string,
+    hacia: EstadoReserva,
+  ): Promise<void> {
+    await ReservaStateMachine.despuesDeConfirmar(hacia, {
+      reservaId,
+      ejecutores: this.ejecutoresDeEfectos(),
+    });
+  }
+
+  /** Implementación de los efectos declarados por la máquina (E2-02). */
+  private ejecutoresDeEfectos(): EjecutoresDeEfectos {
+    return {
+      limpiarInformacionAdicional: async (reservaId: string) => {
+        // H32: la columna `informacion_adicional` no existe todavía — llega con
+        // la reserva grupal/información adicional (E4-01/E4-05). El hueco queda
+        // cableado para que ese día haya UN solo sitio que lo decida.
+        this.logger.log(
+          `Efecto de entrada: la reserva ${reservaId} no tiene información adicional que borrar (H32).`,
+        );
+      },
+      cancelarJobs: async (reservaId: string) => {
+        await this.cancelarJobExpiracion(reservaId);
+      },
+    };
   }
 }
