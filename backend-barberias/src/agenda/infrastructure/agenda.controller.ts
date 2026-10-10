@@ -34,7 +34,10 @@ export class AgendaController {
     return this.disponibilidadService.calcularDisponibilidadDeSolicitante(
       {
         barberiaId,
-        fecha: new Date(fecha || new Date()),
+        // E2-04: la etiqueta va tal cual; sin fecha, el servicio usa "hoy" en la
+        // zona de la sede. Antes `new Date(fecha || new Date())` mezclaba una
+        // etiqueta con el instante del servidor.
+        fecha,
         duracionTotal: duracion,
         margenRequerido: 0,
       },
@@ -107,7 +110,7 @@ export class AgendaController {
     return this.disponibilidadService.calcularDisponibilidadDeSolicitante(
       {
         barberiaId,
-        fecha: new Date(dto.fecha),
+        fecha: dto.fecha,
         duracionTotal: dto.duracionTotal,
         margenRequerido: dto.margenRequerido ?? 0,
       },

@@ -29,8 +29,9 @@ export class ReservaController {
     @Query('fecha') fecha: string,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    const fechaFiltro = fecha || new Date().toISOString().split('T')[0];
-    return this.reservaService.obtenerAgendaDiaria(barberiaId, fechaFiltro, user);
+    // E2-04: sin `fecha` el día por defecto lo resuelve el servicio con la zona
+    // horaria de la SEDE, no el reloj UTC del servidor.
+    return this.reservaService.obtenerAgendaDiaria(barberiaId, fecha, user);
   }
 
   /**

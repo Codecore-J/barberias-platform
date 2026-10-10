@@ -19,6 +19,10 @@ describe('DisponibilidadService · calcularDisponibilidadDeSolicitante (E1-06)',
     // busca usuario_roles y cliente_barberias. El mock separa ambos por la
     // tabla que se consulta para que el test exprese la regla y no el mock.
     prisma = {
+      // E2-04: la disponibilidad lee la zona horaria de la sede.
+      barberia: {
+        findUnique: vi.fn(async () => ({ zonaHoraria: 'America/Santo_Domingo' })),
+      },
       usuarioRol: {
         findFirst: vi.fn(async ({ where }: any) => {
           if (where.rol?.nombre === 'ADMINISTRADOR') return null;

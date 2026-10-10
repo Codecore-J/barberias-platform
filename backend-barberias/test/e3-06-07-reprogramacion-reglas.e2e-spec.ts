@@ -39,9 +39,21 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
 import { PrismaExceptionFilter } from '../src/shared/filters/prisma-exception.filter.js';
+import { TiempoService, ZONA_POR_DEFECTO } from '../src/shared/time/tiempo.service.js';
 
+/**
+ * E2-04 · toda etiqueta que llega a la base se calcula en la ZONA DE LA SEDE.
+ *
+ * `fecha_cita` y `hora_inicio` son etiquetas locales: el servidor las compone en
+ * `America/Santo_Domingo` (UTC-4). Calcularlas con el reloj del proceso (que en
+ * CI corre en UTC) las desplaza 4 horas, justo la magnitud que mide E3-07.
+ */
+const ZONA = ZONA_POR_DEFECTO;
+const tiempo = new TiempoService();
+
+/** `n` días de calendario contados en la zona de la sede (no en la de CI). */
 function fecha(n: number): string {
-  return new Date(Date.now() + n * 86400000).toISOString().split('T')[0];
+  return tiempo.sumarDias(tiempo.fechaLocal(tiempo.ahora(), ZONA), n);
 }
 
 /** Hora etiquetada en las partes UTC, igual que la escribe `parseTime`. */
@@ -49,6 +61,12 @@ function hora(h: number, m: number): Date {
   const d = new Date('1970-01-01T00:00:00Z');
   d.setUTCHours(h, m, 0, 0);
   return d;
+}
+
+/** Etiqueta `HH:mm` de la sede → `Date` de hora con la hora en las partes UTC. */
+function etiquetaHora(hhmm: string): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  return hora(h, m);
 }
 
 describe('E3-06/E3-07 · reprogramación y reglas de cancelación del cliente', () => {
@@ -313,23 +331,31 @@ describe('E3-06/E3-07 · reprogramación y reglas de cancelación del cliente', 
 
   /**
    * Coloca la cita a `minutos` del reloj real escribiendo en la base, para probar
-   * los límites 29/31 sin esperar. Se escriben las MISMAS convenciones que usa la
-   * API: `fecha_cita` = medianoche UTC del día etiquetado y `hora_inicio`/`hora_fin`
-   * = la hora etiquetada en las partes UTC.
+   * los límites 29/31 sin esperar.
+   *
+   * El instante objetivo se parte en fecha y hora en la ZONA DE LA SEDE con
+   * `TiempoService.desdeInstante`, igual que hace el servidor: con el reloj del
+   * proceso (UTC en CI) la etiqueta `HH:mm` se interpretaba en UTC-4 y la cita
+   * quedaba 4 horas en el futuro, de modo que a 29 minutos faltaban «más de 4
+   * horas» y la cancelación salía 201 en vez de 422 `FUERA_DE_VENTANA`.
+   * Se escriben las MISMAS convenciones que usa la API: `fecha_cita` = medianoche
+   * UTC del día etiquetado y `hora_inicio`/`hora_fin` = hora etiquetada en las
+   * partes UTC.
    */
   async function colocarCita(reservaId: string, minutos: number) {
-    const objetivo = new Date(Date.now() + minutos * 60000);
-    const dia = new Date(
-      Date.UTC(objetivo.getFullYear(), objetivo.getMonth(), objetivo.getDate()),
+    const objetivo = new Date(tiempo.ahora().getTime() + minutos * 60000);
+    const partes = tiempo.desdeInstante(objetivo, ZONA);
+    const partesFin = tiempo.desdeInstante(
+      new Date(objetivo.getTime() + 30 * 60000),
+      ZONA,
     );
-    const fin = new Date(objetivo.getTime() + 30 * 60000);
 
     await prisma.reserva.update({
       where: { id: reservaId },
       data: {
-        fechaCita: dia,
-        horaInicio: hora(objetivo.getHours(), objetivo.getMinutes()),
-        horaFin: hora(fin.getHours(), fin.getMinutes()),
+        fechaCita: tiempo.fechaDeCalendario(partes.fecha),
+        horaInicio: etiquetaHora(partes.hora),
+        horaFin: etiquetaHora(partesFin.hora),
       },
     });
   }
