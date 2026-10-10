@@ -94,13 +94,17 @@ export class ReservaService {
       serviciosCatalogo,
     });
 
-    const [hFin] = dto.horaFin.split(':').map(Number);
-    const horaFin = new Date(dto.fecha + 'T' + String(hFin).padStart(2, '0') + ':00:00');
+    // La hora de fin del bloque se devuelve tal cual la pidió el cliente: el DTO
+    // ya la validó como HH:mm. Antes se reconstruía con `new Date(...)` y se
+    // formateaba con `toISOString()`, lo que descartaba los minutos (`10:30` →
+    // `10:00`) y además desplazaba la hora al convertir a UTC fuera de UTC.
+    const [hFin, mFin] = dto.horaFin.split(':').map(Number);
+    const horaFin = `${String(hFin).padStart(2, '0')}:${String(mFin).padStart(2, '0')}`;
 
     return {
       barberiaId,
       fecha: dto.fecha,
-      horaFin: horaFin.toISOString().slice(11, 16),
+      horaFin,
       bloqueTotal: { duracionTotal, margenTotal, precioTotal },
       desgloseServicios: serviciosCatalogo.map((s) => ({
         servicioId: s.id,
