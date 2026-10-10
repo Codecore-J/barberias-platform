@@ -150,6 +150,14 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // cambiar de horario es la propuesta con ventana de 10 minutos (§5.4), que
   // sigue pendiente como tarea del backlog.
   'PATCH /barberias/:barberiaId/reservas,reservas/:id/reprogramar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // E3-08 (2026-10-10): la cancelación especial (D17) es una decisión de la SEDE
+  // con motivo obligatorio, así que declara los mismos dos roles que aceptar,
+  // rechazar o reprogramar. La propuesta de horario (D18) es la vía del CLIENTE
+  // dueño y su bandeja de resolución (aceptar/rechazar) vuelve a ser de la SEDE.
+  'POST /barberias/:barberiaId/reservas,reservas/:id/cancelacion-especial': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /barberias/:barberiaId/reservas,reservas/:id/proponer-horario': [ROL_CLIENTE],
+  'POST /barberias/:barberiaId/reservas,reservas/:id/propuesta-horario/aceptar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /barberias/:barberiaId/reservas,reservas/:id/propuesta-horario/rechazar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /barberias/:barberiaId/reservas,reservas/agenda': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_ADMINISTRADOR],
 
   'GET /catalogo/servicios,servicios/': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
@@ -295,9 +303,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
   }
 
-  it('descubrir las 60 rutas del servidor y todas tienen decision', () => {
+  it('descubrir las 64 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(60);
+    expect(claves.length).toBe(64);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -381,12 +389,13 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
     console.log('');
 
-    // 60 rutas × 4 roles: la partición de E3-03 añadió POST /reservas/walk-in,
+    // 64 rutas × 4 roles: la partición de E3-03 añadió POST /reservas/walk-in,
     // el endpoint de cotización (D44) añadió POST /reservas/cotizar, E3-04
     // añadió POST /reservas/:id/aceptar y POST /reservas/:id/rechazar, E3-05
-    // añadió POST /reservas/:id/cancelar y E3-06 añade
-    // PATCH /reservas/:id/reprogramar.
-    expect(evaluaciones).toBe(240);
+    // añadió POST /reservas/:id/cancelar, E3-06 añadió
+    // PATCH /reservas/:id/reprogramar y E3-08 añade cuatro: cancelación especial,
+    // proponer-horario y su bandeja de aceptar/rechazar.
+    expect(evaluaciones).toBe(256);
     expect(
       desviaciones.length === 0
         ? ''

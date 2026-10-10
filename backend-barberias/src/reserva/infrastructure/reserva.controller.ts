@@ -12,6 +12,7 @@ import { ReservaService } from '../application/reserva.service.js';
 import { CreateReservaDto } from '../application/dto/create-reserva.dto.js';
 import { RechazarReservaDto } from '../application/dto/rechazar-reserva.dto.js';
 import { ReprogramarReservaDto } from '../application/dto/reprogramar-reserva.dto.js';
+import { CancelacionEspecialDto } from '../application/dto/cancelacion-especial.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
@@ -175,6 +176,68 @@ export class ReservaController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.reservaService.reprogramarReserva(barberiaId, reservaId, dto, user);
+  }
+
+  /**
+   * POST /reservas/:id/cancelacion-especial (E3-08/D17)
+   * Cancelación fuera de la ventana de los 30 minutos, resuelta por la SEDE con
+   * motivo obligatorio del catálogo §5.5. Solo el responsable de la sede y el
+   * ADMINISTRADOR global; el `RolesGuard` la acota al `barberiaId` del parámetro.
+   */
+  @Post(':id/cancelacion-especial')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  cancelacionEspecial(
+    @CurrentBarberiaId() barberiaId: string,
+    @Param('id', ParseUUIDPipe) reservaId: string,
+    @Body() dto: CancelacionEspecialDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.reservaService.cancelacionEspecial(barberiaId, reservaId, dto, user);
+  }
+
+  /**
+   * POST /reservas/:id/proponer-horario (E3-08/D18)
+   * El CLIENTE dueño propone un bloque nuevo para su cita. No ocupa agenda: deja
+   * una propuesta PENDIENTE con 10 minutos de ventana que la sede resuelve.
+   */
+  @Post(':id/proponer-horario')
+  @Roles('CLIENTE')
+  proponerHorario(
+    @CurrentBarberiaId() barberiaId: string,
+    @Param('id', ParseUUIDPipe) reservaId: string,
+    @Body() dto: ReprogramarReservaDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.reservaService.proponerHorario(barberiaId, reservaId, dto, user);
+  }
+
+  /**
+   * POST /reservas/:id/propuesta-horario/aceptar (E3-08/D18)
+   * La sede acepta la propuesta: mueve la cita tras revalidar el hueco bajo el
+   * lock de la sede. Mismos roles que la reprogramación directa.
+   */
+  @Post(':id/propuesta-horario/aceptar')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  aceptarPropuestaHorario(
+    @CurrentBarberiaId() barberiaId: string,
+    @Param('id', ParseUUIDPipe) reservaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.reservaService.aceptarPropuestaHorario(barberiaId, reservaId, user);
+  }
+
+  /**
+   * POST /reservas/:id/propuesta-horario/rechazar (E3-08/D18)
+   * La sede rechaza la propuesta sin mover la cita.
+   */
+  @Post(':id/propuesta-horario/rechazar')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  rechazarPropuestaHorario(
+    @CurrentBarberiaId() barberiaId: string,
+    @Param('id', ParseUUIDPipe) reservaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.reservaService.rechazarPropuestaHorario(barberiaId, reservaId, user);
   }
 
   @Get(':id')

@@ -535,9 +535,11 @@ Identificadores provisionales, libres desde H30. Registrados al iniciar E3-05 (2
 - **Módulo / Ruta afectada:** Backend, `prisma/schema.prisma` (`model Reserva`, `model ConfiguracionBarberia`)
 - **Tipo:** Trazabilidad / alcance pendiente de E3-07
 - **Severidad:** Baja
-- **Estado:** abierto
+- **Estado:** resuelto parcialmente en E3-08 (2026-10-10)
 - **Qué consta:** el diseño (E3-07, D17) añade `reservas.cancelado_por`, `cancelacion_especial_estado` y `cancelacion_especial_motivo`, más `configuracion_barberia.permite_cancelacion_especial`. Nada de eso existe todavía. En E3-05 la trazabilidad de quién canceló vive solo en `auditoria.contexto.canceladoPor` (`'CLIENTE'` o `'STAFF'`)
 - **Evidencia:** `POST /barberias/:barberiaId/reservas/:id/cancelar` audita `RESERVA_CANCELADA` con `canceladoPor`; la columna llega con la migración de E3-07
+
+**Resolución (E3-08):** la migración `20261010000000_e308_cancelacion_especial_propuestas` añade `configuracion_barberia.permite_cancelacion_especial` (BOOLEAN NOT NULL DEFAULT FALSE) y, en `reservas`, `cancelado_por_id` (FK a `usuarios`), `cancelacion_especial_estado`, `cancelacion_especial_motivo` y `cancelacion_especial_detalle`, con sus CHECK de catálogo. Lo que sigue abierto es el flujo de SOLICITUD del cliente de D17: ver H43.
 
 ### H34: Comentarios corruptos en `roles.ts`
 - **Módulo / Ruta afectada:** Backend, `src/iam/domain/roles.ts` (líneas 75 y 107)
@@ -551,9 +553,11 @@ Identificadores provisionales, libres desde H30. Registrados al iniciar E3-05 (2
 - **Módulo / Ruta afectada:** Backend, `src/reserva/application/reserva.service.ts` (`reprogramarReserva`), `src/reserva/infrastructure/reserva.controller.ts`, `prisma/schema.prisma`, BACKLOG §E3-06
 - **Tipo:** Divergencia entre el pedido de la rama y el alcance del backlog
 - **Severidad:** Media — la capacidad que describe el §5.4 sigue sin existir para nadie
-- **Estado:** abierto (E3-06 del backlog)
+- **Estado:** resuelto parcialmente en E3-08 (2026-10-10)
 - **Qué consta:** el backlog pide la tabla `propuestas_horario` (D18: `tipo` `PROPUESTA_INICIAL`/`REPROGRAMACION`/`ADELANTO`, `estado` `PENDIENTE`/`ACEPTADA`/`RECHAZADA`/`EXPIRADA`, `expira_at`) y tres rutas (`POST .../proponer`, `POST .../propuesta/aceptar`, `POST .../propuesta/rechazar`) con ventana de 10 minutos y el hueco propuesto retenido hasta que caduque (D37). El pedido de esta rama fue otro: un `PATCH .../reprogramar` transaccional para el staff, que es lo que se implementó. No existe ninguna tabla `propuestas_horario`; `PROPUESTA_PENDIENTE` sigue siendo un estado alcanzable solo por escritura directa, aunque la expiración de E3-05 ya lo contempla
 - **Evidencia:** `grep -rn "propuestas_horario" src prisma` → sin coincidencias; la matriz de rutas descubre 60 rutas y ninguna contiene `proponer` ni `propuesta`
+
+**Resolución (E3-08):** ya existe la tabla `propuestas_horario` (D18) con sus `tipo`/`estado`/`expira_at`, la ventana de 10 minutos medida con reloj falso y las tres operaciones: proponer (CLIENTE dueño), aceptar y rechazar (staff). Dos divergencias quedan abiertas y documentadas: la dirección es cliente→sede (no la sede→cliente del §5.4) y la propuesta NO retiene el hueco que D37 manda retener (H41); el estado `reservas.PROPUESTA_PENDIENTE` sigue sin productor (H42).
 
 ### H36: La ventana de 30 minutos del CLIENTE no usa la zona horaria de la barbería
 - **Módulo / Ruta afectada:** Backend, `src/reserva/application/reserva.service.ts` (`instanteInicioCita`, `exigirVentanaDeCancelacion`), ruta de la fila 44e
@@ -579,3 +583,47 @@ Identificadores provisionales, libres desde H30. Registrados al iniciar E3-05 (2
 - **Estado:** abierto (E2-06 ya pide `testTimeout` de 30 s)
 - **Qué consta:** el archivo E2E fija `fileParallelism: false` pero no `testTimeout`. Con la BD de desarrollo en Neon y Redis remotos, cada caso tarda entre 3 y 7 s y cualquiera que haga cuatro o más llamadas supera los 5 s del default: la primera ejecución del E2E de E3-06/E3-07 dio `6 failed` con duraciones de ~5005 ms, que parecen fallos de regla de negocio y son timeouts
 - **Evidencia:** ejecución con el default → `Tests 6 failed (9)`, tiempos 5005/5012/5015 ms; con `--testTimeout=30000` → `Tests 9 passed (9)`
+
+## HALLAZGOS DE E3-08 (H40 a H44)
+
+Identificadores provisionales, libres desde H39. Registrados al cerrar E3-08 (2026-10-10). La severidad solo se escribe cuando consta en la evidencia.
+
+### H40: Corregir una migración recién aplicada obliga a editar el ledger a mano
+- **Módulo / Ruta afectada:** Backend, `prisma/migrations/20261010000000_e308_cancelacion_especial_propuestas`, `_prisma_migrations`
+- **Tipo:** Operación / integridad del ledger de migraciones
+- **Severidad:** Informativa
+- **Estado:** nota de operación (2026-10-10); no es un defecto de producto
+- **Qué consta:** la primera versión de la migración de E3-08 declaraba las claves foráneas sin `ON DELETE SET NULL` / `ON UPDATE CASCADE`, así que `prisma migrate diff` mostraba drift. Corregir el `migration.sql` de una migración YA aplicada no tiene camino en Prisma: `migrate resolve --rolled-back` la rechaza (`cannot be rolled back because it is not in a failed state`) y `migrate deploy` no la reaplica. Hubo que `DROP` de los objetos recién creados, borrar a mano la fila de `_prisma_migrations` con `prisma db execute` y volver a desplegar
+- **Evidencia:** `migrate deploy` → `All migrations have been successfully applied.`; `migrate status` → `Database schema is up to date!`; `migrate diff --from-schema-datasource --to-schema-datamodel` → `-- This is an empty migration.`
+
+### H41: La propuesta de horario NO retiene el hueco que D37 manda retener
+- **Módulo / Ruta afectada:** Backend, `propuestas_horario`, `src/agenda/application/disponibilidad.service.ts`, §5.3/D37
+- **Tipo:** Divergencia de diseño + carrera real
+- **Severidad:** Media
+- **Estado:** abierto (D37)
+- **Qué consta:** el pedido del dueño fue explícito —«sin afectar directamente la disponibilidad actual hasta que el staff la acepte»—, así que una propuesta `PENDIENTE` no entra en el cálculo de disponibilidad (que solo mira `reservas` en estado `PENDIENTE`/`CONFIRMADA`). Consecuencia medida: entre proponer y aceptar, otro cliente puede tomar el hueco y la aceptación responde 409 `CONFLICTO_HORARIO`. El §5.3/D37, en cambio, dice que «toda propuesta de horario activa» ocupa
+- **Evidencia:** E2E E3-08 «el CLIENTE dueño propone un horario: … sin ocupar el hueco» (otro cliente reserva ahí → 201) y «si el hueco se ocupa antes de aceptar → 409 CONFLICTO_HORARIO»
+
+### H42: `PROPUESTA_PENDIENTE` sigue sin productor y las propuestas caducan en diferido
+- **Módulo / Ruta afectada:** Backend, `reservas.estado`, `propuestas_horario.expira_at`, expiración de E3-05
+- **Tipo:** Máquina de estados / ciclo de vida
+- **Severidad:** Baja
+- **Estado:** abierto
+- **Qué consta:** la propuesta vive en su propia tabla, así que la reserva nunca pasa a `PROPUESTA_PENDIENTE` —el estado que el processor y la reconciliación de E3-05 vigilan—. Además no hay job ni cron que expire las propuestas: la caducidad se comprueba al aceptarlas y al proponer (`expiraAt > now`), de modo que una propuesta vencida se queda con `estado = 'PENDIENTE'` en la BD hasta que alguien la resuelva
+- **Evidencia:** el E2E fuerza el vencimiento por SQL (`expiraAt` en el pasado) y obtiene 409 `PROPUESTA_EXPIRADA`; `PROPUESTA_PENDIENTE` no aparece escrito por ninguna transición de E3-08
+
+### H43: `SOLICITADA`/`RECHAZADA` de la cancelación especial existen en el CHECK pero nadie los escribe
+- **Módulo / Ruta afectada:** Backend, `reservas.cancelacion_especial_estado`, §E3-07 punto 3
+- **Tipo:** Alcance pendiente de D17
+- **Severidad:** Baja
+- **Estado:** abierto
+- **Qué consta:** el CHECK admite `SOLICITADA`, `APROBADA` y `RECHAZADA`, pero la única ruta de E3-08 es del staff y escribe siempre `APROBADA`. El flujo de D17 en el que el CLIENTE solicita y la sede resuelve no está implementado: se implementó la variante que pidió el dueño (ruta exclusiva de `ADMIN_BARBERIA`/`ADMINISTRADOR`). `permite_cancelacion_especial` sí tiene consumidor (422 si está en FALSE)
+- **Evidencia:** E2E E3-08 «sin la bandera D17 → 422 CANCELACION_ESPECIAL_NO_HABILITADA» y «con la bandera, la sede cancela con motivo»
+
+### H44: La cancelación especial del staff no exige estar fuera de la ventana de los 30 minutos
+- **Módulo / Ruta afectada:** Backend, `ReservaService.cancelacionEspecial`
+- **Tipo:** Regla de negocio / decisión pendiente
+- **Severidad:** Informativa
+- **Estado:** abierto — a decisión del dueño
+- **Qué consta:** la ruta funciona a cualquier distancia de la cita mientras la sede tenga la bandera, incluso con semanas de antelación. Es coherente con que la sede cancela cuando necesita (la cancelación normal del staff tampoco tiene ventana), pero conviene decidir si la cancelación especial debe limitarse al tramo de menos de 30 minutos para no convertirla en una vía ordinaria de cancelación con motivo
+- **Evidencia:** el E2E la ejecuta sobre citas a 2 y 3 días vista y responde 201
