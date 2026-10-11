@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { errorDeConflicto, errorDePermiso, errorDeSolicitud, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import {
@@ -30,6 +30,12 @@ import {
 } from './dto/cancelacion-especial.dto.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { CotizacionResponse, BloqueCalculado } from './dto/cotizacion.dto.js';
+import {
+  calcularBloqueGrupal,
+  mensajeDeProblema,
+  validarGrupoGrupal,
+  type ParticipanteParaValidar,
+} from '../domain/reserva-grupal.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
 import { validateTimeRange } from '../../horario/domain/time.utils.js';
 import {
@@ -196,6 +202,94 @@ export class ReservaService {
       throw new NotFoundException('Configuración de barbería no encontrada');
     }
 
+    // E4-01/6 (D44): la cotización grupal devuelve EXACTAMENTE el mismo bloque y
+    // el mismo precio que `crearReserva` para el mismo grupo. Comparten la función
+    // pura del dominio y las mismas validaciones de forma y capacidad, en el
+    // mismo orden (capacidad antes que disponibilidad).
+    if (dto.tipo === 'GRUPAL') {
+      if (!config.aceptaGrupal) {
+        throw reglaDeNegocio('GRUPAL_NO_DISPONIBLE', 'La barbería no acepta reservas grupales.');
+      }
+
+      const participantes = (dto.participantes ?? []).map((p) => ({
+        nombre: p.nombre,
+        esAdultoResponsable: p.esAdultoResponsable,
+        servicios: p.servicios ?? [],
+      }));
+
+      const problema = validarGrupoGrupal(participantes, {
+        maxPersonasTotal: config.maxPersonasTotal,
+        maxNinos: config.maxNinos,
+      });
+
+      if (problema) {
+        if (problema.tipo === 'CAPACIDAD') {
+          throw reglaDeNegocio('CAPACIDAD_EXCEDIDA', mensajeDeProblema(problema), {
+            campo: problema.campo,
+            limite: problema.limite,
+            solicitado: problema.solicitado,
+          });
+        }
+        throw errorDeSolicitud('PARTICIPANTES_INVALIDOS', mensajeDeProblema(problema));
+      }
+
+      const idsGrupales = [...new Set(participantes.flatMap((p) => p.servicios))];
+      const catalogoGrupal = await this.prisma.servicio.findMany({
+        where: { id: { in: idsGrupales }, barberiaId, estado: 'ACTIVO' },
+      });
+
+      if (catalogoGrupal.length !== idsGrupales.length) {
+        throw errorDeSolicitud(
+          'SERVICIO_FUERA_DE_BARBERIA',
+          'Uno o más servicios seleccionados no existen, no pertenecen a esta barbería o están inactivos.',
+        );
+      }
+
+      const catalogoGrupalPorId = new Map(catalogoGrupal.map((s) => [s.id, s]));
+      const resueltos = participantes.map((p) => ({
+        nombre: p.nombre,
+        esAdultoResponsable: p.esAdultoResponsable,
+        servicios: p.servicios.map((id) => {
+          const servicio = catalogoGrupalPorId.get(id)!;
+          return {
+            id,
+            nombre: servicio.nombre,
+            duracionEstimada: servicio.duracionEstimada,
+            precio: Number(servicio.precio),
+          };
+        }),
+      }));
+
+      const bloque = calcularBloqueGrupal(resueltos, config.margenGrupalMinutos ?? 10);
+
+      // La hora de fin es la de los SERVICIOS (Σ duraciones): el margen grupal va
+      // aparte, como en la reserva persistida y en la disponibilidad.
+      const [hInicio, mInicio] = dto.horaInicio.split(':').map(Number);
+      const finEnMinutos = hInicio * 60 + mInicio + bloque.duracionServicios;
+      const horaFinGrupal = `${String(Math.floor(finEnMinutos / 60) % 24).padStart(2, '0')}:${String(finEnMinutos % 60).padStart(2, '0')}`;
+
+      return {
+        barberiaId,
+        fecha: dto.fecha,
+        horaFin: horaFinGrupal,
+        bloqueTotal: {
+          duracionTotal: bloque.duracionTotal,
+          margenTotal: bloque.margenGrupal,
+          precioTotal: bloque.precioTotal,
+        },
+        desgloseServicios: resueltos.flatMap((participante, participanteIndex) =>
+          participante.servicios.map((servicio) => ({
+            servicioId: servicio.id,
+            nombre: servicio.nombre,
+            precio: servicio.precio,
+            duracionEstimada: servicio.duracionEstimada,
+            margenOperativo: 0,
+            participanteIndex,
+          })),
+        ),
+      };
+    }
+
     const serviciosCatalogo = await this.prisma.servicio.findMany({
       where: {
         id: { in: dto.serviciosIds },
@@ -292,16 +386,21 @@ export class ReservaService {
         );
       }
 
-      // Ajustado: mensaje explícito cuando la barbería no acepta tipo individual.
-      if (!config.aceptaIndividual) {
+      // E4-01: cada modalidad tiene su propia bandera. Antes `acepta_individual`
+      // se aplicaba a cualquier tipo, de modo que una sede con grupales activos e
+      // individuales apagados rechazaba también los grupos: ahora cada bandera
+      // gobierna solo su modalidad y `acepta_grupal = false` sigue respondiendo
+      // 422 `GRUPAL_NO_DISPONIBLE` en lugar de ignorar el tipo en silencio.
+      const esGrupal = dto.tipo === 'GRUPAL';
+
+      if (!esGrupal && !config.aceptaIndividual) {
         throw reglaDeNegocio(
           'RESERVAS_PAUSADAS',
           'La barbería no está aceptando reservas de tipo individual.',
         );
       }
 
-      // GRUPAL responde 422 GRUPAL_NO_DISPONIBLE hasta E4-01 (no se ignora en silencio).
-      if (dto.tipo === 'GRUPAL' && !config.aceptaGrupal) {
+      if (esGrupal && !config.aceptaGrupal) {
         throw reglaDeNegocio('GRUPAL_NO_DISPONIBLE', 'La barbería no acepta reservas grupales.');
       }
 
@@ -328,33 +427,92 @@ export class ReservaService {
         }
       }
 
+      // E4-01 §3 (D46): la forma del grupo y su CAPACIDAD se evalúan ANTES del
+      // lock. Un rechazo por capacidad no necesita serializar la sede entera y,
+      // por precedencia (§E4-01/7), su motivo debe ganarle a CONFLICTO_HORARIO.
+      let participantesGrupales: ParticipanteParaValidar[] = [];
+      if (esGrupal) {
+        participantesGrupales = (dto.participantes ?? []).map((p) => ({
+          nombre: p.nombre,
+          esAdultoResponsable: p.esAdultoResponsable,
+          servicios: p.servicios ?? [],
+        }));
+
+        const problema = validarGrupoGrupal(participantesGrupales, {
+          maxPersonasTotal: config.maxPersonasTotal,
+          maxNinos: config.maxNinos,
+        });
+
+        if (problema) {
+          if (problema.tipo === 'CAPACIDAD') {
+            throw reglaDeNegocio('CAPACIDAD_EXCEDIDA', mensajeDeProblema(problema), {
+              campo: problema.campo,
+              limite: problema.limite,
+              solicitado: problema.solicitado,
+            });
+          }
+          // §E4-01/2: un grupo mal formado (dos adultos, sin niños o un
+          // participante sin servicios) es una petición que no aplica, no una
+          // capacidad agotada: 400 con el mismo familia de códigos que
+          // SERVICIO_FUERA_DE_BARBERIA.
+          throw errorDeSolicitud('PARTICIPANTES_INVALIDOS', mensajeDeProblema(problema));
+        }
+      }
+
       // Bloqueo pesimista sobre la barbería (row-level lock) para evitar Race Conditions
       await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
 
-      // 1. Obtener y validar servicios del catálogo (T6.2 Snapshot Histórico Inmutable)
+      // 1. Obtener y validar servicios del catálogo (T6.2 Snapshot Histórico Inmutable).
+      //    E4-01: en la reserva grupal el catálogo se resuelve POR PARTICIPANTE y
+      //    el bloque sale de Σ duraciones + UN margen (D42/§5.4); el `horaFin` de
+      //    la petición es solo la ventana del cliente, nunca el bloque (D44).
+      const idsSolicitados = esGrupal
+        ? [...new Set(participantesGrupales.flatMap((p) => p.servicios))]
+        : dto.serviciosIds;
+
       const serviciosCatalogo = await tx.servicio.findMany({
         where: {
-          id: { in: dto.serviciosIds },
+          id: { in: idsSolicitados },
           barberiaId,
           estado: 'ACTIVO',
         },
       });
 
-      if (serviciosCatalogo.length !== dto.serviciosIds.length) {
+      if (serviciosCatalogo.length !== idsSolicitados.length) {
         throw errorDeSolicitud(
           'SERVICIO_FUERA_DE_BARBERIA',
           'Uno o más servicios seleccionados no existen, no pertenecen a esta barbería o están inactivos.',
         );
       }
 
-      const duracionTotalServicios = serviciosCatalogo.reduce(
-        (acc, s) => acc + s.duracionEstimada,
-        0,
-      );
-      const precioTotalCatalogo = serviciosCatalogo.reduce(
-        (acc, s) => acc + Number(s.precio),
-        0,
-      );
+      const catalogoPorId = new Map(serviciosCatalogo.map((s) => [s.id, s]));
+
+      /** Participantes con sus servicios ya resueltos contra el catálogo de la sede. */
+      const participantesResueltos = esGrupal
+        ? participantesGrupales.map((p) => ({
+            nombre: p.nombre ?? 'Participante',
+            esAdultoResponsable: p.esAdultoResponsable,
+            servicios: p.servicios.map((id) => {
+              const servicio = catalogoPorId.get(id)!;
+              return {
+                id,
+                duracionEstimada: servicio.duracionEstimada,
+                precio: Number(servicio.precio),
+              };
+            }),
+          }))
+        : [];
+
+      const bloqueGrupal = esGrupal
+        ? calcularBloqueGrupal(participantesResueltos, config.margenGrupalMinutos ?? 10)
+        : null;
+
+      const duracionTotalServicios = bloqueGrupal
+        ? bloqueGrupal.duracionServicios
+        : serviciosCatalogo.reduce((acc, s) => acc + s.duracionEstimada, 0);
+      const precioTotalCatalogo = bloqueGrupal
+        ? bloqueGrupal.precioTotal
+        : serviciosCatalogo.reduce((acc, s) => acc + Number(s.precio), 0);
       if (duracionSolicitada < duracionTotalServicios) {
         throw new BadRequestException(
           `La duración solicitada (${duracionSolicitada} min) es insuficiente para los servicios seleccionados (mínimo ${duracionTotalServicios} min)`,
@@ -368,10 +526,15 @@ export class ReservaService {
       const margenFinal = config.margenGrupalMinutos ?? 10;
 
       // 2. Verificamos disponibilidad en tiempo real delegando a Agenda/Disponibilidad
+      //    E4-01: en grupales se mide contra el bloque CALCULADO (Σ duraciones),
+      //    no contra la ventana tecleada; así el único margen del grupo cierra el
+      //    bloque igual que en la cotización y en la agenda (D42/§5.4).
+      const duracionParaDisponibilidad = esGrupal ? duracionTotalServicios : duracionSolicitada;
+
       const disponibilidades = await this.disponibilidadService.calcularDisponibilidad({
         barberiaId,
         fecha,
-        duracionTotal: duracionSolicitada,
+        duracionTotal: duracionParaDisponibilidad,
         margenRequerido: margenFinal,
       }, tx);
 
@@ -379,8 +542,16 @@ export class ReservaService {
       // sede. Antes `new Date(fecha); setHours(...)` usaba la zona del servidor y
       // comparaba contra slots igual de desplazados: el día equivocado no se
       // notaba, pero el instante real de la cita quedaba 4 h fuera de lugar.
+      //
+      // E4-01 §5: el fin de los SERVICIOS se deriva de Σ duraciones (el margen va
+      // aparte en `margen_grupal_historico`), de modo que la agenda sigue
+      // ocupando `Σ + un margen` y nunca un margen por participante.
+      const horaFinServicios = esGrupal
+        ? new Date(inicio.getTime() + duracionTotalServicios * 60000)
+        : fin;
+
       const inicioCita = this.tiempo.aInstante(dto.fecha, dto.horaInicio, tz);
-      const finCita = this.tiempo.aInstante(dto.fecha, dto.horaFin, tz);
+      const finCita = this.tiempo.aInstante(dto.fecha, horaRelojHHMM(horaFinServicios), tz);
 
       const finConMargen = new Date(finCita.getTime() + margenFinal * 60000);
 
@@ -389,7 +560,14 @@ export class ReservaService {
       );
 
       if (!isAvailable) {
-        throw new ConflictException('El horario seleccionado ya no está disponible o se solapa con un bloqueo/reserva');
+        // D40/§6: el conflicto de agenda es un error de negocio y viaja con su
+        // código, igual que en aceptar (E3-04) y reprogramar (E3-06). Sin él, el
+        // cliente no puede distinguir «el hueco se ocupó» de cualquier otro 409
+        // —y el grupo no puede recibir el motivo real (§E4-01/7).
+        throw errorDeConflicto(
+          'CONFLICTO_HORARIO',
+          'El horario seleccionado ya no está disponible o se solapa con un bloqueo/reserva',
+        );
       }
 
       const expiraAt =
@@ -411,10 +589,10 @@ export class ReservaService {
           barberiaId,
           clienteId,
           barberoId: dto.barberoId || null,
-          tipoReserva: 'INDIVIDUAL',
+          tipoReserva: esGrupal ? 'GRUPAL' : 'INDIVIDUAL',
           fechaCita: fecha,
           horaInicio: inicio,
-          horaFin: fin,
+          horaFin: horaFinServicios,
           margenGrupalHistorico: margenFinal,
           totalPagar: precioTotalCatalogo, // Fijado inmutablemente desde el catálogo
           estado: estadoInicial,
@@ -423,26 +601,68 @@ export class ReservaService {
         },
       });
 
-      // 4. Crear Participante y Vincular snapshot inmutable de cada servicio
-      const participante = await tx.participanteReserva.create({
-        data: {
-          reservaId: reserva.id,
-          esAdultoResponsable: true,
-          nombreParticipante: dto.nombreInvitado ? dto.nombreInvitado : 'Titular',
+      // 4. Crear los participantes y vincular el snapshot inmutable de cada
+      //    servicio (T6.2). E4-01 §5: en grupales hay UNA fila de participante por
+      //    persona y `participante_servicios.margen_historico = 0` SIEMPRE — el
+      //    único margen del grupo vive en `reservas.margen_grupal_historico`.
+      if (esGrupal) {
+        for (const participanteGrupal of participantesResueltos) {
+          const filaParticipante = await tx.participanteReserva.create({
+            data: {
+              reservaId: reserva.id,
+              esAdultoResponsable: participanteGrupal.esAdultoResponsable,
+              nombreParticipante: participanteGrupal.nombre,
+            },
+          });
+
+          await tx.participanteServicio.createMany({
+            data: participanteGrupal.servicios.map((servicio) => ({
+              participanteId: filaParticipante.id,
+              servicioId: servicio.id,
+              precioHistorico: servicio.precio,
+              duracionHistorica: servicio.duracionEstimada,
+              margenHistorico: 0,
+            })),
+          });
         }
-      });
 
-      const serviciosData = serviciosCatalogo.map((s) => ({
-        participanteId: participante.id,
-        servicioId: s.id,
-        precioHistorico: s.precio,
-        duracionHistorica: s.duracionEstimada,
-        margenHistorico: s.margenOperativo ?? 0,
-      }));
+        // E4-01/8: auditoría con el CONTEO de participantes. Los nombres de los
+        // niños nunca viajan al log de auditoría (principio 2 de privacidad).
+        await this.auditoriaService.registrarEvento(
+          {
+            usuarioId: clienteId,
+            accion: 'RESERVA_CREADA',
+            entidad: 'Reserva',
+            entidadId: reserva.id,
+            contexto: {
+              barberiaId,
+              tipoReserva: 'GRUPAL',
+              participantes: participantesResueltos.length,
+            },
+          },
+          tx,
+        );
+      } else {
+        const participante = await tx.participanteReserva.create({
+          data: {
+            reservaId: reserva.id,
+            esAdultoResponsable: true,
+            nombreParticipante: dto.nombreInvitado ? dto.nombreInvitado : 'Titular',
+          }
+        });
 
-      await tx.participanteServicio.createMany({
-        data: serviciosData,
-      });
+        const serviciosData = serviciosCatalogo.map((s) => ({
+          participanteId: participante.id,
+          servicioId: s.id,
+          precioHistorico: s.precio,
+          duracionHistorica: s.duracionEstimada,
+          margenHistorico: s.margenOperativo ?? 0,
+        }));
+
+        await tx.participanteServicio.createMany({
+          data: serviciosData,
+        });
+      }
 
       this.logger.log(`Reserva ${reserva.id} creada para barbería ${barberiaId} con snapshot financiero de $${precioTotalCatalogo}`);
 
@@ -463,9 +683,11 @@ export class ReservaService {
       if (this.notificacionService) {
         const esAuto = config.modoReserva === 'AUTOMATICA';
         const tipoNotif = esAuto ? 'RESERVA_CONFIRMADA' : 'RESERVA_CREADA';
+        // E4-01/8: la notificación del grupo informa el tamaño, jamás quiénes son.
+        const detalleGrupo = esGrupal ? ` para ${participantesResueltos.length} participantes` : '';
         const msg = esAuto
-          ? `Tu reserva ha sido confirmada para el ${dto.fecha} a las ${dto.horaInicio}.`
-          : `Tu reserva ha sido registrada y está pendiente de confirmación para el ${dto.fecha} a las ${dto.horaInicio}.`;
+          ? `Tu reserva ha sido confirmada${detalleGrupo} para el ${dto.fecha} a las ${dto.horaInicio}.`
+          : `Tu reserva ha sido registrada${detalleGrupo} y está pendiente de confirmación para el ${dto.fecha} a las ${dto.horaInicio}.`;
 
         this.notificacionService
           .enviarNotificacion({

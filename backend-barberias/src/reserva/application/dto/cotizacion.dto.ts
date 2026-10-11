@@ -20,6 +20,12 @@ export interface ServicioDesglose {
   precio: number;
   duracionEstimada: number;
   margenOperativo: number;
+  /**
+   * E4-01: en la cotización grupal indica a qué participante pertenece el
+   * servicio (índice del array `participantes` de la petición). Ausente en el
+   * flujo individual, que tiene un único participante.
+   */
+  participanteIndex?: number;
 }
 
 /**
