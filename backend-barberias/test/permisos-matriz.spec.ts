@@ -84,6 +84,10 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'PATCH /barberias/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'DELETE /barberias/:id': [ROL_ADMINISTRADOR],
   'POST /barberias/vincular': [ROL_CLIENTE],
+  // E3-11 (2026-10-11): la configuración de la barbería la consulta y la
+  // modifica la SEDE; el `RolesGuard` la acota al `barberiaId` del parámetro.
+  'GET /barberias/:barberiaId/configuracion': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /barberias/:barberiaId/configuracion': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
   'GET /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
   'POST /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -310,10 +314,12 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   }
 
   // E2-02 (2026-10-11): eran 64 rutas; `PATCH /reservas/:id/estado` se eliminó
-  // (ver la nota del diccionario), así que quedan 63.
-  it('descubrir las 63 rutas del servidor y todas tienen decision', () => {
+  // (ver la nota del diccionario), así que quedaban 63. E3-11 sumó los dos
+  // endpoints de configuración (GET y PATCH /barberias/:barberiaId/configuracion)
+  // y quedan 65.
+  it('descubrir las 65 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(63);
+    expect(claves.length).toBe(65);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -397,14 +403,15 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
     console.log('');
 
-    // 63 rutas × 4 roles: la partición de E3-03 añadió POST /reservas/walk-in,
+    // 65 rutas × 4 roles: la partición de E3-03 añadió POST /reservas/walk-in,
     // el endpoint de cotización (D44) añadió POST /reservas/cotizar, E3-04
     // añadió POST /reservas/:id/aceptar y POST /reservas/:id/rechazar, E3-05
     // añadió POST /reservas/:id/cancelar, E3-06 añadió
     // PATCH /reservas/:id/reprogramar, E3-08 añadió cuatro (cancelación
-    // especial, proponer-horario y su bandeja de aceptar/rechazar) y E2-02
-    // quitó PATCH /reservas/:id/estado.
-    expect(evaluaciones).toBe(252);
+    // especial, proponer-horario y su bandeja de aceptar/rechazar), E2-02
+    // quitó PATCH /reservas/:id/estado y E3-11 añadió las dos de configuración
+    // (GET y PATCH /barberias/:barberiaId/configuracion).
+    expect(evaluaciones).toBe(260);
     expect(
       desviaciones.length === 0
         ? ''

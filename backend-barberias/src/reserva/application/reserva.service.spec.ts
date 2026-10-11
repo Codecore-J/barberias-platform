@@ -255,7 +255,7 @@ describe('ReservaService', () => {
           serviciosIds: ['s1'],
           precioTotalEsperado: 15,
         }),
-      ).rejects.toThrowError(UnprocessableEntityException);
+      ).rejects.toMatchObject({ response: { codigo: 'RESERVAS_PAUSADAS', statusCode: 422 } });
     });
 
     it('debe fallar con ConflictException si no hay disponibilidad en la fecha solicitada', async () => {

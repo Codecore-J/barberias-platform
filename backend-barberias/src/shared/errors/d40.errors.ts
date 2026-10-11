@@ -35,10 +35,22 @@ export function errorDeConflicto(codigo: string, mensaje: string): ConflictExcep
   return new ConflictException({ statusCode: 409, codigo, mensaje });
 }
 
-/** 422 · regla de negocio violada (D40). */
+/**
+ * 422 · regla de negocio violada (D40).
+ *
+ * El contrato base es `{ statusCode, codigo, mensaje }`. `detalle` es opcional y
+ * SOLO se usa cuando una tarea exige exponer datos adicionales de la regla
+ * (p. ej. E3-11 `HAY_PENDIENTES` devuelve el `conteo` de reservas en curso).
+ */
 export function reglaDeNegocio(
   codigo: string,
   mensaje: string,
+  detalle?: Record<string, unknown>,
 ): UnprocessableEntityException {
-  return new UnprocessableEntityException({ statusCode: 422, codigo, mensaje });
+  return new UnprocessableEntityException({
+    statusCode: 422,
+    codigo,
+    mensaje,
+    ...detalle,
+  });
 }
