@@ -73,7 +73,7 @@
 | 13 | POST | `/barberias` | BarberiaController | `@Autenticado` | `@Autenticado` | **1** | no | no | sí — `core/services/tenant.service.ts:133` | `src/barberia/application/barberia.service.spec.ts` |
 | 14 | PATCH | `/barberias/:id/seleccionar` | BarberiaController | `@Autenticado` | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **2** | **sí** — `cliente_barberias`, `usuario_roles` o ser el responsable (`d93e9af`) | **sí** — `estado_vinculacion = 'ACTIVO'` **solo en la vía `cliente_barberias`** | sí — `core/services/tenant.service.ts:94` y `:137` | `src/barberia/application/barberia.service.spec.ts`; `test/barberia.e2e-spec.ts` |
 | 15 | GET | `/barberias/:id` | BarberiaController | `@Autenticado` | `@Autenticado` + DTO de lectura | **3** | no | no | **no** | `src/barberia/application/barberia.service.spec.ts` |
-| 16 | PATCH | `/barberias/:id` | BarberiaController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** | **sí** — responsable, salvo ADMINISTRADOR | **no** | `test/hallazgo16-rolesguard-global.e2e-spec.ts` |
+| 16 | PATCH | `/barberias/:id` | BarberiaController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** | **sí** — responsable, salvo ADMINISTRADOR. **E3-13 (D26/D27):** solo `descripcion`, `ubicacion`, `logoUrl` y `telefono`; el nombre responde 422 `NOMBRE_REQUIERE_SOLICITUD` y el estado 422 `ESTADO_NO_EDITABLE`; cambiar el teléfono exige la contraseña actual (422 `PASSWORD_REQUERIDA` / `PASSWORD_INCORRECTA`) | **no** | `test/hallazgo16-rolesguard-global.e2e-spec.ts`; `test/e3-13-solicitudes-cambio.e2e-spec.ts` |
 | 17 | DELETE | `/barberias/:id` | BarberiaController | `@Autenticado` | `@Roles(ADMINISTRADOR)` | **4** | no (el guard ya acota) | no | no | `test/permisos-matriz.e2e-spec.ts` |
 | 18 | GET | `/barberias/all` | BarberiaController | `@Roles(ADMINISTRADOR)` | `@Roles(ADMINISTRADOR)` | E1-04 | no | no | no | ninguno |
 | 19 | GET | `/barberias/:id/personal` | BarberiaController | `@Roles(ADMIN_BARBERIA, BARBERO)` | `@Roles(ADMIN_BARBERIA, BARBERO)` | E1-03 | **sí** | no | sí — `core/services/personal.service.ts:22` | `test/h19-h20-lecturas-abiertas.e2e-spec.ts`; `src/barberia/application/barberia.service.spec.ts` |
@@ -120,6 +120,9 @@
 | 54 | DELETE | `/catalogo/combos/:id` | CombosController | `@Roles(ADMIN_BARBERIA, BARBERO)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D16) | **sí** | no | **no** | `test/permisos-matriz.e2e-spec.ts` |
 | 55 | GET | `/barberias/:barberiaId/configuracion` | ConfiguracionBarberiaController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-11** | **sí** — el guard acota por `barberiaId` | no | no — pendiente del panel de configuración del frontend | `test/e3-11-configuracion.e2e-spec.ts`; `test/e3-11-configuracion.spec.ts` |
 | 56 | PATCH | `/barberias/:barberiaId/configuracion` | ConfiguracionBarberiaController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-11** | **sí** | **sí** — 422 `HAY_PENDIENTES` (con conteo) y `max_personas_total >= max_ninos + 1` en el servicio | no | `test/e3-11-configuracion.e2e-spec.ts`; `test/e3-11-configuracion.spec.ts` |
+| 57 | POST | `/barberias/:id/solicitudes-cambio` | BarberiaController | — no existía | `@Roles(ADMIN_BARBERIA)` | **E3-13** (D26) | **sí** — la ruta usa `:id`, así que el guard NO resuelve la sede del parámetro: la pertenencia real la exige el servicio (403 `SOLO_ADMIN_BARBERIA`) | **sí** — 409 `SOLICITUD_PENDIENTE`, 422 `RESPONSABLE_INEXISTENTE` / `SIN_CAMBIOS` | no — pendiente del panel de la sede | `test/e3-13-solicitudes-cambio.e2e-spec.ts`; `src/barberia/application/solicitud-cambio.service.spec.ts` |
+| 58 | GET | `/plataforma/solicitudes-cambio` | PlataformaSolicitudesCambioController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-13** (D26) | no (el guard ya acota) | no | no — pendiente del panel de plataforma | `test/e3-13-solicitudes-cambio.e2e-spec.ts`; `src/barberia/application/solicitud-cambio.service.spec.ts` |
+| 59 | POST | `/plataforma/solicitudes-cambio/:id/resolver` | PlataformaSolicitudesCambioController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-13** (D26) | no | **sí** — 409 `ESTADO_INVALIDO` y 422 `MOTIVO_REQUERIDO`; al aprobar un RESPONSABLE mueve `responsable_id`, el rol `ADMIN_BARBERIA` y audita en UNA transacción | no — pendiente del panel de plataforma | `test/e3-13-solicitudes-cambio.e2e-spec.ts`; `src/barberia/application/solicitud-cambio.service.spec.ts` |
 
 ## Recuento aplicado
 
@@ -172,6 +175,15 @@ decisiones. Sobre las 63 de E2-02, `+2` por `GET` y `PATCH /barberias/:barberiaI
 filas 55 y 56): la política de ambas es `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` y el `RolesGuard` las
 acota al `barberiaId` del parámetro, así que el admin de otra sede recibe 403. Evidencia:
 `test/e3-11-configuracion.e2e-spec.ts` (12 casos) y `test/e3-11-configuracion.spec.ts` (17 casos).
+
+**Estado real tras E3-13 (2026-10-11):** `test/permisos-matriz.spec.ts` cuenta **68 rutas × 4 roles = 272**
+decisiones. Sobre las 65 de E3-11, `+3` por las solicitudes de cambio (E3-13, filas 57 a 59): la de la sede
+es `@Roles(ADMIN_BARBERIA)` —y por eso el 403 de pertenencia vive en el servicio, no en el guard: con `:id`
+el guard no resuelve la sede del parámetro— y las dos de plataforma son `@Roles(ADMINISTRADOR)`. Además,
+la fila 16 cambia de reglas: `PATCH /barberias/:id` deja de admitir `nombre` (422
+`NOMBRE_REQUIERE_SOLICITUD`) y `estado` (422 `ESTADO_NO_EDITABLE`), y el teléfono exige la contraseña
+actual (D27). Evidencia: `test/e3-13-solicitudes-cambio.e2e-spec.ts` (20 casos) y
+`src/barberia/application/solicitud-cambio.service.spec.ts` (12 casos).
 
 ## Decisiones tomadas
 

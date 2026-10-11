@@ -2,11 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { vi } from 'vitest';
 import { BarberiaController } from './barberia.controller.js';
 import { BarberiaService } from '../application/barberia.service.js';
+import { SolicitudCambioService } from '../application/solicitud-cambio.service.js';
 import { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 describe('BarberiaController', () => {
   let controller: BarberiaController;
   let service: BarberiaService;
+  let solicitudCambio: SolicitudCambioService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -28,11 +30,16 @@ describe('BarberiaController', () => {
             remove: vi.fn(),
           },
         },
+        {
+          provide: SolicitudCambioService,
+          useValue: { crearSolicitud: vi.fn(), listar: vi.fn(), resolver: vi.fn() },
+        },
       ],
     }).compile();
 
     controller = module.get<BarberiaController>(BarberiaController);
     service = module.get<BarberiaService>(BarberiaService);
+    solicitudCambio = module.get<SolicitudCambioService>(SolicitudCambioService);
   });
 
   it('should be defined', () => {
@@ -87,6 +94,21 @@ describe('BarberiaController', () => {
       await controller.findPersonal('uuid-barberia', user);
 
       expect(service.findPersonal).toHaveBeenCalledWith('uuid-barberia', user);
+    });
+  });
+
+  describe('E3-13 · crearSolicitudCambio', () => {
+    it('delega en el servicio con la sede del parámetro y la sesión', async () => {
+      const user: UsuarioAutenticado = {
+        id: 'uuid-admin',
+        correo: 'admin@test.com',
+        roles: ['ADMIN_BARBERIA'],
+      };
+      const dto = { tipo: 'NOMBRE', valorNuevo: 'Barbería Nueva' } as any;
+
+      await controller.crearSolicitudCambio('uuid-barberia', dto, user);
+
+      expect(solicitudCambio.crearSolicitud).toHaveBeenCalledWith('uuid-barberia', user, dto);
     });
   });
 

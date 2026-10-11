@@ -35,6 +35,9 @@ model Usuario {
   reservasCanceladas Reserva[]                 @relation("CanceladoPorReserva")
   // E3-08/D18: quién creó una propuesta de horario (el CLIENTE dueño).
   propuestasHorario  PropuestaHorario[]
+  // E3-13/D26: quién solicitó y quién resolvió un cambio de la sede.
+  solicitudesSolicitadas SolicitudCambioBarberia[] @relation("SolicitudSolicitadaPor")
+  solicitudesResueltas   SolicitudCambioBarberia[] @relation("SolicitudResueltaPor")
 
   @@map("usuarios")
 }
@@ -100,6 +103,12 @@ model Barberia {
   // y los instantes (`expira_at`, `creado_at`) son UTC. La columna llega con la
   // migración `e204_zona_horaria`; E2-03 la dejará con su CHECK (D15).
   zonaHoraria   String  @default("America/Santo_Domingo") @map("zona_horaria") @db.VarChar(50)
+  // E3-13: el logo es edición directa de la sede (junto a descripción y
+  // ubicación); el nombre y el responsable solo cambian por solicitud aprobada.
+  // `Text` (no `VarChar(500)`) porque `dev` ya tenía la columna como `text`
+  // cuando llegó E3-13: la migración la declara idempotente y así el esquema y
+  // la base coinciden también en bases creadas desde cero. Ver H50.
+  logoUrl       String? @map("logo_url") @db.Text
 
   responsable Usuario @relation("Responsable", fields: [responsableId], references: [id])
 
@@ -116,6 +125,7 @@ model Barberia {
   configuracionBarberia ConfiguracionBarberia?
   horariosBarbero       HorarioBarbero[]
   excepcionesBarbero    ExcepcionHorarioBarbero[]
+  solicitudesCambio     SolicitudCambioBarberia[]
 
   @@map("barberias")
 }
@@ -455,6 +465,32 @@ model ConfiguracionBarberia {
   barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
 
   @@map("configuracion_barberia")
+}
+
+/// E3-13 · D26: `solicitudes_cambio_barberia`.
+///
+/// El nombre de la sede y el responsable NO se editan directo: el ADMIN_BARBERIA
+/// crea una solicitud y el ADMINISTRADOR la aprueba o la rechaza. `valor_nuevo`
+/// guarda el nombre propuesto (tipo NOMBRE) o el uuid del usuario propuesto
+/// (tipo RESPONSABLE).
+model SolicitudCambioBarberia {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId    String    @map("barberia_id") @db.Uuid
+  tipo          String    @db.VarChar(20)
+  valorNuevo    String    @map("valor_nuevo") @db.VarChar(150)
+  estado        String    @default("PENDIENTE") @db.VarChar(20)
+  solicitadoPor String    @map("solicitado_por") @db.Uuid
+  resueltoPor   String?   @map("resuelto_por") @db.Uuid
+  motivoRechazo String?   @map("motivo_rechazo") @db.Text
+  creadoAt      DateTime? @default(now()) @map("creado_at") @db.Timestamptz
+  resueltoAt    DateTime? @map("resuelto_at") @db.Timestamptz
+
+  barberia    Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
+  solicitante Usuario  @relation("SolicitudSolicitadaPor", fields: [solicitadoPor], references: [id], onDelete: Cascade)
+  resolutor   Usuario? @relation("SolicitudResueltaPor", fields: [resueltoPor], references: [id], onDelete: SetNull)
+
+  @@index([barberiaId, estado], name: "idx_solicitudes_cambio_sede_estado")
+  @@map("solicitudes_cambio_barberia")
 }
 
 model TokenRecuperacion {

@@ -11,6 +11,8 @@ import type { UpdateBarberiaDto } from './dto/update-barberia.dto.js';
 import type { BarberiaResponseDto } from './dto/barberia-response.dto.js';
 import type { VincularBarberiaDto } from './dto/vincular-barberia.dto.js';
 import { plainToInstance } from 'class-transformer';
+import * as bcrypt from 'bcrypt';
+import { reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { BarberiaResponseDto as BarberiaResponse } from './dto/barberia-response.dto.js';
 import type { BarberiaLecturaDto } from './dto/barberia-lectura.dto.js';
 import { BarberiaLecturaDto as BarberiaLectura } from './dto/barberia-lectura.dto.js';
@@ -60,6 +62,7 @@ export class BarberiaService {
       descripcion: barberia.descripcion ?? null,
       telefono: barberia.telefono,
       ubicacion: barberia.ubicacion,
+      logoUrl: barberia.logoUrl ?? null,
       responsableId: barberia.responsableId,
       estado: barberia.estado,
     });
@@ -72,6 +75,7 @@ export class BarberiaService {
       descripcion: barberia.descripcion ?? null,
       telefono: barberia.telefono,
       ubicacion: barberia.ubicacion,
+      logoUrl: barberia.logoUrl ?? null,
       codigoAcceso: barberia.codigoAcceso,
       enlaceUnico: barberia.enlaceUnico,
       responsableId: barberia.responsableId,
@@ -320,6 +324,11 @@ export class BarberiaService {
   /**
    * Solo el responsable o el ADMINISTRADOR global puede actualizar.
    * Comprobación de pertenencia: authUserId === barberia.responsableId
+   *
+   * E3-13 · D26/D27: la edición directa ya no lo puede todo. Solo
+   * `descripcion`, `ubicacion`, `logoUrl` y `telefono`; el nombre y el estado se
+   * rechazan con 422 porque tienen su propio camino (solicitud aprobada y
+   * soft-delete). Cambiar el teléfono exige la contraseña actual.
    */
   async update(
     id: string,
@@ -327,6 +336,20 @@ export class BarberiaService {
     dto: UpdateBarberiaDto,
     esGlobal = false,
   ): Promise<BarberiaResponseDto> {
+    if (dto.nombre !== undefined) {
+      throw reglaDeNegocio(
+        'NOMBRE_REQUIERE_SOLICITUD',
+        'El nombre de la barbería solo cambia mediante una solicitud aprobada por la administración.',
+      );
+    }
+
+    if (dto.estado !== undefined) {
+      throw reglaDeNegocio(
+        'ESTADO_NO_EDITABLE',
+        'El estado de la barbería no se edita aquí: usa DELETE /barberias/:id para desactivarla.',
+      );
+    }
+
     const barberia = await this.prisma.barberia.findUnique({ where: { id } });
     if (!barberia) {
       throw new NotFoundException(`Barbería ${id} no encontrada.`);
@@ -336,18 +359,49 @@ export class BarberiaService {
       throw new ForbiddenException('Solo el responsable puede modificar esta barbería.');
     }
 
+    if (dto.telefono !== undefined && dto.telefono !== barberia.telefono) {
+      await this.verificarPasswordActual(authUserId, dto.passwordActual);
+    }
+
     const updated = await this.prisma.barberia.update({
       where: { id },
       data: {
-        ...(dto.nombre && { nombre: dto.nombre }),
         ...(dto.descripcion !== undefined && { descripcion: dto.descripcion }),
-        ...(dto.telefono && { telefono: dto.telefono }),
-        ...(dto.ubicacion && { ubicacion: dto.ubicacion }),
-        ...(dto.estado && { estado: dto.estado }),
+        ...(dto.telefono !== undefined && { telefono: dto.telefono }),
+        ...(dto.ubicacion !== undefined && { ubicacion: dto.ubicacion }),
+        ...(dto.logoUrl !== undefined && { logoUrl: dto.logoUrl }),
       },
     });
 
     return this.toResponse(updated);
+  }
+
+  /**
+   * D27 · el teléfono es un dato de contacto: cambiarlo exige la contraseña
+   * actual del solicitante. La comparación es la misma que en el login
+   * (`bcrypt.compare`, timing-safe) y nunca se registra el valor.
+   */
+  private async verificarPasswordActual(
+    usuarioId: string,
+    passwordActual?: string,
+  ): Promise<void> {
+    if (!passwordActual) {
+      throw reglaDeNegocio(
+        'PASSWORD_REQUERIDA',
+        'Cambiar el teléfono exige tu contraseña actual (D27).',
+      );
+    }
+
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { id: usuarioId },
+      select: { passwordHash: true },
+    });
+
+    const valida = !!usuario && (await bcrypt.compare(passwordActual, usuario.passwordHash));
+
+    if (!valida) {
+      throw reglaDeNegocio('PASSWORD_INCORRECTA', 'La contraseña actual no es correcta.');
+    }
   }
 
   // ── ELIMINAR (soft-delete: estado → INACTIVO) ──────────────────────────────

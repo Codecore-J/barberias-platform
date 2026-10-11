@@ -39,7 +39,12 @@ const CASOS: Caso[] = [
   // ── barbería ────────────────────────────────────────────────────────────
   { verbo: 'patch', ruta: '/barberias/{A}/seleccionar', permitidos: ['CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR'] },
   { verbo: 'post', ruta: '/barberias/vincular', permitidos: ['CLIENTE', 'ADMINISTRADOR'], cuerpo: { codigoAcceso: 'TESTPM' } },
-  { verbo: 'patch', ruta: '/barberias/{A}', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: { nombre: 'Matriz permisos' } },
+  // E3-13: `PATCH /barberias/:id` ya no renombra (el nombre va por solicitud),
+  // asi que la matriz mide el decorador con un campo que SI se edita directo.
+  { verbo: 'patch', ruta: '/barberias/{A}', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: { descripcion: 'Matriz permisos' } },
+  { verbo: 'post', ruta: '/barberias/{A}/solicitudes-cambio', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: { tipo: 'NOMBRE', valorNuevo: 'Matriz permisos E3-13' } },
+  { verbo: 'get', ruta: '/plataforma/solicitudes-cambio', permitidos: ['ADMINISTRADOR'] },
+  { verbo: 'post', ruta: `/plataforma/solicitudes-cambio/${randomUUID()}/resolver`, permitidos: ['ADMINISTRADOR'], cuerpo: { aprobar: true } },
   { verbo: 'get', ruta: '/barberias/{A}', permitidos: TODOS },
   { verbo: 'get', ruta: '/barberias/{A}/personal', permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR'] },
   { verbo: 'delete', ruta: '/barberias/{B}', permitidos: [], sinAdministrador: true },
@@ -261,9 +266,9 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
     });
     const idsUsuario = usuarios.map((u) => u.id);
 
-    // La matriz incluye `PATCH /barberias/:id`, que renombra la sede, así que no
-    // se puede buscar solo por nombre: se localizan por código de acceso o por
-    // responsable, que es como el propio test las creo.
+    // Desde E3-13 `PATCH /barberias/:id` ya no renombra la sede, pero el test
+    // sigue localizándolas por código de acceso o responsable (como las creó)
+    // para no depender del campo que la matriz decida editar mañana.
     const sedes = await prisma.barberia.findMany({
       where: {
         OR: [

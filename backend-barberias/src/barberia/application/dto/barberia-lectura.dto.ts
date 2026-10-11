@@ -12,6 +12,8 @@ export class BarberiaLecturaDto {
   descripcion: string | null;
   telefono: string;
   ubicacion: string;
+  /** E3-13 · el logo es branding público: también viaja en la lectura abierta. */
+  logoUrl: string | null;
   responsableId: string;
   estado: string;
 }
