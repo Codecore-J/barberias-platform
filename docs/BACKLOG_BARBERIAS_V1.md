@@ -172,8 +172,12 @@ Las D01 a D13 son del plan estratégico; las D14 en adelante se agregaron al arm
 | D42 | **Revisada 2026-10-02:** el margen del bloque es un campo propio de la barbería `configuracion_barberia.margen_grupal_minutos` (default 10, rango 0-60), snapshotteado en `reservas.margen_grupal_historico` al crear. Nunca la suma ni el mayor de los márgenes individuales, nunca provisto por el cliente (D44). *(Regla anterior, derogada: "el mayor margen operativo entre los servicios incluidos".)* |
 | D43 | La declaración del cliente (antecedente de origen CLIENTE) es visible solo para barberías donde está vinculado, siempre etiquetada "declaración del cliente, no diagnóstico", y no pasa por aprobación. |
 | D44 | Existe un endpoint de cotización (`/reservas/cotizar`) para que el frontend nunca calcule bloques ni precios. |
+| D45 | Capacidad de una reserva grupal: la sede conserva UN carril de agenda (D06). «Espacio» es una plaza de participante DENTRO de la reserva —1 adulto responsable + N niños—, nunca un carril paralelo ni asientos concurrentes. |
+| D46 | Límites de la reserva grupal: el total incluye al adulto responsable y `max_ninos` cuenta solo a los niños. Un límite nulo es «sin límite propio de la sede», nunca «sin validación», y todo grupo queda acotado por `MAX_PARTICIPANTES_POR_GRUPO` (constante de plataforma; valor propuesto 8). Violación → 422 `CAPACIDAD_EXCEDIDA`. |
+| D47 | Huecos: las alternativas en el flujo y la oportunidad proactiva de D22 usan el MISMO calculador (la función pura de E3-02). Una sugerencia NUNCA retiene el hueco: se revalida al confirmar y un 409 `CONFLICTO_HORARIO` es la respuesta honesta. |
+| D48 | La penalización por inasistencias es LOCAL: el contador de una sede nunca suspende la cuenta global (`usuarios.estado_cuenta`), que solo cambia por decisión manual, motivada y auditada del ADMINISTRADOR. |
 
-**Códigos de error de negocio (`codigo`):** `ESTADO_INVALIDO`, `SOLICITUD_EXPIRADA`, `FUERA_DE_VENTANA`, `CONFLICTO_HORARIO`, `CLIENTE_RESTRINGIDO`, `NO_VINCULADO`, `LIMITE_BARBERIAS`, `LIMITE_VINCULACIONES`, `GRUPAL_NO_DISPONIBLE`, `HAY_PENDIENTES`, `RESERVAS_PAUSADAS`, `FUERA_DE_HORIZONTE`.
+**Códigos de error de negocio (`codigo`):** `ESTADO_INVALIDO`, `SOLICITUD_EXPIRADA`, `FUERA_DE_VENTANA`, `CONFLICTO_HORARIO`, `CLIENTE_RESTRINGIDO`, `NO_VINCULADO`, `LIMITE_BARBERIAS`, `LIMITE_VINCULACIONES`, `GRUPAL_NO_DISPONIBLE`, `HAY_PENDIENTES`, `RESERVAS_PAUSADAS`, `FUERA_DE_HORIZONTE`, `CAPACIDAD_EXCEDIDA`, `SIN_RESTRICCION`, `REACTIVACION_PENDIENTE`.
 
 ---
 
@@ -709,7 +713,7 @@ hecho.
 1. `POST /reservas/:id/cancelar` (CLIENTE dueño). `PENDIENTE` siempre; `CONFIRMADA` si ahora ≤ inicio − 30 min (instante calculado con la zona de la barbería) → `CANCELADA`. Pasado el límite, 422 `FUERA_DE_VENTANA`.
 2. Migración (D17): `configuracion_barberia.permite_cancelacion_especial BOOLEAN DEFAULT FALSE`; en `reservas`: `cancelado_por`, `cancelacion_especial_estado` (`SOLICITADA`, `APROBADA`, `RECHAZADA`) y `cancelacion_especial_motivo`.
 3. `POST /reservas/:id/cancelacion-especial {motivo}`: solo si la barbería la permite; deja la reserva `CONFIRMADA` con estado `SOLICITADA`. `POST .../cancelacion-especial/resolver {aprobar, motivo?}` (admin): aprobada → `CANCELADA`.
-4. Efectos al cancelar: libera el espacio, borra la información adicional, cancela jobs (recordatorio, expiración), notifica y audita. La cancelación del cliente no cuenta como no presentado. Dispara oportunidad de espacio (E4-04).
+4. Efectos al cancelar: libera el espacio, borra la información adicional, cancela jobs (recordatorio, expiración), notifica y audita. La cancelación del cliente no cuenta como no presentado. Dispara oportunidad de espacio (E4-02).
 5. Tests en los límites 29, 30 y 31 minutos y con otra zona horaria.
 **Aceptación:**
 - [ ] 31 min antes → OK; 29 min → 422 `FUERA_DE_VENTANA`.
@@ -791,6 +795,76 @@ hecho.
 **Aceptación:**
 - [ ] El nombre no se puede cambiar por `PATCH`.
 - [ ] Aprobar el cambio de responsable mueve el rol correctamente.
+**Evidencia:** salida de los tests.
+
+---
+
+## ÉPICA E4 — DISPONIBILIDAD AVANZADA, CITAS GRUPALES Y FIDELIZACIÓN
+
+> **Nota de alcance y numeración (2026-10-11).** E3-03 dejó `tipo=GRUPAL` respondiendo 422 `GRUPAL_NO_DISPONIBLE` «hasta E4-01» y E3-07 dejó «dispara oportunidad de espacio (E4-04)». Esta épica numera esos dos trabajos como **E4-01** y **E4-02**, así que la referencia del punto 4 de E3-07 se actualizó a E4-02. Quedan fuera de esta épica, ya reservados por otras tareas: **E4-04** · información adicional de la reserva (H32: la columna no existe y `limpiarInformacionAdicional` es un no-op) y **E4-05** · módulo `src/cliente/` y ficha del cliente (H22, desactivado en `app.module.ts`). Las rutas y los permisos de cada tarea se declaran en su propio `Hacer`, y `docs/MATRIZ_RUTAS.md` se actualiza al cerrar cada una (DoD de la sección 8.3).
+
+### E4-01 · Reserva grupal: la capacidad se calcula por participantes
+`P1 · L · Depende: E3-03, E3-11 · Rama: feat/reserva-grupal`
+**Contexto:** spec 01 (reserva grupal): una reserva grupal es UN adulto responsable —la cuenta del cliente— más uno o más niños, y el bloque es la suma de las duraciones de TODOS los participantes más UN SOLO margen de la sede (D42, §5.4). Hoy `crearReserva` fija `tipoReserva: 'INDIVIDUAL'` (`reserva.service.ts:414`) y `tipo=GRUPAL` responde 422 `GRUPAL_NO_DISPONIBLE` (`reserva.service.ts:303`) para no ignorar el tipo en silencio. Las tablas ya existen y están sin uso: `participantes_reserva` (`esAdultoResponsable`, `nombreParticipante`) y `participante_servicios` (snapshots `precio_historico`, `duracion_historica`, `margen_historico`).
+**Hacer:**
+1. D45: la agenda conserva UN carril por sede (D06). «Espacio» es una plaza de participante DENTRO de una reserva grupal, nunca un carril paralelo: dos reservas de la misma sede siguen sin poder solaparse aunque sus grupos sumen menos que `max_personas_total`.
+2. DTO de creación grupal: `tipo: 'GRUPAL'` con `participantes: [{ nombre, esAdultoResponsable, servicios: [...] }]`. Exactamente UN participante con `esAdultoResponsable = true`; el resto son niños; cada participante con al menos un servicio activo de ESA sede.
+3. Capacidad (D46), evaluada ANTES de tomar el lock y con los valores efectivos de `configuracion_barberia` (E3-11): `personas = participantes.length` (el adulto cuenta) y `ninos = participantes.length - 1`; exige `personas ≤ max_personas_total`, `ninos ≤ max_ninos` y `personas ≤ MAX_PARTICIPANTES_POR_GRUPO` (constante de plataforma; valor propuesto 8, a confirmar por el dueño). Un límite nulo significa «sin límite propio de la sede», nunca «sin validación». Violación → 422 `CAPACIDAD_EXCEDIDA` con `{ campo, limite, solicitado }`.
+4. Los niños NO son cuentas: solo el adulto es `clienteId`, con vinculación `ACTIVO` y comprobación de restricción (E3-10). `nombreParticipante` es un dato de la reserva; no se crean usuarios, roles ni vinculaciones.
+5. Bloque y precio: `Σ duracion_historica` de todos los `participante_servicios` + UN `margen_grupal_historico` (D42). En grupales `participante_servicios.margen_historico = 0` y `total_pagar` = Σ de los snapshots de precio (§5.4). El cálculo vive en la MISMA función pura que usan disponibilidad, creación y cotización (E2-05/E3-02).
+6. `/reservas/cotizar` (D44) y `POST .../reservas` devuelven el MISMO bloque y precio para el mismo grupo; el frontend nunca los calcula.
+7. Si la sede no acepta grupales (`acepta_grupal = false`) o la fecha cae fuera del horizonte → 422 `GRUPAL_NO_DISPONIBLE` / `FUERA_DE_HORIZONTE` (ya definidos). Si el grupo no cabe en el tramo pedido, el orden de precedencia es: capacidad (`CAPACIDAD_EXCEDIDA`) antes que disponibilidad (`CONFLICTO_HORARIO`), para que el cliente reciba el motivo real.
+8. Auditoría `RESERVA_CREADA` con el conteo de participantes en el `contexto` (nunca los nombres de los niños) y notificación con el tipo correspondiente.
+9. Tests: unitarios del cálculo grupal; E2E del ejemplo del diseño (adulto + 2 niños → 201) y de los bordes: `personas = max_personas_total`, `ninos = max_ninos`, un niño de más, dos adultos y grupo sin servicios.
+**No hacer:** carriles paralelos, asientos simultáneos ni aforo por franja horaria (§5.3 sigue siendo «un bloque, una reserva»); crear cuentas para los niños; tocar `informacion_adicional` (E4-04).
+**Aceptación:**
+- [ ] 1 adulto + 2 niños con `max_personas_total = 3` y `max_ninos = 2` → 201, bloque = Σ duraciones + un margen (ejemplo del diseño: 35 + 30 + 30 + 10 = 105).
+- [ ] 1 adulto + 3 niños con `max_ninos = 2` → 422 `CAPACIDAD_EXCEDIDA` sin escribir nada.
+- [ ] `margen_grupal_historico` se aplica UNA vez y `participante_servicios.margen_historico` es 0 (nunca un margen por participante).
+- [ ] Dos reservas solapadas siguen dando 409: la capacidad no abre un segundo carril.
+- [ ] Rojo → verde.
+**Evidencia:** salida de los tests.
+
+### E4-02 · Oportunidades de espacio (huecos) y horarios alternativos
+`P1 · L · Depende: E3-02, E3-03, E3-07 · Rama: feat/oportunidades-espacio`
+**Contexto:** D22 define la oportunidad de espacio —se dispara al cancelarse una reserva `CONFIRMADA` o al liberarse un bloqueo; elegibles: vinculación `ACTIVO` y barbería activa, sin restricción, sin reserva confirmada solapada y que no canceló ese espacio; máximo 25 destinatarios, sin duplicados— pero sigue en «Reglas del diseño ausentes» (sección 7): E3-07 dejó el disparo pendiente y el reporte de E3-08 lo registra como ausente. Además, cuando el tramo pedido no tiene capacidad, hoy la única respuesta es el error: no hay alternativas.
+**Hacer:**
+1. D47: los DOS caminos usan el MISMO cálculo. Un solo calculador —la función pura de E3-02— alimenta (a) las alternativas en el flujo y (b) la oportunidad proactiva de D22. Nunca un segundo algoritmo de huecos.
+2. Carril A · alternativas en el flujo: cuando `POST .../reservas` no puede tomar el tramo pedido, la respuesta incluye `alternativas: [{ fecha, horaInicio, horaFin }]` (máximo 5, ordenadas por cercanía temporal, dentro del horizonte y de los períodos de la sede), y `GET /barberias/:barberiaId/disponibilidad/huecos?fecha=&participantes=` (CLIENTE vinculado, ADMIN_BARBERIA, ADMINISTRADOR) devuelve las mismas para un tamaño de grupo dado.
+3. Las alternativas respetan el tamaño real del grupo (D46), los pasos de 15 minutos (D41), los bloqueos, las excepciones y la pausa (`nuevas_reservas_activas`). No se ofrece ninguna alternativa si la sede no acepta ese tipo de reserva.
+4. Una alternativa NO retiene el hueco: se revalida al confirmar y, si se ocupó, responde 409 `CONFLICTO_HORARIO`. Retener el hueco exige resolver antes la divergencia D37/H41 y no es alcance de esta tarea.
+5. Carril B · oportunidad proactiva (D22): al liberarse un hueco —cancelación del cliente, cancelación del admin o cancelación especial aprobada de una reserva `CONFIRMADA`, y bloqueo liberado (E2-07)— se calculan los elegibles y se encola UN job idempotente por hueco (`jobId` determinístico, D33) que crea las notificaciones de canal APP (D12).
+6. Elegibilidad y cortesía: máximo 25 destinatarios, sin duplicados, excluyendo a quien canceló ese espacio, a los restringidos (E3-10) y a quien ya tiene una reserva confirmada solapada; nunca se ofrece un hueco ya pasado ni uno que se ocupe antes del envío.
+7. Privacidad (principio 2): la notificación nombra sede, fecha, hora y duración — nunca quién canceló, ni la identidad de otros clientes, ni datos de otra barbería.
+8. Bandera `configuracion_barberia.oportunidades_espacio_activas BOOLEAN DEFAULT TRUE` para que una sede pueda apagarlas (expuesta por E3-11 y auditada).
+9. Tests: hueco liberado con 3 elegibles → 3 notificaciones y ninguna duplicada al reejecutar el job; grupo que no cabe → 5 alternativas coherentes con la disponibilidad real; alternativa ocupada antes de confirmar → 409; sede con la bandera en falso → 0 notificaciones.
+**No hacer:** retener los huecos sugeridos; notificar a no elegibles; exponer datos de otras sedes; un segundo calculador de disponibilidad.
+**Aceptación:**
+- [ ] Una reserva `CONFIRMADA` cancelada dispara la oportunidad a los elegibles de D22 (≤ 25, sin duplicados, sin el que canceló).
+- [ ] Reejecutar el job no duplica notificaciones (idempotencia).
+- [ ] Un grupo de 3 personas solo recibe tramos donde caben las 3.
+- [ ] Rojo → verde.
+**Evidencia:** salida de los tests.
+
+### E4-03 · Fidelización: restricción por inasistencias y reactivación
+`P2 · M · Depende: E3-10, E3-12 · Rama: feat/fidelizacion-restricciones`
+**Contexto:** spec 01 sección 5.8 y plan estratégico T5.4: a las 3 inasistencias, advertencia en el perfil; a las 5, restricción automática en ESA barbería, nunca global. E3-10 implementa el conteo, la bandera `cliente_barberias.esta_restringido`, `motivo_restriccion` y su levantamiento por el admin; D20 y D21 fijan que el contador y la bandera sobreviven a desvincular y revincular. Faltan tres cosas: que el cliente VEA su estado, el flujo de reactivación iniciado por él, y la frontera explícita con la suspensión de la CUENTA (`usuarios.estado_cuenta = 'SUSPENDIDO'`, D09), que hoy solo bloquea el login y el registro.
+**Hacer:**
+1. D48: la penalización por inasistencias es LOCAL. Ningún contador de una sede puede suspender la cuenta global: suspender (`estado_cuenta = 'SUSPENDIDO'`) es una decisión MANUAL, motivada y auditada del ADMINISTRADOR de la plataforma, por abuso o fraude. El aislamiento entre sedes (principio 2) lo prohíbe.
+2. `GET /barberias/:barberiaId/mi-estado` (CLIENTE vinculado): `estadoVinculacion`, `contadorNoPresentado`, `estaRestringido`, `motivoRestriccion`, `advertencia` (cierta con 3 o más) y `reactivacion` (estado y fecha de la última solicitud). Nunca datos de otras sedes.
+3. Solicitud de reactivación: `POST /barberias/:barberiaId/restriccion/solicitar {motivo}` (el CLIENTE restringido en esa sede; 422 `SIN_RESTRICCION` si no lo está) y `POST .../restriccion/reactivacion/resolver {aprobar, motivo?}` (ADMIN_BARBERIA de esa sede o ADMINISTRADOR). Aprobar limpia `esta_restringido` y `motivo_restriccion` y CONSERVA `contador_no_presentado` (D21).
+4. Migración: tabla `solicitudes_reactivacion` con el patrón de D26 — `id`, `cliente_id`, `barberia_id`, `motivo`, `estado` (`SOLICITADA`, `APROBADA`, `REHECHA`), `resuelto_por`, `motivo_resolucion`, `creado_at`, `resuelto_at`, con `CHECK` e índice por `(barberia_id, cliente_id, estado)`. Una sola solicitud `SOLICITADA` por cliente y sede a la vez; el reintento responde 422 `REACTIVACION_PENDIENTE`.
+5. Suspensión y reactivación de la CUENTA (D09, D24): `PATCH /plataforma/usuarios/:id/estado { estadoCuenta, motivo }`, solo ADMINISTRADOR, con motivo obligatorio (422 sin él). Suspender sube `token_version` (cierra las sesiones) y el login conserva el mensaje descriptivo del HALLAZGO 12; reactivar devuelve a `ACTIVO`. Cada transición se audita con el valor anterior y el nuevo.
+6. Caducidad opcional: `configuracion_barberia.dias_restriccion INT NULL` (nulo = la restricción no caduca sola). Con valor > 0, un job idempotente (D33) la levanta al cumplirse el plazo, audita el motivo «caducidad» y tampoco borra el contador.
+7. Notificaciones: advertencia a las 3 (ya prevista en E3-10), aviso al cliente cuando se resuelve su solicitud y aviso al admin de la sede cuando entra una nueva.
+8. Tests: 3 inasistencias → advertencia visible sin restricción; 5 → restringido en A y libre en B; solicitar sin estar restringido → 422 `SIN_RESTRICCION`; aprobar conserva el contador; segunda solicitud pendiente → 422 `REACTIVACION_PENDIENTE`; un camino automático que intente escribir `estado_cuenta = 'SUSPENDIDO'` no existe (test explícito).
+**No hacer:** suspender cuentas globales por inasistencias; borrar el contador al reactivar (D21); confundir esta reactivación con la de la pausa de la sede (`reactivacion_programada`, E3-11) ni con la de la sexta vinculación (E3-12).
+**Aceptación:**
+- [ ] Un cliente restringido en A sigue reservando en B (aislamiento por sede).
+- [ ] El cliente ve su advertencia (3) y su restricción (5) con el motivo en `mi-estado`.
+- [ ] Solicitud → resolución, con auditoría; aprobar conserva `contador_no_presentado`.
+- [ ] Ningún camino automático escribe `estado_cuenta = 'SUSPENDIDO'`.
+- [ ] Rojo → verde.
 **Evidencia:** salida de los tests.
 
 ---
