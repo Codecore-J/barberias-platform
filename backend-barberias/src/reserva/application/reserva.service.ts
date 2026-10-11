@@ -292,8 +292,12 @@ export class ReservaService {
         );
       }
 
+      // Ajustado: mensaje explícito cuando la barbería no acepta tipo individual.
       if (!config.aceptaIndividual) {
-        throw new BadRequestException('RESERVAS_PAUSADAS: la barbería no acepta reservas de tipo individual');
+        throw reglaDeNegocio(
+          'RESERVAS_PAUSADAS',
+          'La barbería no está aceptando reservas de tipo individual.',
+        );
       }
 
       // GRUPAL responde 422 GRUPAL_NO_DISPONIBLE hasta E4-01 (no se ignora en silencio).

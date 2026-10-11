@@ -668,3 +668,15 @@ Identificadores provisionales, libres desde H44. Registrados al cerrar E2-02 (20
 - **Estado:** abierto — a decisión del dueño
 - **Qué consta:** la ruta funciona a cualquier distancia de la cita mientras la sede tenga la bandera, incluso con semanas de antelación. Es coherente con que la sede cancela cuando necesita (la cancelación normal del staff tampoco tiene ventana), pero conviene decidir si la cancelación especial debe limitarse al tramo de menos de 30 minutos para no convertirla en una vía ordinaria de cancelación con motivo
 - **Evidencia:** el E2E la ejecuta sobre citas a 2 y 3 días vista y responde 201
+
+## HALLAZGOS DE E3-11 (H49)
+
+Identificador provisional, libre desde H49. Registrado al cerrar E3-11 (2026-10-11).
+
+### H49: La base de desarrollo tiene CHECK que contradicen los datos de los tests E2E
+- **Módulo / Ruta afectada:** Backend, BD de desarrollo `neondb` (`barberias`, `cliente_barberias`); tests `e1-06-cross-tenant-admin.e2e-spec.ts`, `e3-03-validaciones.e2e-spec.ts`, `hallazgo16-rolesguard-global.e2e-spec.ts`, `permisos-matriz.e2e-spec.ts`, `barberia.e2e-spec.ts`
+- **Tipo:** Integridad de esquema / drift entre la BD y el ledger de migraciones (nuevo respecto a H37)
+- **Severidad:** Alta — impide ejecutar la suite E2E completa en verde
+- **Estado:** abierto (detectado el 2026-10-11 al correr la suite E2E completa de E3-11); ajeno a E3-11
+- **Qué consta:** el esquema y las migraciones del repo NO declaran estos CHECK, pero la BD `dev` sí los tiene (aplicados con `db push` o SQL a mano): `barberias_estado_check = CHECK (estado IN ('ACTIVO','INACTIVO'))` y `cliente_barberias_estado_vinculacion_check`, que rechaza `'SUSPENDIDO'`. Varios E2E insertan `estado: 'ACTIVA'` o `estadoVinculacion: 'SUSPENDIDO'` y abortan en `beforeAll`, de modo que cuatro suites quedan enteras en rojo y `barberia.e2e-spec.ts` recibe 500 al vincular por sexta vez. `migrate diff` no cubre los CHECK (nota de H37), así que la reconciliación de H37 los dejó fuera y aparecieron después; la comprobación hay que hacerla contra `pg_constraint`
+- **Evidencia:** `pg_get_constraintdef` de `dev` → `CHECK ((estado)::text = ANY ((ARRAY['ACTIVO'::character varying, 'INACTIVO'::character varying])::text[]))`; `prisma.barberia.create` → `new row for relation "barberias" violates check constraint "barberias_estado_check"` (fila con `ACTIVA`); `prisma.clienteBarberia.create` → `... violates check constraint "cliente_barberias_estado_vinculacion_check"` (fila con `SUSPENDIDO`). Los fallos ocurren antes de cualquier petición HTTP, así que no tienen relación con los endpoints de configuración de E3-11

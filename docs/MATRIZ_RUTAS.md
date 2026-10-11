@@ -118,6 +118,8 @@
 | 52 | GET | `/catalogo/combos/:id` | CombosController | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE)` | `@Roles(ADMIN_BARBERIA, BARBERO, CLIENTE, ADMINISTRADOR)` + `VinculoBarberiaGuard` | **decisión del dueño** — el CLIENTE requiere fila ACTIVA | **sí** | **sí** — desde `81db5dc` | **no** | `test/permisos-matriz.e2e-spec.ts`; `src/iam/infrastructure/vinculo-barberia.guard.spec.ts` |
 | 53 | PATCH | `/catalogo/combos/:id` | CombosController | `@Roles(ADMIN_BARBERIA, BARBERO)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D16) | **sí** | no | **no** | `test/permisos-matriz.e2e-spec.ts` |
 | 54 | DELETE | `/catalogo/combos/:id` | CombosController | `@Roles(ADMIN_BARBERIA, BARBERO)` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D16) | **sí** | no | **no** | `test/permisos-matriz.e2e-spec.ts` |
+| 55 | GET | `/barberias/:barberiaId/configuracion` | ConfiguracionBarberiaController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-11** | **sí** — el guard acota por `barberiaId` | no | no — pendiente del panel de configuración del frontend | `test/e3-11-configuracion.e2e-spec.ts`; `test/e3-11-configuracion.spec.ts` |
+| 56 | PATCH | `/barberias/:barberiaId/configuracion` | ConfiguracionBarberiaController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-11** | **sí** | **sí** — 422 `HAY_PENDIENTES` (con conteo) y `max_personas_total >= max_ninos + 1` en el servicio | no | `test/e3-11-configuracion.e2e-spec.ts`; `test/e3-11-configuracion.spec.ts` |
 
 ## Recuento aplicado
 
@@ -164,6 +166,12 @@ de estado es ahora `ReservaService.cambiarEstado`, privado y con `ReservaStateMa
 y solo aparece en `CONFIRMADA`, que es el único origen que §5.2 admite para el no presentado. Evidencia:
 `test/permisos-matriz.spec.ts` (63 rutas, 252 decisiones) y `test/permisos-matriz.e2e-spec.ts`
 (`40 rutas × 4 roles` sobre HTTP).
+
+**Estado real tras E3-11 (2026-10-11):** `test/permisos-matriz.spec.ts` cuenta **65 rutas × 4 roles = 260**
+decisiones. Sobre las 63 de E2-02, `+2` por `GET` y `PATCH /barberias/:barberiaId/configuracion` (E3-11,
+filas 55 y 56): la política de ambas es `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` y el `RolesGuard` las
+acota al `barberiaId` del parámetro, así que el admin de otra sede recibe 403. Evidencia:
+`test/e3-11-configuracion.e2e-spec.ts` (12 casos) y `test/e3-11-configuracion.spec.ts` (17 casos).
 
 ## Decisiones tomadas
 
