@@ -451,16 +451,16 @@ describe('BarberiaService', () => {
       expect(result.esBarberiaActiva).toBe(true);
     });
 
-    it('debe vincular al cliente con estado PENDIENTE si ya tiene 5 o más vinculaciones', async () => {
+    it('debe vincular al cliente con estado PENDIENTE_APROBACION si ya tiene 5 o más vinculaciones', async () => {
       const mockBarberia = { id: 'barberia-1', codigoAcceso: 'ABC12345', estado: 'ACTIVO' };
       (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
       (prisma.clienteBarberia.findUnique as any).mockResolvedValue(null);
       (prisma.clienteBarberia.count as any).mockResolvedValue(5); // 5 previas
-      const mockCreated = { usuarioId: 'user-1', barberiaId: 'barberia-1', estadoVinculacion: 'PENDIENTE', esBarberiaActiva: false };
+      const mockCreated = { usuarioId: 'user-1', barberiaId: 'barberia-1', estadoVinculacion: 'PENDIENTE_APROBACION', esBarberiaActiva: false };
       (prisma.clienteBarberia.create as any).mockResolvedValue(mockCreated);
 
       const result = await service.vincularCliente('user-1', { codigoAcceso: 'ABC12345' });
-      expect(result.estadoVinculacion).toBe('PENDIENTE');
+      expect(result.estadoVinculacion).toBe('PENDIENTE_APROBACION');
       expect(result.esBarberiaActiva).toBe(false);
     });
   });
@@ -573,8 +573,8 @@ describe('BarberiaService', () => {
       expect(result.esBarberiaActiva).toBe(true);
     });
 
-    it('debe arrojar ForbiddenException si la vinculación está en PENDIENTE', async () => {
-      const mockVinculacion = { usuarioId: 'user-1', barberiaId: 'barberia-1', estadoVinculacion: 'PENDIENTE', esBarberiaActiva: false };
+    it('debe arrojar ForbiddenException si la vinculación está en PENDIENTE_APROBACION', async () => {
+      const mockVinculacion = { usuarioId: 'user-1', barberiaId: 'barberia-1', estadoVinculacion: 'PENDIENTE_APROBACION', esBarberiaActiva: false };
       (prisma.clienteBarberia.findUnique as any).mockResolvedValue(mockVinculacion);
 
       await expect(service.seleccionarBarberiaActiva('user-1', 'barberia-1')).rejects.toThrow(ForbiddenException);
