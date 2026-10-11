@@ -274,7 +274,9 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       const res = await request(app.getHttpServer())
         .patch(`${API}/barberias/${barberiaA}`)
         .set('Authorization', `Bearer ${tokenAdminA}`)
-        .send({ telefono: '933333333', passwordActual: 'NoEsMiClave123' })
+        // Contraseña deliberadamente incorrecta para provocar el 422: no es un
+        // secreto real. `gitleaks:allow` exime esta línea del escáner de CI.
+        .send({ telefono: '933333333', passwordActual: 'NoEsMiClave123' }) // gitleaks:allow
         .expect(422);
 
       expect(res.body).toMatchObject({ statusCode: 422, codigo: 'PASSWORD_INCORRECTA' });
