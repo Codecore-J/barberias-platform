@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { vi } from 'vitest';
+import * as bcrypt from 'bcrypt';
 import { BarberiaService } from './barberia.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
@@ -57,6 +58,20 @@ const ADMIN_BARBERIA_SIN_BARBERIA: UsuarioAutenticado = {
   roles: ['ADMIN_BARBERIA'],
   rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: null, ambito: 'BARBERIA' }],
 };
+
+/**
+ * E3-13 · contrato D40: `{ statusCode, codigo, mensaje }` en el cuerpo de la
+ * excepción. Devuelve solo lo que se quiere asertar.
+ */
+async function capturarError(promesa: Promise<unknown>): Promise<{ status: number; codigo: string }> {
+  try {
+    await promesa;
+  } catch (error: any) {
+    const respuesta = typeof error?.getResponse === 'function' ? error.getResponse() : {};
+    return { status: error?.getStatus?.() ?? respuesta.statusCode, codigo: respuesta.codigo };
+  }
+  throw new Error('Se esperaba una excepción y la promesa se resolvió.');
+}
 
 /** Fila de usuario_roles tal y como la devuelve Prisma. */
 function filaRol(usuarioId: string, nombreRol: string, barberiaId = BARBERIA_B) {
@@ -279,8 +294,18 @@ describe('BarberiaService', () => {
 
       // `responsableId` se mantiene porque el frontend lo usa para identificar a
       // la sede: si algún día se quita, este test debe romperse a propósito.
+      // `logoUrl` se sumó en E3-13 (edición directa del branding de la sede).
       expect(Object.keys(result).sort()).toEqual(
-        ['descripcion', 'estado', 'id', 'nombre', 'responsableId', 'telefono', 'ubicacion'].sort(),
+        [
+          'descripcion',
+          'estado',
+          'id',
+          'logoUrl',
+          'nombre',
+          'responsableId',
+          'telefono',
+          'ubicacion',
+        ].sort(),
       );
     });
   });
@@ -291,24 +316,137 @@ describe('BarberiaService', () => {
       (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
 
       await expect(service.update('uuid-1', 'other-user', {}, false)).rejects.toThrow(ForbiddenException);
-    });    it('debe permitir si es responsable', async () => {
-        const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1' };
-        (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
-        (prisma.barberia.update as any).mockResolvedValue({ ...mockBarberia, nombre: 'Updated' });
-  
-        const result = await service.update('uuid-1', 'res-1', { nombre: 'Updated' }, false);
-        expect(result.nombre).toBe('Updated');
+    });
+
+    /**
+     * E3-13: el nombre de la sede ya no se cambia por la puerta de atrás. El
+     * único camino es una solicitud aprobada por el ADMINISTRADOR (D26).
+     */
+    it('422 NOMBRE_REQUIERE_SOLICITUD al intentar cambiar el nombre y NO toca la base', async () => {
+      const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1' };
+      (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
+
+      const error = await capturarError(
+        service.update('uuid-1', 'res-1', { nombre: 'Nombre por la puerta de atrás' }, false),
+      );
+
+      expect(error).toEqual({ status: 422, codigo: 'NOMBRE_REQUIERE_SOLICITUD' });
+      expect(prisma.barberia.update).not.toHaveBeenCalled();
+    });
+
+    it('el responsable puede actualizar descripcion, ubicacion y logo', async () => {
+      const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1' };
+      (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
+      (prisma.barberia.update as any).mockResolvedValue({
+        ...mockBarberia,
+        descripcion: 'Nueva descripción',
+        ubicacion: 'Nueva ubicación',
+        logoUrl: 'https://cdn.test.com/logo.png',
+      });
+
+      const result = await service.update(
+        'uuid-1',
+        'res-1',
+        {
+          descripcion: 'Nueva descripción',
+          ubicacion: 'Nueva ubicación',
+          logoUrl: 'https://cdn.test.com/logo.png',
+        },
+        false,
+      );
+
+      expect(prisma.barberia.update).toHaveBeenCalledWith({
+        where: { id: 'uuid-1' },
+        data: {
+          descripcion: 'Nueva descripción',
+          ubicacion: 'Nueva ubicación',
+          logoUrl: 'https://cdn.test.com/logo.png',
+        },
+      });
+      expect(result.descripcion).toBe('Nueva descripción');
     });
 
     it('E1-04: el ADMINISTRADOR puede editar una barbería ajena', async () => {
       const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'otro-res' };
       (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
-      (prisma.barberia.update as any).mockResolvedValue({ ...mockBarberia, nombre: 'Renombrada' });
+      (prisma.barberia.update as any).mockResolvedValue({
+        ...mockBarberia,
+        descripcion: 'Editada por el global',
+      });
 
-      const result = await service.update('uuid-1', 'admin-global', { nombre: 'Renombrada' }, true);
+      const result = await service.update(
+        'uuid-1',
+        'admin-global',
+        { descripcion: 'Editada por el global' },
+        true,
+      );
 
       expect(prisma.barberia.update).toHaveBeenCalled();
-      expect(result.nombre).toBe('Renombrada');
+      expect(result.descripcion).toBe('Editada por el global');
+    });
+
+    /** D27: el teléfono es un dato de contacto y exige la contraseña actual. */
+    it('422 PASSWORD_REQUERIDA al cambiar el teléfono sin contraseña actual', async () => {
+      const mockBarberia = {
+        id: 'uuid-1',
+        nombre: 'Barberia 1',
+        responsableId: 'res-1',
+        telefono: '8095555555',
+      };
+      (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
+
+      const error = await capturarError(
+        service.update('uuid-1', 'res-1', { telefono: '8096666666' }, false),
+      );
+
+      expect(error).toEqual({ status: 422, codigo: 'PASSWORD_REQUERIDA' });
+      expect(prisma.barberia.update).not.toHaveBeenCalled();
+    });
+
+    it('422 PASSWORD_INCORRECTA cuando la contraseña no coincide', async () => {
+      const mockBarberia = {
+        id: 'uuid-1',
+        nombre: 'Barberia 1',
+        responsableId: 'res-1',
+        telefono: '8095555555',
+      };
+      (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
+      (prisma.usuario.findUnique as any).mockResolvedValue({
+        passwordHash: await bcrypt.hash('ClaveCorrecta123', 10),
+      });
+
+      const error = await capturarError(
+        service.update('uuid-1', 'res-1', { telefono: '8096666666', passwordActual: 'NoEs' }, false),
+      );
+
+      expect(error).toEqual({ status: 422, codigo: 'PASSWORD_INCORRECTA' });
+      expect(prisma.barberia.update).not.toHaveBeenCalled();
+    });
+
+    it('cambia el teléfono cuando la contraseña actual es correcta', async () => {
+      const mockBarberia = {
+        id: 'uuid-1',
+        nombre: 'Barberia 1',
+        responsableId: 'res-1',
+        telefono: '8095555555',
+      };
+      (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
+      (prisma.usuario.findUnique as any).mockResolvedValue({
+        passwordHash: await bcrypt.hash('ClaveCorrecta123', 10),
+      });
+      (prisma.barberia.update as any).mockResolvedValue({
+        ...mockBarberia,
+        telefono: '8096666666',
+      });
+
+      const result = await service.update(
+        'uuid-1',
+        'res-1',
+        { telefono: '8096666666', passwordActual: 'ClaveCorrecta123' },
+        false,
+      );
+
+      expect(result.telefono).toBe('8096666666');
     });
   });
 

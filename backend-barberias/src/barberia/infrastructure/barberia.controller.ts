@@ -11,7 +11,9 @@ import {
   Post,
 } from '@nestjs/common';
 import { BarberiaService } from '../application/barberia.service.js';
+import { SolicitudCambioService } from '../application/solicitud-cambio.service.js';
 import { CreateBarberiaDto } from '../application/dto/create-barberia.dto.js';
+import { CreateSolicitudCambioDto } from '../application/dto/create-solicitud-cambio.dto.js';
 import { UpdateBarberiaDto } from '../application/dto/update-barberia.dto.js';
 import { VincularBarberiaDto } from '../application/dto/vincular-barberia.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
@@ -22,7 +24,10 @@ import { esAdministradorGlobal } from '../../iam/domain/roles.js';
 
 @Controller('barberias')
 export class BarberiaController {
-  constructor(private readonly barberiaService: BarberiaService) {}
+  constructor(
+    private readonly barberiaService: BarberiaService,
+    private readonly solicitudCambioService: SolicitudCambioService,
+  ) {}
 
   /**
    * POST /barberias
@@ -109,6 +114,25 @@ export class BarberiaController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.barberiaService.findOne(id, user);
+  }
+
+  /**
+   * POST /barberias/:id/solicitudes-cambio · E3-13 (D26)
+   *
+   * El nombre y el responsable solo cambian con la aprobación de la plataforma:
+   * la sede PROPONE y el ADMINISTRADOR resuelve. La ruta usa `:id`, así que el
+   * `RolesGuard` no resuelve la sede del parámetro; la pertenencia real la exige
+   * el servicio (`SOLO_ADMIN_BARBERIA`, 403), igual que en el resto del módulo.
+   */
+  @Roles('ADMIN_BARBERIA')
+  @Post(':id/solicitudes-cambio')
+  @HttpCode(HttpStatus.CREATED)
+  crearSolicitudCambio(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateSolicitudCambioDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.solicitudCambioService.crearSolicitud(id, user, dto);
   }
 
   /**

@@ -89,6 +89,15 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'GET /barberias/:barberiaId/configuracion': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'PATCH /barberias/:barberiaId/configuracion': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
+  // E3-13 (2026-10-11): el nombre y el responsable solo cambian por solicitud
+  // aprobada. La ruta usa `:id` (no `:barberiaId`), así que el guard NO resuelve
+  // la sede del parámetro: la pertenencia real la comprueba el servicio
+  // (`SOLO_ADMIN_BARBERIA`, 403) y eso lo cubre el E2E de E3-13. La bandeja de
+  // plataforma es exclusiva del ADMINISTRADOR global.
+  'POST /barberias/:id/solicitudes-cambio': [ROL_ADMIN_BARBERIA],
+  'GET /plataforma/solicitudes-cambio/': [ROL_ADMINISTRADOR],
+  'POST /plataforma/solicitudes-cambio/:id/resolver': [ROL_ADMINISTRADOR],
+
   'GET /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
   'POST /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'DELETE /barberias/:barberiaId/agenda,agenda/bloqueos/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -316,10 +325,11 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // E2-02 (2026-10-11): eran 64 rutas; `PATCH /reservas/:id/estado` se eliminó
   // (ver la nota del diccionario), así que quedaban 63. E3-11 sumó los dos
   // endpoints de configuración (GET y PATCH /barberias/:barberiaId/configuracion)
-  // y quedan 65.
-  it('descubrir las 65 rutas del servidor y todas tienen decision', () => {
+  // y quedaban 65. E3-13 sumó la solicitud de la sede y la bandeja de plataforma
+  // (listar y resolver): 68.
+  it('descubrir las 68 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(65);
+    expect(claves.length).toBe(68);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -403,15 +413,16 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     }
     console.log('');
 
-    // 65 rutas × 4 roles: la partición de E3-03 añadió POST /reservas/walk-in,
+    // 68 rutas × 4 roles: la partición de E3-03 añadió POST /reservas/walk-in,
     // el endpoint de cotización (D44) añadió POST /reservas/cotizar, E3-04
     // añadió POST /reservas/:id/aceptar y POST /reservas/:id/rechazar, E3-05
     // añadió POST /reservas/:id/cancelar, E3-06 añadió
     // PATCH /reservas/:id/reprogramar, E3-08 añadió cuatro (cancelación
     // especial, proponer-horario y su bandeja de aceptar/rechazar), E2-02
-    // quitó PATCH /reservas/:id/estado y E3-11 añadió las dos de configuración
-    // (GET y PATCH /barberias/:barberiaId/configuracion).
-    expect(evaluaciones).toBe(260);
+    // quitó PATCH /reservas/:id/estado, E3-11 añadió las dos de configuración
+    // (GET y PATCH /barberias/:barberiaId/configuracion) y E3-13 las tres de
+    // solicitudes de cambio.
+    expect(evaluaciones).toBe(272);
     expect(
       desviaciones.length === 0
         ? ''
