@@ -407,7 +407,8 @@ export class BarberiaService {
         where: { usuarioId },
       });
 
-      const estadoVinculacion = count >= 5 ? 'PENDIENTE' : 'ACTIVO';
+      // D10 · la 6.ª vinculación queda PENDIENTE_APROBACION hasta que el ADMINISTRADOR la apruebe.
+      const estadoVinculacion = count >= 5 ? 'PENDIENTE_APROBACION' : 'ACTIVO';
       const esBarberiaActiva = count === 0; // Si es la primera, la marcamos como activa por defecto
 
       const nuevaVinculacion = await tx.clienteBarberia.create({

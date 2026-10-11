@@ -582,9 +582,10 @@ Identificadores provisionales, libres desde H30. Registrados al iniciar E3-05 (2
 - **Módulo / Ruta afectada:** Backend, `vitest.config.e2e.ts`
 - **Tipo:** Configuración de pruebas (E2-06 pendiente)
 - **Severidad:** Baja (falsos negativos en la lectura de los fallos)
-- **Estado:** abierto (E2-06 ya pide `testTimeout` de 30 s)
+- **Estado:** resuelto (fix/h38-h49-estabilizar-e2e, 2026-10-11)
 - **Qué consta:** el archivo E2E fija `fileParallelism: false` pero no `testTimeout`. Con la BD de desarrollo en Neon y Redis remotos, cada caso tarda entre 3 y 7 s y cualquiera que haga cuatro o más llamadas supera los 5 s del default: la primera ejecución del E2E de E3-06/E3-07 dio `6 failed` con duraciones de ~5005 ms, que parecen fallos de regla de negocio y son timeouts
 - **Evidencia:** ejecución con el default → `Tests 6 failed (9)`, tiempos 5005/5012/5015 ms; con `--testTimeout=30000` → `Tests 9 passed (9)`
+- **Resolución (fix/h38-h49-estabilizar-e2e, 2026-10-11):** `vitest.config.e2e.ts` fija `testTimeout: 30_000` de forma global, así que `npm run test:e2e` ya no necesita `--testTimeout` en cada corrida. Evidencia: suite E2E completa `Test Files 21 passed (21)` / `Tests 151 passed (151)`; los dos archivos que fallaban por timeout pasan sin flags (E3-06/07: 9/9 en 47,3 s; E3-08: 15/15 en 78,6 s). Detalle en `reporte-fix-h38-h49.md`.
 
 ## HALLAZGOS DE E3-08 (H40 a H44)
 
@@ -677,6 +678,7 @@ Identificador provisional, libre desde H49. Registrado al cerrar E3-11 (2026-10-
 - **Módulo / Ruta afectada:** Backend, BD de desarrollo `neondb` (`barberias`, `cliente_barberias`); tests `e1-06-cross-tenant-admin.e2e-spec.ts`, `e3-03-validaciones.e2e-spec.ts`, `hallazgo16-rolesguard-global.e2e-spec.ts`, `permisos-matriz.e2e-spec.ts`, `barberia.e2e-spec.ts`
 - **Tipo:** Integridad de esquema / drift entre la BD y el ledger de migraciones (nuevo respecto a H37)
 - **Severidad:** Alta — impide ejecutar la suite E2E completa en verde
-- **Estado:** abierto (detectado el 2026-10-11 al correr la suite E2E completa de E3-11); ajeno a E3-11
+- **Estado:** resuelto (fix/h38-h49-estabilizar-e2e, 2026-10-11)
 - **Qué consta:** el esquema y las migraciones del repo NO declaran estos CHECK, pero la BD `dev` sí los tiene (aplicados con `db push` o SQL a mano): `barberias_estado_check = CHECK (estado IN ('ACTIVO','INACTIVO'))` y `cliente_barberias_estado_vinculacion_check`, que rechaza `'SUSPENDIDO'`. Varios E2E insertan `estado: 'ACTIVA'` o `estadoVinculacion: 'SUSPENDIDO'` y abortan en `beforeAll`, de modo que cuatro suites quedan enteras en rojo y `barberia.e2e-spec.ts` recibe 500 al vincular por sexta vez. `migrate diff` no cubre los CHECK (nota de H37), así que la reconciliación de H37 los dejó fuera y aparecieron después; la comprobación hay que hacerla contra `pg_constraint`
 - **Evidencia:** `pg_get_constraintdef` de `dev` → `CHECK ((estado)::text = ANY ((ARRAY['ACTIVO'::character varying, 'INACTIVO'::character varying])::text[]))`; `prisma.barberia.create` → `new row for relation "barberias" violates check constraint "barberias_estado_check"` (fila con `ACTIVA`); `prisma.clienteBarberia.create` → `... violates check constraint "cliente_barberias_estado_vinculacion_check"` (fila con `SUSPENDIDO`). Los fallos ocurren antes de cualquier petición HTTP, así que no tienen relación con los endpoints de configuración de E3-11
+- **Resolución (fix/h38-h49-estabilizar-e2e, 2026-10-11):** los datos semilla se ajustaron al catálogo real de la BD: `estado: 'ACTIVA'` → `'ACTIVO'` (`e3-03-validaciones`, `hallazgo16-rolesguard-global`, `permisos-matriz`), `estadoVinculacion: 'SUSPENDIDO'` → `'DESVINCULADO'` (`e1-06-cross-tenant-admin`) y, por D10, `barberia.service.vincularCliente` dejó de escribir `'PENDIENTE'` para la 6.ª vinculación y escribe `'PENDIENTE_APROBACION'` (el E2E de `barberia.e2e-spec.ts` afirmaba el literal viejo). Evidencia: suite E2E completa `Test Files 21 passed (21)` / `Tests 151 passed (151)` (antes: `7 failed | 14 passed` y `16 failed | 117 passed | 18 skipped`). Detalle en `reporte-fix-h38-h49.md`.

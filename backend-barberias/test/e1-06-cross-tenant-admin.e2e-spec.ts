@@ -134,10 +134,10 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       data: { usuarioId: vinculado.id, barberiaId: barberiaA, estadoVinculacion: 'ACTIVO' },
     });
 
-    // Vínculo SUSPENDIDO con A: ni rol en usuario_roles ni fila ACTIVA. Debe
+    // Vínculo DESVINCULADO con B: ni rol en usuario_roles ni fila ACTIVA. Debe
     // recibir 403 igual que el cliente sin vínculo, que es el caso que se arregla.
     await prisma.clienteBarberia.create({
-      data: { usuarioId: vinculado.id, barberiaId: barberiaB, estadoVinculacion: 'SUSPENDIDO' },
+      data: { usuarioId: vinculado.id, barberiaId: barberiaB, estadoVinculacion: 'DESVINCULADO' },
     });
 
     servicioA = (
@@ -380,7 +380,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       .set('Authorization', jwt(tokenVinculado))
       .set('x-barberia-id', barberiaA);
 
-    // El vinculo con B esta SUSPENDIDO: el mismo cliente que si lee A no puede
+    // El vinculo con B esta DESVINCULADO: el mismo cliente que si lee A no puede
     // leer el catalogo de B. Comprueba que la regla mira `estado_vinculacion` y
     // no solo la existencia de la fila.
     const catalogoVinculadoB = await request(app.getHttpServer())
@@ -397,7 +397,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
         `\n| \`GET /catalogo/combos\` | cliente SIN vinculo lee los combos de A | ${combosSuelto.status} |` +
         `\n| \`GET /catalogo/servicios\` | *CONTROL* cliente VINCULADO lee el catalogo de A | ${catalogoVinculado.status} |` +
         `\n| \`GET /catalogo/combos\` | *CONTROL* cliente VINCULADO lee los combos de A | ${combosVinculado.status} |` +
-        `\n| \`GET /catalogo/servicios\` | cliente con vinculo SUSPENDIDO en B | ${catalogoVinculadoB.status} |\n`,
+        `\n| \`GET /catalogo/servicios\` | cliente con vinculo DESVINCULADO en B | ${catalogoVinculadoB.status} |\n`,
     );
 
     // El control positivo tiene que pasar: si esto no es 2xx, el 403/404 de los
@@ -425,7 +425,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       'el cliente vinculado ve el combo de su sede',
     ).toContain(comboA);
 
-    // Vinculo SUSPENDIDO con B: mismo cliente, otra sede, 403.
+    // Vinculo DESVINCULADO con B: mismo cliente, otra sede, 403.
     expect(catalogoVinculadoB.status, 'vinculo suspendido: no lee el catalogo de B').toBe(403);
 
     for (const c of casos) {
