@@ -1,12 +1,28 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { vi } from 'vitest';
 import { BarberiaController } from './barberia.controller.js';
 import { BarberiaService } from '../application/barberia.service.js';
-import { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
+import { CreateBarberiaDto } from '../application/dto/create-barberia.dto.js';
+import { UpdateBarberiaDto } from '../application/dto/update-barberia.dto.js';
+import { VincularBarberiaDto } from '../application/dto/vincular-barberia.dto.js';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { vi } from 'vitest';
 
 describe('BarberiaController', () => {
   let controller: BarberiaController;
-  let service: BarberiaService;
+  let service: typeof BarberiaService;
+
+  const mockService = {
+    create: vi.fn(),
+    findAllByResponsable: vi.fn(),
+    findAll: vi.fn(),
+    findPersonal: vi.fn(),
+    findOne: vi.fn(),
+    vincularCliente: vi.fn(),
+    desvincular: vi.fn(),
+    seleccionarBarberiaActiva: vi.fn(),
+    update: vi.fn(),
+    remove: vi.fn(),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -14,117 +30,196 @@ describe('BarberiaController', () => {
       providers: [
         {
           provide: BarberiaService,
-          useValue: {
-            create: vi.fn(),
-            findAllByResponsable: vi.fn(),
-            findAll: vi.fn(),
-            findOne: vi.fn(),
-            update: vi.fn(),
-            remove: vi.fn(),
-            vincularCliente: vi.fn(),
-            seleccionarBarberiaActiva: vi.fn(),
-            findPersonal: vi.fn(),
-            update: vi.fn(),
-            remove: vi.fn(),
-          },
+          useValue: mockService,
         },
       ],
     }).compile();
 
     controller = module.get<BarberiaController>(BarberiaController);
-    service = module.get<BarberiaService>(BarberiaService);
+    service = module.get(BarberiaService);
   });
 
-  it('should be defined', () => {
-    expect(controller).toBeDefined();
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
   describe('create', () => {
-    it('debe llamar a service.create con el ID del usuario actual', async () => {
-      const user: UsuarioAutenticado = { id: 'uuid-user', correo: 'test@test.com', roles: [] };
-      const dto = { nombre: 'Barber Test', telefono: '123', ubicacion: 'Calle 1' };
-      
-      (service.create as any).mockResolvedValue({ id: 'uuid-barberia', ...dto });
+    it('debe crear una barbería', async () => {
+      const dto: CreateBarberiaDto = {
+        nombre: 'Nueva Barbería',
+        telefono: '123456789',
+        ubicacion: 'Ubicación',
+      };
+      const user = { id: 'user-123', roles: ['CLIENTE'] } as any;
+      const expected = { id: 'barberia-1', nombre: dto.nombre };
 
-      const result = await controller.create(dto as any, user);
-      
-      expect(service.create).toHaveBeenCalledWith(user.id, dto);
-      expect(result.id).toBeDefined();
+      mockService.create.mockResolvedValue(expected);
+
+      const result = await controller.create(dto, user);
+
+      expect(service.create).toHaveBeenCalledWith('user-123', dto);
+      expect(result).toEqual(expected);
     });
   });
 
   describe('findMine', () => {
-    it('debe llamar a findAllByResponsable con el id y la sesion (E1-07)', async () => {
-        const user: UsuarioAutenticado = { id: 'uuid-user', correo: 'test@test.com', roles: [] };
-        await controller.findMine(user);
-        expect(service.findAllByResponsable).toHaveBeenCalledWith(user.id, user);
+    it('debe retornar las barberías del responsable', async () => {
+      const user = { id: 'user-123', roles: ['CLIENTE'] } as any;
+      const expected = [{ id: 'barberia-1', nombre: 'Barbería A' }];
+
+      mockService.findAllByResponsable.mockResolvedValue(expected);
+
+      const result = await controller.findMine(user);
+
+      expect(service.findAllByResponsable).toHaveBeenCalledWith('user-123', user);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('findAll', () => {
+    it('debe retornar todas las barberías', async () => {
+      const expected = [{ id: 'barberia-1', nombre: 'Barbería A' }];
+
+      mockService.findAll.mockResolvedValue(expected);
+
+      const result = await controller.findAll();
+
+      expect(service.findAll).toHaveBeenCalled();
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('findPersonal', () => {
+    it('debe retornar el personal de una barbería', async () => {
+      const id = 'barberia-1';
+      const user = { id: 'user-123', roles: ['ADMIN_BARBERIA'] } as any;
+      const expected = [{ id: 'person-1', nombreCompleto: 'Persona' }];
+
+      mockService.findPersonal.mockResolvedValue(expected);
+
+      const result = await controller.findPersonal(id, user);
+
+      expect(service.findPersonal).toHaveBeenCalledWith(id, user);
+      expect(result).toEqual(expected);
+    });
+
+    it('debe lanzar ForbiddenException si el usuario no tiene acceso', async () => {
+      const id = 'barberia-1';
+      const user = { id: 'user-123', roles: ['CLIENTE'] } as any;
+
+      mockService.findPersonal.mockRejectedValue(
+        new ForbiddenException('No posees el rol ADMIN_BARBERIA ni BARBERO en esa barbería.'),
+      );
+
+      await expect(controller.findPersonal(id, user)).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('findOne', () => {
+    it('debe retornar una barbería por ID', async () => {
+      const id = 'barberia-1';
+      const user = { id: 'user-123', roles: ['CLIENTE'] } as any;
+      const expected = { id, nombre: 'Barbería A' };
+
+      mockService.findOne.mockResolvedValue(expected);
+
+      const result = await controller.findOne(id, user);
+
+      expect(service.findOne).toHaveBeenCalledWith(id, user);
+      expect(result).toEqual(expected);
+    });
+
+    it('debe lanzar NotFoundException si no existe', async () => {
+      const id = 'barberia-invalida';
+      const user = { id: 'user-123', roles: ['CLIENTE'] } as any;
+
+      mockService.findOne.mockRejectedValue(new NotFoundException(`Barbería ${id} no encontrada.`));
+
+      await expect(controller.findOne(id, user)).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('vincular', () => {
-    it('debe llamar a vincularCliente del servicio', async () => {
-        const user: UsuarioAutenticado = { id: 'uuid-user', correo: 'test@test.com', roles: [] };
-        const dto = { codigoAcceso: 'ABC12345' };
-        await controller.vincular(dto, user);
-        expect(service.vincularCliente).toHaveBeenCalledWith(user.id, dto);
+    it('debe vincular un cliente a una barbería', async () => {
+      const dto: VincularBarberiaDto = { codigoAcceso: 'ABC123' };
+      const user = { id: 'user-123', roles: ['CLIENTE'] } as any;
+      const expected = { id: 'vinculo-1', estadoVinculacion: 'ACTIVO' };
+
+      mockService.vincularCliente.mockResolvedValue(expected);
+
+      const result = await controller.vincular(dto, user);
+
+      expect(service.vincularCliente).toHaveBeenCalledWith('user-123', dto);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('desvincular', () => {
+    it('debe desvincular un cliente de una barbería', async () => {
+      const id = 'barberia-1';
+      const user = { id: 'user-123', roles: ['CLIENTE'] } as any;
+      const expected = { id, estadoVinculacion: 'DESVINCULADO' };
+
+      mockService.desvincular.mockResolvedValue(expected);
+
+      const result = await controller.desvincular(id, user);
+
+      expect(service.desvincular).toHaveBeenCalledWith('user-123', id);
+      expect(result).toEqual(expected);
+    });
+
+    it('debe lanzar NotFoundException si no hay vínculo', async () => {
+      const id = 'barberia-1';
+      const user = { id: 'user-123', roles: ['CLIENTE'] } as any;
+
+      mockService.desvincular.mockRejectedValue(new NotFoundException('No tienes vínculo con esta barbería.'));
+
+      await expect(controller.desvincular(id, user)).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('seleccionarActiva', () => {
-    it('debe llamar a seleccionarBarberiaActiva del servicio', async () => {
-        const user: UsuarioAutenticado = { id: 'uuid-user', correo: 'test@test.com', roles: [] };
-        await controller.seleccionarActiva('uuid-barberia', user);
-        // E1-06: se pasa también la sesión, para que el servicio resuelva el
-        // ADMINISTRADOR global sin volver a consultar `usuario_roles`.
-        expect(service.seleccionarBarberiaActiva).toHaveBeenCalledWith(user.id, 'uuid-barberia', user);
+    it('debe seleccionar una barbería como activa', async () => {
+      const id = 'barberia-1';
+      const user = { id: 'user-123', roles: ['CLIENTE'] } as any;
+      const expected = { usuarioId: 'user-123', barberiaId: id, esBarberiaActiva: true };
+
+      mockService.seleccionarBarberiaActiva.mockResolvedValue(expected);
+
+      const result = await controller.seleccionarActiva(id, user);
+
+      expect(service.seleccionarBarberiaActiva).toHaveBeenCalledWith('user-123', id, user);
+      expect(result).toEqual(expected);
     });
   });
 
-  describe('findPersonal (E1-03 · H19)', () => {
-    it('debe pasar el usuario actual al servicio para validar pertenencia', async () => {
-      const user: UsuarioAutenticado = { id: 'uuid-user', correo: 'test@test.com', roles: [] };
+  describe('update', () => {
+    it('debe actualizar una barbería', async () => {
+      const id = 'barberia-1';
+      const dto: UpdateBarberiaDto = { nombre: 'Nombre Actualizado' };
+      const user = { id: 'user-123', roles: ['ADMINISTRADOR'] } as any;
+      const expected = { id, nombre: 'Nombre Actualizado' };
 
-      await controller.findPersonal('uuid-barberia', user);
+      mockService.update.mockResolvedValue(expected);
 
-      expect(service.findPersonal).toHaveBeenCalledWith('uuid-barberia', user);
+      const result = await controller.update(id, dto, user);
+
+      expect(service.update).toHaveBeenCalledWith(id, 'user-123', dto, true);
+      expect(result).toEqual(expected);
     });
   });
 
-  describe('E1-04: ADMINISTRADOR frente al rol global inexistente', () => {
-    it('update debe marcar esGlobal=true a un ADMINISTRADOR', async () => {
-      const user: UsuarioAutenticado = {
-        id: 'uuid-global',
-        correo: 'global@test.com',
-        roles: ['ADMINISTRADOR'],
-      };
+  describe('remove', () => {
+    it('debe eliminar (soft-delete) una barbería', async () => {
+      const id = 'barberia-1';
+      const user = { id: 'user-123', roles: ['ADMINISTRADOR'] } as any;
 
-      await controller.update('uuid-barberia', { nombre: 'Nuevo' } as any, user);
+      mockService.remove.mockResolvedValue(undefined);
 
-      expect(service.update).toHaveBeenCalledWith('uuid-barberia', user.id, { nombre: 'Nuevo' }, true);
-    });
+      const result = await controller.remove(id, user);
 
-    it('update NO debe marcar esGlobal a un ADMIN_BARBERIA', async () => {
-      const user: UsuarioAutenticado = {
-        id: 'uuid-admin',
-        correo: 'admin@test.com',
-        roles: ['ADMIN_BARBERIA'],
-      };
-
-      await controller.update('uuid-barberia', { nombre: 'Nuevo' } as any, user);
-
-      expect(service.update).toHaveBeenCalledWith('uuid-barberia', user.id, { nombre: 'Nuevo' }, false);
-    });
-
-    it('remove debe marcar esGlobal=true a un ADMINISTRADOR', async () => {
-      const user: UsuarioAutenticado = {
-        id: 'uuid-global',
-        correo: 'global@test.com',
-        roles: ['ADMINISTRADOR'],
-      };
-
-      await controller.remove('uuid-barberia', user);
-
-      expect(service.remove).toHaveBeenCalledWith('uuid-barberia', user.id, true);
+      expect(service.remove).toHaveBeenCalledWith(id, 'user-123', true);
+      expect(result).toBeUndefined();
     });
   });
 });

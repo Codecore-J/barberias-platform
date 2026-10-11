@@ -1,8 +1,10 @@
 import {
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
@@ -10,6 +12,7 @@ import type { CreateBarberiaDto } from './dto/create-barberia.dto.js';
 import type { UpdateBarberiaDto } from './dto/update-barberia.dto.js';
 import type { BarberiaResponseDto } from './dto/barberia-response.dto.js';
 import type { VincularBarberiaDto } from './dto/vincular-barberia.dto.js';
+import type { ResolverVinculacionDto } from './dto/resolver-vinculacion.dto.js';
 import { plainToInstance } from 'class-transformer';
 import { BarberiaResponseDto as BarberiaResponse } from './dto/barberia-response.dto.js';
 import type { BarberiaLecturaDto } from './dto/barberia-lectura.dto.js';
@@ -21,6 +24,24 @@ import {
   esAdministradorGlobalPorId,
   validarAsignacionRol,
 } from '../../iam/domain/roles.js';
+import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
+import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
+import { TiempoService, ZONA_POR_DEFECTO } from '../../shared/time/tiempo.service.js';
+import { ESTADOS } from '../../shared/domain/estados.js';
+import { reglaDeNegocio, errorDeConflicto } from '../../shared/errors/d40.errors.js';
+import type { Prisma } from '@prisma/client';
+
+/**
+ * E3-12 (§5.3 · qué ocupa espacio). Una desvinculación no puede dejar reservas
+ * vivas sin dueño en la agenda de la sede: `PROPUESTA_PENDIENTE` ocupa el hueco
+ * propuesto (D18) igual que `PENDIENTE` y `CONFIRMADA`.
+ */
+export const ESTADOS_QUE_BLOQUEAN_DESVINCULAR = [
+  ESTADOS.PENDIENTE,
+  ESTADOS.PROPUESTA_PENDIENTE,
+  ESTADOS.CONFIRMADA,
+] as const;
+
 
 /** Genera un slug URL-safe de hasta `maxLen` caracteres */
 function generateSlug(text: string, maxLen = 40): string {
@@ -48,7 +69,32 @@ function generateCodigoAcceso(): string {
 export class BarberiaService {
   private readonly logger = new Logger(BarberiaService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  /** E2-04: el reloj central; la zona sale de `barberias.zona_horaria`. */
+  private readonly tiempo = new TiempoService();
+
+  constructor(
+    private readonly prisma: PrismaService,
+    // E3-12: la aprobación/rechazo de la 6ª notifican y auditan. Opcionales
+    // para no romper los unitarios que construyen el servicio solo con prisma.
+    @Optional() private readonly auditoriaService?: AuditoriaService,
+    @Optional() private readonly notificacionService?: NotificacionService,
+  ) {}
+
+  /** Registra el evento si hay servicio de auditoría montado (D28). */
+  private async auditar(
+    dto: {
+      usuarioId: string | null;
+      accion: string;
+      entidad: string;
+      entidadId: string;
+      contexto: Record<string, any>;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    if (!this.auditoriaService) return;
+    await this.auditoriaService.registrarEvento(dto, tx as any);
+  }
+
 
   // ── Helpers de mapeo ───────────────────────────────────────────────────────
 
@@ -398,7 +444,45 @@ export class BarberiaService {
       });
 
       if (existing) {
-        // Idempotent return or throw conflict
+        // E3-12 · D21: revincular reactiva la MISMA fila. No se borra ni se
+        // recrea, de modo que `contador_no_presentado`, `esta_restringido` y
+        // `motivo_restriccion` se conservan (D20: la restricción no se evade
+        // desvinculándose).
+        if (existing.estadoVinculacion === 'DESVINCULADO') {
+          const reactivada = await tx.clienteBarberia.update({
+            where: { id: existing.id },
+            data: {
+              estadoVinculacion: 'ACTIVO',
+              // Solo puede ser la activa si no tiene otra: hay un índice único
+              // parcial que lo garantiza en la base.
+              esBarberiaActiva: !(await tx.clienteBarberia.findFirst({
+                where: { usuarioId, esBarberiaActiva: true },
+                select: { id: true },
+              })),
+            },
+          });
+
+          this.logger.log(`Usuario ${usuarioId} revinculó la barbería ${barberia.id}`);
+          await this.auditar(
+            {
+              usuarioId,
+              accion: 'VINCULACION_REVINCULADA',
+              entidad: 'cliente_barberias',
+              entidadId: reactivada.id,
+              contexto: {
+                barberiaId: barberia.id,
+                estadoAnterior: 'DESVINCULADO',
+                estadoNuevo: 'ACTIVO',
+                contadorNoPresentado: reactivada.contadorNoPresentado,
+                estaRestringido: reactivada.estaRestringido,
+              },
+            },
+            tx,
+          );
+          return reactivada;
+        }
+
+        // Cualquier otro estado (ACTIVO o PENDIENTE_APROBACION) es idempotente.
         return existing;
       }
 
@@ -407,7 +491,11 @@ export class BarberiaService {
         where: { usuarioId },
       });
 
-      const estadoVinculacion = count >= 5 ? 'PENDIENTE' : 'ACTIVO';
+      // E2-03/D10: el estado de la 6ª vinculación es `PENDIENTE_APROBACION`
+      // (catálogo cerrado de `cliente_barberias.estado_vinculacion`). Antes se
+      // escribía `PENDIENTE`, un valor fuera de catálogo que el CHECK de la base
+      // ahora rechaza.
+      const estadoVinculacion = count >= 5 ? 'PENDIENTE_APROBACION' : 'ACTIVO';
       const esBarberiaActiva = count === 0; // Si es la primera, la marcamos como activa por defecto
 
       const nuevaVinculacion = await tx.clienteBarberia.create({
@@ -420,6 +508,22 @@ export class BarberiaService {
       });
 
       this.logger.log(`Usuario ${usuarioId} vinculado a Barbería ${barberia.id}. Estado: ${estadoVinculacion}`);
+
+      await this.auditar(
+        {
+          usuarioId,
+          accion: 'VINCULACION_CREADA',
+          entidad: 'cliente_barberias',
+          entidadId: nuevaVinculacion.id,
+          contexto: {
+            barberiaId: barberia.id,
+            estado: estadoVinculacion,
+            requiereAprobacion: estadoVinculacion === 'PENDIENTE_APROBACION',
+          },
+        },
+        tx,
+      );
+
       return nuevaVinculacion;
     });
   }
@@ -500,6 +604,207 @@ export class BarberiaService {
 
       this.logger.log(`Usuario ${usuarioId} activó la barbería ${barberiaId}`);
       return activa;
+    });
+  }
+
+  // ── E3-12 · vinculación, sexta aprobación y desvinculación ────────────────
+
+  /**
+   * E3-12 (§1.2) · la 6ª vinculación del cliente queda `PENDIENTE_APROBACION`
+   * (D10) y solo la resuelve el ADMINISTRADOR global.
+   *
+   * Se lista el vínculo junto con el cliente y la sede para que el panel de
+   * plataforma no necesite tres consultas.
+   */
+  async listarVinculacionesPendientes() {
+    return this.prisma.clienteBarberia.findMany({
+      where: { estadoVinculacion: 'PENDIENTE_APROBACION' },
+      include: {
+        usuario: { select: { id: true, nombreCompleto: true, correo: true } },
+        barberia: { select: { id: true, nombre: true, ubicacion: true, estado: true } },
+      },
+      orderBy: { creadoAt: 'asc' },
+    });
+  }
+
+  /**
+   * Acepta o rechaza una vinculación pendiente. Ambas resoluciones:
+   *  - exigen que la fila esté `PENDIENTE_APROBACION` (409 `ESTADO_INVALIDO`);
+   *  - notifican al cliente (§1.2);
+   *  - auditan con `VINCULACION_APROBADA` / `VINCULACION_RECHAZADA` (D28).
+   *
+   * Al aprobar pasa a `ACTIVO`; al rechazar a `DESVINCULADO`. En los dos casos
+   * se conserva la fila: D20/D21 prohíben que la restricción se evade borrando.
+   */
+  async resolverVinculacion(
+    vinculacionId: string,
+    decision: 'APROBAR' | 'RECHAZAR',
+    usuario: UsuarioAutenticado,
+    motivo?: string,
+  ) {
+    const vinculacion = await this.prisma.clienteBarberia.findUnique({
+      where: { id: vinculacionId },
+      include: {
+        usuario: { select: { id: true, nombreCompleto: true, correo: true } },
+        barberia: { select: { id: true, nombre: true } },
+      },
+    });
+
+    if (!vinculacion) {
+      throw new NotFoundException(`Vinculación ${vinculacionId} no encontrada.`);
+    }
+
+    if (vinculacion.estadoVinculacion !== 'PENDIENTE_APROBACION') {
+      throw errorDeConflicto(
+        'ESTADO_INVALIDO',
+        `La vinculación está en ${vinculacion.estadoVinculacion}: solo se resuelve una pendiente de aprobación.`,
+      );
+    }
+
+    const esAprobada = decision === 'APROBAR';
+    const estadoNuevo = esAprobada ? 'ACTIVO' : 'DESVINCULADO';
+
+    const actualizada = await this.prisma.clienteBarberia.update({
+      where: { id: vinculacion.id },
+      data: { estadoVinculacion: estadoNuevo },
+    });
+
+    await this.auditar({
+      usuarioId: usuario.id,
+      accion: esAprobada ? 'VINCULACION_APROBADA' : 'VINCULACION_RECHAZADA',
+      entidad: 'cliente_barberias',
+      entidadId: vinculacion.id,
+      contexto: {
+        barberiaId: vinculacion.barberiaId,
+        clienteId: vinculacion.usuarioId,
+        estadoAnterior: 'PENDIENTE_APROBACION',
+        estadoNuevo,
+        ...(motivo ? { motivo } : {}),
+      },
+    });
+
+    if (this.notificacionService) {
+      const sede = vinculacion.barberia.nombre;
+      const contenido = esAprobada
+        ? `Tu vinculación con "${sede}" fue aprobada. Ya puedes reservar en esa sede.`
+        : `Tu vinculación con "${sede}" fue rechazada${motivo ? `: ${motivo}` : '.'}`;
+
+      this.notificacionService
+        .enviarNotificacion({
+          usuarioId: vinculacion.usuarioId,
+          tipo: esAprobada ? 'VINCULACION_APROBADA' : 'VINCULACION_RECHAZADA',
+          contenido,
+        })
+        .catch((err) =>
+          this.logger.warn(`No se pudo despachar notificación de vinculación: ${err.message}`),
+        );
+    }
+
+    this.logger.log(
+      `Vinculación ${vinculacion.id} ${estadoNuevo} por ${usuario.id}${motivo ? ` (${motivo})` : ''}`,
+    );
+
+    return actualizada;
+  }
+
+  /**
+   * E3-12 (§1.2) · datos públicos de la sede a partir de su enlace único.
+   *
+   * Es lo que el frontend necesita para resolver el QR. Devuelve la lectura
+   * PÚBLICA: `toLectura` omite `codigoAcceso` y `enlaceUnico`, así que escanear
+   * el QR no descubre la puerta de entrada a la sede.
+   */
+  async buscarPorEnlace(enlace: string): Promise<BarberiaLecturaDto> {
+    const barberia = await this.prisma.barberia.findUnique({
+      where: { enlaceUnico: enlace },
+    });
+
+    if (!barberia || barberia.estado !== 'ACTIVO') {
+      throw new NotFoundException('Barbería no encontrada para ese enlace.');
+    }
+
+    return this.toLectura(barberia);
+  }
+
+  /**
+   * E3-12 (§7.5) · el CLIENTE deja su vínculo sin perder el historial.
+   *
+   * Escribes `DESVINCULADO` y `es_barberia_activa = false` sobre la MISMA fila:
+   * no se borra nada, así que `contador_no_presentado`, `esta_restringido` y
+   * `motivo_restriccion` sobreviven (D20) y revincular los reutiliza (D21).
+   *
+   * Bloqueo (422 `RESERVAS_FUTURAS`): mientras queden reservas `PENDIENTE`,
+   * `PROPUESTA_PENDIENTE` o `CONFIRMADA`, la sede seguiría con un hueco ocupado
+   * por alguien que ya no es cliente.
+   */
+  async desvincular(usuarioId: string, barberiaId: string) {
+    return withSerializableTransaction(this.prisma, async (tx) => {
+      const [vinculacion, barberia] = await Promise.all([
+        tx.clienteBarberia.findUnique({
+          where: { uk_cliente_barberia: { usuarioId, barberiaId } },
+        }),
+        tx.barberia.findUnique({ where: { id: barberiaId } }),
+      ]);
+
+      if (!barberia) {
+        throw new NotFoundException('Barbería no encontrada.');
+      }
+      if (!vinculacion) {
+        throw new NotFoundException('No tienes vínculo con esta barbería.');
+      }
+      if (vinculacion.estadoVinculacion === 'DESVINCULADO') {
+        throw errorDeConflicto(
+          'YA_DESVINCULADO',
+          'Tu vínculo con esta barbería ya estaba desvinculado.',
+        );
+      }
+
+      // "Futuras" se decide en la zona de la sede (E2-04): una reserva de hoy
+      // sigue ocupando agenda hasta que termine el día local.
+      const fechaHoy = this.tiempo.fechaLocal(
+        this.tiempo.ahora(),
+        barberia.zonaHoraria || ZONA_POR_DEFECTO,
+      );
+      const futuras = await tx.reserva.count({
+        where: {
+          clienteId: usuarioId,
+          barberiaId,
+          estado: { in: [...ESTADOS_QUE_BLOQUEAN_DESVINCULAR] },
+          fechaCita: { gte: this.tiempo.fechaDeCalendario(fechaHoy) },
+        },
+      });
+
+      if (futuras > 0) {
+        throw reglaDeNegocio(
+          'RESERVAS_FUTURAS',
+          `Tienes ${futuras} reserva(s) futura(s) en esta sede. Cancelalas antes de desvincularte.`,
+        );
+      }
+
+      const actualizada = await tx.clienteBarberia.update({
+        where: { id: vinculacion.id },
+        data: { estadoVinculacion: 'DESVINCULADO', esBarberiaActiva: false },
+      });
+
+      await this.auditar(
+        {
+          usuarioId,
+          accion: 'VINCULACION_DESVINCULADA',
+          entidad: 'cliente_barberias',
+          entidadId: vinculacion.id,
+          contexto: {
+            barberiaId,
+            estadoAnterior: vinculacion.estadoVinculacion,
+            estadoNuevo: 'DESVINCULADO',
+            contadorNoPresentado: vinculacion.contadorNoPresentado,
+            estaRestringido: vinculacion.estaRestringido,
+          },
+        },
+        tx,
+      );
+
+      this.logger.log(`Usuario ${usuarioId} se desvinculó de la barbería ${barberiaId}`);
+      return actualizada;
     });
   }
 }

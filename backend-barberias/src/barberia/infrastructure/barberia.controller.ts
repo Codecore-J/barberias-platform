@@ -1,36 +1,30 @@
 import {
-  Body,
   Controller,
-  Delete,
   Get,
-  HttpCode,
-  HttpStatus,
+  Post,
+  Body,
   Param,
   ParseUUIDPipe,
+  Delete,
   Patch,
-  Post,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
+import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
+import { Roles } from '../../iam/infrastructure/roles.decorator.js';
+import { Autenticado } from '../../iam/infrastructure/autenticado.decorator.js';
+import { esAdministradorGlobal } from '../../iam/domain/roles.js';
+import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import { BarberiaService } from '../application/barberia.service.js';
 import { CreateBarberiaDto } from '../application/dto/create-barberia.dto.js';
 import { UpdateBarberiaDto } from '../application/dto/update-barberia.dto.js';
 import { VincularBarberiaDto } from '../application/dto/vincular-barberia.dto.js';
-import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
-import { Roles } from '../../iam/infrastructure/roles.decorator.js';
-import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
-import { Autenticado } from '../../iam/infrastructure/autenticado.decorator.js';
-import { esAdministradorGlobal } from '../../iam/domain/roles.js';
 
 @Controller('barberias')
 export class BarberiaController {
   constructor(private readonly barberiaService: BarberiaService) {}
 
-  /**
-   * POST /barberias
-   * Cualquier usuario autenticado puede crear una barbería (decisión 1).
-   * El responsable se extrae automáticamente del JWT.
-   * El límite de 2 barberías por usuario es E1-07.
-   */
-  // TODO(E1-07): aplicar el límite de 2 barberías por usuario en el servicio.
+  /** POST /barberias — cualquier usuario autenticado puede crear una barbería (E1-07). */
   @Autenticado()
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -41,13 +35,17 @@ export class BarberiaController {
     return this.barberiaService.create(user.id, dto);
   }
 
-  /**
-   * POST /barberias/vincular
-   * Vincula al usuario actual a una barbería mediante código de acceso
-   * (decisión 5). Crea un vínculo `cliente_barberias`: lo usa el CLIENTE.
-   * Un barbero entra por su rol y un administrador gestiona por panel, así que
-   * ninguno necesita un vínculo de cliente.
-   */
+  /** GET /barberias/por-enlace/:enlace — datos públicos de la sede para el QR (E3-12). */
+  @Autenticado()
+  @Get('por-enlace/:enlace')
+  porEnlace(
+    @Param('enlace') enlace: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.barberiaService.buscarPorEnlace(enlace, user);
+  }
+
+  /** POST /barberias/vincular — el CLIENTE se vincula con el código de acceso (T2.2). */
   @Roles('CLIENTE')
   @Post('vincular')
   vincular(
@@ -57,36 +55,21 @@ export class BarberiaController {
     return this.barberiaService.vincularCliente(user.id, dto);
   }
 
-  /**
-   * GET /barberias
-   * Lista las barberías donde el usuario es responsable. Los cuatro roles
-   * necesitan esta pantalla: es el selector de sede del frontend.
-   * E1-07: el servicio aplica por sede la misma regla de `codigoAcceso` que la
-   * lectura por id, así que aquí no basta con saber quién pregunta.
-   */
+  /** GET /barberias — lista las sedes donde el usuario es responsable (E1-07). */
   @Autenticado()
   @Get()
   findMine(@CurrentUser() user: UsuarioAutenticado) {
     return this.barberiaService.findAllByResponsable(user.id, user);
   }
 
-  /**
-   * GET /barberias/all
-   * Solo el ADMINISTRADOR global puede listar todas las barberías (D05).
-   */
+  /** GET /barberias/all — solo el ADMINISTRADOR global (D05). */
   @Get('all')
   @Roles('ADMINISTRADOR')
   findAll() {
     return this.barberiaService.findAll();
   }
 
-  /**
-   * GET /barberias/:id/personal
-   * Lista el personal (barberos y administradores) de una barbería.
-   * ADMIN_BARBERIA o BARBERO de esa barbería, y el ADMINISTRADOR global;
-   * la pertenencia y el ocultado del contacto se validan en el servicio
-   * (E1-03 · H19).
-   */
+  /** GET /barberias/:id/personal — personal de una sede (E1-03 · H19). */
   @Roles('ADMIN_BARBERIA', 'BARBERO')
   @Get(':id/personal')
   findPersonal(
@@ -96,12 +79,17 @@ export class BarberiaController {
     return this.barberiaService.findPersonal(id, user);
   }
 
-  /**
-   * GET /barberias/:id
-   * Cualquier usuario autenticado puede consultar una barbería por ID
-   * (decisión 3). La respuesta excluye `codigoAcceso` y `enlaceUnico` salvo
-   * para el ADMIN_BARBERIA de esa barbería y el ADMINISTRADOR global.
-   */
+  /** POST /barberias/:id/desvincular — el CLIENTE deja el vínculo sin borrar historial (E3-12). */
+  @Roles('CLIENTE')
+  @Post(':id/desvincular')
+  desvincular(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.barberiaService.desvincular(user.id, id);
+  }
+
+  /** GET /barberias/:id — lectura pública/privada según quién pregunta (E1-05). */
   @Autenticado()
   @Get(':id')
   findOne(
@@ -111,15 +99,7 @@ export class BarberiaController {
     return this.barberiaService.findOne(id, user);
   }
 
-  /**
-   * PATCH /barberias/:id/seleccionar
-   * Selecciona una barbería como la activa para el usuario (apaga las demás).
-   * Decisión 2 enmendada: los cuatro roles.
-   *
-   * E1-06: el servicio ya acepta el vínculo por rol, no solo `cliente_barberias`,
-   * así que el barbero y el dueño dejan de recibir 404 en la ruta que existe
-   * para ellos. Se le pasa la sesión para no consultar `usuario_roles` dos veces.
-   */
+  /** PATCH /barberias/:id/seleccionar — elige la barbería activa (T2.3, E1-06). */
   @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Patch(':id/seleccionar')
   seleccionarActiva(
@@ -129,11 +109,7 @@ export class BarberiaController {
     return this.barberiaService.seleccionarBarberiaActiva(user.id, id, user);
   }
 
-  /**
-   * PATCH /barberias/:id
-   * Solo el ADMIN_BARBERIA de la barbería o el ADMINISTRADOR global puede
-   * editarla; la pertenencia la comprueba el servicio.
-   */
+  /** PATCH /barberias/:id — edita la sede: ADMIN_BARBERIA propio o ADMINISTRADOR global. */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Patch(':id')
   update(
@@ -144,12 +120,7 @@ export class BarberiaController {
     return this.barberiaService.update(id, user.id, dto, esAdministradorGlobal(user));
   }
 
-  /**
-   * DELETE /barberias/:id
-   * Soft-delete — cambia estado a INACTIVO.
-   * Suspender una sede es una decisión de plataforma (decisión 4): solo el
-   * ADMINISTRADOR global lo hace.
-   */
+  /** DELETE /barberias/:id — soft-delete a INACTIVO solo por ADMINISTRADOR global. */
   @Roles('ADMINISTRADOR')
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)

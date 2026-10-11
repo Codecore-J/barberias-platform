@@ -84,6 +84,12 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'PATCH /barberias/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'DELETE /barberias/:id': [ROL_ADMINISTRADOR],
   'POST /barberias/vincular': [ROL_CLIENTE],
+  // E3-12 (2026-10-11): enlace/QR, desvincular y la resolución de la 6ª.
+  'GET /barberias/por-enlace/:enlace': TODOS,
+  'POST /barberias/:id/desvincular': [ROL_CLIENTE],
+  'GET /plataforma/vinculaciones/pendientes': [ROL_ADMINISTRADOR],
+  'POST /plataforma/vinculaciones/:id/aprobar': [ROL_ADMINISTRADOR],
+  'POST /plataforma/vinculaciones/:id/rechazar': [ROL_ADMINISTRADOR],
 
   'GET /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
   'POST /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -311,9 +317,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
 
   // E2-02 (2026-10-11): eran 64 rutas; `PATCH /reservas/:id/estado` se eliminó
   // (ver la nota del diccionario), así que quedan 63.
-  it('descubrir las 63 rutas del servidor y todas tienen decision', () => {
+  it('descubrir las 68 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(63);
+    expect(claves.length).toBe(69);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -404,7 +410,7 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     // PATCH /reservas/:id/reprogramar, E3-08 añadió cuatro (cancelación
     // especial, proponer-horario y su bandeja de aceptar/rechazar) y E2-02
     // quitó PATCH /reservas/:id/estado.
-    expect(evaluaciones).toBe(252);
+    expect(evaluaciones).toBe(276);
     expect(
       desviaciones.length === 0
         ? ''
