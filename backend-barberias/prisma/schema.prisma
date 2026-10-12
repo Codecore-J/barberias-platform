@@ -461,6 +461,10 @@ model ConfiguracionBarberia {
   // Por defecto FALSE: una sede no acepta cancelaciones especiales hasta que
   // lo activa explícitamente (E3-11 expondrá el PATCH de configuración).
   permiteCancelacionEspecial Boolean @default(false) @map("permite_cancelacion_especial")
+  // E4-02/8 · D22: la sede puede apagar las oportunidades de espacio. Es la
+  // bandera que gobierna el endpoint de huecos (GET .../disponibilidad/huecos):
+  // con FALSE el endpoint responde 200 y la lista VACÍA, nunca 403.
+  oportunidadesEspacioActivas Boolean @default(true) @map("oportunidades_espacio_activas")
 
   barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
 

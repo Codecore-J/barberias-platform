@@ -9,11 +9,15 @@ import {
   fechaCalendarioISO,
   horaRelojHHMM,
 } from '../../shared/time/tiempo.service.js';
+import {
+  PASO_DISPONIBILIDAD_MINUTOS,
+  elegirAlternativas,
+  proyectarTramosLibres,
+  type Intervalo,
+} from '../domain/huecos.js';
+import { capacidadDeGrupoExcedida } from '../../reserva/domain/reserva-grupal.js';
 
-export interface Intervalo {
-  inicio: Date;
-  fin: Date;
-}
+export type { Intervalo };
 
 export interface SolicitudDisponibilidad {
   barberiaId: string;
@@ -32,6 +36,24 @@ export interface SolicitudDisponibilidad {
    * bloquearía a sí misma y un aceptar legítimo daría siempre 409.
    */
   excluirReservaId?: string;
+}
+
+/** E4-02 · solicitud de alternativas para UN día. */
+export interface SolicitudDeAlternativas
+  extends Omit<SolicitudDisponibilidad, 'margenRequerido' | 'duracionTotal'> {
+  /** Servicios + margen: el bloque completo que tiene que caber. */
+  duracionRequeridaMinutos: number;
+  /** Hora pedida, para ordenar las alternativas por cercanía. */
+  horaObjetivo?: string;
+  /** Máximo de alternativas a devolver (5 por defecto). */
+  maximo?: number;
+}
+
+/** E4-02 · una alternativa ya en etiquetas de la sede (lo que ve el cliente). */
+export interface AlternativaEtiquetada {
+  fecha: string;
+  horaInicio: string;
+  horaFin: string;
 }
 
 @Injectable()
@@ -84,31 +106,37 @@ export class DisponibilidadService {
   ): Promise<Intervalo[]> {
     const db = txClient ?? this.prisma;
 
+    await this.exigirPertenencia(db, solicitud.barberiaId, solicitanteId);
+
+    return this.calcularDisponibilidad(solicitud, txClient);
+  }
+
+  /** E4-02: misma pertenencia que `calcularDisponibilidadDeSolicitante`. */
+  async buscarAlternativasDeSolicitante(
+    solicitud: SolicitudDeAlternativas,
+    solicitanteId: string,
+  ): Promise<AlternativaEtiquetada[]> {
+    await this.exigirPertenencia(this.prisma, solicitud.barberiaId, solicitanteId);
+    return this.buscarAlternativas(solicitud);
+  }
+
+  private async exigirPertenencia(db: any, barberiaId: string, solicitanteId: string): Promise<void> {
     if (!(await esAdministradorGlobalPorId(db, solicitanteId))) {
-      const pertenece = await perteneceABarberia(db, solicitanteId, solicitud.barberiaId);
+      const pertenece = await perteneceABarberia(db, solicitanteId, barberiaId);
       if (!pertenece) {
         throw new ForbiddenException(
           'No perteneces a esta barbería: no puedes consultar su disponibilidad.',
         );
       }
     }
-
-    return this.calcularDisponibilidad(solicitud, txClient);
   }
 
   /**
-   * Calcula los Time Slots (intervalos) disponibles en una fecha para una duración dada.
-   *
-   * E2-04/H36: el día de la semana y la jornada se leen en la zona de la SEDE.
-   * `fecha.getDay()` usaba la zona del servidor y con Render en UTC-4 (o el
-   * proceso en `America/Santo_Domingo`) devolvía el día anterior; los slots se
-   * componían con `setHours` del servidor, no como instantes reales.
+   * E3-02 · datos del día que comparten la disponibilidad y las alternativas:
+   * la jornada efectiva (horario base, sobrescrito por una excepción) y las
+   * ocupaciones según §5.3 (D37): bloqueos y reservas `PENDIENTE`/`CONFIRMADA`.
    */
-  async calcularDisponibilidad(solicitud: SolicitudDisponibilidad, txClient?: any): Promise<Intervalo[]> {
-    const db = txClient ?? this.prisma;
-    const { barberiaId, fecha, duracionTotal, margenRequerido, excluirReservaId } = solicitud;
-    const duracionConMargen = duracionTotal + margenRequerido;
-
+  private async datosDelDia(db: any, barberiaId: string, fecha?: Date | string, excluirReservaId?: string) {
     const tz = await this.zonaDeSede(db, barberiaId);
 
     // E2-04: la fecha es una ETIQUETA de calendario. Si llega como cadena se usa
@@ -137,7 +165,7 @@ export class DisponibilidadService {
     });
 
     if (excepcion && excepcion.tipo === TipoExcepcionHorario.CERRADA) {
-      return []; // No hay disponibilidad
+      return { tz, fechaIso, fechaEtiqueta, jornada: null as Intervalo | null, ocupados: [] as Intervalo[] };
     }
 
     let inicioJornada = horarioBase ? this.instanteDeEtiqueta(fechaIso, horarioBase.horaInicio, tz) : null;
@@ -151,7 +179,7 @@ export class DisponibilidadService {
     }
 
     if (!inicioJornada || !finJornada) {
-      return []; // No hay horario definido
+      return { tz, fechaIso, fechaEtiqueta, jornada: null as Intervalo | null, ocupados: [] as Intervalo[] };
     }
 
     // 3. Obtener bloqueos de agenda
@@ -169,6 +197,8 @@ export class DisponibilidadService {
         // (§5.3). El conjunto NO cambia aquí: sumar PROPUESTA_PENDIENTE es la
         // decisión de D37/E3-02, documentada como H41.
         estado: { in: [ESTADOS.PENDIENTE, ESTADOS.CONFIRMADA] },
+        // E3-04: la reserva que se está revalidando sigue PENDIENTE mientras se
+        // revalida su propio hueco; sin excluirla se bloquearía a sí misma.
         ...(excluirReservaId ? { id: { not: excluirReservaId } } : {}),
       },
     });
@@ -190,59 +220,135 @@ export class DisponibilidadService {
       ocupados.push({ inicio: inicioOcupado, fin: finOcupado });
     }
 
-    // Fusionar intervalos ocupados solapados
-    const ocupadosFusionados = this.fusionarIntervalos(ocupados);
-
-    // 6. Extraer los rangos libres y dividirlos en Time Slots
-    const disponibles: Intervalo[] = [];
-    const duracionSlot = 30; // Intervalos de 30 mins (o 15, configurable)
-
-    let cursor = inicioJornada.getTime();
-    const finJornadaMs = finJornada.getTime();
-
-    while (cursor < finJornadaMs) {
-      const intentoInicio = new Date(cursor);
-      const intentoFin = new Date(cursor + duracionConMargen * 60000);
-
-      if (
-        intentoFin.getTime() <= finJornadaMs &&
-        !this.estaSolapado({ inicio: intentoInicio, fin: intentoFin }, ocupadosFusionados)
-      ) {
-        disponibles.push({ inicio: intentoInicio, fin: intentoFin });
-      }
-
-      // Avanzar el cursor
-      cursor += duracionSlot * 60000;
-    }
-
-    return disponibles;
+    return {
+      tz,
+      fechaIso,
+      fechaEtiqueta,
+      jornada: { inicio: inicioJornada, fin: finJornada } as Intervalo,
+      ocupados,
+    };
   }
 
-  private fusionarIntervalos(intervalos: Intervalo[]): Intervalo[] {
-    if (intervalos.length === 0) return [];
-    intervalos.sort((a, b) => a.inicio.getTime() - b.inicio.getTime());
+  /**
+   * Calcula los Time Slots (intervalos) disponibles en una fecha para una duración dada.
+   *
+   * E2-04/H36: el día de la semana y la jornada se leen en la zona de la SEDE.
+   * `fecha.getDay()` usaba la zona del servidor y con Render en UTC-4 (o el
+   * proceso en `America/Santo_Domingo`) devolvía el día anterior; los slots se
+   * componían con `setHours` del servidor, no como instantes reales.
+   */
+  async calcularDisponibilidad(solicitud: SolicitudDisponibilidad, txClient?: any): Promise<Intervalo[]> {
+    const db = txClient ?? this.prisma;
+    const { barberiaId, fecha, duracionTotal, margenRequerido, excluirReservaId } = solicitud;
+    const duracionConMargen = duracionTotal + margenRequerido;
 
-    const fusionados = [intervalos[0]];
-    for (let i = 1; i < intervalos.length; i++) {
-      const last = fusionados[fusionados.length - 1];
-      const actual = intervalos[i];
-      if (actual.inicio <= last.fin) {
-        last.fin = new Date(Math.max(last.fin.getTime(), actual.fin.getTime()));
-      } else {
-        fusionados.push(actual);
-      }
+    const datos = await this.datosDelDia(db, barberiaId, fecha, excluirReservaId);
+    if (!datos.jornada) {
+      return [];
     }
-    return fusionados;
+
+    // E4-02/D47: la proyección es la función pura del dominio, la misma que
+    // alimenta las alternativas. El paso sigue siendo el histórico de 30 min.
+    return proyectarTramosLibres(
+      datos.jornada,
+      datos.ocupados,
+      duracionConMargen,
+      PASO_DISPONIBILIDAD_MINUTOS,
+    );
   }
 
-  private estaSolapado(intento: Intervalo, ocupados: Intervalo[]): boolean {
-    for (const o of ocupados) {
-      // Hay solapamiento si el inicio del intento está antes del fin del ocupado
-      // Y el fin del intento está después del inicio del ocupado
-      if (intento.inicio < o.fin && intento.fin > o.inicio) {
-        return true;
-      }
+  /**
+   * E4-02 · Carril B (§E4-02/8, D22): huecos de espacio que la sede expone a
+   * sus clientes.
+   *
+   * Es el MISMO cálculo que las alternativas del error (`buscarAlternativas`),
+   * que a su vez es la proyección pura de E3-02 (D47). Un único algoritmo de
+   * huecos alimenta ambos carriles.
+   *
+   * Reglas que gobiernan la exposición:
+   *  - la bandera `oportunidades_espacio_activas` puede apagarlas (200 + []);
+   *  - no se ofrece nada de un tipo que la sede no acepta (§E4-02/3);
+   *  - el grupo tiene que caber (D46): si no cabe NUNCA en esa sede, no hay
+   *    alternativa que ofrecer.
+   *
+   * SOLO LECTURA: no acepta cliente transaccional y no toma locks (D37/H41).
+   */
+  async huecosDeLaSede(
+    barberiaId: string,
+    solicitanteId: string,
+    consulta: { fecha?: string; duracionTotal: number; participantes: number },
+  ): Promise<AlternativaEtiquetada[]> {
+    await this.exigirPertenencia(this.prisma, barberiaId, solicitanteId);
+
+    const config = await this.prisma.configuracionBarberia.findUnique({
+      where: { barberiaId },
+    });
+
+    // §E4-02/8 (D22): la sede puede apagarlas. Con la bandera en falso el
+    // endpoint responde 200 y lista vacía, nunca 403: el contrato del endpoint
+    // no depende de la configuración de cada tenant.
+    if (!config || !config.oportunidadesEspacioActivas) {
+      return [];
     }
-    return false;
+
+    // §E4-02/3: no se ofrece ninguna alternativa si la sede no acepta ese tipo
+    // de reserva, ni siquiera cuando el horario estuviera libre.
+    const esGrupo = consulta.participantes > 1;
+    if (esGrupo && !config.aceptaGrupal) return [];
+    if (!esGrupo && !config.aceptaIndividual) return [];
+
+    // §E4-02/3: el tamaño real del grupo (D46). Un grupo que no cabe en esa
+    // sede no tiene alternativa posible.
+    const excedida = capacidadDeGrupoExcedida(consulta.participantes, {
+      maxPersonasTotal: config.maxPersonasTotal,
+      maxNinos: config.maxNinos,
+    });
+    if (excedida) return [];
+
+    return this.buscarAlternativas({
+      barberiaId,
+      fecha: consulta.fecha,
+      duracionRequeridaMinutos: consulta.duracionTotal,
+    });
+  }
+
+  /**
+   * E4-02 · alternativas para un bloque que no cabe.
+   *
+   * **SOLO LECTURA, por diseño:** este método no acepta un cliente transaccional
+   * (no hay parámetro `txClient`), así que no puede ejecutarse dentro de la
+   * transacción que sostiene el `FOR UPDATE` de la sede, y no toma ningún lock
+   * (D37/H41). La sugerencia no retiene nada: se revalida al confirmar.
+   *
+   * D47: usa el MISMO cálculo que la disponibilidad y la misma proyección pura.
+   */
+  async buscarAlternativas(solicitud: SolicitudDeAlternativas): Promise<AlternativaEtiquetada[]> {
+    const datos = await this.datosDelDia(this.prisma, solicitud.barberiaId, solicitud.fecha);
+    if (!datos.jornada) {
+      return [];
+    }
+
+    const horaObjetivo = solicitud.horaObjetivo
+      ? this.tiempo.aInstante(datos.fechaIso, solicitud.horaObjetivo, datos.tz)
+      : undefined;
+
+    const alternativas = elegirAlternativas({
+      jornada: datos.jornada,
+      ocupados: datos.ocupados,
+      duracionRequeridaMinutos: solicitud.duracionRequeridaMinutos,
+      ahora: this.tiempo.ahora(),
+      horaObjetivo,
+      maximo: solicitud.maximo,
+    });
+
+    return alternativas.map((alternativa) => {
+      const inicio = this.tiempo.desdeInstante(alternativa.inicio, datos.tz);
+      const fin = this.tiempo.desdeInstante(alternativa.fin, datos.tz);
+      return {
+        fecha: inicio.fecha,
+        horaInicio: inicio.hora,
+        horaFin: fin.fecha === inicio.fecha ? fin.hora : `${fin.hora} (+1d)`,
+      };
+    });
   }
 }

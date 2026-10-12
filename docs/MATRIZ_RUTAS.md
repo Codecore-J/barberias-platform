@@ -83,6 +83,7 @@
 | 23 | DELETE | `/barberias/:barberiaId/agenda/bloqueos/:id` · `/agenda/bloqueos/:id` | AgendaController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz | **sí** — `validateAccess` | **sí** — el bloqueo debe ser de esa barbería | sí — `core/services/horarios.service.ts:91` | `src/agenda/application/agenda.service.spec.ts` |
 | 24 | GET | `/barberias/:barberiaId/agenda/disponibilidad` · `/agenda/disponibilidad` | AgendaController | `@Autenticado` | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **6** | **sí** — `calcularDisponibilidadDeSolicitante` (`d93e9af`) | no | sí — `core/services/reservas.service.ts:38`, que llama al alias `/agenda/disponibilidad` | `src/agenda/application/disponibilidad.service.spec.ts`; `test/e1-06-sede-del-tenant.e2e-spec.ts` |
 | 25 | POST | `/barberias/:barberiaId/agenda/disponibilidad` · `/agenda/disponibilidad` | AgendaController | `@Autenticado` | `@Roles(CLIENTE, BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **6** | **sí** — `calcularDisponibilidadDeSolicitante` (`d93e9af`) | no | no | `src/agenda/application/disponibilidad.service.spec.ts`; `test/e1-06-sede-del-tenant.e2e-spec.ts` |
+| 25bis | GET | `/barberias/:barberiaId/disponibilidad/huecos` · `/disponibilidad/huecos` | HuecosController | `@Autenticado` | `@Roles(CLIENTE, ADMIN_BARBERIA, ADMINISTRADOR)` | E4-02 | **sí** — `exigirPertenencia` (mismo guard que la disponibilidad) | no | no | `src/agenda/domain/huecos.spec.ts`; `test/permisos-matriz.e2e-spec.ts`; `test/e4-02-oportunidades.e2e-spec.ts` |
 | 26 | POST | `/barberias/:barberiaId/antecedentes` | AntecedenteController | `@Autenticado` | `@Roles(BARBERO, ADMIN_BARBERIA, ADMINISTRADOR)` | **7** | **sí** | no | no | `src/antecedente/application/antecedente.service.spec.ts` |
 | 27 | PATCH | `/barberias/:barberiaId/antecedentes/:id/evaluar` | AntecedenteController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | matriz (D35) | **sí** | **sí** — el antecedente debe ser de esa barbería | sí — `core/services/antecedentes.service.ts:29` | `src/antecedente/application/antecedente.service.spec.ts` |
 | 28 | GET | `/barberias/:barberiaId/antecedentes/cliente/:clienteId` | AntecedenteController | `@Autenticado` | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **7** | **sí** | **sí** — el cliente debe estar vinculado a esa barbería | no | `src/antecedente/application/antecedente.service.spec.ts` |
@@ -123,6 +124,8 @@
 | 57 | POST | `/barberias/:id/solicitudes-cambio` | BarberiaController | — no existía | `@Roles(ADMIN_BARBERIA)` | **E3-13** (D26) | **sí** — la ruta usa `:id`, así que el guard NO resuelve la sede del parámetro: la pertenencia real la exige el servicio (403 `SOLO_ADMIN_BARBERIA`) | **sí** — 409 `SOLICITUD_PENDIENTE`, 422 `RESPONSABLE_INEXISTENTE` / `SIN_CAMBIOS` | no — pendiente del panel de la sede | `test/e3-13-solicitudes-cambio.e2e-spec.ts`; `src/barberia/application/solicitud-cambio.service.spec.ts` |
 | 58 | GET | `/plataforma/solicitudes-cambio` | PlataformaSolicitudesCambioController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-13** (D26) | no (el guard ya acota) | no | no — pendiente del panel de plataforma | `test/e3-13-solicitudes-cambio.e2e-spec.ts`; `src/barberia/application/solicitud-cambio.service.spec.ts` |
 | 59 | POST | `/plataforma/solicitudes-cambio/:id/resolver` | PlataformaSolicitudesCambioController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-13** (D26) | no | **sí** — 409 `ESTADO_INVALIDO` y 422 `MOTIVO_REQUERIDO`; al aprobar un RESPONSABLE mueve `responsable_id`, el rol `ADMIN_BARBERIA` y audita en UNA transacción | no — pendiente del panel de plataforma | `test/e3-13-solicitudes-cambio.e2e-spec.ts`; `src/barberia/application/solicitud-cambio.service.spec.ts` |
+| 60 | GET | `/barberias/:id/clientes-restringidos` | ClientesRestringidosController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E4-03** (D48) | **sí** — la ruta usa `:id`, así que el guard NO resuelve la sede del parámetro: la pertenencia la exige el servicio (403), igual que la fila 57 | no | no — pendiente del panel de la sede | `test/e4-03-fidelizacion.e2e-spec.ts`; `src/barberia/application/clientes-restringidos.service.spec.ts` |
+| 61 | POST | `/barberias/:id/clientes/:clienteId/reactivar` | ClientesRestringidosController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E4-03** (D48) | **sí** — misma regla que la fila 60, más 404 si no hay vinculación | **sí** — 422 `SIN_RESTRICCION` si el cliente no estaba restringido; levanta la restricción, reinicia el contador de ESA sede y audita `RESTRICCION_LEVANTADA` con el valor anterior y el nuevo (D28) | no — pendiente del panel de la sede | `test/e4-03-fidelizacion.e2e-spec.ts`; `src/barberia/application/clientes-restringidos.service.spec.ts` |
 
 ## Recuento aplicado
 
@@ -184,6 +187,16 @@ la fila 16 cambia de reglas: `PATCH /barberias/:id` deja de admitir `nombre` (42
 `NOMBRE_REQUIERE_SOLICITUD`) y `estado` (422 `ESTADO_NO_EDITABLE`), y el teléfono exige la contraseña
 actual (D27). Evidencia: `test/e3-13-solicitudes-cambio.e2e-spec.ts` (20 casos) y
 `src/barberia/application/solicitud-cambio.service.spec.ts` (12 casos).
+
+**Estado real tras E4-03 (2026-10-12):** `test/permisos-matriz.spec.ts` cuenta **71 rutas × 4 roles = 284**
+decisiones. Sobre las 69 de E4-02, `+2` por la bandeja local de restringidos (filas 60 y 61): ambas declaran
+`@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` y usan `:id`, así que el acotado por sede es de servicio. D48: la
+penalización por inasistencias es LOCAL — ninguno de los dos endpoints puede suspender la cuenta global
+(`usuarios.estado_cuenta`), y el bloqueo de la creación de reservas (403 `CLIENTE_RESTRINGIDO`) lo aplica
+`ReservaService.crearReserva` para individuales y grupales. Evidencia: `test/e4-03-fidelizacion.e2e-spec.ts`,
+`src/barberia/application/clientes-restringidos.service.spec.ts`, `src/reserva/domain/fidelizacion.spec.ts`,
+el describe E4-03 de `src/reserva/application/reserva.service.spec.ts` y los dos casos nuevos de
+`test/permisos-matriz.e2e-spec.ts`.
 
 ## Decisiones tomadas
 
