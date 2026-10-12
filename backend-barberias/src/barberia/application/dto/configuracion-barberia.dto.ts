@@ -51,6 +51,11 @@ export class ConfiguracionBarberiaDto {
   @IsBoolean()
   permiteCancelacionEspecial?: boolean;
 
+  /** E4-02/8 · D22: la sede puede apagar las oportunidades de espacio. */
+  @IsOptional()
+  @IsBoolean()
+  oportunidadesEspacioActivas?: boolean;
+
   @IsOptional()
   @IsInt()
   @Min(1)
@@ -85,6 +90,7 @@ export class ConfiguracionBarberiaResponseDto {
   nuevasReservasActivas: boolean;
   margenGrupalMinutos: number;
   permiteCancelacionEspecial: boolean;
+  oportunidadesEspacioActivas: boolean;
   motivoPausa: string | null;
   pausaDesde: Date | null;
   reactivacionProgramada: Date | null;

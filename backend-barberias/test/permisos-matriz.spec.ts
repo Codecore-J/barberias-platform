@@ -103,6 +103,15 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'DELETE /barberias/:barberiaId/agenda,agenda/bloqueos/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /barberias/:barberiaId/agenda,agenda/disponibilidad': TODOS,
   'POST /barberias/:barberiaId/agenda,agenda/disponibilidad': TODOS,
+  // E4-02 (2026-10): los huecos de espacio son lectura de la capacidad de venta
+  // de la sede, no gestión de agenda, así que el BARBERO queda fuera (§E4-02/2).
+  // El CLIENTE los consulta para su propia reserva y el ADMINISTRADOR es
+  // transversal por jerarquía (E1-04), que MATRIZ_ESPERADA lo añade solo.
+  'GET /barberias/:barberiaId/disponibilidad,disponibilidad/huecos': [
+    ROL_CLIENTE,
+    ROL_ADMIN_BARBERIA,
+    ROL_ADMINISTRADOR,
+  ],
 
   'POST /barberias/:barberiaId/antecedentes/': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'PATCH /barberias/:barberiaId/antecedentes/:id/evaluar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -326,10 +335,10 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // (ver la nota del diccionario), así que quedaban 63. E3-11 sumó los dos
   // endpoints de configuración (GET y PATCH /barberias/:barberiaId/configuracion)
   // y quedaban 65. E3-13 sumó la solicitud de la sede y la bandeja de plataforma
-  // (listar y resolver): 68.
-  it('descubrir las 68 rutas del servidor y todas tienen decision', () => {
+  // (listar y resolver): 68. E4-02 sumó los huecos de espacio: 69.
+  it('descubrir las 69 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(68);
+    expect(claves.length).toBe(69);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -420,9 +429,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     // PATCH /reservas/:id/reprogramar, E3-08 añadió cuatro (cancelación
     // especial, proponer-horario y su bandeja de aceptar/rechazar), E2-02
     // quitó PATCH /reservas/:id/estado, E3-11 añadió las dos de configuración
-    // (GET y PATCH /barberias/:barberiaId/configuracion) y E3-13 las tres de
-    // solicitudes de cambio.
-    expect(evaluaciones).toBe(272);
+    // (GET y PATCH /barberias/:barberiaId/configuracion), E3-13 las tres de
+    // solicitudes de cambio y E4-02 la de huecos de espacio: 69 × 4 = 276.
+    expect(evaluaciones).toBe(276);
     expect(
       desviaciones.length === 0
         ? ''

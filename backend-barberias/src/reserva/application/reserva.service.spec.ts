@@ -50,6 +50,10 @@ describe('ReservaService', () => {
 
   const mockDisponibilidadService = {
     calcularDisponibilidad: vi.fn(),
+    // E4-02: por defecto el error de agenda viaja SIN alternativas, que es el
+    // comportamiento previo. Los tests que quieran comprobar el carril A lo
+    // sobrescriben con `mockResolvedValue`.
+    buscarAlternativas: vi.fn(async () => []),
   };
 
   const mockQueue = {
@@ -1038,6 +1042,36 @@ describe('ReservaService', () => {
       expect(mockAuditoriaService.registrarEvento).not.toHaveBeenCalled();
     });
 
+    it('E4-02: la colisión ofrece alternativas reales dentro del 409 (Carril A)', async () => {
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reserva());
+      // Solo queda libre de 06:00 a 08:00: el bloque nuevo (10:00-10:30+10) no cabe.
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
+        { inicio: slot(6, 0), fin: slot(8, 0) },
+      ]);
+      mockPrismaService.reserva.findUnique.mockResolvedValue({ margenGrupalHistorico: 10 });
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ zonaHoraria: TZ_SEDE });
+      const alternativas = [{ fecha: '2026-10-12', horaInicio: '11:00', horaFin: '11:30' }];
+      mockDisponibilidadService.buscarAlternativas.mockReset();
+      mockDisponibilidadService.buscarAlternativas.mockResolvedValueOnce(alternativas);
+
+      await expect(
+        service.reprogramarReserva('uuid-barberia', 'uuid-reserva', dto, usuarioAdmin as any),
+      ).rejects.toMatchObject({
+        response: { codigo: 'CONFLICTO_HORARIO', statusCode: 409, alternativas },
+      });
+
+      // D47: el MISMO cálculo, con el bloque pactado (30 + margen histórico 10)
+      // y la hora pedida como objetivo de cercanía.
+      expect(mockDisponibilidadService.buscarAlternativas).toHaveBeenCalledWith({
+        barberiaId: 'uuid-barberia',
+        fecha: '2026-10-12',
+        duracionRequeridaMinutos: 40,
+        horaObjetivo: '10:00',
+      });
+      // La sugerencia no retiene nada: la reprogramación no llegó a escribirse.
+      expect(mockPrismaService.reserva.update).not.toHaveBeenCalled();
+    });
+
     it('ROJO: una reserva terminal → 409 ESTADO_INVALIDO', async () => {
       mockPrismaService.reserva.findFirst.mockResolvedValue(
         reserva({ estado: 'CANCELADA' }),
@@ -1198,6 +1232,125 @@ describe('ReservaService', () => {
         data: { estado: 'NO_PRESENTADO' },
       });
       expect(mockQueue.getJob).toHaveBeenCalledWith('expirar-reserva-uuid-reserva');
+    });
+  });
+
+  // ── E4-02 · Carril A: la creación fallida viaja con las alternativas ─────
+  describe('E4-02 Carril A · alternativas en el error de creación', () => {
+    const ALTERNATIVAS = [
+      { fecha: '2026-10-12', horaInicio: '11:00', horaFin: '11:30' },
+      { fecha: '2026-10-12', horaInicio: '15:00', horaFin: '15:30' },
+    ];
+
+    const CONFIG = {
+      modoReserva: 'MANUAL',
+      nuevasReservasActivas: true,
+      aceptaIndividual: true,
+      aceptaGrupal: true,
+      margenGrupalMinutos: 10,
+      horizonteReservaDias: 30,
+    };
+
+    const dto = {
+      fecha: '2026-10-12',
+      horaInicio: '10:00',
+      horaFin: '10:30',
+      serviciosIds: ['s1'],
+      precioTotalEsperado: 15,
+    };
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(enSede('2026-10-10', 9));
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue(CONFIG);
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ zonaHoraria: TZ_SEDE });
+      mockPrismaService.servicio.findMany.mockResolvedValue([
+        { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 0 },
+      ]);
+      mockQueue.getJob.mockResolvedValue(null);
+      mockAuditoriaService.registrarEvento.mockResolvedValue({ id: 'uuid-auditoria' });
+      // Limpia cualquier `once` en cola: cada test decide su propia respuesta.
+      mockDisponibilidadService.buscarAlternativas.mockReset();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('VERDE: sin hueco → 409 CONFLICTO_HORARIO con las alternativas del mismo día', async () => {
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([]);
+      mockDisponibilidadService.buscarAlternativas.mockResolvedValueOnce(ALTERNATIVAS);
+
+      await expect(service.crearReserva('uuid-cliente', 'uuid-barberia', dto)).rejects.toMatchObject({
+        response: { statusCode: 409, codigo: 'CONFLICTO_HORARIO', alternativas: ALTERNATIVAS },
+      });
+
+      // D47: el bloque REAL (ventana 30 + margen 10) y la hora pedida.
+      expect(mockDisponibilidadService.buscarAlternativas).toHaveBeenCalledWith({
+        barberiaId: 'uuid-barberia',
+        fecha: '2026-10-12',
+        duracionRequeridaMinutos: 40,
+        horaObjetivo: '10:00',
+      });
+      expect(mockPrismaService.reserva.create).not.toHaveBeenCalled();
+    });
+
+    it('VERDE: un grupo que no cabe → 422 CAPACIDAD_EXCEDIDA con alternativas en el cuerpo', async () => {
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
+        ...CONFIG,
+        maxPersonasTotal: 2,
+      });
+      mockDisponibilidadService.buscarAlternativas.mockResolvedValueOnce(ALTERNATIVAS);
+
+      await expect(
+        service.crearReserva('uuid-cliente', 'uuid-barberia', {
+          ...dto,
+          // Ventana de 105 min: el grupo se mide por Σ servicios, no por aquí (D46/§5.4).
+          horaFin: '11:45',
+          precioTotalEsperado: 45,
+          tipo: 'GRUPAL',
+          participantes: [
+            { nombre: 'Ana', esAdultoResponsable: true, servicios: ['s1'] },
+            { nombre: 'Nico', esAdultoResponsable: false, servicios: ['s1'] },
+            { nombre: 'Sofi', esAdultoResponsable: false, servicios: ['s1'] },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        response: { statusCode: 422, codigo: 'CAPACIDAD_EXCEDIDA', alternativas: ALTERNATIVAS },
+      });
+
+      // Σ duraciones (30) + margen (10): la ventana de 105 min no manda.
+      expect(mockDisponibilidadService.buscarAlternativas).toHaveBeenCalledWith({
+        barberiaId: 'uuid-barberia',
+        fecha: '2026-10-12',
+        duracionRequeridaMinutos: 40,
+        horaObjetivo: '10:00',
+      });
+      // Un rechazo por capacidad no escribe nada (§E4-01).
+      expect(mockPrismaService.reserva.create).not.toHaveBeenCalled();
+    });
+
+    it('VERDE: si el calculador no encuentra nada, el error viaja tal cual (nunca un hueco falso)', async () => {
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([]);
+
+      const error = await service
+        .crearReserva('uuid-cliente', 'uuid-barberia', dto)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(error.getResponse()).toMatchObject({ statusCode: 409, codigo: 'CONFLICTO_HORARIO' });
+      expect(error.getResponse().alternativas).toBeUndefined();
+    });
+
+    it('VERDE: un error que no es de agenda ni de capacidad no consulta alternativas', async () => {
+      mockPrismaService.servicio.findMany.mockResolvedValue([]); // → 400 SERVICIO_FUERA_DE_BARBERIA
+
+      await expect(service.crearReserva('uuid-cliente', 'uuid-barberia', dto)).rejects.toThrowError(
+        BadRequestException,
+      );
+
+      expect(mockDisponibilidadService.buscarAlternativas).not.toHaveBeenCalled();
     });
   });
 });

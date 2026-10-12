@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ForbiddenException, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, ForbiddenException, HttpException, Logger, NotFoundException, Optional, UnprocessableEntityException } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { errorDeConflicto, errorDePermiso, errorDeSolicitud, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import {
@@ -38,6 +38,7 @@ import {
 } from '../domain/reserva-grupal.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
 import { validateTimeRange } from '../../horario/domain/time.utils.js';
+import type { AlternativaEtiquetada } from '../../agenda/application/disponibilidad.service.js';
 import {
   TiempoService,
   ZONA_POR_DEFECTO,
@@ -329,6 +330,146 @@ export class ReservaService {
         margenOperativo: s.margenOperativo ?? 0,
       })),
     };
+  }
+
+  /**
+   * E4-02 · Carril A (D47/D37): cuando un tramo no cabe, el error de negocio
+   * viaja con las alternativas más cercanas de ESE mismo día.
+   *
+   * Se ejecuta FUERA de la transacción —la promesa ya rechazó y el `FOR UPDATE`
+   * de la sede quedó liberado— y SOLO LEE: la sugerencia no retiene nada y se
+   * revalida al confirmar, donde un hueco ya ocupado responde 409
+   * `CONFLICTO_HORARIO` (§E4-02/4). Si no hay ninguna alternativa real el error
+   * viaja tal cual: nunca se promete un hueco que no existe.
+   */
+  private async agregarAlternativasAlError(
+    error: unknown,
+    barberiaId: string,
+    contexto: {
+      fecha: string;
+      horaInicio: string;
+      horaFin: string;
+      /** Tipo de reserva: gobierna `acepta_individual`/`acepta_grupal`. */
+      tipo?: string;
+      /** Participantes del grupo, para medir el bloque real (D46/D42). */
+      participantes?: readonly { servicios: readonly string[] }[];
+      /** Reprogramar: la reserva de origen de su margen histórico. */
+      reservaId?: string;
+    },
+  ): Promise<never> {
+    // `getResponse()` devuelve `string | object`, así que el `codigo` solo
+    // existe cuando la respuesta es el objeto del contrato D40.
+    const respuesta = error instanceof HttpException ? error.getResponse() : undefined;
+    const codigo =
+      typeof respuesta === 'object' && respuesta !== null
+        ? (respuesta as { codigo?: string }).codigo
+        : undefined;
+
+    // Solo los errores de agenda y de capacidad merecen alternativas.
+    if (codigo !== 'CONFLICTO_HORARIO' && codigo !== 'CAPACIDAD_EXCEDIDA') {
+      throw error;
+    }
+
+    const config = await this.prisma.configuracionBarberia.findUnique({ where: { barberiaId } });
+
+    // §E4-02/3: sin alternativas si la sede está pausada o no acepta esa
+    // modalidad: no se sugiere un hueco que no se podría tomar.
+    if (!config || !config.nuevasReservasActivas) {
+      throw error;
+    }
+    if (contexto.tipo === 'GRUPAL' && !config.aceptaGrupal) {
+      throw error;
+    }
+    if (contexto.tipo && contexto.tipo !== 'GRUPAL' && !config.aceptaIndividual) {
+      throw error;
+    }
+
+    // §E4-02/2: las alternativas viven dentro del horizonte de la sede.
+    const tz = await this.zonaDeSede(barberiaId);
+    try {
+      this.exigirHorizonteDeSede(contexto.fecha, config.horizonteReservaDias, tz, 'reservar');
+    } catch {
+      throw error;
+    }
+
+    const bloque = await this.bloqueRequeridoParaAlternativas(barberiaId, contexto, config);
+
+    const alternativas = await this.disponibilidadService.buscarAlternativas({
+      barberiaId,
+      fecha: contexto.fecha,
+      duracionRequeridaMinutos: bloque.duracionServicios + bloque.margen,
+      horaObjetivo: contexto.horaInicio,
+    });
+
+    if (alternativas.length === 0) {
+      throw error;
+    }
+
+    this.lanzarConAlternativas(error, alternativas);
+  }
+
+  /**
+   * Duración y margen del bloque que no cabió, para medir alternativas reales
+   * (§5.4): en grupales manda Σ duraciones de los servicios del grupo; en los
+   * demás, la ventana pedida.
+   */
+  private async bloqueRequeridoParaAlternativas(
+    barberiaId: string,
+    contexto: {
+      horaInicio: string;
+      horaFin: string;
+      tipo?: string;
+      participantes?: readonly { servicios: readonly string[] }[];
+      reservaId?: string;
+    },
+    config: { margenGrupalMinutos: number },
+  ): Promise<{ duracionServicios: number; margen: number }> {
+    let margen = config.margenGrupalMinutos ?? 10;
+
+    if (contexto.reservaId) {
+      // Reprogramar: el bloque pactado sigue siendo el que hay que cubrir.
+      const original = await this.prisma.reserva.findUnique({
+        where: { id: contexto.reservaId },
+        select: { margenGrupalHistorico: true },
+      });
+      margen = original?.margenGrupalHistorico ?? margen;
+    }
+
+    let ventana: number;
+    try {
+      const { inicio, fin } = validateTimeRange(contexto.horaInicio, contexto.horaFin);
+      ventana = (fin.getTime() - inicio.getTime()) / 60000;
+    } catch {
+      // Una ventana inválida no puede medirse: sin bloque no hay alternativa.
+      return { duracionServicios: 0, margen };
+    }
+
+    if (contexto.tipo === 'GRUPAL') {
+      const ids = [...new Set((contexto.participantes ?? []).flatMap((p) => p.servicios))];
+      const servicios = ids.length
+        ? await this.prisma.servicio.findMany({
+            where: { id: { in: ids }, barberiaId, estado: 'ACTIVO' },
+          })
+        : [];
+      const duracionServicios = servicios.reduce((acc, s) => acc + s.duracionEstimada, 0);
+      return { duracionServicios: duracionServicios > 0 ? duracionServicios : ventana, margen };
+    }
+
+    return { duracionServicios: ventana, margen };
+  }
+
+  /** Re-lanza el error conservando status y código, con el array añadido. */
+  private lanzarConAlternativas(error: unknown, alternativas: AlternativaEtiquetada[]): never {
+    const cuerpo = error instanceof HttpException ? error.getResponse() : undefined;
+    const base = (typeof cuerpo === 'object' && cuerpo !== null ? cuerpo : {}) as Record<string, unknown>;
+
+    if (error instanceof ConflictException) {
+      throw new ConflictException({ ...base, alternativas });
+    }
+    if (error instanceof UnprocessableEntityException) {
+      throw new UnprocessableEntityException({ ...base, alternativas });
+    }
+    throw error;
   }
 
   async crearReserva(clienteId: string, barberiaId: string, dto: CreateReservaDto) {
@@ -714,7 +855,19 @@ export class ReservaService {
       }
 
       return reserva;
-    });
+    }).catch((error) =>
+      // E4-02 · Carril A (§E4-02/2 y /4): si el tramo pedido no cabe, el error
+      // trae alternativas. Se resuelven FUERA de la transacción —que ya abortó
+      // y soltó el `FOR UPDATE`— y por solo lectura (D37/H41): una sugerencia
+      // nunca retiene el hueco.
+      this.agregarAlternativasAlError(error, barberiaId, {
+        fecha: dto.fecha,
+        horaInicio: dto.horaInicio,
+        horaFin: dto.horaFin,
+        tipo: dto.tipo,
+        participantes: dto.participantes,
+      }),
+    );
   }
 
   async obtenerDetalleReserva(barberiaId: string, reservaId: string, user: UsuarioAutenticado) {
@@ -1492,9 +1645,7 @@ export class ReservaService {
     const { inicio, fin } = validateTimeRange(dto.horaInicio, dto.horaFin);
     // E2-04: la fecha es una etiqueta `DATE`; se normaliza con el servicio central.
     const fecha = this.tiempo.fechaDeCalendario(dto.fecha);
-    const duracionSolicitada = (fin.getTime() - inicio.getTime()) / 60000;
-
-    const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
+    const duracionSolicitada = (fin.getTime() - inicio.getTime()) / 60000;    const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
       await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
 
       const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
@@ -1605,7 +1756,17 @@ export class ReservaService {
       );
 
       return actualizada;
-    });
+    }).catch((error) =>
+      // E4-02 · Carril A: la reprogramación también ofrece alternativas cuando
+      // el bloque nuevo no cabe. Mismo cálculo y misma garantía: fuera de la
+      // transacción y por solo lectura (D37/H41).
+      this.agregarAlternativasAlError(error, barberiaId, {
+        fecha: dto.fecha,
+        horaInicio: dto.horaInicio,
+        horaFin: dto.horaFin,
+        reservaId,
+      }),
+    );
 
     if (this.notificacionService) {
       this.notificacionService

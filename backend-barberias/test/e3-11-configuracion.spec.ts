@@ -95,6 +95,8 @@ describe('ConfiguracionBarberiaService (E3-11)', () => {
       nuevasReservasActivas: true,
       margenGrupalMinutos: 10,
       permiteCancelacionEspecial: false,
+      // E4-02/8: la nueva bandera viaja en la respuesta y se mapea campo a campo.
+      oportunidadesEspacioActivas: true,
       motivoPausa: null,
       pausaDesde: null,
       reactivacionProgramada: null,

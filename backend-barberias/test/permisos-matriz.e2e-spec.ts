@@ -55,6 +55,8 @@ const CASOS: Caso[] = [
   { verbo: 'delete', ruta: `/barberias/{A}/agenda/bloqueos/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
   { verbo: 'get', ruta: '/agenda/disponibilidad?fecha=2026-10-05&duracionMinutos=30', permitidos: TODOS },
   { verbo: 'post', ruta: '/barberias/{A}/agenda/disponibilidad', permitidos: TODOS, cuerpo: { fecha: '2026-10-05', duracionTotal: 30 } },
+  // E4-02: los huecos de espacio no son para el BARBERO (§E4-02/2).
+  { verbo: 'get', ruta: '/barberias/{A}/disponibilidad/huecos?fecha=2026-10-05&duracionMinutos=30', permitidos: ['CLIENTE', 'ADMIN_BARBERIA', 'ADMINISTRADOR'] },
 
   // ── antecedentes ─────────────────────────────────────────────────────────
   { verbo: 'post', ruta: '/barberias/{A}/antecedentes', permitidos: ['BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },

@@ -129,6 +129,50 @@ export function calcularBloqueGrupal(
 }
 
 /**
+ * D46 · solo la parte de CAPACIDAD, sin mirar la forma del grupo.
+ *
+ * Es la MISMA regla que usa `validarGrupoGrupal`: el endpoint de huecos (E4-02)
+ * conoce el número de personas pero no sus nombres ni sus servicios, y aun así
+ * tiene que responder «este grupo no cabe aquí nunca». Una sola implementación
+ * del tope (D47): nunca una segunda versión de la capacidad.
+ */
+export function capacidadDeGrupoExcedida(
+  participantes: number,
+  limites: LimitesDeGrupo,
+): ProblemaDeGrupo | null {
+  if (participantes > MAX_PARTICIPANTES_POR_GRUPO) {
+    return {
+      tipo: 'CAPACIDAD',
+      campo: 'MAX_PARTICIPANTES_POR_GRUPO',
+      limite: MAX_PARTICIPANTES_POR_GRUPO,
+      solicitado: participantes,
+    };
+  }
+
+  if (limites.maxPersonasTotal != null && participantes > limites.maxPersonasTotal) {
+    return {
+      tipo: 'CAPACIDAD',
+      campo: 'maxPersonasTotal',
+      limite: limites.maxPersonasTotal,
+      solicitado: participantes,
+    };
+  }
+
+  // El total cuenta al adulto, así que los niños son participantes - 1 (D46).
+  const ninos = Math.max(0, participantes - 1);
+  if (limites.maxNinos != null && ninos > limites.maxNinos) {
+    return {
+      tipo: 'CAPACIDAD',
+      campo: 'maxNinos',
+      limite: limites.maxNinos,
+      solicitado: ninos,
+    };
+  }
+
+  return null;
+}
+
+/**
  * Valida la ESTRUCTURA del grupo y su CAPACIDAD (D46), en ese orden y en una
  * sola pasada pura. El servicio la invoca ANTES del lock `FOR UPDATE`, porque
  * un rechazo por capacidad no necesita serializar la sede entera y además debe
@@ -162,34 +206,7 @@ export function validarGrupoGrupal(
   }
 
   // D46 · el tope de plataforma manda sobre cualquier configuración de la sede.
-  if (personas > MAX_PARTICIPANTES_POR_GRUPO) {
-    return {
-      tipo: 'CAPACIDAD',
-      campo: 'MAX_PARTICIPANTES_POR_GRUPO',
-      limite: MAX_PARTICIPANTES_POR_GRUPO,
-      solicitado: personas,
-    };
-  }
-
-  if (limites.maxPersonasTotal != null && personas > limites.maxPersonasTotal) {
-    return {
-      tipo: 'CAPACIDAD',
-      campo: 'maxPersonasTotal',
-      limite: limites.maxPersonasTotal,
-      solicitado: personas,
-    };
-  }
-
-  if (limites.maxNinos != null && ninos > limites.maxNinos) {
-    return {
-      tipo: 'CAPACIDAD',
-      campo: 'maxNinos',
-      limite: limites.maxNinos,
-      solicitado: ninos,
-    };
-  }
-
-  return null;
+  return capacidadDeGrupoExcedida(personas, limites);
 }
 
 /** Mensaje en español del problema, listo para el contrato de errores (D40). */

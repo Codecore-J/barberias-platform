@@ -66,6 +66,7 @@ export class ConfiguracionBarberiaService {
       nuevasReservasActivas: config.nuevasReservasActivas,
       margenGrupalMinutos: config.margenGrupalMinutos,
       permiteCancelacionEspecial: config.permiteCancelacionEspecial,
+      oportunidadesEspacioActivas: config.oportunidadesEspacioActivas,
       motivoPausa: config.motivoPausa,
       pausaDesde: config.pausaDesde,
       reactivacionProgramada: config.reactivacionProgramada,
@@ -231,6 +232,12 @@ export class ConfiguracionBarberiaService {
             dto.permiteCancelacionEspecial !== undefined
               ? dto.permiteCancelacionEspecial
               : config.permiteCancelacionEspecial,
+          // E4-02/8 · D22: gobierna el endpoint de huecos; no es un campo
+          // bloqueado con pendientes porque no mueve el bloque de nadie.
+          oportunidadesEspacioActivas:
+            dto.oportunidadesEspacioActivas !== undefined
+              ? dto.oportunidadesEspacioActivas
+              : config.oportunidadesEspacioActivas,
           maxNinos: dto.maxNinos ?? config.maxNinos,
           maxPersonasTotal: dto.maxPersonasTotal ?? config.maxPersonasTotal,
           motivoPausa: nuevoMotivoPausa,
