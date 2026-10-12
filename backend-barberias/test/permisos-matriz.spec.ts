@@ -95,6 +95,15 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // (`SOLO_ADMIN_BARBERIA`, 403) y eso lo cubre el E2E de E3-13. La bandeja de
   // plataforma es exclusiva del ADMINISTRADOR global.
   'POST /barberias/:id/solicitudes-cambio': [ROL_ADMIN_BARBERIA],
+  // E4-03 (2026-10-12): la bandeja de restringidos es de la SEDE. Como en
+  // E3-13 la ruta usa `:id` y el guard no resuelve la sede del parámetro, así
+  // que la pertenencia la exige el servicio (403). D48: la lista es local y no
+  // existe ninguna acción de cuenta global en estos dos endpoints.
+  'GET /barberias/:id/clientes-restringidos': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /barberias/:id/clientes/:clienteId/reactivar': [
+    ROL_ADMIN_BARBERIA,
+    ROL_ADMINISTRADOR,
+  ],
   'GET /plataforma/solicitudes-cambio/': [ROL_ADMINISTRADOR],
   'POST /plataforma/solicitudes-cambio/:id/resolver': [ROL_ADMINISTRADOR],
 
@@ -335,10 +344,11 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // (ver la nota del diccionario), así que quedaban 63. E3-11 sumó los dos
   // endpoints de configuración (GET y PATCH /barberias/:barberiaId/configuracion)
   // y quedaban 65. E3-13 sumó la solicitud de la sede y la bandeja de plataforma
-  // (listar y resolver): 68. E4-02 sumó los huecos de espacio: 69.
-  it('descubrir las 69 rutas del servidor y todas tienen decision', () => {
+  // (listar y resolver): 68. E4-02 sumó los huecos de espacio (69) y E4-03 la
+  // bandeja local de restringidos con su reactivación: 71.
+  it('descubrir las 71 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(69);
+    expect(claves.length).toBe(71);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -430,8 +440,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     // especial, proponer-horario y su bandeja de aceptar/rechazar), E2-02
     // quitó PATCH /reservas/:id/estado, E3-11 añadió las dos de configuración
     // (GET y PATCH /barberias/:barberiaId/configuracion), E3-13 las tres de
-    // solicitudes de cambio y E4-02 la de huecos de espacio: 69 × 4 = 276.
-    expect(evaluaciones).toBe(276);
+    // solicitudes de cambio, E4-02 la de huecos de espacio y E4-03 las dos de
+    // restringidos: 71 × 4 = 284.
+    expect(evaluaciones).toBe(284);
     expect(
       desviaciones.length === 0
         ? ''

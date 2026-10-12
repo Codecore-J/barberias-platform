@@ -1353,6 +1353,199 @@ describe('ReservaService', () => {
       expect(mockDisponibilidadService.buscarAlternativas).not.toHaveBeenCalled();
     });
   });
+
+  /**
+   * E4-03 · fidelización por inasistencias (spec 01 §5.8, D48).
+   *
+   * Dos mitades de la misma regla: la creación bloquea al restringido de ESA
+   * sede (individual y grupal) y el marcado de inasistencia es lo que restringe
+   * al llegar al límite, con su motivo y su auditoría.
+   */
+  describe('E4-03 · fidelización por inasistencias', () => {
+    const dtoIndividual = {
+      fecha: '2026-10-12',
+      horaInicio: '10:00',
+      horaFin: '10:30',
+      serviciosIds: ['s1'],
+      precioTotalEsperado: 15,
+    };
+
+    const dtoGrupal = {
+      fecha: '2026-10-12',
+      horaInicio: '10:00',
+      horaFin: '11:45',
+      serviciosIds: ['s1'],
+      precioTotalEsperado: 45,
+      tipo: 'GRUPAL' as const,
+      participantes: [
+        { nombre: 'Ana', esAdultoResponsable: true, servicios: ['s1'] },
+        { nombre: 'Nico', esAdultoResponsable: false, servicios: ['s1'] },
+      ],
+    };
+
+    const vinculoRestringido = {
+      id: 'uuid-vinculo',
+      contadorNoPresentado: 5,
+      estaRestringido: true,
+      motivoRestriccion: 'Bloqueo automático: alcanzaste el límite de 5 inasistencias en esta barbería.',
+    };
+
+    beforeEach(() => {
+      mockQueue.getJob.mockResolvedValue(null);
+      mockAuditoriaService.registrarEvento.mockResolvedValue({ id: 'uuid-auditoria' });
+    });
+
+    it('VERDE: el INDIVIDUAL de un cliente restringido responde 403 CLIENTE_RESTRINGIDO', async () => {
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(vinculoRestringido);
+
+      const error = await service
+        .crearReserva('uuid-cliente', 'uuid-barberia', dtoIndividual)
+        .catch((e: any) => e);
+
+      expect(error).toBeInstanceOf(ForbiddenException);
+      expect(error.getResponse()).toMatchObject({
+        statusCode: 403,
+        codigo: 'CLIENTE_RESTRINGIDO',
+        mensaje: vinculoRestringido.motivoRestriccion,
+      });
+      // La regla de negocio se resuelve ANTES de leer configuración o disponibilidad.
+      expect(mockPrismaService.configuracionBarberia.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaService.reserva.create).not.toHaveBeenCalled();
+    });
+
+    it('VERDE: el GRUPAL de un cliente restringido también se rechaza con 403 CLIENTE_RESTRINGIDO', async () => {
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(vinculoRestringido);
+
+      const error = await service
+        .crearReserva('uuid-cliente', 'uuid-barberia', dtoGrupal)
+        .catch((e: any) => e);
+
+      expect(error).toBeInstanceOf(ForbiddenException);
+      expect(error.getResponse()).toMatchObject({
+        statusCode: 403,
+        codigo: 'CLIENTE_RESTRINGIDO',
+      });
+      expect(mockPrismaService.configuracionBarberia.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaService.participanteReserva.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.reserva.create).not.toHaveBeenCalled();
+    });
+
+    describe('marcarInasistencia', () => {
+      const reservaConfirmada = {
+        id: 'uuid-reserva',
+        clienteId: 'uuid-cliente',
+        barberiaId: 'uuid-barberia',
+        estado: 'CONFIRMADA',
+      };
+
+      beforeEach(() => {
+        // El responsable de la sede marca la inasistencia (D02).
+        mockPrismaService.barberia.findUnique.mockResolvedValue({ responsableId: 'uuid-admin-sede' });
+        mockPrismaService.reserva.findUnique.mockResolvedValue(reservaConfirmada);
+        mockPrismaService.reserva.update.mockResolvedValue({ id: 'uuid-reserva' });
+        mockPrismaService.clienteBarberia.update.mockResolvedValue({});
+      });
+
+      it('VERDE: la 5ª inasistencia restringe con motivo y se audita (D28)', async () => {
+        mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({
+          id: 'uuid-vinculo',
+          contadorNoPresentado: 4,
+          estaRestringido: false,
+          motivoRestriccion: null,
+        });
+
+        const resultado = await service.marcarInasistencia(
+          'uuid-barberia',
+          'uuid-reserva',
+          'uuid-admin-sede',
+        );
+
+        expect(resultado).toMatchObject({
+          success: true,
+          contadorNoPresentado: 5,
+          estaRestringido: true,
+          advertencia: true,
+        });
+        expect(resultado.motivoRestriccion).toContain('5 inasistencias');
+
+        expect(mockPrismaService.clienteBarberia.update).toHaveBeenCalledWith({
+          where: { id: 'uuid-vinculo' },
+          data: {
+            contadorNoPresentado: 5,
+            estaRestringido: true,
+            motivoRestriccion: expect.stringContaining('5 inasistencias'),
+          },
+        });
+
+        expect(mockAuditoriaService.registrarEvento).toHaveBeenCalledTimes(1);
+        expect(mockAuditoriaService.registrarEvento.mock.calls[0][0]).toMatchObject({
+          usuarioId: 'uuid-admin-sede',
+          accion: 'CLIENTE_RESTRINGIDO',
+          entidad: 'cliente_barberias',
+          entidadId: 'uuid-vinculo',
+          contexto: { barberiaId: 'uuid-barberia', clienteId: 'uuid-cliente' },
+        });
+      });
+
+      it('la 3ª inasistencia deja advertencia pero NO restringe', async () => {
+        mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({
+          id: 'uuid-vinculo',
+          contadorNoPresentado: 2,
+          estaRestringido: false,
+          motivoRestriccion: null,
+        });
+
+        const resultado = await service.marcarInasistencia(
+          'uuid-barberia',
+          'uuid-reserva',
+          'uuid-admin-sede',
+        );
+
+        expect(resultado).toMatchObject({
+          contadorNoPresentado: 3,
+          estaRestringido: false,
+          advertencia: true,
+          motivoRestriccion: null,
+        });
+        expect(mockAuditoriaService.registrarEvento).not.toHaveBeenCalled();
+      });
+
+      it('D20: una restricción vigente conserva su motivo y no se vuelve a auditar', async () => {
+        mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({
+          id: 'uuid-vinculo',
+          contadorNoPresentado: 5,
+          estaRestringido: true,
+          motivoRestriccion: 'Bloqueo automático: alcanzaste el límite de 5 inasistencias en esta barbería.',
+        });
+
+        const resultado = await service.marcarInasistencia(
+          'uuid-barberia',
+          'uuid-reserva',
+          'uuid-admin-sede',
+        );
+
+        expect(resultado).toMatchObject({
+          contadorNoPresentado: 6,
+          estaRestringido: true,
+        });
+        expect(resultado.motivoRestriccion).toBe(
+          'Bloqueo automático: alcanzaste el límite de 5 inasistencias en esta barbería.',
+        );
+        expect(mockAuditoriaService.registrarEvento).not.toHaveBeenCalled();
+      });
+
+      it('un admin de OTRA sede no puede marcar la inasistencia (403)', async () => {
+        mockPrismaService.barberia.findUnique.mockResolvedValue({ responsableId: 'otro-res' });
+        mockPrismaService.usuarioRol.findMany.mockResolvedValue([]);
+        mockPrismaService.usuarioRol.findFirst.mockResolvedValue(null);
+
+        await expect(
+          service.marcarInasistencia('uuid-barberia', 'uuid-reserva', 'admin-ajeno'),
+        ).rejects.toThrowError(ForbiddenException);
+        expect(mockPrismaService.clienteBarberia.update).not.toHaveBeenCalled();
+      });
+    });
+  });
 });
 
 

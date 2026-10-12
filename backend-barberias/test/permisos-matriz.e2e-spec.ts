@@ -45,6 +45,12 @@ const CASOS: Caso[] = [
   { verbo: 'post', ruta: '/barberias/{A}/solicitudes-cambio', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: { tipo: 'NOMBRE', valorNuevo: 'Matriz permisos E3-13' } },
   { verbo: 'get', ruta: '/plataforma/solicitudes-cambio', permitidos: ['ADMINISTRADOR'] },
   { verbo: 'post', ruta: `/plataforma/solicitudes-cambio/${randomUUID()}/resolver`, permitidos: ['ADMINISTRADOR'], cuerpo: { aprobar: true } },
+  // E4-03: la bandeja local de restringidos es de la SEDE (y del ADMINISTRADOR
+  // por jerarquía). El guard solo filtra el rol: la pertenencia a la sede la
+  // comprueba el servicio y aquí no se mide (un 404 de un cliente sin vínculo
+  // es una respuesta válida de una ruta permitida).
+  { verbo: 'get', ruta: '/barberias/{A}/clientes-restringidos', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
+  { verbo: 'post', ruta: `/barberias/{A}/clientes/${randomUUID()}/reactivar`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
   { verbo: 'get', ruta: '/barberias/{A}', permitidos: TODOS },
   { verbo: 'get', ruta: '/barberias/{A}/personal', permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR'] },
   { verbo: 'delete', ruta: '/barberias/{B}', permitidos: [], sinAdministrador: true },

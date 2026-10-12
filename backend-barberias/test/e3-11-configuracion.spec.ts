@@ -32,6 +32,7 @@ const baseConfig = {
   nuevasReservasActivas: true,
   margenGrupalMinutos: 10,
   permiteCancelacionEspecial: false,
+  oportunidadesEspacioActivas: true,
   maxNinos: 10,
   maxPersonasTotal: 20,
   motivoPausa: null,

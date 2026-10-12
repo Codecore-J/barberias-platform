@@ -66,7 +66,7 @@ export class ConfiguracionBarberiaService {
       nuevasReservasActivas: config.nuevasReservasActivas,
       margenGrupalMinutos: config.margenGrupalMinutos,
       permiteCancelacionEspecial: config.permiteCancelacionEspecial,
-      oportunidadesEspacioActivas: config.oportunidadesEspacioActivas,
+      oportunidadesEspacioActivas: config.oportunidadesEspacioActivas ?? false,
       motivoPausa: config.motivoPausa,
       pausaDesde: config.pausaDesde,
       reactivacionProgramada: config.reactivacionProgramada,

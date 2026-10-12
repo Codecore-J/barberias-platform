@@ -36,6 +36,10 @@ import {
   validarGrupoGrupal,
   type ParticipanteParaValidar,
 } from '../domain/reserva-grupal.js';
+import {
+  LIMITE_INASISTENCIAS_POR_DEFECTO,
+  evaluarInasistencia,
+} from '../domain/fidelizacion.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
 import { validateTimeRange } from '../../horario/domain/time.utils.js';
 import type { AlternativaEtiquetada } from '../../agenda/application/disponibilidad.service.js';
@@ -984,27 +988,58 @@ export class ReservaService {
         });
       }
 
-      // Incrementar contador
-      const nuevoContador = vinculo.contadorNoPresentado + 1;
-      let estaRestringido = vinculo.estaRestringido;
-      let motivoRestriccion = vinculo.motivoRestriccion;
+      // E4-03 · la regla es pura y vive en `domain/fidelizacion.ts`: el
+      // contador sube SIEMPRE en la fila de ESA sede (nunca global, D48) y al
+      // cruzar el límite de la sede nace `esta_restringido` con su motivo. Una
+      // restricción vigente conserva su motivo (D20).
+      const evaluacion = evaluarInasistencia(vinculo.contadorNoPresentado, {
+        estaRestringido: vinculo.estaRestringido,
+        motivoRestriccion: vinculo.motivoRestriccion,
+      });
 
-      if (nuevoContador >= 5) {
-        estaRestringido = true;
-        motivoRestriccion = 'Bloqueo automático: Superó el límite de inasistencias (5)';
-        this.logger.warn(`El cliente ${reserva.clienteId} ha sido restringido automáticamente en la barbería ${barberiaId}`);
+      if (evaluacion.restringidoAhora) {
+        this.logger.warn(
+          `El cliente ${reserva.clienteId} ha sido restringido automáticamente en la barbería ${barberiaId}`,
+        );
       }
 
       await tx.clienteBarberia.update({
         where: { id: vinculo.id },
         data: {
-          contadorNoPresentado: nuevoContador,
-          estaRestringido,
-          motivoRestriccion,
-        }
+          contadorNoPresentado: evaluacion.contadorNoPresentado,
+          estaRestringido: evaluacion.estaRestringido,
+          motivoRestriccion: evaluacion.motivoRestriccion,
+        },
       });
 
-      return { success: true, contadorNoPresentado: nuevoContador, estaRestringido };
+      // D28: la restricción automática es un cambio de estado y se audita. La
+      // penalización es local: el evento nombra la sede, nunca la cuenta global.
+      if (evaluacion.restringidoAhora) {
+        await this.auditoriaService.registrarEvento(
+          {
+            usuarioId: solicitanteId ?? null,
+            accion: 'CLIENTE_RESTRINGIDO',
+            entidad: 'cliente_barberias',
+            entidadId: vinculo.id,
+            contexto: {
+              barberiaId,
+              clienteId: reserva.clienteId,
+              reservaId,
+              contadorNoPresentado: evaluacion.contadorNoPresentado,
+              limite: LIMITE_INASISTENCIAS_POR_DEFECTO,
+            },
+          },
+          tx,
+        );
+      }
+
+      return {
+        success: true,
+        contadorNoPresentado: evaluacion.contadorNoPresentado,
+        estaRestringido: evaluacion.estaRestringido,
+        motivoRestriccion: evaluacion.motivoRestriccion,
+        advertencia: evaluacion.advertencia,
+      };
     });
 
     // E2-02 §5.2: al entrar en NO_PRESENTADO el temporizador de expiración se

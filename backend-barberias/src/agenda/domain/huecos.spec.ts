@@ -127,8 +127,11 @@ describe('E4-02 · elegirAlternativas (las dos alternativas que comparten carril
       maximo: MAXIMO_ALTERNATIVAS,
     });
     expect(elegidas).toHaveLength(5);
-    expect(elegidas[0].inicio.getHours()).toBe(13);
-    expect(elegidas[0].inicio.getMinutes()).toBe(0);
+    // E4-03: la fixture compone INSTANTES UTC (`...T13:00:00.000Z`), así que la
+    // hora se lee en UTC. Con `getHours()` la prueba solo pasaba si el runner
+    // corría en TZ=UTC y fallaba en la zona de la sede (UTC-4).
+    expect(elegidas[0].inicio.getUTCHours()).toBe(13);
+    expect(elegidas[0].inicio.getUTCMinutes()).toBe(0);
   });
 
   it('nunca ofrece dos sugerencias que se solapen entre sí', () => {
@@ -155,8 +158,8 @@ describe('E4-02 · elegirAlternativas (las dos alternativas que comparten carril
       maximo: MAXIMO_ALTERNATIVAS,
     });
 
-    expect(elegidas[0].inicio.getHours()).toBe(16);
-    expect(elegidas[0].inicio.getMinutes()).toBe(0);
+    expect(elegidas[0].inicio.getUTCHours()).toBe(16);
+    expect(elegidas[0].inicio.getUTCMinutes()).toBe(0);
   });
 
   it('no ofrece nada que ya haya pasado (D22: nunca un hueco consumido)', () => {
