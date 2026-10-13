@@ -109,6 +109,9 @@ model Barberia {
   // cuando llegó E3-13: la migración la declara idempotente y así el esquema y
   // la base coinciden también en bases creadas desde cero. Ver H50.
   logoUrl       String? @map("logo_url") @db.Text
+  // E2-03: alta de la sede. La crea la migración reconstruida
+  // `20261011130000_e203_integridad_base`; en `dev` ya existía (H50).
+  creadoAt      DateTime? @default(now()) @map("creado_at") @db.Timestamptz
 
   responsable Usuario @relation("Responsable", fields: [responsableId], references: [id])
 
@@ -289,6 +292,10 @@ model Reserva {
   totalPagar            Decimal   @map("total_pagar") @db.Decimal(10, 2)
   expiraAt              DateTime? @map("expira_at") @db.Timestamptz
   creadoAt              DateTime? @default(now()) @map("creado_at") @db.Timestamptz
+  // E3-09 · instante en que la reserva entró en COMPLETADA (§5.2 fila 11).
+  // Nullable: solo lo escriben los cobros. Lo crea la migración reconstruida
+  // `20261011130000_e203_integridad_base`; en `dev` ya existía (H50).
+  completadaAt          DateTime? @map("completada_at") @db.Timestamptz
   // E3-04/D19: motivo estructurado del rechazo (§5.5). El CHECK del catálogo
   // vive en la migración; Prisma no sabe expresarlo.
   motivoCodigo          String?   @map("motivo_codigo") @db.VarChar(40)

@@ -121,7 +121,7 @@ describe('ReservaService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             totalPagar: 15,
-            margenGrupalHistorico: 10,
+            margenGrupalHistorico: 0,
           }),
         }),
       );
@@ -139,7 +139,7 @@ describe('ReservaService', () => {
       });
     });
 
-    it('D42: debe snapshottear configuracion_barberia.margen_grupal_minutos, nunca la suma de margenes ni el valor del DTO', async () => {
+    it('Sprint de estabilización: el INDIVIDUAL NO suma el margen de la sede (antes lo hacía: D42 mal aplicado)', async () => {
       mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
@@ -173,13 +173,13 @@ describe('ReservaService', () => {
       expect(mockPrismaService.reserva.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            margenGrupalHistorico: 12,
+            margenGrupalHistorico: 0,
           }),
         }),
       );
 
       expect(mockDisponibilidadService.calcularDisponibilidad).toHaveBeenCalledWith(
-        expect.objectContaining({ margenRequerido: 12 }),
+        expect.objectContaining({ margenRequerido: 0 }),
         expect.anything(),
       );
     });
@@ -294,6 +294,66 @@ describe('ReservaService', () => {
           precioTotalEsperado: 15,
         }),
       ).rejects.toThrowError(ConflictException);
+    });
+  });
+
+  describe('E2-05 · margen del bloque individual (sprint de estabilización, 2026-10-12)', () => {
+    // Decisión del dueño: `margen_grupal_minutos` (D42) pertenece al flujo GRUPAL.
+    // En el INDIVIDUAL el bloque es la ventana pedida y sus márgenes son los de SUS
+    // servicios (D01/E2-05). Antes se sumaba SIEMPRE el margen de la sede, así que
+    // cada reserva individual arrastraba 10 minutos fantasma en la agenda y en la
+    // cotización previa a reservar.
+
+    it('cotizar un INDIVIDUAL devuelve Σ márgenes de los servicios, nunca el de la sede', async () => {
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
+        aceptaIndividual: true,
+        margenGrupalMinutos: 12,
+      });
+      mockPrismaService.servicio.findMany.mockResolvedValue([
+        { id: 's1', nombre: 'Corte', precio: 15, duracionEstimada: 20, margenOperativo: 5 },
+        { id: 's2', nombre: 'Barba', precio: 10, duracionEstimada: 10, margenOperativo: 3 },
+      ]);
+
+      const cotizacion = await service.cotizar('uuid-barberia', {
+        fecha: '2026-10-10',
+        horaInicio: '09:00',
+        horaFin: '09:40',
+        serviciosIds: ['s1', 's2'],
+        precioTotalEsperado: 25,
+      });
+
+      expect(cotizacion.bloqueTotal.margenTotal).toBe(8);
+      expect(cotizacion.bloqueTotal.duracionTotal).toBe(40);
+      expect(cotizacion.bloqueTotal.precioTotal).toBe(25);
+    });
+
+    it('D42 intacto: la cotización GRUPAL sí lleva el margen de la sede', async () => {
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
+        aceptaGrupal: true,
+        maxPersonasTotal: 3,
+        maxNinos: 2,
+        margenGrupalMinutos: 12,
+      });
+      mockPrismaService.servicio.findMany.mockResolvedValue([
+        { id: 's1', nombre: 'Corte', precio: 15, duracionEstimada: 20, margenOperativo: 5 },
+        { id: 's2', nombre: 'Barba infantil', precio: 10, duracionEstimada: 10, margenOperativo: 3 },
+      ]);
+
+      const cotizacion = await service.cotizar('uuid-barberia', {
+        fecha: '2026-10-10',
+        horaInicio: '09:00',
+        horaFin: '10:00',
+        tipo: 'GRUPAL',
+        participantes: [
+          { nombre: 'Adulto', esAdultoResponsable: true, servicios: ['s1'] },
+          { nombre: 'Niño', esAdultoResponsable: false, servicios: ['s2'] },
+        ],
+        precioTotalEsperado: 25,
+      });
+
+      expect(cotizacion.bloqueTotal.margenTotal).toBe(12);
+      expect(cotizacion.bloqueTotal.duracionTotal).toBe(42);
+      expect(cotizacion.bloqueTotal.precioTotal).toBe(25);
     });
   });
 
@@ -1286,11 +1346,13 @@ describe('ReservaService', () => {
         response: { statusCode: 409, codigo: 'CONFLICTO_HORARIO', alternativas: ALTERNATIVAS },
       });
 
-      // D47: el bloque REAL (ventana 30 + margen 10) y la hora pedida.
+      // D47: el bloque REAL del INDIVIDUAL es su ventana (30 min) SIN margen de
+      // sede — el margen de D42 es del GRUPAL (sprint de estabilización,
+      // 2026-10-12) — y la hora pedida.
       expect(mockDisponibilidadService.buscarAlternativas).toHaveBeenCalledWith({
         barberiaId: 'uuid-barberia',
         fecha: '2026-10-12',
-        duracionRequeridaMinutos: 40,
+        duracionRequeridaMinutos: 30,
         horaObjetivo: '10:00',
       });
       expect(mockPrismaService.reserva.create).not.toHaveBeenCalled();

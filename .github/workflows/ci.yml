@@ -84,6 +84,16 @@ jobs:
           DATABASE_URL: postgresql://postgres:password@localhost:5432/barberias_test
         run: npx prisma migrate deploy
 
+      # H37/H49/H50: `migrate diff` NO modela los CHECK, y el ledger podía tener
+      # migraciones que el repo no tenía (una base nueva no reproducía `dev`).
+      # Esta guardia compara las migraciones y los CHECK contra la base recién
+      # migrada y falla si divergen. Solo lee.
+      - name: Check DB Integrity (migrations + CHECK constraints)
+        working-directory: ./backend-barberias
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/barberias_test
+        run: npm run check:integridad
+
       - name: Run Unit/Integration Tests (Backend)
         working-directory: ./backend-barberias
         env:

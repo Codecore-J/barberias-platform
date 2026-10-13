@@ -1,7 +1,11 @@
 # Plan de Ataque — Sprint de Estabilización (Camino B)
 
-> **Estado:** propuesta para aprobación. **No se ha escrito código, ni migraciones, ni commits.**
-> **Base:** `main` = `b3af077` (merge del PR #56, E4-03). Árbol de trabajo limpio.
+> **Estado (actualizado 2026-10-12):** APROBADO y **Ola 1 en ejecución** en
+> `fix/sprint-estabilizacion-p1` (P1.1 migración de integridad + guardia de drift, P1.2 H47 y el
+> bug de márgenes H57). El plan quedó registrado en `main` con el commit `7491c90`.
+> Detalle de la entrega: `reporte-sprint-p1.md`.
+>
+> **Base:** `main` = `b3af077` (merge del PR #56, E4-03).
 > **Fuentes del inventario:** [`AUDITORIA_HALLAZGOS.md`](AUDITORIA_HALLAZGOS.md),
 > [`TAREAS_CIERRE_AUDITORIA.md`](TAREAS_CIERRE_AUDITORIA.md),
 > [`docs/BACKLOG_BARBERIAS_V1.md`](docs/BACKLOG_BARBERIAS_V1.md) y los reportes `reporte-*.md`
@@ -41,6 +45,15 @@ En el repo sí están declarados (por tanto no son problema): `configuracion_bar
 `reservas_motivo_codigo_check`, `reservas_motivo_otro_detalle_check`,
 `reservas_cancelacion_especial_{estado,motivo,otro_detalle}_check`,
 `propuestas_horario_{tipo,estado}_check` y `solicitudes_cambio_barberia_*`.
+
+> **Corrección del recuento (2026-10-12, al ejecutar la Ola 1).** Medido de nuevo contra
+> `pg_constraint` de `dev`, el catálogo real son **27 CHECK**, de los cuales **15** (no 14) no
+> estaban declarados en el repo: la lista de arriba se dejó fuera
+> `excepciones_horario_barbero_tipo_check` (tabla creada en `20261001000000_fix_missing_tables`).
+> Los 12 declarados + los 15 reconstruidos = 27. La fila «**19 CHECK**» de la tabla de medición
+> de arriba era por tanto una lectura incompleta del mismo catálogo. La migración reconstruida
+> declara los 15 y `npm run check:integridad` compara los 27 en las dos direcciones. Detalle en
+> [`reporte-sprint-p1.md`](reporte-sprint-p1.md).
 
 ### 1.1 Inventario de hallazgos abiertos (H-IDs)
 
