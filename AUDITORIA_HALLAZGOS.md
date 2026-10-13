@@ -731,7 +731,51 @@ Estabilización (`fix/sprint-estabilizacion-p1`, 2026-10-12), ya fusionada E4-03
 - **Módulo / Ruta afectada:** Backend, `src/reserva/application/reserva.service.ts` (los 9 `tx.$queryRaw` del bloqueo pesimista: `SELECT id FROM "barberias" WHERE id = $1::uuid FOR UPDATE`)
 - **Tipo:** Fragilidad de entorno / acoplamiento implícito al esquema por defecto
 - **Severidad:** Baja — solo se dispara si OTRO cliente de la misma base mueve `search_path`
-- **Estado:** abierto (detectado durante la Ola 1, no bloquea la entrega)
+- **Estado:** **RESUELTO en la Ola 2** (2026-10-12, rama `fix/sprint-estabilizacion-p2`). Ver la sección «OLA 2» al final del documento
 - **Qué consta:** el nombre va entre comillas pero SIN calificar con su esquema, así que Postgres lo resuelve contra el `search_path` de la sesión. El pooler de Neon reutiliza sesiones entre clientes, así que una verificación de este sprint que trabajó en un esquema temporal (`SET search_path = e203_verify`, esquema eliminado después) dejó conexiones del pool apuntando a un esquema ya inexistente: toda petición que pasa por esa consulta respondió 500 con `P3010 / 42P01: relation "barberias" does not exist` hasta que el pool recicló la conexión. Costó dos corridas completas de E2E falsamente rojas (la carrera de E3-03 dio 1×201 + 8×409 + 1×500 dos veces)
 - **Evidencia:** `APP_ENV=dev npx vitest run --config ./vitest.config.e2e.ts test/e3-03-validaciones.e2e-spec.ts` → `11 passed`, con el pool ya limpio; la suite E2E completa, en la misma sesión → `Test Files 26 passed (26)` / `Tests 191 passed (191)`. El caso de carrera afirma por sí solo que no hubo ningún 500 (10 peticiones: 1×201 y 9×409)
 - **Remedio propuesto:** calificar el esquema en las consultas crudas (tomándolo del `?schema=` de la URL o de una constante del proyecto) o fijar `?schema=public` en la URL del pooler para que toda sesión del pool declare el mismo `search_path`. Regla operativa mientras no se toque: no usar esquemas temporales sobre una base compartida por el pooler
+
+## HALLAZGOS DEL SPRINT DE ESTABILIZACIÓN · OLA 2 (H52, H54 y H58 resueltos · H59 nuevo)
+
+Registrados al ejecutar la Ola 2 — P2 «Brechas de Negocio» del [`docs/PLAN_SPRINT_ESTABILIZACION.md`](docs/PLAN_SPRINT_ESTABILIZACION.md),
+rama `fix/sprint-estabilizacion-p2` (2026-10-12). H52 y H54 vivían SOLO en [`reporte-e4-03.md`](reporte-e4-03.md);
+aquí quedan con ID, estado y evidencia, como pide P3.9.
+
+### H52: Faltaba la ventana de 15 minutos del NO PRESENTADO (§5.2 fila 12) — RESUELTO
+- **Módulo / Ruta afectada:** Backend, `src/reserva/application/reserva.service.ts` (`marcarInasistencia`), `src/reserva/domain/fidelizacion.ts`
+- **Tipo:** Regla de negocio ausente (E3-10 / §5.8)
+- **Severidad:** Media — la sede podía marcar un no presentado con la cita recién empezada (o antes de empezar), cobrando una inasistencia que todavía no había ocurrido
+- **Estado:** **resuelto** en la Ola 2
+- **Qué constaba:** `marcarInasistencia` solo exigía el estado de origen (`CONFIRMADA`) y subía `contador_no_presentado`. Los 5 minutos de puntualidad + 10 de tolerancia de §5.8 no existían en el código: `PUNTUALIDAD_MARGEN_MIN` y `TOLERANCIA_MIN` no estaban declarados y `FUERA_DE_VENTANA` solo lo usaba la ventana de CANCELACIÓN de 30 minutos
+- **Evidencia:** `PUNTUALIDAD_MARGEN_MIN = 5` y `TOLERANCIA_MIN = 10` viven ahora en `src/reserva/domain/fidelizacion.ts`; `ReservaService.exigirVentanaNoPresentado` aplica `VENTANA_NO_PRESENTADO_MIN = 15` con la zona de la SEDE. Unitarios con reloj FIJO en `src/reserva/application/reserva.service.spec.ts` (describe «H52 · ventana de 15 minutos del no presentado»): a los 14 min → 422 `FUERA_DE_VENTANA` sin escribir nada (ni reserva, ni contador, ni auditoría), a los 13 min → 422 sin escribir nada, a los 15 min exactos → se marca y el contador sube, a los 16 min → igual. Cada caso de la suite que marca un no presentado usa citas del PASADO
+- **Nota:** la ruta sigue llamándose `POST /barberias/:barberiaId/reservas/:id/inasistencia`; renombrarla a `.../no-presentado` (E3-10/1) queda como tarea aparte y no se mezcló con la regla
+
+### H54: El cliente nunca veía su advertencia ni su restricción — RESUELTO
+- **Módulo / Ruta afectada:** Backend, `GET /barberias/:barberiaId/mi-estado` (nuevo: `src/barberia/infrastructure/mi-estado.controller.ts` + `src/barberia/application/mi-estado.service.ts`)
+- **Tipo:** Brecha funcional / el dato existía y no se exponía (E4-03/2)
+- **Severidad:** Media — el cliente descubría su restricción al recibir el 403 `CLIENTE_RESTRINGIDO` al intentar reservar
+- **Estado:** **resuelto** en la Ola 2
+- **Qué constaba:** `grep mi-estado src/` daba 0 coincidencias; `evaluarInasistencia` calculaba `advertencia` y ningún endpoint la entregaba
+- **Evidencia:** el endpoint devuelve `contadorNoPresentado`, `estaRestringido`, `motivoRestriccion`, `advertencia`, `inasistenciasParaRestriccion`, `limiteInasistencias` y `mensaje`, proyectados por la regla pura `describirEstadoFidelizacion` (mismo contador que cobra la inasistencia, D47). `test/e4-03-fidelizacion.e2e-spec.ts` → «H54: el cliente ve su contador, su advertencia y su restricción (y solo la suya)» (0 → sin mensaje; 3 → «Estás a 2 inasistencias…»; 4 → singular; 5 → el motivo de la sede; el staff y el admin de otra sede reciben 403; la sede B no ve nada) y «H54: sin vinculación con la sede → 403 NO_VINCULADO, sin filtrar nada». Unitarios: `src/barberia/application/mi-estado.service.spec.ts` y `src/reserva/domain/fidelizacion.spec.ts`
+- **Pendiente de la misma tarea:** la notificación al cliente al llegar a 3 inasistencias (E3-10/3) NO se implementó en esta ola; el campo `reactivacion` del contrato del plan tampoco, porque el flujo cliente-iniciado es P2.3 (E4-03/3) y aún no existe
+
+### H59: Colgar la auditoría de `IamModule` rompía el grafo mínimo de las pruebas E2E — RESUELTO
+- **Módulo / Ruta afectada:** Backend, `src/iam/iam.module.ts`, `src/iam/infrastructure/plataforma-usuarios.module.ts` (nuevo) y `test/cliente-ficha-roles.e2e-spec.ts`
+- **Tipo:** Regresión de arquitectura de módulos detectada por la propia suite (introducida y corregida dentro de la Ola 2)
+- **Severidad:** Media — dejaba en rojo una suite E2E completa sin ningún fallo de negocio
+- **Estado:** **resuelto** en la Ola 2
+- **Qué constaba:** al implementar la suspensión de cuentas (E4-03/5) se importó `AuditoriaModule` en `IamModule` para poder auditar. `AuditoriaModule` declara `BullModule.registerQueue({ name: 'auditoria-purga' })` y un `@Processor`, así que necesita el `BullModule.forRoot` del `AppModule`. `test/cliente-ficha-roles.e2e-spec.ts` compone su grafo a mano (`imports: [IamModule, ClienteModule]`, sin app completo, a propósito: `ClienteModule` está desactivado en la app por H22), de modo que heredó la cola sin conexión
+- **Evidencia:** `APP_ENV=dev npx vitest run --config ./vitest.config.e2e.ts test/cliente-ficha-roles.e2e-spec.ts` → antes: `FAIL … Error: Worker requires a connection` + `TypeError: Cannot read properties of undefined (reading 'usuarioRol')` en el `afterAll` (`Test Files 1 failed`, 4 tests saltados); después de sacar la bandeja de usuarios a su propio módulo → `Test Files 2 passed (2)` / `Tests 10 passed (10)` en la corrida conjunta con la suite de suspensión. La suite E2E completa cierra en verde con los 27 archivos
+- **Remedio aplicado:** `PlataformaUsuariosModule` (importa `AuditoriaModule`, declara el controlador y el servicio) registrado en `AppModule`; `IamModule` recupera su grafo sin colas
+- **Regla que deja escrita:** un módulo que compongan pruebas aisladas no debe importar módulos con `@Processor`/`registerQueue`; la dependencia de cola se declara en el módulo de la feature que la usa
+
+### H60: El ADMINISTRADOR puede suspender su propia cuenta y no hay protección del último administrador
+- **Módulo / Ruta afectada:** Backend, `PATCH /plataforma/usuarios/:id/estado`
+- **Tipo:** Diseño de autorización / riesgo operativo
+- **Severidad:** Baja — requiere que el propio administrador lo haga a propósito
+- **Estado:** abierto — a decisión del dueño
+- **Qué consta:** `UsuariosPlataformaService.cambiarEstado` no compara `usuarioId` con el `solicitante.id`, así que un ADMINISTRADOR puede suspender su cuenta (y con ella sus tokens: la acción sube `token_version`) aunque sea el único administrador de la plataforma. Recuperarse exige volver a poner `estado_cuenta = 'ACTIVO'` a mano en la base
+- **Evidencia:** el servicio no consulta al solicitante más allá de la auditoría; los E2E de suspensión usan un administrador distinto del suspendido y no cubren el caso
+- **Remedio propuesto:** rechazar `usuarioId === solicitante.id` con 422 (o 409) y contar los administradores ACTIVOS antes de suspender al último. Fuera del alcance de la Ola 2: lo pedido era la suspensión manual auditada
+

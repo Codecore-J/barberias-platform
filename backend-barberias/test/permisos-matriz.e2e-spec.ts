@@ -44,6 +44,14 @@ const CASOS: Caso[] = [
   { verbo: 'patch', ruta: '/barberias/{A}', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: { descripcion: 'Matriz permisos' } },
   { verbo: 'post', ruta: '/barberias/{A}/solicitudes-cambio', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: { tipo: 'NOMBRE', valorNuevo: 'Matriz permisos E3-13' } },
   { verbo: 'get', ruta: '/plataforma/solicitudes-cambio', permitidos: ['ADMINISTRADOR'] },
+  // H54 (E4-03/2): el estado propio lo consulta el CLIENTE. El ADMINISTRADOR no
+  // se mide aquí a propósito: no tiene vinculación propia en la sede, así que
+  // recibe 403 `NO_VINCULADO` del servicio y eso NO es una denegación de permiso.
+  { verbo: 'get', ruta: '/barberias/{A}/mi-estado', permitidos: ['CLIENTE'], sinAdministrador: true },
+  // E4-03/5: suspender una cuenta es de la plataforma; el resto recibe 403 del
+  // guard. Con un UUID al azar, el ADMINISTRADOR recibe 404 (la cuenta no
+  // existe), que también es «permitido» para esta matriz.
+  { verbo: 'patch', ruta: `/plataforma/usuarios/${randomUUID()}/estado`, permitidos: ['ADMINISTRADOR'], cuerpo: { estadoCuenta: 'SUSPENDIDO', motivo: 'Matriz de permisos E4-03/5' } },
   { verbo: 'post', ruta: `/plataforma/solicitudes-cambio/${randomUUID()}/resolver`, permitidos: ['ADMINISTRADOR'], cuerpo: { aprobar: true } },
   // E4-03: la bandeja local de restringidos es de la SEDE (y del ADMINISTRADOR
   // por jerarquía). El guard solo filtra el rol: la pertenencia a la sede la

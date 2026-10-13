@@ -106,6 +106,15 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   ],
   'GET /plataforma/solicitudes-cambio/': [ROL_ADMINISTRADOR],
   'POST /plataforma/solicitudes-cambio/:id/resolver': [ROL_ADMINISTRADOR],
+  // H54 (E4-03/2, 2026-10-12): el cliente consulta su PROPIO estado en esa sede.
+  // La ruta usa `:barberiaId`, así que el guard SÍ acota por el parámetro; el
+  // servicio vuelve a acotar por el usuario del token (nunca datos de otro).
+  // `@Get()` sin argumento compone la ruta con barra final (igual que `GET /barberias/`).
+  'GET /barberias/:barberiaId/mi-estado/': [ROL_CLIENTE],
+  // E4-03/5 (2026-10-12): suspender o reactivar la CUENTA global es exclusivo del
+  // ADMINISTRADOR de la plataforma (D05/D09/D48). La sede no entra por aquí: su
+  // penalización es local y su vía es `clientes/:clienteId/reactivar`.
+  'PATCH /plataforma/usuarios/:id/estado': [ROL_ADMINISTRADOR],
 
   'GET /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
   'POST /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -345,10 +354,11 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // endpoints de configuración (GET y PATCH /barberias/:barberiaId/configuracion)
   // y quedaban 65. E3-13 sumó la solicitud de la sede y la bandeja de plataforma
   // (listar y resolver): 68. E4-02 sumó los huecos de espacio (69) y E4-03 la
-  // bandeja local de restringidos con su reactivación: 71.
-  it('descubrir las 71 rutas del servidor y todas tienen decision', () => {
+  // bandeja local de restringidos con su reactivación: 71. La Ola 2 del sprint
+  // sumó `mi-estado` (H54) y la suspensión de cuenta (E4-03/5): 73.
+  it('descubrir las 73 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(71);
+    expect(claves.length).toBe(73);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -441,8 +451,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     // quitó PATCH /reservas/:id/estado, E3-11 añadió las dos de configuración
     // (GET y PATCH /barberias/:barberiaId/configuracion), E3-13 las tres de
     // solicitudes de cambio, E4-02 la de huecos de espacio y E4-03 las dos de
-    // restringidos: 71 × 4 = 284.
-    expect(evaluaciones).toBe(284);
+    // restringidos: 71. La Ola 2 del sprint sumó `mi-estado` (H54) y
+    // `PATCH /plataforma/usuarios/:id/estado` (E4-03/5): 73 × 4 = 292.
+    expect(evaluaciones).toBe(292);
     expect(
       desviaciones.length === 0
         ? ''

@@ -126,6 +126,8 @@
 | 59 | POST | `/plataforma/solicitudes-cambio/:id/resolver` | PlataformaSolicitudesCambioController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-13** (D26) | no | **sí** — 409 `ESTADO_INVALIDO` y 422 `MOTIVO_REQUERIDO`; al aprobar un RESPONSABLE mueve `responsable_id`, el rol `ADMIN_BARBERIA` y audita en UNA transacción | no — pendiente del panel de plataforma | `test/e3-13-solicitudes-cambio.e2e-spec.ts`; `src/barberia/application/solicitud-cambio.service.spec.ts` |
 | 60 | GET | `/barberias/:id/clientes-restringidos` | ClientesRestringidosController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E4-03** (D48) | **sí** — la ruta usa `:id`, así que el guard NO resuelve la sede del parámetro: la pertenencia la exige el servicio (403), igual que la fila 57 | no | no — pendiente del panel de la sede | `test/e4-03-fidelizacion.e2e-spec.ts`; `src/barberia/application/clientes-restringidos.service.spec.ts` |
 | 61 | POST | `/barberias/:id/clientes/:clienteId/reactivar` | ClientesRestringidosController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E4-03** (D48) | **sí** — misma regla que la fila 60, más 404 si no hay vinculación | **sí** — 422 `SIN_RESTRICCION` si el cliente no estaba restringido; levanta la restricción, reinicia el contador de ESA sede y audita `RESTRICCION_LEVANTADA` con el valor anterior y el nuevo (D28) | no — pendiente del panel de la sede | `test/e4-03-fidelizacion.e2e-spec.ts`; `src/barberia/application/clientes-restringidos.service.spec.ts` |
+| 62 | GET | `/barberias/:barberiaId/mi-estado` | MiEstadoController | — no existía | `@Roles(CLIENTE)` | **H54** (E4-03/2) | **sí** — la ruta usa `:barberiaId`, así que el guard SÍ acota la sede; el servicio vuelve a acotar por el usuario del token | **sí** — 403 `NO_VINCULADO` sin fila en `cliente_barberias` y `mensaje` calculado con la regla pura de §5.8 | no — pendiente del perfil del cliente | `test/e4-03-fidelizacion.e2e-spec.ts` (H54); `src/barberia/application/mi-estado.service.spec.ts`; `src/reserva/domain/fidelizacion.spec.ts` |
+| 63 | PATCH | `/plataforma/usuarios/:id/estado` | PlataformaUsuariosController | — no existía | `@Roles(ADMINISTRADOR)` | **E4-03/5** (D09/D24) | no (el guard ya acota: es una ruta de plataforma) | **sí** — 422 `MOTIVO_REQUERIDO`, 409 `ESTADO_INVALIDO`, 404 si la cuenta no existe; al suspender sube `token_version` (cierra TODAS las sesiones) y audita `CUENTA_SUSPENDIDA`/`CUENTA_REACTIVADA` con anterior y nuevo (D28) | no — pendiente del panel de plataforma | `test/e4-03-suspension-cuenta.e2e-spec.ts`; `src/iam/application/usuarios-plataforma.service.spec.ts`; `test/estado-cuenta-guard.spec.ts` |
 
 ## Recuento aplicado
 
@@ -197,6 +199,16 @@ penalización por inasistencias es LOCAL — ninguno de los dos endpoints puede 
 `src/barberia/application/clientes-restringidos.service.spec.ts`, `src/reserva/domain/fidelizacion.spec.ts`,
 el describe E4-03 de `src/reserva/application/reserva.service.spec.ts` y los dos casos nuevos de
 `test/permisos-matriz.e2e-spec.ts`.
+
+**Estado real tras la Ola 2 del sprint de estabilización (2026-10-12):** `test/permisos-matriz.spec.ts` cuenta
+**73 rutas × 4 roles = 292** decisiones. Sobre las 71 de E4-03, `+2`: el `mi-estado` del cliente (fila 62, H54)
+y la suspensión de cuenta de la plataforma (fila 63, E4-03/5). Las dos cierran brechas de negocio que los
+reportes declaraban «documentadas pero ausentes», y las dos acotan por sí mismas lo que el guard no ve: 62 por
+el usuario del token y 63 por el rol global. Evidencia: `test/e4-03-fidelizacion.e2e-spec.ts` (H54),
+`test/e4-03-suspension-cuenta.e2e-spec.ts` (ciclo completo de suspensión y reactivación),
+`src/barberia/application/mi-estado.service.spec.ts`, `src/iam/application/usuarios-plataforma.service.spec.ts`
+y `test/estado-cuenta-guard.spec.ts` (D48 sobre el código fuente: los únicos escritores de
+`usuarios.estado_cuenta` son el alta y esta ruta manual).
 
 ## Decisiones tomadas
 

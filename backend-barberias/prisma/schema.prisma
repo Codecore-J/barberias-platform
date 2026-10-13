@@ -15,6 +15,9 @@ model Usuario {
   cedula         String?   @unique @db.VarChar(30)
   passwordHash   String    @map("password_hash") @db.VarChar(255)
   estadoCuenta   String    @default("ACTIVO") @map("estado_cuenta") @db.VarChar(20)
+  // E4-03/5 · D24: versión del token. Suspender una cuenta la sube y con eso
+  // quedan inválidos los JWT ya firmados (se cierran todas las sesiones).
+  tokenVersion   Int       @default(0) @map("token_version")
   creadoAt       DateTime? @default(now()) @map("creado_at") @db.Timestamptz
 
   usuarioRoles       UsuarioRol[]

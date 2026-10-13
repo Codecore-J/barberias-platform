@@ -435,4 +435,122 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
     // mensaje para que la prueba no pase por accidente sin implementación.
     expect(res.body.message).toBe('El cliente no está vinculado a esta barbería.');
   }, 60_000);
+
+  // ── H54 (E4-03/2) · el cliente VE su estado ────────────────────────────
+  it('H54: el cliente ve su contador, su advertencia y su restricción (y solo la suya)', async () => {
+    const clienteId = usuarios[correos.cliente];
+    const ruta = `${api}/barberias/${sede.A}/mi-estado`;
+
+    const fijarVinculo = (data: Record<string, unknown>) =>
+      prisma.clienteBarberia.update({
+        where: { uk_cliente_barberia: { usuarioId: clienteId, barberiaId: sede.A } },
+        data,
+      });
+
+    // 1. Estado limpio: el ciclo anterior terminó con el perdón (contador a 0).
+    const limpio = await request(app.getHttpServer())
+      .get(ruta)
+      .set(headers(correos.cliente, sede.A));
+
+    expect(limpio.status).toBe(200);
+    expect(limpio.body).toMatchObject({
+      barberiaId: sede.A,
+      clienteId,
+      estadoVinculacion: 'ACTIVO',
+      contadorNoPresentado: 0,
+      estaRestringido: false,
+      motivoRestriccion: null,
+      advertencia: false,
+      mensaje: null,
+      limiteInasistencias: 5,
+      inasistenciasParaRestriccion: 5,
+    });
+
+    // 2. Tres inasistencias: advertencia visible y el aviso de cuántas faltan.
+    await fijarVinculo({ contadorNoPresentado: 3, estaRestringido: false, motivoRestriccion: null });
+
+    const advertido = await request(app.getHttpServer())
+      .get(ruta)
+      .set(headers(correos.cliente, sede.A));
+
+    expect(advertido.status).toBe(200);
+    expect(advertido.body).toMatchObject({
+      advertencia: true,
+      estaRestringido: false,
+      contadorNoPresentado: 3,
+      inasistenciasParaRestriccion: 2,
+    });
+    expect(advertido.body.mensaje).toBe(
+      'Estás a 2 inasistencias de ser suspendido en esta barbería.',
+    );
+
+    // 3. A una del límite, en singular.
+    await fijarVinculo({ contadorNoPresentado: 4 });
+
+    const alLimite = await request(app.getHttpServer())
+      .get(ruta)
+      .set(headers(correos.cliente, sede.A));
+
+    expect(alLimite.body.mensaje).toBe(
+      'Estás a 1 inasistencia de ser suspendido en esta barbería.',
+    );
+
+    // 4. Restringido: el mensaje es el motivo que guardó la sede.
+    const motivo = 'Bloqueo automático: alcanzaste el límite de 5 inasistencias en esta barbería.';
+    await fijarVinculo({
+      contadorNoPresentado: 5,
+      estaRestringido: true,
+      motivoRestriccion: motivo,
+    });
+
+    const restringido = await request(app.getHttpServer())
+      .get(ruta)
+      .set(headers(correos.cliente, sede.A));
+
+    expect(restringido.status).toBe(200);
+    expect(restringido.body).toMatchObject({
+      estaRestringido: true,
+      advertencia: true,
+      motivoRestriccion: motivo,
+      mensaje: motivo,
+      inasistenciasParaRestriccion: 0,
+    });
+
+    // 5. Y nadie más usa esta ruta para espiar: el staff de la sede y el admin
+    //    de OTRA sede quedan fuera (el guard acota por el `:barberiaId`).
+    const comoBarbero = await request(app.getHttpServer())
+      .get(ruta)
+      .set(headers(correos.barbero, sede.A));
+    expect(comoBarbero.status).toBe(403);
+
+    const comoAdminAjeno = await request(app.getHttpServer())
+      .get(ruta)
+      .set(headers(correos.adminB, sede.A));
+    expect(comoAdminAjeno.status).toBe(403);
+
+    // 6. La sede B no ve nada de esto: allí el contador sigue en 0.
+    const enB = await request(app.getHttpServer())
+      .get(`${api}/barberias/${sede.B}/mi-estado`)
+      .set(headers(correos.cliente, sede.B));
+
+    expect(enB.status).toBe(200);
+    expect(enB.body).toMatchObject({
+      barberiaId: sede.B,
+      contadorNoPresentado: 0,
+      estaRestringido: false,
+      mensaje: null,
+    });
+
+    // Se deja la fila como estaba: el perdón del ciclo dejó todo en cero.
+    await fijarVinculo({ contadorNoPresentado: 0, estaRestringido: false, motivoRestriccion: null });
+  }, 120_000);
+
+  it('H54: sin vinculación con la sede → 403 NO_VINCULADO, sin filtrar nada', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`${api}/barberias/11111111-1111-4111-8111-111111111111/mi-estado`)
+      .set(headers(correos.cliente));
+
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ statusCode: 403, codigo: 'NO_VINCULADO' });
+  }, 60_000);
 });

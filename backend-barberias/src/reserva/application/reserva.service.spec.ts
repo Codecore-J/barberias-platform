@@ -631,6 +631,10 @@ describe('ReservaService', () => {
         clienteId: 'uuid-cliente',
         barberiaId: 'uuid-barberia',
         estado: 'CONFIRMADA',
+        // H52: la ventana necesita las etiquetas de la cita y la zona de la sede.
+        fechaCita: new Date('2026-10-10'),
+        horaInicio: hora(10, 0),
+        barberia: { zonaHoraria: TZ_SEDE },
       });
       mockPrismaService.reserva.update.mockResolvedValue({ id: 'uuid-reserva' });
       mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({
@@ -1212,6 +1216,9 @@ describe('ReservaService', () => {
       margenGrupalHistorico: 10,
       totalPagar: 30,
       expiraAt: new Date(Date.now() + 5 * 60000),
+      // H52: cita del 2026-10-10 a las 10:00 de la sede, ya pasada respecto al
+      // reloj real de la suite, así que la ventana de los 15 minutos se cumple.
+      barberia: { zonaHoraria: TZ_SEDE },
     });
 
     /** Deja pasar las comprobaciones de permiso de `marcarInasistencia` como ADMINISTRADOR global. */
@@ -1498,6 +1505,10 @@ describe('ReservaService', () => {
         clienteId: 'uuid-cliente',
         barberiaId: 'uuid-barberia',
         estado: 'CONFIRMADA',
+        // H52: cita del 2026-10-10 (pasada) para que la ventana no interfiera.
+        fechaCita: new Date('2026-10-10'),
+        horaInicio: hora(10, 0),
+        barberia: { zonaHoraria: TZ_SEDE },
       };
 
       beforeEach(() => {
@@ -1606,6 +1617,175 @@ describe('ReservaService', () => {
         ).rejects.toThrowError(ForbiddenException);
         expect(mockPrismaService.clienteBarberia.update).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  // ── H52 · la ventana de 15 minutos del no presentado (§5.2 fila 12) ───────
+  describe('H52 · ventana de 15 minutos del no presentado', () => {
+    /**
+     * Cita del 2026-10-12 a las 10:00 en la zona de la sede (UTC-4) = 14:00Z.
+     * El reloj se mueve a los 13, 14, 15 y 16 minutos para medir los bordes:
+     * con 15 ya se marca (5 de puntualidad + 10 de tolerancia).
+     */
+    const FECHA_CITA = new Date('2026-10-12');
+    const INICIO_HORA = hora(10, 0);
+
+    function citaConfirmada() {
+      return {
+        id: 'uuid-reserva',
+        clienteId: 'uuid-cliente',
+        barberiaId: 'uuid-barberia',
+        estado: 'CONFIRMADA',
+        fechaCita: FECHA_CITA,
+        horaInicio: INICIO_HORA,
+        barberia: { zonaHoraria: TZ_SEDE },
+      };
+    }
+
+    /** El servicio con un reloj FIJO: el borde de la ventana no admite el real. */
+    async function servicioConReloj(ahora: Date): Promise<ReservaService> {
+      const module = await Test.createTestingModule({
+        providers: [
+          ReservaService,
+          { provide: PrismaService, useValue: mockPrismaService },
+          { provide: DisponibilidadService, useValue: mockDisponibilidadService },
+          { provide: getQueueToken('reservas-pendientes'), useValue: mockQueue },
+          { provide: AuditoriaService, useValue: mockAuditoriaService },
+          { provide: TiempoService, useValue: new TiempoService(() => ahora) },
+        ],
+      }).compile();
+
+      return module.get<ReservaService>(ReservaService);
+    }
+
+    function dejarPasarAlResponsable() {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({
+        responsableId: 'uuid-admin-sede',
+      });
+      mockPrismaService.reserva.findUnique.mockResolvedValue(citaConfirmada());
+      mockPrismaService.reserva.update.mockResolvedValue({ id: 'uuid-reserva' });
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({
+        id: 'uuid-vinculo',
+        contadorNoPresentado: 0,
+        estaRestringido: false,
+        motivoRestriccion: null,
+      });
+      mockPrismaService.clienteBarberia.update.mockResolvedValue({});
+      mockQueue.getJob.mockResolvedValue(null);
+    }
+
+    it('ROJO: a los 14 minutos → 422 FUERA_DE_VENTANA y no se escribe nada', async () => {
+      dejarPasarAlResponsable();
+      const con14 = await servicioConReloj(new Date('2026-10-12T14:14:00.000Z'));
+
+      await expect(
+        con14.marcarInasistencia('uuid-barberia', 'uuid-reserva', 'uuid-admin-sede'),
+      ).rejects.toMatchObject({
+        response: { codigo: 'FUERA_DE_VENTANA', statusCode: 422 },
+      });
+
+      expect(mockPrismaService.reserva.update).not.toHaveBeenCalled();
+      expect(mockPrismaService.clienteBarberia.update).not.toHaveBeenCalled();
+      expect(mockAuditoriaService.registrarEvento).not.toHaveBeenCalled();
+    });
+
+    it('ROJO: antes de que la cita empiece tampoco se marca (13 minutos → 422)', async () => {
+      dejarPasarAlResponsable();
+      const antes = await servicioConReloj(new Date('2026-10-12T13:47:00.000Z'));
+
+      await expect(
+        antes.marcarInasistencia('uuid-barberia', 'uuid-reserva', 'uuid-admin-sede'),
+      ).rejects.toMatchObject({
+        response: { codigo: 'FUERA_DE_VENTANA', statusCode: 422 },
+      });
+      expect(mockPrismaService.reserva.update).not.toHaveBeenCalled();
+    });
+
+    it('VERDE: a los 15 minutos exactos ya se marca (5 + 10) y el contador sube', async () => {
+      dejarPasarAlResponsable();
+      const con15 = await servicioConReloj(new Date('2026-10-12T14:15:00.000Z'));
+
+      const resultado = await con15.marcarInasistencia(
+        'uuid-barberia',
+        'uuid-reserva',
+        'uuid-admin-sede',
+      );
+
+      expect(resultado.contadorNoPresentado).toBe(1);
+      expect(mockPrismaService.reserva.update).toHaveBeenCalledWith({
+        where: { id: 'uuid-reserva' },
+        data: { estado: 'NO_PRESENTADO' },
+      });
+    });
+
+    it('VERDE: a los 16 minutos se marca igual (el límite no vuelve a cerrarse)', async () => {
+      dejarPasarAlResponsable();
+      const con16 = await servicioConReloj(new Date('2026-10-12T14:16:00.000Z'));
+
+      const resultado = await con16.marcarInasistencia(
+        'uuid-barberia',
+        'uuid-reserva',
+        'uuid-admin-sede',
+      );
+
+      expect(resultado.contadorNoPresentado).toBe(1);
+      expect(mockPrismaService.reserva.update).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── H58 · el bloqueo pesimista no depende del `search_path` ───────────────
+  describe('H58 · bloqueo de la sede con el esquema calificado', () => {
+    /**
+     * Renderiza la llamada burlada a `$queryRaw` como la renderiza Prisma: las
+     * cadenas del template y, en medio, los valores interpolados (los `Prisma.raw`
+     * traen su propio texto).
+     */
+    function sqlDelPrimerBloqueo(): string {
+      const [cadenas, ...valores] = mockPrismaService.$queryRaw.mock.calls[0] as unknown as [
+        string[],
+        ...unknown[],
+      ];
+
+      return cadenas.reduce((texto, parte, indice) => {
+        const valor = valores[indice];
+        const crudo =
+          typeof valor === 'object' && valor !== null && 'strings' in valor
+            ? (valor as { strings: string[] }).strings.join('')
+            : String(valor ?? '');
+
+        return texto + parte + (indice < valores.length ? crudo : '');
+      }, '');
+    }
+
+    it('ROJO: la consulta del bloqueo nombra la tabla con su esquema, no a secas', async () => {
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
+        modoReserva: 'MANUAL',
+        nuevasReservasActivas: true,
+        aceptaIndividual: true,
+        margenGrupalMinutos: 10,
+        horizonteReservaDias: 30,
+      });
+      mockPrismaService.servicio.findMany.mockResolvedValue([
+        { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 5 },
+      ]);
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
+        { inicio: enSede('2026-10-12', 9), fin: enSede('2026-10-12', 10) },
+      ]);
+      mockPrismaService.reserva.create.mockResolvedValue({ id: 'uuid-reserva' });
+      mockPrismaService.participanteReserva.create.mockResolvedValue({ id: 'uuid-part' });
+
+      await service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        fecha: '2026-10-12',
+        horaInicio: '09:00',
+        horaFin: '09:30',
+        serviciosIds: ['s1'],
+        precioTotalEsperado: 15,
+      });
+
+      expect(sqlDelPrimerBloqueo()).toBe(
+        'SELECT id FROM "public"."barberias" WHERE id = uuid-barberia::uuid FOR UPDATE',
+      );
     });
   });
 });

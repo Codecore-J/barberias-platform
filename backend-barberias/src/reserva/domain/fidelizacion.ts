@@ -17,6 +17,18 @@
 export const UMBRAL_ADVERTENCIA_INASISTENCIAS = 3;
 
 /**
+ * §5.8 · los 5 minutos de puntualidad más los 10 de tolerancia. Pasado ese
+ * margen la cita se considera no presentada; ANTES de él, marcarla es un error
+ * de la sede (H52) y se responde 422 `FUERA_DE_VENTANA`.
+ *
+ * Viven aquí, con la regla, y no enterrados en el servicio: el no presentado de
+ * E3-10 y su ventana son la misma regla de §5.8 (D47 en su espíritu).
+ */
+export const PUNTUALIDAD_MARGEN_MIN = 5;
+export const TOLERANCIA_MIN = 10;
+export const VENTANA_NO_PRESENTADO_MIN = PUNTUALIDAD_MARGEN_MIN + TOLERANCIA_MIN;
+
+/**
  * Límite por defecto de la sede (spec 01 §5.8: «5 → restricción impuesta por
  * esa barbería, nunca global»).
  *
@@ -65,5 +77,70 @@ export function evaluarInasistencia(
       : estadoActual.motivoRestriccion,
     advertencia: contadorNoPresentado >= UMBRAL_ADVERTENCIA_INASISTENCIAS,
     restringidoAhora,
+  };
+}
+
+/**
+ * E4-03/2 (H54) · lo que el CLIENTE ve de su propia fidelización.
+ *
+ * Es la vista pública de la MISMA regla: no decide nada nuevo, traduce el
+ * contador de la sede a un mensaje que el cliente puede leer. Por eso vive aquí
+ * y no en el servicio: la regla se escribe una vez (D47) y el endpoint solo la
+ * proyecta.
+ */
+export interface EstadoVisibleFidelizacion {
+  contadorNoPresentado: number;
+  estaRestringido: boolean;
+  motivoRestriccion: string | null;
+  /** `true` con 3 o más inasistencias: el perfil muestra la advertencia. */
+  advertencia: boolean;
+  /** Inasistencias que faltan para que ESTA sede restrinja (0 si ya lo está). */
+  inasistenciasParaRestriccion: number;
+  /** Texto listo para mostrar. `null` cuando no hay nada que avisar. */
+  mensaje: string | null;
+}
+
+/**
+ * Proyecta el estado de UNA vinculación al lenguaje del cliente.
+ *
+ * Tres casos, sin ambigüedad:
+ *  - restringido: el motivo que guardó la restricción (o un texto neutro si por
+ *    lo que fuera llegara vacío);
+ *  - con 3 o más inasistencias: cuántas faltan para el bloqueo de la sede;
+ *  - por debajo del umbral: sin mensaje. Antes del aviso no se asusta a nadie.
+ */
+export function describirEstadoFidelizacion(
+  estado: EstadoFidelizacion & { contadorNoPresentado: number },
+  limiteDeLaSede: number = LIMITE_INASISTENCIAS_POR_DEFECTO,
+): EstadoVisibleFidelizacion {
+  const inasistenciasParaRestriccion = Math.max(0, limiteDeLaSede - estado.contadorNoPresentado);
+  const advertencia =
+    estado.estaRestringido || estado.contadorNoPresentado >= UMBRAL_ADVERTENCIA_INASISTENCIAS;
+
+  if (estado.estaRestringido) {
+    return {
+      contadorNoPresentado: estado.contadorNoPresentado,
+      estaRestringido: true,
+      motivoRestriccion: estado.motivoRestriccion,
+      advertencia: true,
+      inasistenciasParaRestriccion: 0,
+      mensaje:
+        estado.motivoRestriccion ?? 'Estás restringido para reservar en esta barbería.',
+    };
+  }
+
+  return {
+    contadorNoPresentado: estado.contadorNoPresentado,
+    estaRestringido: false,
+    motivoRestriccion: null,
+    advertencia,
+    inasistenciasParaRestriccion,
+    mensaje: advertencia
+      ? inasistenciasParaRestriccion === 0
+        ? 'Alcanzaste el límite de inasistencias de esta barbería.'
+        : `Estás a ${inasistenciasParaRestriccion} inasistencia${
+            inasistenciasParaRestriccion === 1 ? '' : 's'
+          } de ser suspendido en esta barbería.`
+      : null,
   };
 }

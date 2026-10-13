@@ -8,6 +8,10 @@ import { AuthController } from './infrastructure/auth.controller.js';
 
 import { getJwtSecret } from './iam.config.js';
 
+// La bandeja de plataforma de usuarios (E4-03/5) NO se registra aquí: depende de
+// la auditoría, que trae su cola y su `@Processor`, y eso rompería el grafo
+// mínimo que componen las pruebas de este módulo. Tiene el suyo:
+// `PlataformaUsuariosModule`.
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
