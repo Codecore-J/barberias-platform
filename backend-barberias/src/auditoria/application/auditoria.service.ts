@@ -11,6 +11,20 @@ import { Queue } from 'bullmq';
 import type { Prisma } from '@prisma/client';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import { alcanceCumple, esAdministradorGlobal } from '../../iam/domain/roles.js';
+import {
+  encolarConLimite,
+  type ResultadoEncolado,
+} from '../../shared/queues/encolado-seguro.js';
+
+/**
+ * H63 · Techo del registro del cron durante el ARRANQUE de la aplicación.
+ *
+ * Más generoso que el techo de encolado de las rutas (2 s) porque aquí no hay
+ * nadie esperando una respuesta HTTP y un Redis remoto legítimamente lento no
+ * debe quedar marcado como caído. Sigue siendo un límite estricto: el arranque
+ * nunca espera más de esto a la cola de auditoría.
+ */
+export const REGISTRO_CRON_TIMEOUT_MS = 3000;
 
 export interface RegistrarAuditoriaDto {
   usuarioId?: string | null;
@@ -47,8 +61,46 @@ export class AuditoriaService implements OnModuleInit {
     @InjectQueue('auditoria-purga') private readonly purgaQueue: Queue,
   ) {}
 
-  async onModuleInit() {
-    await this.configurarJobRecurrente();
+  /**
+   * H63 · El arranque NO espera a la cola de auditoría.
+   *
+   * POR QUÉ (medido, no supuesto): `configurarJobRecurrente()` ya capturaba el
+   * caso «Redis responde con error» —por eso la app arrancó con la cuota de
+   * Upstash agotada—, pero cuando Redis NO responde `upsertJobScheduler` ni
+   * resuelve ni rechaza (`maxRetriesPerRequest: null`, obligatorio en BullMQ), y
+   * Nest espera a `onModuleInit` antes de escuchar. Resultado: con Redis caído
+   * la aplicación no levantaba el servidor HTTP en absoluto.
+   *
+   * Arreglo: el registro del cron se lanza SIN `await` fuera de la cadena
+   * crítica y con techo estricto (`programarPurgaDiaria`). Un cron de purga
+   * diario no puede ser requisito para atender reservas, pagos o catálogos: la
+   * dependencia es opcional y se degrada con una línea de error en el log. Si la
+   * cola vuelve, la llamada pendiente se completa sola y el cron queda
+   * registrado sin reiniciar el proceso (el id del scheduler es fijo, así que
+   * registrarlo tarde es inofensivo).
+   */
+  onModuleInit(): void {
+    void this.programarPurgaDiaria();
+  }
+
+  /**
+   * Registra el cron diario de purga con techo de tiempo. NUNCA lanza: devuelve
+   * el resultado del encolado para poder inspeccionarlo (y testearlo sin
+   * depender de la suerte del temporizador).
+   */
+  async programarPurgaDiaria(): Promise<ResultadoEncolado<void>> {
+    const resultado = await encolarConLimite(
+      () => this.configurarJobRecurrente(),
+      REGISTRO_CRON_TIMEOUT_MS,
+    );
+
+    if (!resultado.ok) {
+      this.logger.error(
+        `CRÍTICO: la cola de auditoría no respondió en ${REGISTRO_CRON_TIMEOUT_MS} ms al programar el cron de purga (${resultado.motivo}). La aplicación arranca SIN el cron diario; la purga retomará cuando la cola vuelva (la llamada queda pendiente y se completa sola), sin necesidad de reiniciar.`,
+      );
+    }
+
+    return resultado;
   }
 
   /**
@@ -174,6 +226,10 @@ export class AuditoriaService implements OnModuleInit {
 
   /**
    * Programa el cron distribuido en BullMQ a las 03:00 AM todos los días (T8.2).
+   *
+   * Atrapa el rechazo (Redis que RESPONDE mal) y no acota la espera (Redis que
+   * NO responde): el techo de tiempo lo pone quien la llama —`programarPurgaDiaria`
+   * en el arranque—  para que este método siga siendo la operación "de verdad".
    */
   async configurarJobRecurrente() {
     try {

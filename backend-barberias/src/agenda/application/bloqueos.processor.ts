@@ -21,14 +21,26 @@ export class BloqueosProcessor extends WorkerHost {
         where: { id: bloqueoId },
       });
 
-      if (bloqueo) {
-        await this.prisma.bloqueosAgenda.delete({
-          where: { id: bloqueoId },
-        });
-        this.logger.log(`Bloqueo ${bloqueoId} liberado exitosamente tras expirar su tiempo.`);
-      } else {
+      if (!bloqueo) {
         this.logger.warn(`Bloqueo ${bloqueoId} ya no existe, no se requiere liberación.`);
+        return;
       }
+
+      // E2-07 · D29: la liberación automática hace lo MISMO que la manual —fijar
+      // `liberado_at` en vez de borrar la fila— para que el histórico sea el
+      // mismo venga el disparo del job o del ADMIN_BARBERIA. Idempotente: si el
+      // bloqueo ya se liberó a mano, el job no vuelve a escribir.
+      if (bloqueo.liberadoAt) {
+        this.logger.log(`Bloqueo ${bloqueoId} ya estaba liberado; el job no hace nada.`);
+        return;
+      }
+
+      await this.prisma.bloqueosAgenda.update({
+        where: { id: bloqueoId },
+        data: { liberadoAt: new Date(), jobId: null },
+      });
+
+      this.logger.log(`Bloqueo ${bloqueoId} liberado exitosamente tras expirar su tiempo.`);
     }
   }
 }

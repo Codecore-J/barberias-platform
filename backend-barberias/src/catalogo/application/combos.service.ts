@@ -111,19 +111,44 @@ export class CombosService {
     });
   }
 
-  async deactivate(barberiaId: string, id: string) {
+  /**
+   * E2-07 · D29: el combo tampoco se borra, se desactiva.
+   *
+   * El backlog pone las reglas de bloqueo en el SERVICIO que está dentro del
+   * combo (422 `SERVICIO_EN_COMBO_ACTIVO`): apagar el combo es justo la acción que
+   * desbloquea esa regla, así que aquí no hay comprobaciones que hacer. Un combo
+   * desactivado no se bloquea por las reservas abiertas que lo referencian: sus
+   * participantes conservan el snapshot y la reserva sigue siendo válida.
+   */
+  async desactivar(barberiaId: string, id: string) {
     const combo = await this.findOne(barberiaId, id);
     if (combo.estado === 'INACTIVO') {
       return combo;
     }
 
-    const deactivated = await this.prisma.combo.update({
+    const desactivado = await this.prisma.combo.update({
       where: { id: combo.id },
       data: { estado: 'INACTIVO' },
     });
 
     this.logger.log(`Combo desactivado: ${id}`);
-    return deactivated;
+    return desactivado;
+  }
+
+  /** E2-07: la vuelta atrás explícita, idempotente. */
+  async reactivar(barberiaId: string, id: string) {
+    const combo = await this.findOne(barberiaId, id);
+    if (combo.estado === 'ACTIVO') {
+      return combo;
+    }
+
+    const reactivado = await this.prisma.combo.update({
+      where: { id: combo.id },
+      data: { estado: 'ACTIVO' },
+    });
+
+    this.logger.log(`Combo reactivado: ${id}`);
+    return reactivado;
   }
 
   private async validateCycles(barberiaId: string, currentComboId: string, propuestosSubCombosIds: string[]) {

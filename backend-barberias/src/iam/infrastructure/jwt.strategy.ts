@@ -28,6 +28,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         id: true,
         correo: true,
         estadoCuenta: true,
+        // D24/E4-03-5: la versión del token se compara en cada petición.
+        tokenVersion: true,
         usuarioRoles: {
           select: {
             barberiaId: true,
@@ -43,6 +45,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
 
     if (!usuario || usuario.estadoCuenta !== 'ACTIVO') {
+      throw new UnauthorizedException('La sesión no es válida o la cuenta está inactiva.');
+    }
+
+    // D24 (E4-03/5): un token firmado con una versión anterior a la vigente ya no
+    // vale. Es lo que cierra las sesiones de verdad al suspender una cuenta: el
+    // rechazo por `estadoCuenta` desaparecería al reactivarla, este no. Un token
+    // sin `tv` es de antes de la migración y se lee como versión 0.
+    if ((payload.tv ?? 0) !== usuario.tokenVersion) {
       throw new UnauthorizedException('La sesión no es válida o la cuenta está inactiva.');
     }
 

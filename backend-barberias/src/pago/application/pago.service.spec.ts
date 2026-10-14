@@ -2,12 +2,29 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PagoService } from './pago.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
+import { TiempoService, ZONA_POR_DEFECTO } from '../../shared/time/tiempo.service.js';
 import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
+
+/**
+ * E3-09/E2-04: el cobro solo completa una cita que YA empezó. La cita de prueba
+ * es del 2026-10-10 a las 09:00 de la sede (13:00Z) y el reloj falso va una hora
+ * por delante; los casos que necesiten lo contrario mueven `ahora`.
+ */
+const TZ_SEDE = ZONA_POR_DEFECTO;
+const CITA_FECHA = new Date('2026-10-10T00:00:00.000Z');
+const CITA_HORA = new Date('1970-01-01T09:00:00.000Z');
+const AHORA_TRAS_EL_INICIO = new Date('2026-10-10T14:00:00.000Z');
+
+const tiempoReal = new TiempoService();
+const mockTiempo = {
+  ahora: vi.fn(() => AHORA_TRAS_EL_INICIO),
+  aInstante: (fecha: string, hora: string, tz?: string) => tiempoReal.aInstante(fecha, hora, tz),
+};
 
 describe('PagoService', () => {
   let service: PagoService;
@@ -28,12 +45,15 @@ describe('PagoService', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    // El reloj falso sobrevive a `clearAllMocks`, así que se fija en cada caso.
+    mockTiempo.ahora.mockReturnValue(AHORA_TRAS_EL_INICIO);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PagoService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: AuditoriaService, useValue: mockAuditoriaService },
+        { provide: TiempoService, useValue: mockTiempo },
       ],
     }).compile();
 
@@ -63,6 +83,11 @@ describe('PagoService', () => {
         estado: 'CONFIRMADA',
         totalPagar: 25.0,
         pago: null,
+        // E3-09: la condición de `hora_inicio` necesita las etiquetas de la cita
+        // y la zona de la sede.
+        fechaCita: CITA_FECHA,
+        horaInicio: CITA_HORA,
+        barberia: { zonaHoraria: TZ_SEDE },
       });
 
       // 3. Upsert de pago
@@ -103,7 +128,7 @@ describe('PagoService', () => {
       );
       expect(mockPrismaService.reserva.update).toHaveBeenCalledWith({
         where: { id: reservaId },
-        data: { estado: 'COMPLETADA' },
+        data: { estado: 'COMPLETADA', completadaAt: AHORA_TRAS_EL_INICIO },
       });
       expect(mockAuditoriaService.registrarEvento).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -121,13 +146,19 @@ describe('PagoService', () => {
         responsableId: usuarioId,
       });
 
+      // E3-09 (H47): una PENDIENTE ya NO se puede cobrar, así que este caso —que
+      // prueba el monto por defecto— usa una CONFIRMADA que ya empezó. Que la
+      // PENDIENTE falle tiene su propio caso más abajo.
       mockPrismaService.reserva.findFirst.mockResolvedValue({
         id: reservaId,
         barberiaId,
         clienteId: 'uuid-cliente',
-        estado: 'PENDIENTE',
+        estado: 'CONFIRMADA',
         totalPagar: 35.5,
         pago: null,
+        fechaCita: CITA_FECHA,
+        horaInicio: CITA_HORA,
+        barberia: { zonaHoraria: TZ_SEDE },
       });
 
       mockPrismaService.pago.upsert.mockResolvedValue({
@@ -179,7 +210,7 @@ describe('PagoService', () => {
       ).rejects.toThrowError(NotFoundException);
     });
 
-    it('debe lanzar BadRequestException si la reserva está CANCELADA', async () => {
+    it('E3-09 (H47): una reserva CANCELADA no se cobra → 409 ESTADO_INVALIDO', async () => {
       mockPrismaService.barberia.findUnique.mockResolvedValue({
         responsableId: usuarioId,
       });
@@ -187,13 +218,18 @@ describe('PagoService', () => {
         id: reservaId,
         barberiaId,
         estado: 'CANCELADA',
+        fechaCita: CITA_FECHA,
+        horaInicio: CITA_HORA,
+        barberia: { zonaHoraria: TZ_SEDE },
       });
 
       await expect(
         service.registrarPagoEnPersona(usuarioId, barberiaId, {
           reservaId,
         }),
-      ).rejects.toThrowError(BadRequestException);
+      ).rejects.toMatchObject({
+        response: { statusCode: 409, codigo: 'ESTADO_INVALIDO' },
+      });
     });
 
     it('debe lanzar ConflictException si la reserva ya estaba PAGADA', async () => {
@@ -215,6 +251,57 @@ describe('PagoService', () => {
           reservaId,
         }),
       ).rejects.toThrowError(ConflictException);
+    });
+
+    it('E3-09 §5.2 fila 11: cobrar una cita que aún NO empezó → 422 CITA_NO_INICIADA', async () => {
+      // Una hora ANTES del inicio real (09:00 de la sede = 13:00Z).
+      mockTiempo.ahora.mockReturnValue(new Date('2026-10-10T12:00:00.000Z'));
+      mockPrismaService.barberia.findUnique.mockResolvedValue({
+        responsableId: usuarioId,
+      });
+      mockPrismaService.reserva.findFirst.mockResolvedValue({
+        id: reservaId,
+        barberiaId,
+        clienteId: 'uuid-cliente',
+        estado: 'CONFIRMADA',
+        totalPagar: 20,
+        pago: null,
+        fechaCita: CITA_FECHA,
+        horaInicio: CITA_HORA,
+        barberia: { zonaHoraria: TZ_SEDE },
+      });
+
+      await expect(
+        service.registrarPagoEnPersona(usuarioId, barberiaId, { reservaId }),
+      ).rejects.toMatchObject({
+        response: { statusCode: 422, codigo: 'CITA_NO_INICIADA' },
+      });
+
+      // Ni se cobró ni se completó nada.
+      expect(mockPrismaService.pago.upsert).not.toHaveBeenCalled();
+      expect(mockPrismaService.reserva.update).not.toHaveBeenCalled();
+    });
+
+    it('E3-09 (H47): una reserva PENDIENTE nunca aceptada tampoco se completa al cobrarla', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({
+        responsableId: usuarioId,
+      });
+      mockPrismaService.reserva.findFirst.mockResolvedValue({
+        id: reservaId,
+        barberiaId,
+        estado: 'PENDIENTE',
+        fechaCita: CITA_FECHA,
+        horaInicio: CITA_HORA,
+        barberia: { zonaHoraria: TZ_SEDE },
+        pago: null,
+      });
+
+      await expect(
+        service.registrarPagoEnPersona(usuarioId, barberiaId, { reservaId }),
+      ).rejects.toMatchObject({
+        response: { statusCode: 409, codigo: 'ESTADO_INVALIDO' },
+      });
+      expect(mockPrismaService.pago.upsert).not.toHaveBeenCalled();
     });
   });
 
@@ -243,6 +330,9 @@ describe('PagoService', () => {
         estado: 'CONFIRMADA',
         totalPagar: 30,
         pago: null,
+        fechaCita: CITA_FECHA,
+        horaInicio: CITA_HORA,
+        barberia: { zonaHoraria: TZ_SEDE },
       });
       mockPrismaService.pago.upsert.mockResolvedValue({
         id: 'uuid-pago',

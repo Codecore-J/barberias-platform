@@ -22,12 +22,10 @@ describe('BarberiaController', () => {
             findAll: vi.fn(),
             findOne: vi.fn(),
             update: vi.fn(),
-            remove: vi.fn(),
+            cambiarEstado: vi.fn(),
             vincularCliente: vi.fn(),
             seleccionarBarberiaActiva: vi.fn(),
             findPersonal: vi.fn(),
-            update: vi.fn(),
-            remove: vi.fn(),
           },
         },
         {
@@ -137,16 +135,28 @@ describe('BarberiaController', () => {
       expect(service.update).toHaveBeenCalledWith('uuid-barberia', user.id, { nombre: 'Nuevo' }, false);
     });
 
-    it('remove debe marcar esGlobal=true a un ADMINISTRADOR', async () => {
+    it('cambiarEstado debe marcar esGlobal=true a un ADMINISTRADOR (E2-07)', async () => {
       const user: UsuarioAutenticado = {
         id: 'uuid-global',
         correo: 'global@test.com',
         roles: ['ADMINISTRADOR'],
       };
 
-      await controller.remove('uuid-barberia', user);
+      await controller.cambiarEstado('uuid-barberia', { estado: 'INACTIVO' }, user);
 
-      expect(service.remove).toHaveBeenCalledWith('uuid-barberia', user.id, true);
+      expect(service.cambiarEstado).toHaveBeenCalledWith('uuid-barberia', user.id, 'INACTIVO', true);
+    });
+
+    it('cambiarEstado NO debe marcar esGlobal a un ADMIN_BARBERIA (E2-07)', async () => {
+      const user: UsuarioAutenticado = {
+        id: 'uuid-admin',
+        correo: 'admin@test.com',
+        roles: ['ADMIN_BARBERIA'],
+      };
+
+      await controller.cambiarEstado('uuid-barberia', { estado: 'ACTIVO' }, user);
+
+      expect(service.cambiarEstado).toHaveBeenCalledWith('uuid-barberia', user.id, 'ACTIVO', false);
     });
   });
 });

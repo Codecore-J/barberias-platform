@@ -14,7 +14,9 @@ import {
   ReservaStateMachine,
   type EjecutoresDeEfectos,
 } from '../../shared/domain/reserva-state-machine.js';
-import type { Prisma } from '@prisma/client';
+// `Prisma` entra también como VALOR: `bloquearSedeParaEscritura` compone el SQL
+// con `Prisma.raw` para calificar el esquema (H58).
+import { Prisma } from '@prisma/client';
 import { CreateReservaDto } from './dto/create-reserva.dto.js';
 import {
   LONGITUD_MINIMA_DETALLE,
@@ -38,9 +40,13 @@ import {
 } from '../domain/reserva-grupal.js';
 import {
   LIMITE_INASISTENCIAS_POR_DEFECTO,
+  PUNTUALIDAD_MARGEN_MIN,
+  TOLERANCIA_MIN,
+  VENTANA_NO_PRESENTADO_MIN,
   evaluarInasistencia,
 } from '../domain/fidelizacion.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
+import { tablaCalificada } from '../../shared/db/esquema.js';
 import { validateTimeRange } from '../../horario/domain/time.utils.js';
 import type { AlternativaEtiquetada } from '../../agenda/application/disponibilidad.service.js';
 import {
@@ -68,6 +74,8 @@ import {
   jobIdExpiracionReserva,
   type ExpirarReservaJobPayload,
 } from '../../shared/queues/queue.constants.js';
+// H62: el encolado del job de expiración no puede tumbar el alta de la reserva.
+import { encolarConLimite } from '../../shared/queues/encolado-seguro.js';
 
 /**
  * Estados desde los que el cliente o la sede todavía pueden cancelar (E3-05).
@@ -185,12 +193,19 @@ export class ReservaService {
   /**
    * Cálculo PURO del bloque y su cotización (E2-05/D44). Devuelve el bloque total,
    * la hora de fin, el margen y el desglose de servicios SIN tocar la BD.
-   * Se reutiliza en crearReserva y en el endpoint de cotización.
+   * Lo usa `cotizar` para el flujo INDIVIDUAL; la creación individual comparte la
+   * ventana del cliente y el margen de sus servicios por la vía de
+   * `crearReserva`/`bloqueRequeridoParaAlternativas`.
    */
-  private calcularBloque(dto: CreateReservaDto, config: { margenGrupalMinutos: number; serviciosCatalogo: any[] }): BloqueCalculado {
+  private calcularBloque(dto: CreateReservaDto, config: { serviciosCatalogo: any[] }): BloqueCalculado {
     const duracionTotal = (parseInt(dto.horaFin.slice(0, 2), 10) - parseInt(dto.horaInicio.slice(0, 2), 10)) * 60
       + (parseInt(dto.horaFin.slice(3, 5), 10) - parseInt(dto.horaInicio.slice(3, 5), 10));
-    const margenTotal = config.serviciosCatalogo.reduce((acc, s) => acc + (s.margenOperativo ?? 0), 0) + (config.margenGrupalMinutos ?? 10);
+    // Sprint de estabilización (2026-10-12): el bloque INDIVIDUAL suma SOLO los
+    // márgenes de SUS servicios (D01/E2-05). El `margen_grupal_minutos` de la sede
+    // es de D42 y pertenece al flujo GRUPAL: sumarlo aquí inflaba cada reserva
+    // individual con minutos fantasma (10 por defecto) en la agenda y en la
+    // cotización que el cliente ve antes de reservar.
+    const margenTotal = config.serviciosCatalogo.reduce((acc, s) => acc + (s.margenOperativo ?? 0), 0);
     const precioTotal = config.serviciosCatalogo.reduce((acc, s) => acc + Number(s.precio), 0);
     return { duracionTotal, margenTotal, precioTotal };
   }
@@ -310,7 +325,6 @@ export class ReservaService {
     }
 
     const { duracionTotal, margenTotal, precioTotal } = this.calcularBloque(dto, {
-      margenGrupalMinutos: config.margenGrupalMinutos,
       serviciosCatalogo,
     });
 
@@ -428,7 +442,11 @@ export class ReservaService {
     },
     config: { margenGrupalMinutos: number },
   ): Promise<{ duracionServicios: number; margen: number }> {
-    let margen = config.margenGrupalMinutos ?? 10;
+    // El margen de la sede es del GRUPAL (D42). En INDIVIDUAL el bloque que hay
+    // que cubrir es la ventana pedida, sin minutos extra (sprint de
+    // estabilización, 2026-10-12): si no, las alternativas se buscaban para un
+    // bloque más largo del que realmente se podía reservar.
+    let margen = contexto.tipo === 'GRUPAL' ? (config.margenGrupalMinutos ?? 10) : 0;
 
     if (contexto.reservaId) {
       // Reprogramar: el bloque pactado sigue siendo el que hay que cubrir.
@@ -605,7 +623,7 @@ export class ReservaService {
       }
 
       // Bloqueo pesimista sobre la barbería (row-level lock) para evitar Race Conditions
-      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+      await this.bloquearSedeParaEscritura(tx, barberiaId);
 
       // 1. Obtener y validar servicios del catálogo (T6.2 Snapshot Histórico Inmutable).
       //    E4-01: en la reserva grupal el catálogo se resuelve POR PARTICIPANTE y
@@ -664,11 +682,13 @@ export class ReservaService {
         );
       }
 
-      // D42 (2026-10-02): el margen grupal es un campo propio de la barbería
-      // (configuracion_barberia.margen_grupal_minutos, default 10, rango 0-60).
-      // Se ignoran tanto la suma de márgenes individuales (D01) como cualquier
-      // valor enviado por el cliente en el DTO (D44: todo se calcula en el backend).
-      const margenFinal = config.margenGrupalMinutos ?? 10;
+      // D42 (2026-10-02): el margen de la sede es un campo propio de la barbería
+      // (configuracion_barberia.margen_grupal_minutos, default 10, rango 0-60) y
+      // pertenece al flujo GRUPAL. Se ignora cualquier valor que mande el cliente
+      // en el DTO (D44: todo se calcula en el backend) y, desde el sprint de
+      // estabilización (2026-10-12), TAMPOCO se suma al INDIVIDUAL: ese bloque es
+      // la ventana pedida y sus márgenes son los de SUS servicios (D01/E2-05).
+      const margenFinal = esGrupal ? (config.margenGrupalMinutos ?? 10) : 0;
 
       // 2. Verificamos disponibilidad en tiempo real delegando a Agenda/Disponibilidad
       //    E4-01: en grupales se mide contra el bloque CALCULADO (Σ duraciones),
@@ -816,12 +836,35 @@ export class ReservaService {
         // rechazar puedan cancelarlo. Con un id aleatorio de BullMQ no habría
         // forma de encontrarlo después. Además es idempotente: reencolar la
         // misma reserva no duplica el job.
-        await this.reservasQueue.add(
-          JOBS.EXPIRAR_RESERVA,
-          { reservaId: reserva.id, barberiaId } satisfies ExpirarReservaJobPayload,
-          { delay: 10 * 60000, jobId: jobIdExpiracionReserva(reserva.id) },
+        //
+        // H62 (2026-10-14): el encolado es BEST-EFFORT y con techo de tiempo.
+        // Este job es defensa en profundidad —expira lo que nadie confirmó—, no
+        // parte del contrato del alta: el cliente tiene que salir con su 201
+        // aunque la cola no esté. Antes, el rechazo de `add` se propagaba desde
+        // DENTRO de esta transacción, así que se revertía la reserva entera y el
+        // alta respondía 500: con la cuota de Upstash agotada eso dejó 61 casos
+        // de E2E en rojo con una sola causa. Y con Redis inalcanzable `add` no
+        // rechaza, se queda esperando sin fin (ver `encolarConLimite`), por eso
+        // hay techo y no solo `try/catch`.
+        //
+        // Lo que se pierda no queda huérfano: `ExpiracionReservaService`
+        // reconcilia al arrancar y reencola las vigentes sin job con este mismo
+        // `jobId` determinista.
+        const encolado = await encolarConLimite(() =>
+          this.reservasQueue.add(
+            JOBS.EXPIRAR_RESERVA,
+            { reservaId: reserva.id, barberiaId } satisfies ExpirarReservaJobPayload,
+            { delay: 10 * 60000, jobId: jobIdExpiracionReserva(reserva.id) },
+          ),
         );
-        this.logger.log(`Job de expiración programado para reserva ${reserva.id} en 10 minutos`);
+
+        if (encolado.ok) {
+          this.logger.log(`Job de expiración programado para reserva ${reserva.id} en 10 minutos`);
+        } else {
+          this.logger.warn(
+            `No se pudo encolar el job de expiración de la reserva ${reserva.id} (${encolado.motivo}): la reserva se crea igual y la reconciliación del próximo arranque la recuperará`,
+          );
+        }
       }
 
       // 5. Despacho asíncrono de notificación y programación de recordatorio 1h antes (T8.1)
@@ -956,6 +999,9 @@ export class ReservaService {
     const resultado = await withSerializableTransaction(this.prisma, async (tx) => {
       const reserva = await tx.reserva.findUnique({
         where: { id: reservaId, barberiaId },
+        // E2-04/H52: la ventana se mide con la zona de la SEDE, no con la del
+        // proceso; sin ella, fuera de UTC la cita empezaría a otra hora.
+        include: { barberia: { select: { zonaHoraria: true } } },
       });
 
       if (!reserva) {
@@ -966,6 +1012,19 @@ export class ReservaService {
       // máquina cubre el doble marcado (NO_PRESENTADO es terminal → 409
       // ESTADO_INVALIDO) y el intento sobre una reserva ya cerrada. Antes se
       // escribía `NO_ASISTIO`, que NO pertenece a los 8 estados de §5.1 (H45).
+      //
+      // H52 (2026-10-12): la máquina decide el estado de origen y la VENTANA la
+      // decide el reloj, en este orden y antes de escribir nada, para que un
+      // 422 por llegar temprano no deje rastro ni en la reserva ni en el
+      // contador. `cambiarEstado` vuelve a afirmar la transición: es una
+      // comprobación pura y duplicarla no cuesta una consulta.
+      ReservaStateMachine.assertTransition(
+        reserva.estado as EstadoReserva,
+        ESTADOS.NO_PRESENTADO,
+        ACTORES.STAFF,
+      );
+      this.exigirVentanaNoPresentado(reserva, reserva.barberia.zonaHoraria);
+
       await this.cambiarEstado(tx, reserva, ESTADOS.NO_PRESENTADO, ACTORES.STAFF);
 
       // Obtener o crear vínculo cliente-barbería
@@ -1225,7 +1284,7 @@ export class ReservaService {
    */
   async aceptarReserva(barberiaId: string, reservaId: string, user: UsuarioAutenticado) {
     const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+      await this.bloquearSedeParaEscritura(tx, barberiaId);
 
       const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
 
@@ -1354,7 +1413,7 @@ export class ReservaService {
     const motivo = this.validarMotivoRechazo(dto);
 
     const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+      await this.bloquearSedeParaEscritura(tx, barberiaId);
 
       const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
 
@@ -1649,6 +1708,39 @@ export class ReservaService {
   }
 
   /**
+   * E3-10 §5.8 (H52) · la ventana de los 15 minutos del no presentado.
+   *
+   * `PUNTUALIDAD_MARGEN_MIN` (5) + `TOLERANCIA_MIN` (10): hasta que no pasan, la
+   * cita es de la sede y marcarla como no presentada es un error —422
+   * `FUERA_DE_VENTANA`, el mismo código y el mismo estado que la barrera de los
+   * 30 minutos de la cancelación (E3-07)—. Espejo exacto de
+   * `exigirVentanaDeCancelacion`, pero el límite se mira hacia ATRÁS: aquí lo que
+   * falta es tiempo transcurrido, no tiempo restante.
+   */
+  private exigirVentanaNoPresentado(
+    reserva: { fechaCita: Date; horaInicio: Date },
+    tz: string,
+  ): void {
+    const minutosTranscurridos = Math.floor(
+      (this.tiempo.ahora().getTime() - this.instanteInicioCita(reserva, tz).getTime()) / 60000,
+    );
+
+    if (minutosTranscurridos >= VENTANA_NO_PRESENTADO_MIN) {
+      return;
+    }
+
+    const detalle =
+      minutosTranscurridos < 0
+        ? 'La cita todavía no ha comenzado'
+        : `Solo han pasado ${minutosTranscurridos} minutos desde el inicio`;
+
+    throw reglaDeNegocio(
+      'FUERA_DE_VENTANA',
+      `${detalle} y el no presentado se marca a partir de los ${VENTANA_NO_PRESENTADO_MIN} minutos (${PUNTUALIDAD_MARGEN_MIN} de puntualidad + ${TOLERANCIA_MIN} de tolerancia).`,
+    );
+  }
+
+  /**
    * E3-06 · Reprogramación de una reserva vigente.
    *
    * Mueve la cita a otro bloque SIN tocar nada más: el estado, los snapshots de
@@ -1681,7 +1773,7 @@ export class ReservaService {
     // E2-04: la fecha es una etiqueta `DATE`; se normaliza con el servicio central.
     const fecha = this.tiempo.fechaDeCalendario(dto.fecha);
     const duracionSolicitada = (fin.getTime() - inicio.getTime()) / 60000;    const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+      await this.bloquearSedeParaEscritura(tx, barberiaId);
 
       const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
 
@@ -1848,7 +1940,7 @@ export class ReservaService {
     );
 
     const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+      await this.bloquearSedeParaEscritura(tx, barberiaId);
 
       const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
 
@@ -1954,7 +2046,7 @@ export class ReservaService {
     const motivo = this.validarMotivoCancelacionEspecial(dto);
 
     const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+      await this.bloquearSedeParaEscritura(tx, barberiaId);
 
       const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
 
@@ -2051,7 +2143,7 @@ export class ReservaService {
     user: UsuarioAutenticado,
   ) {
     return withSerializableTransaction(this.prisma, async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+      await this.bloquearSedeParaEscritura(tx, barberiaId);
 
       const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
 
@@ -2147,7 +2239,7 @@ export class ReservaService {
     user: UsuarioAutenticado,
   ) {
     const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+      await this.bloquearSedeParaEscritura(tx, barberiaId);
 
       const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
 
@@ -2259,7 +2351,7 @@ export class ReservaService {
     user: UsuarioAutenticado,
   ) {
     return withSerializableTransaction(this.prisma, async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "barberias" WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+      await this.bloquearSedeParaEscritura(tx, barberiaId);
 
       const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
 
@@ -2336,6 +2428,26 @@ export class ReservaService {
     });
 
     return actualizada;
+  }
+
+  /**
+   * Bloqueo pesimista de la SEDE: el `FOR UPDATE` que serializa todo lo que
+   * toca su agenda (crear, aceptar, rechazar, cancelar, reprogramar...).
+   *
+   * H58 (2026-10-12): la tabla va CALIFICADA con su esquema
+   * (`"public"."barberias"`). Antes el nombre iba entre comillas pero sin
+   * esquema, y eso lo resuelve Postgres contra el `search_path` de la sesión: con
+   * el pooler de Neon reutilizando sesiones, una sesión ajena que hubiera movido
+   * su `search_path` hacía fallar esta consulta con `42P01` y el endpoint
+   * respondía 500. Calificada, la consulta ya no depende de la sesión.
+   */
+  private async bloquearSedeParaEscritura(
+    tx: Prisma.TransactionClient,
+    barberiaId: string,
+  ): Promise<void> {
+    await tx.$queryRaw`SELECT id FROM ${Prisma.raw(
+      tablaCalificada('barberias'),
+    )} WHERE id = ${barberiaId}::uuid FOR UPDATE`;
   }
 
   /**

@@ -3,6 +3,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AgendaService } from './agenda.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { getQueueToken } from '@nestjs/bullmq';
+import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 
 const BARBERIA_B = 'barberia-b';
 
@@ -34,12 +35,16 @@ describe('AgendaService', () => {
     getJob: vi.fn(),
   };
 
+  // E2-07 · D29: liberar un bloqueo se audita dentro de la transacción.
+  const mockAuditoria = { registrarEvento: vi.fn() };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AgendaService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: getQueueToken('agenda-bloqueos'), useValue: mockQueue },
+        { provide: AuditoriaService, useValue: mockAuditoria },
       ],
     }).compile();
 
@@ -68,6 +73,75 @@ describe('AgendaService', () => {
         where: { id: 'uuid-bloqueo' },
         data: { jobId: 'job-123' },
       });
+    });
+  });
+
+  describe('liberarBloqueo (E2-07 · D29)', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ responsableId: 'admin-b' });
+      mockPrismaService.usuarioRol.findMany.mockResolvedValue([
+        { barberiaId: BARBERIA_B, rol: { nombre: 'ADMIN_BARBERIA' } },
+      ]);
+      mockPrismaService.usuarioRol.findFirst.mockResolvedValue(null);
+    });
+
+    it('fija liberado_at en vez de borrar la fila, y audita el cambio', async () => {
+      mockPrismaService.bloqueosAgenda.findUnique.mockResolvedValue({
+        id: 'bloqueo-1',
+        barberiaId: BARBERIA_B,
+        fecha: new Date('2026-10-10T00:00:00.000Z'),
+        horaInicio: new Date('1970-01-01T10:00:00.000Z'),
+        horaFin: new Date('1970-01-01T11:00:00.000Z'),
+        jobId: 'job-9',
+        liberadoAt: null,
+      });
+      mockQueue.getJob.mockResolvedValue({
+        isActive: async () => false,
+        isCompleted: async () => false,
+        remove: vi.fn(),
+      });
+
+      const resultado = await service.liberarBloqueo('admin-b', BARBERIA_B, 'bloqueo-1');
+
+      expect(resultado.success).toBe(true);
+      // Lo que NO debe pasar: el borrado que hacía el `DELETE` de antes.
+      expect(mockPrismaService.bloqueosAgenda.delete).not.toHaveBeenCalled();
+      expect(mockPrismaService.bloqueosAgenda.update).toHaveBeenCalledWith({
+        where: { id: 'bloqueo-1' },
+        data: { liberadoAt: expect.any(Date), jobId: null },
+      });
+      expect(mockAuditoria.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({
+          usuarioId: 'admin-b',
+          accion: 'BLOQUEO_LIBERADO',
+          entidad: 'bloqueos_agenda',
+          entidadId: 'bloqueo-1',
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('es idempotente: un bloqueo ya liberado no se reescribe ni se audita', async () => {
+      mockPrismaService.bloqueosAgenda.findUnique.mockResolvedValue({
+        id: 'bloqueo-1',
+        barberiaId: BARBERIA_B,
+        liberadoAt: new Date('2026-10-11T09:00:00.000Z'),
+      });
+
+      const resultado = await service.liberarBloqueo('admin-b', BARBERIA_B, 'bloqueo-1');
+
+      expect(resultado.message).toContain('ya estaba liberado');
+      expect(mockPrismaService.bloqueosAgenda.update).not.toHaveBeenCalled();
+      expect(mockAuditoria.registrarEvento).not.toHaveBeenCalled();
+    });
+
+    it('propaga NotFoundException si el bloqueo no es de esa barbería', async () => {
+      mockPrismaService.bloqueosAgenda.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.liberarBloqueo('admin-b', BARBERIA_B, 'bloqueo-ajeno'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 

@@ -228,6 +228,13 @@ export class BarberiaService {
 
     const roles = await this.prisma.usuarioRol.findMany({
       where: { barberiaId },
+      // H61 (Ola 3): SIN `orderBy` el listado salía en el orden FÍSICO de las
+      // filas, así que el mismo endpoint devolvía el personal en distinto orden
+      // entre corridas y la prueba que mira `body[0]` fallaba según qué filas
+      // hubieran ocupado antes esos huecos de página. Orden estable y con
+      // sentido: primero el ADMIN_BARBERIA de la sede (los nombres de rol van en
+      // orden alfabético) y, dentro del mismo rol, por correo.
+      orderBy: [{ rol: { nombre: 'asc' } }, { usuario: { correo: 'asc' } }],
       include: {
         usuario: {
           select: { id: true, nombreCompleto: true, correo: true, telefono: true, estadoCuenta: true }
@@ -346,7 +353,7 @@ export class BarberiaService {
     if (dto.estado !== undefined) {
       throw reglaDeNegocio(
         'ESTADO_NO_EDITABLE',
-        'El estado de la barbería no se edita aquí: usa DELETE /barberias/:id para desactivarla.',
+        'El estado de la barbería no se edita aquí: usa PATCH /barberias/:id/estado para suspenderla o reactivarla.',
       );
     }
 
@@ -404,24 +411,45 @@ export class BarberiaService {
     }
   }
 
-  // ── ELIMINAR (soft-delete: estado → INACTIVO) ──────────────────────────────
+  // ── CAMBIAR ESTADO (E2-07: suspender y reactivar, no «eliminar») ───────────
 
-  async remove(id: string, authUserId: string, esGlobal = false): Promise<void> {
+  /**
+   * E2-07 · suspender (`INACTIVO`) y reactivar (`ACTIVO`) son la MISMA operación
+   * con dos valores, así que comparten ruta y reglas.
+   *
+   * Antes `DELETE /barberias/:id` solo sabía desactivar —y con un verbo que dice
+   * «eliminar» aunque el efecto sea «suspender»—, así que volver a activar una
+   * sede exigía tocar la base a mano. Sigue siendo una decisión de plataforma
+   * (decisión 4: el `@Roles` de la ruta solo admite ADMINISTRADOR), y el método
+   * conserva su comprobación de responsable para no depender solo del guard.
+   *
+   * Idempotente: pedir el estado que ya tiene no escribe ni falla.
+   */
+  async cambiarEstado(
+    id: string,
+    authUserId: string,
+    estado: 'ACTIVO' | 'INACTIVO',
+    esGlobal = false,
+  ): Promise<void> {
     const barberia = await this.prisma.barberia.findUnique({ where: { id } });
     if (!barberia) {
       throw new NotFoundException(`Barbería ${id} no encontrada.`);
     }
 
     if (!esGlobal && barberia.responsableId !== authUserId) {
-      throw new ForbiddenException('Solo el responsable puede eliminar esta barbería.');
+      throw new ForbiddenException('Solo el responsable puede cambiar el estado de esta barbería.');
+    }
+
+    if (barberia.estado === estado) {
+      return;
     }
 
     await this.prisma.barberia.update({
       where: { id },
-      data: { estado: 'INACTIVO' },
+      data: { estado },
     });
 
-    this.logger.log(`Barbería ${id} desactivada por usuario ${authUserId}`);
+    this.logger.log(`Barbería ${id} pasó a ${estado} por usuario ${authUserId}`);
   }
 
   // ── VINCULAR CLIENTE A BARBERÍA (T2.2) ─────────────────────────────────────

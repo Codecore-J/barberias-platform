@@ -87,8 +87,13 @@ export class HorariosService {
     return this.http.post<BloqueoAgenda>(`${API_URL}/barberias/${barberiaId}/agenda/bloqueos`, bloqueo);
   }
 
+  /**
+   * E2-07: el bloqueo no se borra, se LIBERA (`POST .../bloqueos/:id/liberar`).
+   * El método conserva su nombre porque lo que hace la pantalla no cambió: el
+   * bloqueo deja de ocupar la agenda. Lo que cambia es el verbo del backend.
+   */
   eliminarBloqueo(barberiaId: string, id: string): Observable<any> {
-    return this.http.delete(`${API_URL}/barberias/${barberiaId}/agenda/bloqueos/${id}`);
+    return this.http.post(`${API_URL}/barberias/${barberiaId}/agenda/bloqueos/${id}/liberar`, {});
   }
 }
 

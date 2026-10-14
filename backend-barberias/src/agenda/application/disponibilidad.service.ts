@@ -183,8 +183,10 @@ export class DisponibilidadService {
     }
 
     // 3. Obtener bloqueos de agenda
+    // E2-07 · D29: un bloqueo LIBERADO ya no ocupa agenda. La fila se conserva
+    // (para la auditoría), así que el filtro tiene que ser explícito.
     const bloqueos = await db.bloqueosAgenda.findMany({
-      where: { barberiaId, fecha: fechaEtiqueta },
+      where: { barberiaId, fecha: fechaEtiqueta, liberadoAt: null },
     });
 
     // 4. Obtener reservas confirmadas/pendientes

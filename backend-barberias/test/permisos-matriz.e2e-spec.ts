@@ -44,6 +44,14 @@ const CASOS: Caso[] = [
   { verbo: 'patch', ruta: '/barberias/{A}', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: { descripcion: 'Matriz permisos' } },
   { verbo: 'post', ruta: '/barberias/{A}/solicitudes-cambio', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: { tipo: 'NOMBRE', valorNuevo: 'Matriz permisos E3-13' } },
   { verbo: 'get', ruta: '/plataforma/solicitudes-cambio', permitidos: ['ADMINISTRADOR'] },
+  // H54 (E4-03/2): el estado propio lo consulta el CLIENTE. El ADMINISTRADOR no
+  // se mide aquí a propósito: no tiene vinculación propia en la sede, así que
+  // recibe 403 `NO_VINCULADO` del servicio y eso NO es una denegación de permiso.
+  { verbo: 'get', ruta: '/barberias/{A}/mi-estado', permitidos: ['CLIENTE'], sinAdministrador: true },
+  // E4-03/5: suspender una cuenta es de la plataforma; el resto recibe 403 del
+  // guard. Con un UUID al azar, el ADMINISTRADOR recibe 404 (la cuenta no
+  // existe), que también es «permitido» para esta matriz.
+  { verbo: 'patch', ruta: `/plataforma/usuarios/${randomUUID()}/estado`, permitidos: ['ADMINISTRADOR'], cuerpo: { estadoCuenta: 'SUSPENDIDO', motivo: 'Matriz de permisos E4-03/5' } },
   { verbo: 'post', ruta: `/plataforma/solicitudes-cambio/${randomUUID()}/resolver`, permitidos: ['ADMINISTRADOR'], cuerpo: { aprobar: true } },
   // E4-03: la bandeja local de restringidos es de la SEDE (y del ADMINISTRADOR
   // por jerarquía). El guard solo filtra el rol: la pertenencia a la sede la
@@ -53,12 +61,15 @@ const CASOS: Caso[] = [
   { verbo: 'post', ruta: `/barberias/{A}/clientes/${randomUUID()}/reactivar`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
   { verbo: 'get', ruta: '/barberias/{A}', permitidos: TODOS },
   { verbo: 'get', ruta: '/barberias/{A}/personal', permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR'] },
-  { verbo: 'delete', ruta: '/barberias/{B}', permitidos: [], sinAdministrador: true },
+  // E2-07: el borrado lógico de la sede pasa a cambio de estado explícito.
+  { verbo: 'patch', ruta: '/barberias/{B}/estado', permitidos: [], sinAdministrador: true, cuerpo: { estado: 'INACTIVO' } },
 
   // ── agenda ──────────────────────────────────────────────────────────────
   { verbo: 'get', ruta: '/agenda/bloqueos', permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR'] },
   { verbo: 'post', ruta: '/barberias/{A}/agenda/bloqueos', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
-  { verbo: 'delete', ruta: `/barberias/{A}/agenda/bloqueos/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
+  // E2-07: liberar un bloqueo en vez de borrarlo. Con un UUID al azar el
+  // servicio responde 404, que tambien es «permitido» para esta matriz.
+  { verbo: 'post', ruta: `/barberias/{A}/agenda/bloqueos/${randomUUID()}/liberar`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
   { verbo: 'get', ruta: '/agenda/disponibilidad?fecha=2026-10-05&duracionMinutos=30', permitidos: TODOS },
   { verbo: 'post', ruta: '/barberias/{A}/agenda/disponibilidad', permitidos: TODOS, cuerpo: { fecha: '2026-10-05', duracionTotal: 30 } },
   // E4-02: los huecos de espacio no son para el BARBERO (§E4-02/2).
@@ -105,12 +116,14 @@ const CASOS: Caso[] = [
   { verbo: 'post', ruta: '/catalogo/servicios', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
   { verbo: 'get', ruta: `/catalogo/servicios/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR'] },
   { verbo: 'patch', ruta: `/catalogo/servicios/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
-  { verbo: 'delete', ruta: `/catalogo/servicios/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
+  { verbo: 'patch', ruta: `/catalogo/servicios/${randomUUID()}/desactivar`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
+  { verbo: 'patch', ruta: `/catalogo/servicios/${randomUUID()}/reactivar`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
   { verbo: 'get', ruta: '/catalogo/combos', permitidos: TODOS },
   { verbo: 'post', ruta: '/catalogo/combos', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
   { verbo: 'get', ruta: `/catalogo/combos/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR'] },
   { verbo: 'patch', ruta: `/catalogo/combos/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
-  { verbo: 'delete', ruta: `/catalogo/combos/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
+  { verbo: 'patch', ruta: `/catalogo/combos/${randomUUID()}/desactivar`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
+  { verbo: 'patch', ruta: `/catalogo/combos/${randomUUID()}/reactivar`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
 ];
 
 describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
@@ -172,7 +185,7 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
       });
     }
 
-    // ── Barbería B: destino del DELETE que solo puede hacer el ADMINISTRADOR ─
+    // ── Barbería B: destino del cambio de estado que solo puede hacer el ADMINISTRADOR ─
     const duenioB = await crearUsuario(duenios[0], roles['ADMIN_BARBERIA'].id, null);
     barberia.b = (
       await prisma.barberia.create({
@@ -383,18 +396,22 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
     }
   }, 120_000);
 
-  it('desactivar la barberia solo con ADMINISTRADOR', async () => {
+  it('suspender la barberia solo con ADMINISTRADOR (E2-07)', async () => {
     for (const rol of ['CLIENTE', 'BARBERO', 'ADMIN_BARBERIA'] as Rol[]) {
-      const res = await llamar({ verbo: 'delete', ruta: '/barberias/{B}', permitidos: [] }, rol);
+      const res = await llamar(
+        { verbo: 'patch', ruta: '/barberias/{B}/estado', permitidos: [], cuerpo: { estado: 'INACTIVO' } },
+        rol,
+      );
       expect(`${rol} ${res.status}`).toBe(`${rol} 403`);
     }
 
     const res = await request(app.getHttpServer())
-      .delete(`/barberias/${barberia.b}`)
+      .patch(`/barberias/${barberia.b}/estado`)
       .set('Authorization', `Bearer ${tokens.ADMINISTRADOR}`)
-      .set('x-barberia-id', barberia.a);
+      .set('x-barberia-id', barberia.a)
+      .send({ estado: 'INACTIVO' });
 
-    expect([200, 204]).toContain(res.status);
+    expect(res.status).toBe(200);
 
     const estado = await prisma.barberia.findUniqueOrThrow({
       where: { id: barberia.b },

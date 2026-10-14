@@ -6,10 +6,14 @@ import { AgendaController } from './agenda.controller.js';
 import { HuecosController } from './huecos.controller.js';
 import { BloqueosProcessor } from '../application/bloqueos.processor.js';
 import { SharedModule } from '../../shared/shared.module.js';
+import { AuditoriaModule } from '../../auditoria/infrastructure/auditoria.module.js';
 
 @Module({
   imports: [
     SharedModule,
+    // E2-07 · D29: liberar un bloqueo se audita, así que la agenda necesita el
+    // servicio de auditoría (mismo patrón que barbería, pagos y reservas).
+    AuditoriaModule,
     BullModule.registerQueue({
       name: 'agenda-bloqueos',
     }),

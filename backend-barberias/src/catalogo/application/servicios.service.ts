@@ -10,6 +10,7 @@ import {
   fechaCalendarioISO,
   horaRelojHHMM,
 } from '../../shared/time/tiempo.service.js';
+import { reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { CreateServicioDto } from './dto/create-servicio.dto.js';
 import { UpdateServicioDto } from './dto/update-servicio.dto.js';
 
@@ -82,27 +83,79 @@ export class ServiciosService {
     });
   }
 
-  async deactivate(barberiaId: string, id: string) {
+  /**
+   * E2-07 · D29: desactivar es un CAMBIO DE ESTADO, no un borrado. El verbo de
+   * la ruta lo dice —`PATCH :id/desactivar`— y las tres reglas del backlog
+   * deciden cuándo se puede:
+   *
+   *  1. Se BLOQUEA (422 `SERVICIO_EN_USO`) si hay reservas `PENDIENTE` o
+   *     `PROPUESTA_PENDIENTE` que usan el servicio: todavía pueden confirmarse y
+   *     su hueco se calculó con este catálogo.
+   *  2. Se BLOQUEA (422 `SERVICIO_EN_COMBO_ACTIVO`) si el servicio está dentro de
+   *     un combo ACTIVO; el mensaje trae la lista para que la sede resuelva el
+   *     combo primero (lo que se vende es el combo).
+   *  3. Se PERMITE si solo hay reservas CONFIRMADAS o terminales: cuentan con un
+   *     snapshot inmutable en `participante_servicios` (`precio_historico`,
+   *     `duracion_historica`, `margen_historico`), así que su precio y su
+   *     duración no dependen del catálogo.
+   *
+   * Idempotente: sobre un servicio ya INACTIVO no escribe ni falla.
+   */
+  async desactivar(barberiaId: string, id: string) {
     const servicio = await this.findOne(barberiaId, id);
 
     if (servicio.estado === 'INACTIVO') {
       return servicio;
     }
 
-    // T3.1 / FUNC-01: Regla de desactivación protegida
-    // Bloquear la desactivación si hay solicitudes PENDIENTES.
-    // Se PERMITE si solo existen reservas CONFIRMADAS, ya que cuentan con un snapshot
-    // inmutable congelado en participanteServicio (precioHistorico, duracionHistorica, margenHistorico).
-    const reservasPendientes = await this.prisma.reserva.findMany({
+    await this.exigirSinReservasAbiertas(barberiaId, id);
+    await this.exigirSinCombosActivos(barberiaId, id);
+
+    const desactivado = await this.prisma.servicio.update({
+      where: { id: servicio.id },
+      data: { estado: 'INACTIVO' },
+    });
+
+    this.logger.log(`Servicio desactivado: ${id}`);
+    return desactivado;
+  }
+
+  /**
+   * E2-07: volver a ACTIVO no tiene reglas propias —el servicio solo vuelve a
+   * ofrecerse— pero sí exige existir en esa sede y es idempotente.
+   */
+  async reactivar(barberiaId: string, id: string) {
+    const servicio = await this.findOne(barberiaId, id);
+
+    if (servicio.estado === 'ACTIVO') {
+      return servicio;
+    }
+
+    const reactivado = await this.prisma.servicio.update({
+      where: { id: servicio.id },
+      data: { estado: 'ACTIVO' },
+    });
+
+    this.logger.log(`Servicio reactivado: ${id}`);
+    return reactivado;
+  }
+
+  /**
+   * Regla 1 de E2-07: una reserva `PENDIENTE` o `PROPUESTA_PENDIENTE` todavía
+   * puede confirmarse, así que el catálogo no puede cambiar bajo sus pies.
+   */
+  private async exigirSinReservasAbiertas(barberiaId: string, servicioId: string): Promise<void> {
+    const pendientes = await this.prisma.reserva.findMany({
       where: {
         barberiaId,
-        estado: ESTADOS.PENDIENTE, // E2-02: estado de reserva desde el catálogo
+        // E2-02: los dos estados «abiertos» desde el catálogo, nunca literales.
+        estado: { in: [ESTADOS.PENDIENTE, ESTADOS.PROPUESTA_PENDIENTE] },
         fechaCita: { gte: new Date() }, // Futuras o de hoy
         participantes: {
           some: {
             participanteServicios: {
               some: {
-                servicioId: id,
+                servicioId,
               },
             },
           },
@@ -115,23 +168,47 @@ export class ServiciosService {
       },
     });
 
-    if (reservasPendientes.length > 0) {
-      // E2-04: etiquetas DATE/TIME por partes UTC, sin `toISOString()` sobre
-      // fechas de cita (prohibido por el backlog).
-      const citasDesc = reservasPendientes
-        .map((r) => `${fechaCalendarioISO(r.fechaCita)} a las ${horaRelojHHMM(r.horaInicio)}`)
-        .join(', ');
-      throw new BadRequestException(
-        `No se puede desactivar el servicio porque tiene ${reservasPendientes.length} solicitud(es) de reserva pendiente(s) por confirmar: ${citasDesc}`
-      );
+    if (pendientes.length === 0) {
+      return;
     }
 
-    const deactivated = await this.prisma.servicio.update({
-      where: { id: servicio.id },
-      data: { estado: 'INACTIVO' },
+    // E2-04: etiquetas DATE/TIME por partes UTC, sin `toISOString()` sobre
+    // fechas de cita (prohibido por el backlog).
+    const citasDesc = pendientes
+      .map((r) => `${fechaCalendarioISO(r.fechaCita)} a las ${horaRelojHHMM(r.horaInicio)}`)
+      .join(', ');
+
+    throw reglaDeNegocio(
+      'SERVICIO_EN_USO',
+      `No se puede desactivar el servicio porque tiene ${pendientes.length} solicitud(es) de reserva por confirmar: ${citasDesc}`,
+      { reservas: pendientes.length },
+    );
+  }
+
+  /**
+   * Regla 2 de E2-07: un combo ACTIVO se vende con sus servicios dentro, así que
+   * desactivar uno lo dejaría incoherente. El mensaje trae los combos por nombre
+   * y id para que la sede los apague o los edite antes.
+   */
+  private async exigirSinCombosActivos(barberiaId: string, servicioId: string): Promise<void> {
+    const combos = await this.prisma.combo.findMany({
+      where: {
+        barberiaId,
+        estado: 'ACTIVO',
+        comboItemsAsParent: { some: { servicioId } },
+      },
+      select: { id: true, nombre: true },
+      orderBy: { nombre: 'asc' },
     });
 
-    this.logger.log(`Servicio desactivado: ${id}`);
-    return deactivated;
+    if (combos.length === 0) {
+      return;
+    }
+
+    throw reglaDeNegocio(
+      'SERVICIO_EN_COMBO_ACTIVO',
+      `El servicio pertenece a ${combos.length} combo(s) activo(s): ${combos.map((c) => c.nombre).join(', ')}. Desactiva o edita el combo antes de desactivar el servicio.`,
+      { combos: combos.map((c) => ({ id: c.id, nombre: c.nombre })) },
+    );
   }
 }

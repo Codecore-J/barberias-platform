@@ -6,6 +6,8 @@ import { Queue } from 'bullmq';
 import { validateTimeRange } from '../../horario/domain/time.utils.js';
 import { esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
 import { TiempoService } from '../../shared/time/tiempo.service.js';
+import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
+import { fechaCalendarioISO, horaRelojHHMM } from '../../shared/time/tiempo.service.js';
 
 @Injectable()
 export class AgendaService {
@@ -17,6 +19,9 @@ export class AgendaService {
     // E2-04: la fecha de un bloqueo es una etiqueta `DATE`; se construye por el
     // servicio central de tiempo.
     @Optional() private readonly tiempo: TiempoService = new TiempoService(),
+    // E2-07 · D29: liberar un bloqueo es una operación auditable (como toda
+    // escritura de agenda), así que el servicio entra en la transacción.
+    @Optional() private readonly auditoria?: AuditoriaService,
   ) {}
 
   private async validateAccess(usuarioId: string, barberiaId: string) {
@@ -85,7 +90,20 @@ export class AgendaService {
     });
   }
 
-  async eliminarBloqueo(usuarioId: string, barberiaId: string, bloqueoId: string) {
+  /**
+   * E2-07 · D29: un bloqueo no se BORRA, se LIBERA.
+   *
+   * Spec 01 §9 prohíbe la eliminación física para representar un cambio de
+   * estado, y `DELETE` borraba la fila: el hueco volvía a estar disponible, pero
+   * con él se perdía la prueba de que había estado bloqueado y de quién lo
+   * retiró. Ahora se fija `liberado_at` (la disponibilidad ignora los
+   * liberados y el histórico se conserva), se cancela el job de liberación
+   * automática y se audita el cambio en la MISMA transacción que la escritura.
+   *
+   * Idempotente: liberar dos veces devuelve el mismo estado sin reescribir ni
+   * auditar de nuevo, porque `liberado_at` ya está fijado.
+   */
+  async liberarBloqueo(usuarioId: string, barberiaId: string, bloqueoId: string) {
     await this.validateAccess(usuarioId, barberiaId);
 
     const bloqueo = await this.prisma.bloqueosAgenda.findUnique({
@@ -96,23 +114,51 @@ export class AgendaService {
       throw new NotFoundException('Bloqueo no encontrado');
     }
 
+    if (bloqueo.liberadoAt) {
+      this.logger.log(`Bloqueo ${bloqueoId} ya estaba liberado; no se vuelve a escribir.`);
+      return { success: true, message: 'El bloqueo ya estaba liberado', liberadoAt: bloqueo.liberadoAt };
+    }
+
     if (bloqueo.jobId) {
-      // Cancelar el job pendiente en BullMQ si existe
+      // El job de liberación automática deja de tener sentido: se cancela.
       try {
         const job = await this.bloqueosQueue.getJob(bloqueo.jobId);
         if (job && await job.isActive() === false && await job.isCompleted() === false) {
            await job.remove();
         }
       } catch {
-        this.logger.warn(`No se pudo eliminar el job ${bloqueo.jobId} en BullMQ`);
+        this.logger.warn(`No se pudo cancelar el job ${bloqueo.jobId} en BullMQ`);
       }
     }
 
-    await this.prisma.bloqueosAgenda.delete({
-      where: { id: bloqueoId },
+    const liberadoAt = new Date();
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.bloqueosAgenda.update({
+        where: { id: bloqueoId },
+        data: { liberadoAt, jobId: null },
+      });
+
+      await this.auditoria?.registrarEvento(
+        {
+          usuarioId,
+          accion: 'BLOQUEO_LIBERADO',
+          entidad: 'bloqueos_agenda',
+          entidadId: bloqueo.id,
+          contexto: {
+            barberiaId,
+            fecha: fechaCalendarioISO(bloqueo.fecha),
+            horaInicio: horaRelojHHMM(bloqueo.horaInicio),
+            horaFin: horaRelojHHMM(bloqueo.horaFin),
+            anterior: { liberadoAt: null, jobId: bloqueo.jobId ?? null },
+            nuevo: { liberadoAt: liberadoAt.toISOString(), jobId: null },
+          },
+        },
+        tx,
+      );
     });
 
-    return { success: true, message: 'Bloqueo eliminado correctamente' };
+    return { success: true, message: 'Bloqueo liberado correctamente', liberadoAt };
   }
 
   /**

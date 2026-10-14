@@ -82,7 +82,11 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'GET /barberias/:id': TODOS,
   'PATCH /barberias/:id/seleccionar': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'PATCH /barberias/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'DELETE /barberias/:id': [ROL_ADMINISTRADOR],
+  // E2-07 (2026-10-13): el borrado lógico de la sede pasa a ser un cambio de
+  // estado explícito. La ruta usa `:id` (no `:barberiaId`), así que el guard NO
+  // resuelve la sede del parámetro y la política es la lista plana: el
+  // ADMINISTRADOR global (decisión 4).
+  'PATCH /barberias/:id/estado': [ROL_ADMINISTRADOR],
   'POST /barberias/vincular': [ROL_CLIENTE],
   // E3-11 (2026-10-11): la configuración de la barbería la consulta y la
   // modifica la SEDE; el `RolesGuard` la acota al `barberiaId` del parámetro.
@@ -106,10 +110,21 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   ],
   'GET /plataforma/solicitudes-cambio/': [ROL_ADMINISTRADOR],
   'POST /plataforma/solicitudes-cambio/:id/resolver': [ROL_ADMINISTRADOR],
+  // H54 (E4-03/2, 2026-10-12): el cliente consulta su PROPIO estado en esa sede.
+  // La ruta usa `:barberiaId`, así que el guard SÍ acota por el parámetro; el
+  // servicio vuelve a acotar por el usuario del token (nunca datos de otro).
+  // `@Get()` sin argumento compone la ruta con barra final (igual que `GET /barberias/`).
+  'GET /barberias/:barberiaId/mi-estado/': [ROL_CLIENTE],
+  // E4-03/5 (2026-10-12): suspender o reactivar la CUENTA global es exclusivo del
+  // ADMINISTRADOR de la plataforma (D05/D09/D48). La sede no entra por aquí: su
+  // penalización es local y su vía es `clientes/:clienteId/reactivar`.
+  'PATCH /plataforma/usuarios/:id/estado': [ROL_ADMINISTRADOR],
 
   'GET /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
   'POST /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'DELETE /barberias/:barberiaId/agenda,agenda/bloqueos/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // E2-07: `DELETE .../bloqueos/:id` —que borraba la fila— pasa a
+  // `POST .../bloqueos/:id/liberar`, que fija `liberado_at` y conserva el rastro.
+  'POST /barberias/:barberiaId/agenda,agenda/bloqueos/:id/liberar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /barberias/:barberiaId/agenda,agenda/disponibilidad': TODOS,
   'POST /barberias/:barberiaId/agenda,agenda/disponibilidad': TODOS,
   // E4-02 (2026-10): los huecos de espacio son lectura de la capacidad de venta
@@ -201,13 +216,17 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /catalogo/servicios,servicios/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /catalogo/servicios,servicios/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
   'PATCH /catalogo/servicios,servicios/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'DELETE /catalogo/servicios,servicios/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // E2-07: el `DELETE` del catálogo se parte en los dos verbos del cambio de
+  // estado. Desactivar tiene reglas de negocio (422) que el guard no puede ver.
+  'PATCH /catalogo/servicios,servicios/:id/desactivar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /catalogo/servicios,servicios/:id/reactivar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
   'GET /catalogo/combos/': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
   'POST /catalogo/combos/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /catalogo/combos/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
   'PATCH /catalogo/combos/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'DELETE /catalogo/combos/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /catalogo/combos/:id/desactivar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /catalogo/combos/:id/reactivar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 };
 
 /**
@@ -345,10 +364,14 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // endpoints de configuración (GET y PATCH /barberias/:barberiaId/configuracion)
   // y quedaban 65. E3-13 sumó la solicitud de la sede y la bandeja de plataforma
   // (listar y resolver): 68. E4-02 sumó los huecos de espacio (69) y E4-03 la
-  // bandeja local de restringidos con su reactivación: 71.
-  it('descubrir las 71 rutas del servidor y todas tienen decision', () => {
+  // bandeja local de restringidos con su reactivación: 71. La Ola 2 del sprint
+  // sumó `mi-estado` (H54) y la suspensión de cuenta (E4-03/5): 73. La Ola 3
+  // (E2-07) retiró los cuatro `@Delete` y añadió los verbos del vocabulario del
+  // diseño: `PATCH /barberias/:id/estado`, `POST .../bloqueos/:id/liberar` y los
+  // cuatro `desactivar`/`reactivar` del catálogo → 73 − 4 + 6 = 75.
+  it('descubrir las 75 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(71);
+    expect(claves.length).toBe(75);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -441,8 +464,10 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     // quitó PATCH /reservas/:id/estado, E3-11 añadió las dos de configuración
     // (GET y PATCH /barberias/:barberiaId/configuracion), E3-13 las tres de
     // solicitudes de cambio, E4-02 la de huecos de espacio y E4-03 las dos de
-    // restringidos: 71 × 4 = 284.
-    expect(evaluaciones).toBe(284);
+    // restringidos: 71. La Ola 2 del sprint sumó `mi-estado` (H54) y
+    // `PATCH /plataforma/usuarios/:id/estado` (E4-03/5): 73. La Ola 3 sumó los
+    // seis verbos de E2-07 y retiró cuatro `@Delete`: 75 × 4 = 300.
+    expect(evaluaciones).toBe(300);
     expect(
       desviaciones.length === 0
         ? ''

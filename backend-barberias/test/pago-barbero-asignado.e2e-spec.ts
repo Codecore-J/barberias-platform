@@ -44,6 +44,10 @@ describe('E3-09 · POST /cobros: el BARBERO solo cobra lo que tiene asignado', (
 
   let barberiaA: string;
   let clienteId: string;
+  // Los usuarios del `beforeAll` viven en variables locales (con `reservaPropia`
+  // ya asignada a este barbero); los casos que crean reservas propias necesitan
+  // su id desde el alcance del describe.
+  let barberoBId: string;
 
   let tokenAdminSede: string;
   let tokenBarberoA: string;
@@ -71,8 +75,15 @@ describe('E3-09 · POST /cobros: el BARBERO solo cobra lo que tiene asignado', (
     });
   }
 
-  /** Reserva directa en la sede, con y sin barbero. */
-  async function crearReserva(barberoId: string | null) {
+  /**
+   * Reserva directa en la sede, con y sin barbero.
+   *
+   * La cita va en el PASADO a propósito: desde E3-09 (§5.2 fila 11) un cobro solo
+   * completa una cita que ya empezó, así que estas reservas —que existen para
+   * probar QUIÉN puede cobrar— tienen que estar iniciadas. El caso de la cita
+   * futura tiene su propia prueba más abajo.
+   */
+  async function crearReserva(barberoId: string | null, fecha = '2026-10-01') {
     return prisma.reserva.create({
       data: {
         barberiaId: barberiaA,
@@ -81,7 +92,7 @@ describe('E3-09 · POST /cobros: el BARBERO solo cobra lo que tiene asignado', (
         tipoReserva: 'INDIVIDUAL',
         estado: 'CONFIRMADA',
         modoConfirmacion: 'AUTOMATICA',
-        fechaCita: new Date('2026-12-01'),
+        fechaCita: new Date(fecha),
         horaInicio: new Date('1970-01-01T10:00:00.000Z'),
         horaFin: new Date('1970-01-01T10:45:00.000Z'),
         totalPagar: 100,
@@ -180,6 +191,7 @@ describe('E3-09 · POST /cobros: el BARBERO solo cobra lo que tiene asignado', (
     const adminSede = await crearUsuario(correos[1], 'Admin Sede E309', '9997100002');
     const barberoA = await crearUsuario(correos[2], 'Barbero A E309', '9997100003');
     const barberoB = await crearUsuario(correos[3], 'Barbero B E309', '9997100004');
+    barberoBId = barberoB.id;
     const global = await crearUsuario(correos[4], 'Global E309', '9997100005');
     const cliente = await crearUsuario(correos[5], 'Cliente E309', '9997100006');
     clienteId = cliente.id;
@@ -278,5 +290,34 @@ describe('E3-09 · POST /cobros: el BARBERO solo cobra lo que tiene asignado', (
     expect([200, 201]).toContain(res.status);
     const reserva = await prisma.reserva.findUniqueOrThrow({ where: { id: reservaSinAsignarGlobal } });
     expect(reserva.estado).toBe('COMPLETADA');
+  });
+
+  it('E3-09 §5.2 fila 11: una cita que aún no empezó no se cobra → 422 CITA_NO_INICIADA', async () => {
+    // Mismo barbero asignado (así el 422 no puede confundirse con el 403) y una
+    // fecha claramente futura: dentro de 30 días.
+    const futura = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    const { id } = await crearReserva(barberoBId, futura);
+
+    const res = await cobrar(tokenBarberoB, id);
+
+    expect(res.status).toBe(422);
+    expect(res.body.codigo).toBe('CITA_NO_INICIADA');
+
+    // No se cobró ni se completó: la reserva sigue CONFIRMADA y sin pago.
+    const reserva = await prisma.reserva.findUniqueOrThrow({ where: { id } });
+    expect(reserva.estado).toBe('CONFIRMADA');
+    expect(reserva.completadaAt).toBeNull();
+    expect(await prisma.pago.findUnique({ where: { reservaId: id } })).toBeNull();
+  });
+
+  it('E3-09/E2-03: al completar, la reserva queda con `completada_at` fijado', async () => {
+    const { id } = await crearReserva(barberoBId);
+
+    const res = await cobrar(tokenBarberoB, id);
+
+    expect([200, 201]).toContain(res.status);
+    const reserva = await prisma.reserva.findUniqueOrThrow({ where: { id } });
+    expect(reserva.estado).toBe('COMPLETADA');
+    expect(reserva.completadaAt).toBeInstanceOf(Date);
   });
 });

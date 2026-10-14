@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { SharedModule } from '../dist/shared/shared.module.js';
-import { IamModule } from '../dist/iam/iam.module.js';
+import { SharedModule } from '../../dist/shared/shared.module.js';
+import { IamModule } from '../../dist/iam/iam.module.js';
 import type { INestApplication } from '@nestjs/common';
 import { ValidationPipe } from '@nestjs/common';
-import { PrismaService } from '../dist/shared/prisma/prisma.service.js';
+import { PrismaService } from '../../dist/shared/prisma/prisma.service.js';
 import request from 'supertest';
 import * as crypto from 'node:crypto';
 import * as bcrypt from 'bcrypt';

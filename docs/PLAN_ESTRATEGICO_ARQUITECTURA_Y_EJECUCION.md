@@ -275,7 +275,7 @@ src/app/
 
 ### Próxima Fase Inmediata: Frontend Integral & Smoke Test E2E
 1. **[x] Validación E2E en Vivo: (Completado)**
-   - Smoke test automatizado implementado en `test/smoke-test-live.ts` (`npm run test:smoke`).
+   - Smoke test automatizado implementado en `test/manual/smoke-test-live.ts` (`npm run test:smoke`).
    - Recorre el flujo de negocio completo de principio a fin de forma transaccional contra la API activa con éxito en sus 13 pasos.
 
 2. **Desarrollo de Vistas Frontend (Angular Standalone + PrimeNG + Tailwind CSS):**

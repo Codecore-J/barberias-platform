@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
  * hijo y comprueban que la guardia lo aborta antes de tocar nada.
  */
 
-const SCRIPT = fileURLToPath(new URL('./smoke-test-live.ts', import.meta.url));
+const SCRIPT = fileURLToPath(new URL('./manual/smoke-test-live.ts', import.meta.url));
 const PAQUETE = fileURLToPath(new URL('..', import.meta.url));
 const BANNER = 'INICIANDO PRUEBA DE INTEGRACIÓN E2E EN VIVO';
 

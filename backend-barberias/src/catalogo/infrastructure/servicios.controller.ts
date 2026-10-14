@@ -5,7 +5,6 @@ import {
   Body,
   Patch,
   Param,
-  Delete,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
@@ -73,13 +72,37 @@ export class ServiciosController {
     return this.serviciosService.update(barberiaId, id, updateServicioDto);
   }
 
-  @Delete(':id')
+  /**
+   * PATCH /catalogo/servicios/:id/desactivar · E2-07 (D29)
+   *
+   * El verbo describe el EFECTO: el servicio no se borra, pasa a INACTIVO y sale
+   * del catálogo (`findAll` filtra por ACTIVO). Las reglas de cuándo se puede
+   * viven en el servicio: 422 `SERVICIO_EN_USO` si hay reservas por confirmar y
+   * 422 `SERVICIO_EN_COMBO_ACTIVO` si está dentro de un combo activo.
+   */
+  @Patch(':id/desactivar')
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @HttpCode(HttpStatus.OK)
-  deactivate(
+  desactivar(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.serviciosService.deactivate(barberiaId, id);
+    return this.serviciosService.desactivar(barberiaId, id);
+  }
+
+  /**
+   * PATCH /catalogo/servicios/:id/reactivar · E2-07 (D29)
+   *
+   * La vuelta atrás explícita: sin ella, `DELETE` era irreversible y recuperar
+   * un servicio exigía tocar la base.
+   */
+  @Patch(':id/reactivar')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @HttpCode(HttpStatus.OK)
+  reactivar(
+    @CurrentBarberiaId() barberiaId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.serviciosService.reactivar(barberiaId, id);
   }
 }

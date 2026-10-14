@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
+import { describe, it, expect, beforeEach, beforeAll, vi, type MockInstance } from 'vitest';
 import { getQueueToken } from '@nestjs/bullmq';
 import {
   ESTADOS_EXPIRABLES,
@@ -9,6 +10,8 @@ import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
 import { QUEUES } from '../../shared/queues/queue.constants.js';
+// H63: techo real del encolado best-effort que usa el servicio.
+import { ENCOLADO_TIMEOUT_MS } from '../../shared/queues/encolado-seguro.js';
 
 /** Reloj fijo: la expiración se mide contra `ahora`, nunca contra el reloj real. */
 const AHORA = new Date('2026-10-10T12:00:00.000Z');
@@ -30,6 +33,19 @@ function reserva(extra: Record<string, unknown> = {}) {
 
 describe('ExpiracionReservaService (E3-05)', () => {
   let service: ExpiracionReservaService;
+
+  /**
+   * H63 · La degradación de la cola se comunica por log; se captura aquí para no
+   * ensuciar la salida y para poder afirmar que la advertencia se emite de
+   * verdad (silenciar sin comprobar sería esconder la degradación).
+   */
+  let warnEspia: MockInstance;
+  let errorEspia: MockInstance;
+
+  beforeAll(() => {
+    warnEspia = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    errorEspia = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+  });
 
   const mockPrisma = {
     reserva: {
@@ -205,7 +221,87 @@ describe('ExpiracionReservaService (E3-05)', () => {
     it('VERDE: el arranque no propaga errores de Redis (la app debe levantar igual)', async () => {
       mockPrisma.reserva.findMany.mockRejectedValue(new Error('Redis no disponible'));
 
-      await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
+      await expect(service.reconciliarEnArranque()).resolves.toBeUndefined();
     });
+
+    it('H63: el hook de arranque NO espera a la reconciliación (no retrasa el listen)', () => {
+      // Ni la BD ni Redis responden: antes, Nest esperaba a `onApplicationBootstrap`
+      // —que corre dentro de `app.init()`, antes de `listen`— y la API no llegaba a
+      // escuchar en absoluto.
+      mockPrisma.reserva.findMany.mockImplementation(() => new Promise(() => {}));
+
+      const inicio = Date.now();
+      const devuelto: unknown = service.onApplicationBootstrap();
+
+      expect(devuelto).toBeUndefined(); // hook síncrono: no hay promesa que Nest pueda esperar
+      expect(Date.now() - inicio).toBeLessThan(500);
+    });
+
+    it('H63: una expiración no se cuelga si la notificación no puede encolarse', async () => {
+      mockPrisma.reserva.findUnique.mockResolvedValue(reserva());
+      mockNotificacion.enviarNotificacion.mockImplementation(() => new Promise(() => {}));
+      vi.useFakeTimers();
+
+      try {
+        const promesa = service.expirarSiCorresponde(UUID_RESERVA, AHORA);
+        await vi.advanceTimersByTimeAsync(ENCOLADO_TIMEOUT_MS + 1);
+
+        // La reserva YA quedó EXPIRADA y el espacio liberado: la notificación es
+        // secundaria y su cola muerta no puede reabrir la transacción.
+        await expect(promesa).resolves.toBe('EXPIRADA');
+        expect(mockNotificacion.enviarNotificacion).toHaveBeenCalledTimes(1);
+        expect(warnEspia).toHaveBeenCalledWith(
+          expect.stringContaining('No se pudo notificar la expiración'),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('H62: una reserva que no se puede reencolar no impide reencolar las siguientes', async () => {
+      const idSinCola = 'uuid-sin-cola';
+      const idConCola = 'uuid-con-cola';
+
+      mockPrisma.reserva.findMany.mockImplementation(async (args: any) =>
+        args.where.expiraAt.lte
+          ? []
+          : [
+              {
+                id: idSinCola,
+                barberiaId: UUID_BARBERIA,
+                expiraAt: new Date('2026-10-10T12:05:00.000Z'),
+              },
+              {
+                id: idConCola,
+                barberiaId: UUID_BARBERIA,
+                expiraAt: new Date('2026-10-10T12:06:00.000Z'),
+              },
+            ],
+      );
+      mockQueue.getJob.mockResolvedValue(null);
+      mockQueue.add
+        .mockRejectedValueOnce(
+          new Error('ERR max requests limit exceeded. Limit: 500000, Usage: 500001'),
+        )
+        .mockResolvedValueOnce({ id: `expirar-reserva-${idConCola}` });
+
+      const resultado = await service.reconciliar(AHORA);
+
+      // La segunda SÍ se reencola: antes, el fallo de la primera abortaba la
+      // reconciliación entera y ninguna de las siguientes recibía su job.
+      expect(resultado).toEqual({ expiradas: 0, reencoladas: 1 });
+      expect(mockQueue.add).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('H63: `reconciliarEnArranque` registra la degradación sin lanzar', async () => {
+    mockPrisma.reserva.findMany.mockRejectedValue(new Error('la base no está lista'));
+
+    await service.reconciliarEnArranque();
+
+    expect(warnEspia).toHaveBeenCalledWith(
+      expect.stringContaining('No se pudo reconciliar las expiraciones al arrancar'),
+    );
+    expect(errorEspia).not.toHaveBeenCalled();
   });
 });

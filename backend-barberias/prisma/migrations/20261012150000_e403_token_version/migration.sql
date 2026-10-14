@@ -1,0 +1,12 @@
+-- E4-03/5 · D24: `usuarios.token_version` permite cerrar TODAS las sesiones de
+-- una cuenta. Es la mitad que faltaba de la suspensión manual: sin esta columna,
+-- suspender cerraba las sesiones solo mientras la cuenta seguía `SUSPENDIDO`
+-- (el `JwtStrategy` rechaza a quien no está `ACTIVO`), y al reactivarla los
+-- tokens viejos volvían a valer. Con la versión, el token firmado antes de la
+-- suspensión queda inválido para siempre.
+--
+-- Aditiva y sin riesgo para los datos vivos: `NOT NULL DEFAULT 0` rellena las
+-- filas existentes con la versión 0, que es la que llevan los tokens ya emitidos
+-- (el payload sin `tv` se lee como 0), así que nadie queda fuera por esta
+-- migración.
+ALTER TABLE "usuarios" ADD COLUMN "token_version" INTEGER NOT NULL DEFAULT 0;

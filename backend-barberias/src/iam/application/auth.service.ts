@@ -162,6 +162,9 @@ export class AuthService {
       sub: usuario.id,
       correo: usuario.correo,
       roles,
+      // D24: el token viaja con la versión de la cuenta. Suspenderla la sube y
+      // estos tokens quedan inválidos aunque la cuenta vuelva a ACTIVO.
+      tv: usuario.tokenVersion,
     };
 
     // Firma asíncrona no bloqueante del JWT (PERF-01)

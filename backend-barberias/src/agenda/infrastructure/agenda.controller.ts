@@ -1,4 +1,14 @@
-import { Controller, Post, Get, Delete, Param, Body, Query, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Param,
+  Body,
+  Query,
+  HttpCode,
+  HttpStatus,
+  ParseUUIDPipe,
+} from '@nestjs/common';
 import { AgendaService } from '../application/agenda.service.js';
 import { DisponibilidadService } from '../application/disponibilidad.service.js';
 import { CreateBloqueoDto } from '../application/dto/create-bloqueo.dto.js';
@@ -76,18 +86,26 @@ export class AgendaController {
   }
 
   /**
-   * DELETE /agenda/bloqueos/:id
+   * POST /agenda/bloqueos/:id/liberar · E2-07 (D29)
+   *
+   * Antes `DELETE /agenda/bloqueos/:id` borraba la fila: el hueco se liberaba,
+   * pero se perdía el rastro de que había estado bloqueado y de quién lo retiró.
+   * El verbo pasa a describir el EFECTO —liberar, no eliminar— y sigue siendo
+   * idempotente (`liberado_at` se fija una vez).
+   *
    * Misma política que la creación: el bloqueo pertenece a la barbería y solo
-   * su ADMIN_BARBERIA o el ADMINISTRADOR global pueden retirarlo.
+   * su ADMIN_BARBERIA o el ADMINISTRADOR global pueden retirarlo. Se responde
+   * 200 (no el 201 por defecto de POST) porque no se crea ningún recurso.
    */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Delete('bloqueos/:id')
-  eliminarBloqueo(
+  @Post('bloqueos/:id/liberar')
+  @HttpCode(HttpStatus.OK)
+  liberarBloqueo(
     @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.agendaService.eliminarBloqueo(user.id, barberiaId, id);
+    return this.agendaService.liberarBloqueo(user.id, barberiaId, id);
   }
 
   /**
