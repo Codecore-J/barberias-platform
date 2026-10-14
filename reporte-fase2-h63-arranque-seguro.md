@@ -267,5 +267,19 @@ npm run lint ; npm run build
 ## 8. ESTADO FINAL
 
 - La rama `feat/infraestructura-asincrona` queda **apilada sobre `chore/sprint-estabilizacion-p3`**, con la conexión de BullMQ, las colas, los `jobId` y los `delay` **sin cambios**, y con H62 y H63 cerrados.
-- **Push hecho a `origin/feat/infraestructura-asincrona`** (primera vez en esta épica, a petición del dueño). **`main` no se toca y no se fusiona nada**: la rama queda lista para merge, sin conflictos esperados con su base (el merge a `main` es una decisión aparte, y hoy `main` sigue sin las Olas 1-3).
+- **Push hecho a `origin/feat/infraestructura-asincrona`** (primera vez en esta épica, a petición del dueño). Local y remoto coinciden: `5113a4b`.
+- **Preparada para merge, y medido cómo sería:** `git merge-base --is-ancestor origin/main HEAD` devuelve **sí**, así que fusionar esta rama en `main` sería un **fast-forward sin conflictos**; arrancaría **7 commits** y **78 ficheros** (+6105 / −349).
+  
+  ```
+  $ git log --oneline origin/main..HEAD
+  5113a4b fix(fase2): el arranque deja de depender de la cola de Redis (H63)
+  476648b feat(fase2): el alta de reserva deja de depender de la cola (H62)
+  63fde8b docs(estabilizacion): informe final 8.4 de la Ola 3 (P3 · Higiene)
+  432c372 chore(estabilizacion): higiene de P3, vocabulario de E2-07 y auditoría al día
+  6e1de4b feat(estabilizacion): cierra las brechas de negocio de la Ola 2 (H52, H54, D09/D24, H58)
+  02e6697 fix(estabilizacion): alinea el esquema con dev y cierra H47 y los minutos fantasma
+  7491c90 docs(estabilizacion): plan de ataque del sprint Camino B
+  ```
+
+  Es decir: como la rama está apilada, **fusionarla en `main` fusiona también todo el Sprint de Estabilización** (el `main` remoto sigue en `b3af077`, que es ancestro de esta rama). Si quieres llevar solo la Fase 2 a `main` sin arrastrar el sprint, habría que re-apilar sobre `main` o esperar al merge del sprint: es una decisión tuya y **no se ha tomado ninguna**. El PR se puede abrir en `https://github.com/Codecore-J/barberias-platform/pull/new/feat/infraestructura-asincrona`.
 - Lo que **no** se puede prometer: que la instancia sea *considerada* sana por el orquestador mientras Redis esté caído (**H64**), y la ausencia de regresiones fuera de los casos medidos (§6).
