@@ -2,10 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ReservaService } from './reserva.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { DisponibilidadService } from '../../agenda/application/disponibilidad.service.js';
-import { ConflictException, ForbiddenException, BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { Logger, ConflictException, ForbiddenException, BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { TiempoService, ZONA_POR_DEFECTO } from '../../shared/time/tiempo.service.js';
+import { ENCOLADO_TIMEOUT_MS } from '../../shared/queues/encolado-seguro.js';
 
 /** Hora UTC, igual que la escribe `parseTime` (setUTCHours). */
 function hora(h: number, m: number): Date {
@@ -562,6 +563,95 @@ describe('ReservaService', () => {
         { reservaId: 'uuid-reserva', barberiaId: 'uuid-barberia' },
         expect.objectContaining({ jobId: 'expirar-reserva-uuid-reserva' }),
       );
+    });
+  });
+
+  describe('H62 · el alta de la reserva no depende de la cola', () => {
+    /**
+     * Armado mínimo de un alta MANUAL válida (los mismos mocks que usa el caso
+     * del `jobId` determinista), para que las variantes del alta —cola sana,
+     * cola que rechaza y cola que no responde— se lean igual.
+     */
+    const datosAltaValida = {
+      fecha: '2026-10-10',
+      horaInicio: '09:00',
+      horaFin: '09:30',
+      serviciosIds: ['s1'],
+      precioTotalEsperado: 15,
+      tipo: 'INDIVIDUAL',
+    };
+
+    function prepararMocksDeAltaValida() {
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
+        modoReserva: 'MANUAL',
+        nuevasReservasActivas: true,
+        aceptaIndividual: true,
+        margenGrupalMinutos: 10,
+      });
+      mockPrismaService.servicio.findMany.mockResolvedValue([
+        { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 0 },
+      ]);
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
+        { inicio: enSede('2026-10-10', 9), fin: enSede('2026-10-10', 10, 30) },
+      ]);
+      mockPrismaService.reserva.create.mockResolvedValue({ id: 'uuid-reserva' });
+      mockPrismaService.participanteReserva.create.mockResolvedValue({ id: 'uuid-part' });
+    }
+
+    function crearAltaValida() {
+      return service.crearReserva('uuid-cliente', 'uuid-barberia', { ...datosAltaValida } as any);
+    }
+
+    it('VERDE: si el `add` RECHAZA (cuota agotada), la reserva se crea igual y el fallo queda como advertencia', async () => {
+      prepararMocksDeAltaValida();
+      mockQueue.add.mockRejectedValue(
+        new Error('SimpleError [ReplyError]: ERR max requests limit exceeded. Limit: 500000, Usage: 500001'),
+      );
+      const advertencia = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      try {
+        await expect(crearAltaValida()).resolves.toEqual({ id: 'uuid-reserva' });
+
+        expect(mockPrismaService.reserva.create).toHaveBeenCalledTimes(1);
+        expect(advertencia).toHaveBeenCalledWith(
+          expect.stringContaining('No se pudo encolar el job de expiración de la reserva uuid-reserva'),
+        );
+      } finally {
+        advertencia.mockRestore();
+      }
+    });
+
+    it('ROJO: si el `add` NO resuelve ni rechaza (Redis inalcanzable), el alta no espera sin fin', async () => {
+      prepararMocksDeAltaValida();
+      // Medido contra un puerto cerrado con `maxRetriesPerRequest: null`: la
+      // orden se queda en la cola offline de ioredis y la promesa no settlea.
+      // Es el caso que un `try/catch` a secas NO cubre.
+      mockQueue.add.mockImplementation(() => new Promise(() => {}));
+      const advertencia = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      vi.useFakeTimers();
+
+      try {
+        const alta = crearAltaValida();
+        await vi.advanceTimersByTimeAsync(ENCOLADO_TIMEOUT_MS + 100);
+
+        await expect(alta).resolves.toEqual({ id: 'uuid-reserva' });
+        expect(advertencia).toHaveBeenCalledWith(
+          expect.stringContaining(`la cola no respondió en ${ENCOLADO_TIMEOUT_MS} ms`),
+        );
+      } finally {
+        vi.useRealTimers();
+        advertencia.mockRestore();
+      }
+    });
+
+    it('ROJO: la resiliencia es SOLO del encolado; un fallo de la escritura sigue propagándose', async () => {
+      prepararMocksDeAltaValida();
+      mockPrismaService.reserva.create.mockRejectedValue(new Error('la base no responde'));
+
+      await expect(crearAltaValida()).rejects.toThrow('la base no responde');
+
+      expect(mockQueue.add).not.toHaveBeenCalled();
     });
   });
 

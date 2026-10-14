@@ -805,7 +805,7 @@ quedan legibles a propósito.
 | H59 | Ola 2 | ✅ **RESUELTO** — la auditoría no cuelga del grafo mínimo de `IamModule` (`PlataformaUsuariosModule`) |
 | **H56** | — | ⬜ **ABIERTO** — a decisión del dueño: `barberias_zona_horaria_check` fija una única zona literal |
 | **H60** | — | ⬜ **ABIERTO** — a decisión del dueño: el ADMINISTRADOR puede suspender su propia cuenta y no hay protección del último administrador |
-| **H62** | — | ⬜ **ABIERTO** — la suite E2E dependía de un Redis remoto con cuota mensual; agotada la cuota, 9 archivos caen con 500 en el alta de reserva (medida esta ola, sin tocar código) |
+| **H62** | Fase 2 (2026-10-14) | ✅ **RESUELTO** — el alta de reserva ya no depende de la cola: el encolado del job de expiración es best-effort y con techo de tiempo (ver «Hallazgos de la Fase 2» al final del documento) |
 
 ### 3.2 · Higiene de código cerrada (P3.1 a P3.3, P3.5)
 
@@ -875,7 +875,7 @@ bloqueo liberado) y `docs/MATRIZ_RUTAS.md`.
 - **Módulo / Ruta afectada:** entorno de pruebas (`REDIS_URL` de `backend-barberias/.env`), `src/app.module.ts` (`BullModule.forRoot`) y `POST /barberias/:barberiaId/reservas`
 - **Tipo:** Dependencia de una infraestructura externa con cuota para que la suite pueda estar verde / propagación de un fallo de cola al cliente HTTP
 - **Severidad:** Media — la suite completa se vuelve NO fiable (61 casos en rojo) sin que haya un solo fallo de negocio
-- **Estado:** **ABIERTO** — a decisión del dueño. Medido y documentado en la Ola 3; **no se tocó código** para cerrarlo
+- **Estado:** ~~**ABIERTO**~~ → **RESUELTO en la Fase 2** (2026-10-14, rama `feat/infraestructura-asincrona`). La mitad 1 de la ficha (la suite corriendo contra un Redis con cuota) sigue siendo una decisión de entorno; la mitad 2 (el 500 del alta) tiene arreglo y prueba en «Hallazgos de la Fase 2» al final del documento.
 - **Qué consta (dos cosas distintas):**
   1. La suite E2E se corrió contra el Redis **remoto** de `REDIS_URL` (Upstash). Agotada la cuota mensual del plan, TODA operación de cola falla y con ella el alta de reserva, que encola el job de expiración. Los 9 archivos que encolan quedan rojos y los 18 que no encolan pasan: la suite no mide el código, mide la cuota del proveedor.
   2. `POST /barberias/:barberiaId/reservas` responde **500 `Internal server error`** cuando el `enqueue` revienta. Es el comportamiento actual y coherente con «no confirmar una reserva sin su job de expiración», pero deja el alta de reserva dependiente de un servicio externo. Decisión del dueño si se prefiere degradar, reintentar o mantener el fallo duro.
@@ -896,4 +896,45 @@ bloqueo liberado) y `docs/MATRIZ_RUTAS.md`.
   - fijar en el README/CI que el E2E se corre contra el Redis de `docker-compose.yml` (local, sin cuota) en vez del remoto, o
   - decidir el contrato del alta de reserva cuando la cola no está disponible (500 actual, 503 con reintento, o confirmar sin job y reconciliar en el arranque como ya hace `ExpiracionReservaService`),
   - y, si se mantiene Upstash para el runtime, separar su cuota de la de las pruebas.
+
+---
+
+## HALLAZGOS DE LA FASE 2 · INFRAESTRUCTURA ASÍNCRONA (colas y workers)
+
+Registrada al implementar el primer paso de la Fase 2 en la rama `feat/infraestructura-asincrona`
+(2026-10-14), **apilada sobre `chore/sprint-estabilizacion-p3`**. La rama NO está fusionada y `main`
+todavía no contiene ninguna de las Olas 1, 2, 3.
+
+### F2.1 · Marcador de la fase
+
+| ID | Estado |
+| :--- | :--- |
+| **H62** | ✅ **RESUELTO** — el alta de reserva no depende de la cola: encolado best-effort y con techo de tiempo (`src/shared/queues/encolado-seguro.ts`) |
+| **H63** | ⬜ **ABIERTO** — con Redis INALCANZABLE la aplicación no arranca: `AuditoriaService.onModuleInit` espera sin límite |
+
+### F2.2 · H62 — **RESUELTO**: el alta de reserva ya no devuelve 500 cuando la cola falla
+
+- **Módulo / Ruta afectada:** `src/reserva/application/reserva.service.ts` (`crearReserva`), `src/reserva/application/expiracion-reserva.service.ts` (`reconciliar`), `src/shared/queues/encolado-seguro.ts` (nuevo) y `POST /barberias/:barberiaId/reservas`
+- **Tipo:** Propagación de un fallo de infraestructura secundaria al contrato HTTP del alta
+- **Severidad:** Media — 61 casos de E2E en rojo con una sola causa, y un 500 para el cliente
+- **Estado:** **RESUELTO** (2026-10-14)
+- **Qué estaba mal:** el `add` del job de expiración se hacía DENTRO de `prisma.$transaction`. Cuando Redis rechazaba la orden (cuota agotada de Upstash), el rechazo salía del callback de la transacción, Prisma la revertía y el alta respondía 500 `Internal server error`: agendar la cita dependía de la cola de notificaciones.
+- **Qué se cambió:**
+  1. El encolado se ejecuta con `encolarConLimite(...)`. Si falla, se registra una advertencia («No se pudo encolar el job de expiración de la reserva …») y el alta continúa: la reserva se crea (201) y `ExpiracionReservaService.reconciliar()` —que ya corre en `OnApplicationBootstrap`— reencola las vigentes sin job con el mismo `jobId` determinista.
+  2. El helper NO es un simple `try/catch`, porque se midieron DOS modos de fallo distintos: (a) Redis responde con error → `add` RECHAZA y basta capturarlo; (b) Redis NO responde → con `maxRetriesPerRequest: null` la orden se queda en la cola offline de ioredis y la promesa NI resuelve NI rechaza (medido contra un puerto cerrado: proceso colgado hasta que lo mató un `timeout 20`). Por eso el encolado se corre contra un temporizador (`ENCOLADO_TIMEOUT_MS = 2000`) y al vencer se abandona la espera.
+  3. `reconciliar()` pasa a ser best-effort POR RESERVA: antes, la primera que fallaba abortaba el reencolado de todas las siguientes hasta el próximo arranque.
+- **Evidencia ROJA (con el arreglo revertido temporalmente, 2026-10-14):** `Tests 4 failed | 73 passed (77)` con `AssertionError: promise rejected "Error: SimpleError [ReplyError]: ERR max requests limit exceeded…" instead of resolving` (el 500 medido por la Ola 3) y `Error: Test timed out in 5000ms` (el cuelgue). El caso de reconciliación reproduce el aborto en cadena.
+- **Evidencia VERDE:** unitarios `48 passed (48)` / `520 passed (520)` con `EXIT=0`; E2E dirigido `2 passed (2)` / `20 passed (20)` contra el Redis local, incluido `CONTROL: MANUAL → PENDIENTE, expira_at = ahora + 10 min y job de expiración`; `npm run lint` → 54 warnings, 0 errores; `nest build` OK.
+- **Contrato que se decide aquí (y por qué):** el job de expiración es defensa en profundidad, no un requisito del alta. Se acepta degradación explícita —201, advertencia y reconciliación al arrancar— en vez de un 503 con reintento: castigar al usuario por el fallo de un sistema que no es el suyo contradice el objetivo de la fase.
+- **Límites conocidos de este arreglo:** (a) al vencer el techo la orden NO se cancela: sigue en la cola offline y puede entrar si Redis vuelve (inofensivo por el `jobId` determinista); (b) el techo acota, no elimina, la espera dentro de la transacción —con la cola degradada el alta puede tardar hasta 2 s y retiene sus `FOR UPDATE` ese tiempo (ideal futuro: encolar DESPUÉS del commit); (c) `aceptarReserva`, `rechazarReserva` y `cancelarReserva` siguen llamando `getJob` sin techo (fuera del alcance pedido), así que con Redis inalcanzable esas rutas siguen esperando.
+
+### F2.3 · H63 (nuevo) — con Redis inalcanzable la aplicación NO arranca
+
+- **Módulo afectado:** `src/auditoria/application/auditoria.service.ts` (`onModuleInit` → `configurarJobRecurrente`), `src/app.module.ts`
+- **Tipo:** Dependencia dura de Redis en el ARRANQUE (afecta a la API entera, no a una ruta)
+- **Severidad:** Media-Alta — no es que una ruta falle: la instancia nunca queda lista para servir, así que un Redis caído tumba TODO el backend, no solo las reservas
+- **Estado:** **ABIERTO** — medido y documentado al cerrar H62; no se tocó
+- **Qué consta:** `configurarJobRecurrente()` ya captura los errores de un Redis que RESPONDE mal (por eso la app arrancó con la cuota agotada y solo fallaban las rutas), pero cuando Redis NO responde `upsertJobScheduler` no rechaza: espera sin límite. Como `onModuleInit` la espera y Nest espera a `onModuleInit`, `app.init()` nunca termina.
+- **Evidencia (2026-10-14):** el E2E dirigido `test/e3-03-validaciones.e2e-spec.ts -t "CONTROL: MANUAL"` con `REDIS_URL=redis://127.0.0.1:6399` (puerto cerrado) no llega a ejecutar el caso: `FAIL … Error: Hook timed out in 120000ms` en el `beforeAll`, cero líneas `[Nest]` en el log y `Tests 11 skipped (11)`. La sonda de control —un módulo Nest con SOLO `BullModule.forRoot` + `registerQueue` contra el mismo puerto muerto— compila e inicializa en 569 ms, así que el registro de colas NO es la causa; lo es el `await` de `onModuleInit`.
+- **Remedio propuesto:** envolver `configurarJobRecurrente()` con el mismo techo (`encolarConLimite`) o trasladar el registro del cron a `onApplicationBootstrap` con reintento, para que la app arranque sin cola y registre el cron cuando Redis vuelva. Requiere decidir además si se acota `getJob` en aceptar/rechazar/cancelar, para que la degradación sea completa y homogénea.
 

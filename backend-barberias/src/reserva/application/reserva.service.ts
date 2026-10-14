@@ -74,6 +74,8 @@ import {
   jobIdExpiracionReserva,
   type ExpirarReservaJobPayload,
 } from '../../shared/queues/queue.constants.js';
+// H62: el encolado del job de expiración no puede tumbar el alta de la reserva.
+import { encolarConLimite } from '../../shared/queues/encolado-seguro.js';
 
 /**
  * Estados desde los que el cliente o la sede todavía pueden cancelar (E3-05).
@@ -834,12 +836,35 @@ export class ReservaService {
         // rechazar puedan cancelarlo. Con un id aleatorio de BullMQ no habría
         // forma de encontrarlo después. Además es idempotente: reencolar la
         // misma reserva no duplica el job.
-        await this.reservasQueue.add(
-          JOBS.EXPIRAR_RESERVA,
-          { reservaId: reserva.id, barberiaId } satisfies ExpirarReservaJobPayload,
-          { delay: 10 * 60000, jobId: jobIdExpiracionReserva(reserva.id) },
+        //
+        // H62 (2026-10-14): el encolado es BEST-EFFORT y con techo de tiempo.
+        // Este job es defensa en profundidad —expira lo que nadie confirmó—, no
+        // parte del contrato del alta: el cliente tiene que salir con su 201
+        // aunque la cola no esté. Antes, el rechazo de `add` se propagaba desde
+        // DENTRO de esta transacción, así que se revertía la reserva entera y el
+        // alta respondía 500: con la cuota de Upstash agotada eso dejó 61 casos
+        // de E2E en rojo con una sola causa. Y con Redis inalcanzable `add` no
+        // rechaza, se queda esperando sin fin (ver `encolarConLimite`), por eso
+        // hay techo y no solo `try/catch`.
+        //
+        // Lo que se pierda no queda huérfano: `ExpiracionReservaService`
+        // reconcilia al arrancar y reencola las vigentes sin job con este mismo
+        // `jobId` determinista.
+        const encolado = await encolarConLimite(() =>
+          this.reservasQueue.add(
+            JOBS.EXPIRAR_RESERVA,
+            { reservaId: reserva.id, barberiaId } satisfies ExpirarReservaJobPayload,
+            { delay: 10 * 60000, jobId: jobIdExpiracionReserva(reserva.id) },
+          ),
         );
-        this.logger.log(`Job de expiración programado para reserva ${reserva.id} en 10 minutos`);
+
+        if (encolado.ok) {
+          this.logger.log(`Job de expiración programado para reserva ${reserva.id} en 10 minutos`);
+        } else {
+          this.logger.warn(
+            `No se pudo encolar el job de expiración de la reserva ${reserva.id} (${encolado.motivo}): la reserva se crea igual y la reconciliación del próximo arranque la recuperará`,
+          );
+        }
       }
 
       // 5. Despacho asíncrono de notificación y programación de recordatorio 1h antes (T8.1)

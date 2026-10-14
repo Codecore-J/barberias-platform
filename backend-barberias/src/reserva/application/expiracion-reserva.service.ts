@@ -9,6 +9,8 @@ import {
   QUEUES,
   jobIdExpiracionReserva,
 } from '../../shared/queues/queue.constants.js';
+// H62: el reencolado de una reserva no puede abortar el de las demás.
+import { encolarConLimite } from '../../shared/queues/encolado-seguro.js';
 import {
   ACTORES,
   ESTADOS,
@@ -197,6 +199,10 @@ export class ExpiracionReservaService implements OnApplicationBootstrap {
   /**
    * Reconciliación (E3-05 §4): expira las vencidas y reencola las vigentes que
    * se quedaron sin job (Redis reiniciado, job perdido o proceso caído).
+   *
+   * H62 (2026-10-14): el reencolado es best-effort POR RESERVA y con techo de
+   * tiempo. Es la otra mitad del arreglo del alta: si el job de una reserva no
+   * se pudo encolar en su momento, este es el mecanismo que la recupera.
    */
   async reconciliar(ahora: Date = new Date()): Promise<ResultadoReconciliacion> {
     const vencidas = await this.prisma.reserva.findMany({
@@ -220,22 +226,40 @@ export class ExpiracionReservaService implements OnApplicationBootstrap {
     for (const reserva of vigentes) {
       const jobId = jobIdExpiracionReserva(reserva.id);
 
-      // El jobId determinístico hace que esta comprobación sea suficiente: si
-      // hay job, es EL job de esta reserva (reencolarlo lo duplicaría).
-      const existente = await this.reservasQueue.getJob(jobId);
-      if (existente) {
+      // H62: cada reserva es independiente y best-effort. Antes, la primera que
+      // fallara —en `getJob` o en `add`— abortaba la reconciliación de TODAS las
+      // siguientes y, como el arranque solo registra una advertencia, esas
+      // reservas se quedaban sin job hasta el próximo reinicio. Un `try/catch`
+      // tampoco bastaría: con Redis inalcanzable `add` ni resuelve ni rechaza.
+      const resultado = await encolarConLimite(async () => {
+        // El jobId determinístico hace que esta comprobación sea suficiente: si
+        // hay job, es EL job de esta reserva (reencolarlo lo duplicaría).
+        const existente = await this.reservasQueue.getJob(jobId);
+        if (existente) {
+          return false;
+        }
+
+        await this.reservasQueue.add(
+          JOBS.EXPIRAR_RESERVA,
+          { reservaId: reserva.id, barberiaId: reserva.barberiaId },
+          {
+            jobId,
+            delay: Math.max(0, (reserva.expiraAt as Date).getTime() - ahora.getTime()),
+          },
+        );
+        return true;
+      });
+
+      if (!resultado.ok) {
+        this.logger.warn(
+          `No se pudo reencolar el job de expiración de la reserva ${reserva.id} (${resultado.motivo}): se deja para el próximo arranque`,
+        );
         continue;
       }
 
-      await this.reservasQueue.add(
-        JOBS.EXPIRAR_RESERVA,
-        { reservaId: reserva.id, barberiaId: reserva.barberiaId },
-        {
-          jobId,
-          delay: Math.max(0, (reserva.expiraAt as Date).getTime() - ahora.getTime()),
-        },
-      );
-      reencoladas += 1;
+      if (resultado.valor) {
+        reencoladas += 1;
+      }
     }
 
     return { expiradas, reencoladas };

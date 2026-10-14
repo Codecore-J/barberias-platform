@@ -207,5 +207,40 @@ describe('ExpiracionReservaService (E3-05)', () => {
 
       await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
     });
+
+    it('H62: una reserva que no se puede reencolar no impide reencolar las siguientes', async () => {
+      const idSinCola = 'uuid-sin-cola';
+      const idConCola = 'uuid-con-cola';
+
+      mockPrisma.reserva.findMany.mockImplementation(async (args: any) =>
+        args.where.expiraAt.lte
+          ? []
+          : [
+              {
+                id: idSinCola,
+                barberiaId: UUID_BARBERIA,
+                expiraAt: new Date('2026-10-10T12:05:00.000Z'),
+              },
+              {
+                id: idConCola,
+                barberiaId: UUID_BARBERIA,
+                expiraAt: new Date('2026-10-10T12:06:00.000Z'),
+              },
+            ],
+      );
+      mockQueue.getJob.mockResolvedValue(null);
+      mockQueue.add
+        .mockRejectedValueOnce(
+          new Error('ERR max requests limit exceeded. Limit: 500000, Usage: 500001'),
+        )
+        .mockResolvedValueOnce({ id: `expirar-reserva-${idConCola}` });
+
+      const resultado = await service.reconciliar(AHORA);
+
+      // La segunda SÍ se reencola: antes, el fallo de la primera abortaba la
+      // reconciliación entera y ninguna de las siguientes recibía su job.
+      expect(resultado).toEqual({ expiradas: 0, reencoladas: 1 });
+      expect(mockQueue.add).toHaveBeenCalledTimes(2);
+    });
   });
 });
