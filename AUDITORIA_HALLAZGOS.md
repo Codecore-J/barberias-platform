@@ -905,12 +905,18 @@ Registrada al implementar el primer paso de la Fase 2 en la rama `feat/infraestr
 (2026-10-14), **apilada sobre `chore/sprint-estabilizacion-p3`**. La rama NO está fusionada y `main`
 todavía no contiene ninguna de las Olas 1, 2, 3.
 
+**Actualización (2.ª iteración, 2026-10-14):** se cierra **H63** (arranque seguro con Redis caído) y se
+abre **H64** (`/health` en 503 con Redis caído + `healthCheckPath` de Render). La rama **sí se subió**
+a `origin` en esa iteración; el merge a `main` sigue pendiente de decisión. Reporte:
+`reporte-fase2-h63-arranque-seguro.md`.
+
 ### F2.1 · Marcador de la fase
 
 | ID | Estado |
 | :--- | :--- |
 | **H62** | ✅ **RESUELTO** — el alta de reserva no depende de la cola: encolado best-effort y con techo de tiempo (`src/shared/queues/encolado-seguro.ts`) |
-| **H63** | ⬜ **ABIERTO** — con Redis INALCANZABLE la aplicación no arranca: `AuditoriaService.onModuleInit` espera sin límite |
+| **H63** | ✅ **RESUELTO** (2.ª iteración) — con Redis INALCANZABLE la aplicación **sí** arranca: los hooks de arranque no esperan a la cola y el cron de purga se registra con techo de 3 s |
+| **H64** | ⬜ **ABIERTO** — `/health` responde 503 con Redis caído y `render.yaml` lo usa como `healthCheckPath`: el orquestador puede reiniciar en bucle una instancia que sí está sirviendo |
 
 ### F2.2 · H62 — **RESUELTO**: el alta de reserva ya no devuelve 500 cuando la cola falla
 
@@ -928,13 +934,33 @@ todavía no contiene ninguna de las Olas 1, 2, 3.
 - **Contrato que se decide aquí (y por qué):** el job de expiración es defensa en profundidad, no un requisito del alta. Se acepta degradación explícita —201, advertencia y reconciliación al arrancar— en vez de un 503 con reintento: castigar al usuario por el fallo de un sistema que no es el suyo contradice el objetivo de la fase.
 - **Límites conocidos de este arreglo:** (a) al vencer el techo la orden NO se cancela: sigue en la cola offline y puede entrar si Redis vuelve (inofensivo por el `jobId` determinista); (b) el techo acota, no elimina, la espera dentro de la transacción —con la cola degradada el alta puede tardar hasta 2 s y retiene sus `FOR UPDATE` ese tiempo (ideal futuro: encolar DESPUÉS del commit); (c) `aceptarReserva`, `rechazarReserva` y `cancelarReserva` siguen llamando `getJob` sin techo (fuera del alcance pedido), así que con Redis inalcanzable esas rutas siguen esperando.
 
-### F2.3 · H63 (nuevo) — con Redis inalcanzable la aplicación NO arranca
+### F2.3 · H63 — **RESUELTO** (2.ª iteración): con Redis inalcanzable la aplicación arranca
 
-- **Módulo afectado:** `src/auditoria/application/auditoria.service.ts` (`onModuleInit` → `configurarJobRecurrente`), `src/app.module.ts`
+- **Módulo afectado:** `src/auditoria/application/auditoria.service.ts` (`onModuleInit` → `configurarJobRecurrente`) y `src/reserva/application/expiracion-reserva.service.ts` (`onApplicationBootstrap` → `reconciliar` y `notificarExpiracion`)
 - **Tipo:** Dependencia dura de Redis en el ARRANQUE (afecta a la API entera, no a una ruta)
 - **Severidad:** Media-Alta — no es que una ruta falle: la instancia nunca queda lista para servir, así que un Redis caído tumba TODO el backend, no solo las reservas
-- **Estado:** **ABIERTO** — medido y documentado al cerrar H62; no se tocó
-- **Qué consta:** `configurarJobRecurrente()` ya captura los errores de un Redis que RESPONDE mal (por eso la app arrancó con la cuota agotada y solo fallaban las rutas), pero cuando Redis NO responde `upsertJobScheduler` no rechaza: espera sin límite. Como `onModuleInit` la espera y Nest espera a `onModuleInit`, `app.init()` nunca termina.
+- **Estado:** **RESUELTO** (2026-10-14, 2.ª iteración) — reporte: `reporte-fase2-h63-arranque-seguro.md`
+- **Qué constaba (DOS causas, las dos dentro del ciclo de vida que Nest espera ANTES de `listen`):**
+  1. `configurarJobRecurrente()` ya capturaba los errores de un Redis que RESPONDE mal (por eso la app arrancó con la cuota agotada y solo fallaban las rutas), pero cuando Redis NO responde `upsertJobScheduler` no rechaza: espera sin límite. Como `onModuleInit` la esperaba y Nest espera a `onModuleInit`, `app.init()` no terminaba nunca.
+  2. `ExpiracionReservaService.onApplicationBootstrap()` esperaba la reconciliación completa: hasta 2 s por reserva vigente (techo del encolado) y, al expirar una reserva, un `enviarNotificacion` sin techo que con Redis inalcanzable tampoco settlea nunca. Se halló midiendo el arranque del artefacto real, no leyendo el código.
 - **Evidencia (2026-10-14):** el E2E dirigido `test/e3-03-validaciones.e2e-spec.ts -t "CONTROL: MANUAL"` con `REDIS_URL=redis://127.0.0.1:6399` (puerto cerrado) no llega a ejecutar el caso: `FAIL … Error: Hook timed out in 120000ms` en el `beforeAll`, cero líneas `[Nest]` en el log y `Tests 11 skipped (11)`. La sonda de control —un módulo Nest con SOLO `BullModule.forRoot` + `registerQueue` contra el mismo puerto muerto— compila e inicializa en 569 ms, así que el registro de colas NO es la causa; lo es el `await` de `onModuleInit`.
-- **Remedio propuesto:** envolver `configurarJobRecurrente()` con el mismo techo (`encolarConLimite`) o trasladar el registro del cron a `onApplicationBootstrap` con reintento, para que la app arranque sin cola y registre el cron cuando Redis vuelva. Requiere decidir además si se acota `getJob` en aceptar/rechazar/cancelar, para que la degradación sea completa y homogénea.
+- **Qué se cambió (2026-10-14, 2.ª iteración):**
+  1. `onModuleInit()` de auditoría es **síncrono** y lanza `programarPurgaDiaria()` sin `await`; ese método corre `configurarJobRecurrente()` contra `encolarConLimite` con techo propio `REGISTRO_CRON_TIMEOUT_MS = 3000` y, si vence, registra `CRÍTICO: la cola de auditoría no respondió …` y devuelve `{ ok: false }`. La llamada NO se cancela: si la cola vuelve, el `upsertJobScheduler` se completa solo y el cron queda registrado sin reiniciar el proceso (el id del scheduler es fijo).
+  2. `onApplicationBootstrap()` de expiraciones es **síncrono** y lanza `reconciliarEnArranque()` en segundo plano (público, para poder esperarlo en tests pese a que Nest ya no lo espera).
+  3. `notificarExpiracion()` encola con el mismo techo de 2 s del helper: la expiración ya confirmada en la BD no se cuelga ni se reabre por una notificación secundaria.
+- **Evidencia ROJA (2026-10-14, puerto cerrado `6399` sobre el artefacto real `node dist/main.js`):** HTTP sin responder en 30 s, `"successfully started"` **NUNCA** y 1185 líneas de log, todas reintentos `ECONNREFUSED` de ioredis. En el E2E: `Hook timed out in 120000ms` en el `beforeAll`, cero líneas `[Nest]` y `Tests 11 skipped (11)`.
+- **Evidencia VERDE (dos ejecuciones):** `successfully started` en **3647 ms** y **3901 ms** (tope del encargo: 10 s), HTTP atendiendo a los 3752/4009 ms, error crítico del cron a los 6641/6880 ms (los 3 s del techo, siempre **después** de que la API escucha) y reconciliación terminada en 11333 ms con 3 expiraciones y sus avisos de notificación acotados a 2000 ms. Unitarios `48 passed (48)` / `526 passed (526)` con `EXIT=0` tras un rojo medido de `2 failed | 28 passed (30)` (`AssertionError: expected Promise{…} to be undefined` en los dos hooks); E2E **por HTTP real con Redis caído** `3 passed | 8 skipped (11)` incluido `CONTROL: MANUAL → 201 PENDIENTE`; lint `54 warnings and 0 errors`; `nest build` OK.
+- **Contrato que fija:** la cola es una dependencia **opcional en el arranque**. Ni el cron de purga diario ni la purga de expiraciones pueden ser requisito para escuchar HTTP: se degradan con log y se auto-recuperan cuando Redis vuelve.
+- **Límites:** (a) el cron no se reintenta explícitamente —confía en la cola offline de ioredis mientras el proceso viva—; (b) la reconciliación de arranque sigue siendo secuencial (2 s por reserva vigente en segundo plano con la cola muerta); (c) persisten los límites ya anotados en H62 (`getJob` sin techo en aceptar/rechazar/cancelar y el encolado del alta dentro de la transacción); (d) **H64**, abajo.
+
+### F2.4 · H64 (nuevo) — `/health` en 503 con Redis caído, y Render lo usa como sonda de vida
+
+- **Módulo afectado:** `src/health/health.controller.ts`, `render.yaml` (`healthCheckPath: /health`)
+- **Tipo:** Contrato de monitorización incompatible con la degradación elegante recién conseguida
+- **Severidad:** Media — no rompe la app, pero puede anular el arreglo de H63 en producción
+- **Estado:** **ABIERTO** (medido; pendiente de decisión del dueño)
+- **Qué consta:** con la aplicación arrancada y sirviendo (`successfully started` en 3,9 s), `GET /api/v1/health` respondió **503 a los 4659 ms** con Redis inalcanzable: Terminus convierte en 503 cualquier indicador `down`, y el controlador devuelve `redis: { status: 'down' }`. `render.yaml` declara `healthCheckPath: /health`, así que el orquestador puede marcar unhealthy —y reiniciar en bucle— una instancia que sí está atendiendo reservas, pagos y catálogos.
+- **Remedio propuesto (decisión del dueño, no aplicado):** separar sonda de vida de sonda de preparación (una ruta que solo mire proceso y BD para `healthCheckPath`, y el detalle de Redis en la de preparación), o degradar el indicador de Redis a `degraded` sin tumbar el 200 cuando la cola es secundaria. Cambia el contrato de monitorización, así que no se toca sin visto bueno.
+- **Nota:** el cliente de Redis de la sonda ya está acotado (`maxRetriesPerRequest: 1`, `connectTimeout: 5000`), de modo que ese endpoint no se cuelga: el 503 es correcto como *readiness* y peligroso como *liveness*.
+- **Requiere decidir además:** si se acota `getJob` en aceptar/rechazar/cancelar, para que la degradación sea completa y homogénea.
 

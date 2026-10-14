@@ -2,7 +2,12 @@
 
 **Rama:** `feat/infraestructura-asincrona` (apilada sobre `chore/sprint-estabilizacion-p3`, `63fde8b`)
 **Fecha:** 2026-10-14 · **Alcance:** resiliencia del encolado BullMQ · **Cierra:** H62 · **Abre:** H63
-**Estado:** implementado y verificado en local. **Sin push, sin merge y sin PR.**
+**Estado:** implementado y verificado en local. **Sin push, sin merge y sin PR** (en esta iteración)
+
+> **2.ª iteración (2026-10-14):** H63 —medido aquí y dejado abierto— se corrigió en el pase siguiente: la
+> aplicación ya arranca con Redis inalcanzable. Ver [reporte-fase2-h63-arranque-seguro.md](reporte-fase2-h63-arranque-seguro.md).
+> En esa iteración **sí** se hizo push de la rama a `origin` (a petición del dueño); el merge a `main`
+> sigue pendiente de decisión.
 
 ---
 
@@ -199,6 +204,19 @@ Error: Hook timed out in 120000ms.
 
 Este intento **no llegó a medir el alta**: se quedó en el `beforeAll`. No es un fallo del arreglo —con Redis inalcanzable la app ni siquiera completa su arranque—, es el hallazgo nuevo **H63** (§8).
 
+**Actualización (2.ª iteración):** con H63 corregido, ese mismo comando ya mide el alta. Mismo Redis muerto (puerto cerrado), mismo filtro:
+
+```
+ ✓ test/e3-03-validaciones.e2e-spec.ts (11 tests | 8 skipped) 28355ms
+     ✓ CONTROL: MANUAL → PENDIENTE, expira_at = ahora + 10 min y job de expiración  4375ms
+     ✓ CONTROL: AUTOMATICO → CONFIRMADA sin temporizador  1509ms
+     ✓ CONTROL: cotización sin persistir (D44) - mismo blanco que crear  686ms
+ Test Files  1 passed (1)
+      Tests  3 passed | 8 skipped (11)      ← EXIT=0
+```
+
+Y el arranque del artefacto real (`node dist/main.js`) con el mismo Redis inalcanzable: `Nest application successfully started` en **3647 ms** en vez de **nunca**.
+
 ---
 
 ## 7. LO QUE **NO** SE HIZO EN ESTE PASO
@@ -207,7 +225,7 @@ Este intento **no llegó a medir el alta**: se quedó en el `beforeAll`. No es u
 - **`agenda.service.ts` (`crearBloqueo`)**: no se tocó a propósito. Su job es la única vía de liberación del bloqueo y el `jobId` se escribe en la misma transacción; degradar en silencio dejaría un bloqueo eterno sin reconciliación que lo recupere.
 - **Node API 2 (encolar después del commit)**: el encolado sigue dentro de `prisma.$transaction`. Moverlo fuera es el arreglo de fondo (no retendría los `FOR UPDATE` mientras la cola está degradada), pero cambia la estructura de `crearReserva` y se prefirió no mezclarlo con el arreglo de H62.
 - **Reintentos del job (`attempts`/`backoff`)**: el job de expiración sigue con la política por defecto (1 intento). Si el processor falla en su momento, la reserva PENDIENTE no expira hasta el próximo arranque. Es una mejora de la fase, no de este paso.
-- **H63**: medido, documentado y **sin tocar**.
+- **H63**: en esta iteración quedó medido, documentado y **sin tocar**; se corrigió en la 2.ª iteración (ver `reporte-fase2-h63-arranque-seguro.md`).
 - **Frontend**: intacto. **`.env`**: intacto (el E2E se corrió pasando `REDIS_URL` por entorno, como en la Ola 3).
 
 ---
@@ -218,7 +236,7 @@ Este intento **no llegó a medir el alta**: se quedó en el `beforeAll`. No es u
 - **Evidencia:** `Hook timed out in 120000ms` en el `beforeAll`, cero líneas `[Nest]` en el log, `Tests 11 skipped (11)`; y la sonda mínima (§6.0) demuestra que el registro de colas por sí solo arranca en 569 ms.
 - **Impacto:** un Redis caído no degrada una ruta: **no levanta la instancia**. Es el mismo defecto de fondo que H62 (una llamada a Redis sin techo en el camino crítico), pero en el arranque.
 - **Remedio propuesto:** envolver el registro del cron con `encolarConLimite` o trasladarlo a `onApplicationBootstrap` con reintento, de modo que la app arranque sin cola y registre el cron cuando Redis vuelva. Decidir, además, si se acota `getJob` donde quedó pendiente para que la degradación sea homogénea.
-- **Estado:** **ABIERTO** (documentado en `AUDITORIA_HALLAZGOS.md`).
+- **Estado:** **RESUELTO** en la 2.ª iteración (2026-10-14): los hooks de arranque no esperan a la cola y el cron de purga se registra con techo de 3 s. Medición: `successfully started` en 3647 ms con Redis inalcanzable (antes: nunca). Detalle y límites en `reporte-fase2-h63-arranque-seguro.md`; queda abierto el hallazgo derivado **H64** (`/health` en 503 + `healthCheckPath` de Render).
 
 ---
 
@@ -250,7 +268,12 @@ npm run lint ; npm run build
 
 ## 10. ESTADO FINAL
 
-La rama `feat/infraestructura-asincrona` queda **apilada sobre `chore/sprint-estabilizacion-p3`**, con un
-commit que cierra H62 y deja H63 documentado. **No se hizo push, no se hizo merge y no se abrió PR**, como
-pediste. H62 pasa a **RESUELTO** en `AUDITORIA_HALLAZGOS.md` y la Fase 2 estrena su propio apartado con el
-marcador de la fase.
+Al cerrar esta iteración, la rama `feat/infraestructura-asincrona` quedó **apilada sobre `chore/sprint-estabilizacion-p3`**,
+con un commit que cierra H62 y deja H63 documentado. En esta iteración **no se hizo push, no se hizo merge y
+no se abrió PR**, como pediste. H62 pasa a **RESUELTO** en `AUDITORIA_HALLAZGOS.md` y la Fase 2 estrena su
+propio apartado con el marcador de la fase.
+
+**Estado de la épica tras la 2.ª iteración (2026-10-14):** **H62 y H63 RESUELTOS**; la rama está **subida a
+`origin`** y lista para merge, `main` intacto y el merge pendiente de tu decisión. Queda abierto **H64**
+(`/health` en 503 con Redis caído frente a `healthCheckPath: /health` de Render). Detalle completo en
+[reporte-fase2-h63-arranque-seguro.md](reporte-fase2-h63-arranque-seguro.md).

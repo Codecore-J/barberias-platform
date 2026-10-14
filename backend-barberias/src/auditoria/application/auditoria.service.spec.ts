@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { AuditoriaService } from './auditoria.service.js';
+import { BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import type { MockInstance } from 'vitest';
+import { REGISTRO_CRON_TIMEOUT_MS, AuditoriaService } from './auditoria.service.js';
 import { AuditoriaProcessor } from './auditoria.processor.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { getQueueToken } from '@nestjs/bullmq';
@@ -21,6 +22,17 @@ function adminDe(barberiaId?: string): UsuarioAutenticado {
 describe('AuditoriaService & Processor (T8.2)', () => {
   let service: AuditoriaService;
   let processor: AuditoriaProcessor;
+
+  /**
+   * H63 · El arranque se degrada por log; se captura para no ensuciar la salida
+   * y para poder afirmar que el error crítico se emite de verdad.
+   */
+  let errorEspia: MockInstance;
+
+  beforeAll(() => {
+    errorEspia = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  });
 
   const mockPrismaService = {
     auditoria: {
@@ -206,6 +218,50 @@ describe('AuditoriaService & Processor (T8.2)', () => {
           data: { diasRetencion: 365 },
         }),
       );
+    });
+
+    describe('H63 · el arranque NO depende de la cola de auditoría', () => {
+      it('onModuleInit no espera al registro del cron aunque la cola no responda', () => {
+        // Redis inalcanzable: `upsertJobScheduler` ni resuelve ni rechaza.
+        mockQueue.upsertJobScheduler.mockImplementationOnce(() => new Promise(() => {}));
+
+        const inicio = Date.now();
+        const devuelto: unknown = service.onModuleInit();
+
+        // Hook síncrono: no hay promesa que Nest pueda esperar antes de escuchar.
+        expect(devuelto).toBeUndefined();
+        expect(Date.now() - inicio).toBeLessThan(500);
+        // Y aun así el registro se INTENTA: no se desactiva el cron, se degrada.
+        expect(mockQueue.upsertJobScheduler).toHaveBeenCalledTimes(1);
+      });
+
+      it('si la cola no responde, vence el techo, lo registra como CRÍTICO y no lanza', async () => {
+        mockQueue.upsertJobScheduler.mockImplementationOnce(() => new Promise(() => {}));
+        vi.useFakeTimers();
+
+        try {
+          const promesa = service.programarPurgaDiaria();
+          await vi.advanceTimersByTimeAsync(REGISTRO_CRON_TIMEOUT_MS + 1);
+          const resultado = await promesa;
+
+          expect(resultado.ok).toBe(false);
+          expect(resultado.motivo).toContain(
+            `la cola no respondió en ${REGISTRO_CRON_TIMEOUT_MS} ms`,
+          );
+          expect(errorEspia).toHaveBeenCalledWith(expect.stringContaining('CRÍTICO'));
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it('con la cola sana el cron se registra y no se registra ningún error', async () => {
+        mockQueue.upsertJobScheduler.mockResolvedValueOnce(undefined);
+
+        const resultado = await service.programarPurgaDiaria();
+
+        expect(resultado.ok).toBe(true);
+        expect(errorEspia).not.toHaveBeenCalled();
+      });
     });
 
     it('debe purgar registros con más de 365 días de antigüedad', async () => {
