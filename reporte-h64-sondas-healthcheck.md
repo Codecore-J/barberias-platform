@@ -87,6 +87,24 @@ $ APP_ENV=dev REDIS_URL=redis://127.0.0.1:6379 npx vitest run --config ./vitest.
       Tests  4 passed (4)                     ← EXIT=0
 ```
 
+**Y la mezcla que es exactamente la del CI** (el job de E2E corre toda la carpeta con
+`REDIS_URL: redis://localhost:6379`): el fichero de H64 fuerza un puerto muerto en su propio proceso, así que
+se ejecutaron los dos juntos para descartar que esa variable se filtre a los demás ficheros.
+
+```
+$ APP_ENV=dev REDIS_URL=redis://127.0.0.1:6379 npx vitest run --config ./vitest.config.e2e.ts \
+    test/h64-sondas-liveness.e2e-spec.ts test/health.e2e-spec.ts
+[H64] arranque con Redis en 127.0.0.1:63413 (nadie escucha): 926 ms
+[H64] /api/v1/health/liveness → 200 {"status":"ok","uptimeSegundos":5,"timestamp":"2026-10-14T19:03:39.969Z"}
+[H64] /api/v1/health (readiness) → 503 {"redis":{"status":"down","message":"Connection is closed."}}
+ Test Files  2 passed (2)
+      Tests  8 passed (8)                     ← EXIT=0
+```
+
+El fichero de H64 ve su Redis muerto (puerto 63413) y el de salud del repositorio sigue viendo el Redis sano
+en la misma ejecución: el override de `REDIS_URL` no se filtra entre ficheros (`vitest.config.e2e.ts` usa
+`fileParallelism: false` y el aislamiento por defecto de Vitest).
+
 5. SUITE COMPLETA: npm run test (resumen literal)
 
 Primer intento, con el arreglo ya dentro: la matriz de permisos exige que una ruta nueva esté registrada, así
