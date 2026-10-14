@@ -267,12 +267,19 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     });
     expect(enBd.estado).toBe('INACTIVO');
 
-    // Sale del catálogo: `findAll` solo lista los ACTIVO.
-    const catalogo = await request(app.getHttpServer())
+    // Sale del catálogo para cliente: `findAll` solo lista los ACTIVO.
+    const catalogoCliente = await request(app.getHttpServer())
+      .get(`${api}/catalogo/servicios`)
+      .set(headers('cliente', datos.sede));
+    expect(catalogoCliente.status).toBe(200);
+    expect(catalogoCliente.body.map((s: { id: string }) => s.id)).not.toContain(datos.servicioLibre);
+
+    // Admin ve todos (incluye INACTIVOS)
+    const catalogoAdmin = await request(app.getHttpServer())
       .get(`${api}/catalogo/servicios`)
       .set(headers('admin', datos.sede));
-    expect(catalogo.status).toBe(200);
-    expect(catalogo.body.map((s: { id: string }) => s.id)).not.toContain(datos.servicioLibre);
+    expect(catalogoAdmin.status).toBe(200);
+    expect(catalogoAdmin.body.map((s: { id: string }) => s.id)).toContain(datos.servicioLibre);
 
     const reactivar = await request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${datos.servicioLibre}/reactivar`)
@@ -407,5 +414,61 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
       select: { estado: true },
     });
     expect(reactivada.estado).toBe('ACTIVO');
+  });
+
+  it('visibilidad por rol: inactivos ocultos al cliente, visibles al admin', async () => {
+    // Desactivar un servicio para que quede INACTIVO
+    const desactivar = await request(app.getHttpServer())
+      .patch(`${api}/catalogo/servicios/${datos.servicioLibre}/desactivar`)
+      .set(headers('admin', datos.sede));
+    expect(desactivar.status).toBe(200);
+
+    // Cliente solo ve ACTIVOS
+    const clienteGet = await request(app.getHttpServer())
+      .get(`${api}/catalogo/servicios`)
+      .set(headers('cliente', datos.sede));
+    expect(clienteGet.status).toBe(200);
+    expect(clienteGet.body.some((s: any) => s.id === datos.servicioLibre)).toBe(false);
+
+    // Admin ve TODOS
+    const adminGet = await request(app.getHttpServer())
+      .get(`${api}/catalogo/servicios`)
+      .set(headers('admin', datos.sede));
+    expect(adminGet.status).toBe(200);
+    expect(adminGet.body.some((s: any) => s.id === datos.servicioLibre)).toBe(true);
+
+    // Reactivar para dejar estado limpio
+    const reactivar = await request(app.getHttpServer())
+      .patch(`${api}/catalogo/servicios/${datos.servicioLibre}/reactivar`)
+      .set(headers('admin', datos.sede));
+    expect(reactivar.status).toBe(200);
+  });
+
+  it('visibilidad de combos por rol y endpoints de transición', async () => {
+    // Desactivar combo
+    const desactivarCombo = await request(app.getHttpServer())
+      .patch(`${api}/catalogo/combos/${datos.combo}/desactivar`)
+      .set(headers('admin', datos.sede));
+    expect(desactivarCombo.status).toBe(200);
+
+    // Cliente no ve inactivo
+    const clienteCombos = await request(app.getHttpServer())
+      .get(`${api}/catalogo/combos`)
+      .set(headers('cliente', datos.sede));
+    expect(clienteCombos.status).toBe(200);
+    expect(clienteCombos.body.some((c: any) => c.id === datos.combo)).toBe(false);
+
+    // Admin ve todos
+    const adminCombos = await request(app.getHttpServer())
+      .get(`${api}/catalogo/combos`)
+      .set(headers('admin', datos.sede));
+    expect(adminCombos.status).toBe(200);
+    expect(adminCombos.body.some((c: any) => c.id === datos.combo)).toBe(true);
+
+    // Reactivar combo
+    const reactivarCombo = await request(app.getHttpServer())
+      .patch(`${api}/catalogo/combos/${datos.combo}/reactivar`)
+      .set(headers('admin', datos.sede));
+    expect(reactivarCombo.status).toBe(200);
   });
 });

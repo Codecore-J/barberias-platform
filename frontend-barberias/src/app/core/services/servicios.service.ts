@@ -91,7 +91,7 @@ export class ServiciosService {
    * hay reservas por confirmar, `SERVICIO_EN_COMBO_ACTIVO` si está en un combo),
    * así que se muestra tal cual en lugar de un texto genérico.
    */
-  eliminarServicio(id: string): Observable<void> {
+  desactivarServicio(id: string): Observable<void> {
     this.isLoading.set(true);
     return this.http.patch<void>(`${this.apiUrl}/${id}/desactivar`, {}).pipe(
       tap(() => {
@@ -103,6 +103,10 @@ export class ServiciosService {
         throw err;
       })
     );
+  }
+
+  eliminarServicio(id: string): Observable<void> {
+    return this.desactivarServicio(id);
   }
 
   /** E2-07: la vuelta atrás que `DELETE` no ofrecía. */

@@ -340,7 +340,7 @@ export class AdminServiciosComponent implements OnInit {
 
   confirmDelete(id: string) {
     if (confirm('¿Estás seguro de eliminar este servicio?')) {
-      this.serviciosService.eliminarServicio(id).subscribe();
+      this.serviciosService.desactivarServicio(id).subscribe();
     }
   }
 }
