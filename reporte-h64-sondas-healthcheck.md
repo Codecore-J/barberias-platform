@@ -146,6 +146,9 @@ npm run build  → nest build                                        BUILD_EXIT=
 
 10. git status --short / git log -1 --oneline / git log --oneline -5
 
+Estado **justo antes** de crear el commit de este cambio (es el que documenta el diff de §2; después del
+commit el árbol queda limpio):
+
 ```
 $ git status --short
  M AUDITORIA_HALLAZGOS.md
@@ -164,10 +167,22 @@ $ git log --oneline -5
 63fde8b docs(estabilizacion): informe final 8.4 de la Ola 3 (P3 · Higiene)
 ```
 
-El commit de este cambio y el estado del push quedan anotados al final del informe (§11), una vez creado.
+Y ya con el commit de este cambio dentro:
+
+```
+$ git log -1 --oneline
+cf7c027 fix(health): separa la sonda de vida de la de preparacion (H64)
+$ git status --short
+(árbol limpio)
+```
 
 11. ESTADO DEL COMMIT Y DEL PUSH
 
-El commit de este cambio es `8e3d9a7` (`fix(health): separa la sonda de vida de la de preparación (H64)`) y la
-rama `fix/h64-healthcheck-sondas` está **subida** a `origin`. **No se ha hecho merge.** Criterio de
-reproducción: `git log -1 --oneline` sobre la rama.
+El commit que contiene el arreglo, el E2E y este informe es **`cf7c027`**
+(`fix(health): separa la sonda de vida de la de preparacion (H64)`, 8 ficheros, +428/−20) y la rama
+`fix/h64-healthcheck-sondas` queda **subida** a `origin`. **No se ha hecho merge**, como pediste: el PR se
+abre en `https://github.com/Codecore-J/barberias-platform/pull/new/fix/h64-healthcheck-sondas`.
+
+Nota de fidelidad: la sección 11 se completó **después** del commit, así que el commit que la contiene es uno
+posterior (`docs(h64): completa el estado del commit en el informe`) que solo toca este fichero, tras lo cual
+la rama se sube una sola vez.
