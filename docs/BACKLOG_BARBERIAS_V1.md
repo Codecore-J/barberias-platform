@@ -591,7 +591,28 @@ No hagas merge. Espera aprobación.
 **Aceptación:**
 - [ ] Ningún `@Delete` queda en el backend, salvo borrados definitivos justificados.
 - [ ] Tests de las tres reglas de desactivación.
-**Evidencia:** `git grep "@Delete"` y salida de los tests.
+**Aceptación:**
+- [x] Ningún `@Delete` queda en el backend, salvo borrados definitivos justificados.
+- [x] Tests de las tres reglas de desactivación.
+**Evidencia:** `git grep "@Delete"` (vacío) y salida de los tests.
+**Cerrado en el Sprint de Estabilización · Ola 3 (2026-10-13, `chore/sprint-estabilizacion-p3`):**
+
+- Punto 1 · `PATCH /catalogo/{servicios,combos}/:id/desactivar` y `.../reactivar`. Las tres reglas del
+  servicio están implementadas y probadas: 422 `SERVICIO_EN_USO` (reservas `PENDIENTE` o
+  `PROPUESTA_PENDIENTE`), 422 `SERVICIO_EN_COMBO_ACTIVO` (trae la lista de combos) y se PERMITE con solo
+  reservas confirmadas (snapshot congelado en `participante_servicios`).
+- Punto 2 · `PATCH /barberias/:id/estado {estado}` en lugar de `DELETE`: suspender y reactivar son la misma
+  operación.
+- Punto 3 · `POST /barberias/:barberiaId/agenda/bloqueos/:id/liberar`. Migración
+  `20261013120000_e207_liberado_at` (`liberado_at` + índice parcial de vigentes), el job `liberar-bloqueo`
+  marca en vez de borrar, la disponibilidad ignora los liberados y el cambio se audita (`BLOQUEO_LIBERADO`,
+  D29) en la misma transacción.
+- Punto 4 · `docs/MATRIZ_RUTAS.md` actualizado (4 filas + la prosa de decisiones) y el frontend migrado
+  (`core/services/servicios.service.ts`, `core/services/horarios.service.ts`).
+
+> **Corrección al enunciado:** decía «Eliminar `DELETE` sin alias (no hay clientes reales)». Sí había:
+> `test/e1-06-cross-tenant-admin.e2e-spec.ts`, `test/permisos-matriz.spec.ts` y la pantalla de horarios
+> (`DELETE .../bloqueos/:id`) usaban esas rutas. Se migraron los consumidores ANTES de retirar los verbos.
 
 ### E2-08 · Matriz de cumplimiento reconciliada
 `P2 · S · Depende: E2-01 · Rama: docs/matriz-cumplimiento`

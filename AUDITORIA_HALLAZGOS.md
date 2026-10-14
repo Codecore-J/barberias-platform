@@ -87,7 +87,7 @@ Se sometió la plataforma a una batería completa de pruebas de rendimiento, con
   - Se modeló y sincronizó la tabla `tokens_recuperacion` en PostgreSQL / Prisma con TTL de 15 minutos e invalidación atómica.
   - Se implementaron los endpoints públicos `/api/v1/auth/forgot-password` (con prevención de enumeración) y `/api/v1/auth/reset-password` (con validación de un solo uso y registro de auditoría).
   - Se integró el modal reactivo de recuperación en el frontend con soporte para solicitud de token y restablecimiento de contraseña.
-  - Batería de pruebas E2E automatizada (`test/test-sec01-recovery.ts`): **8 de 8 casos de prueba aprobados**.
+  - Batería de pruebas E2E automatizada (`test/manual/sec01-recovery.ts`, guion manual de SEC-01): **8 de 8 casos de prueba aprobados**.
 
 ---
 
@@ -541,11 +541,11 @@ Identificadores provisionales, libres desde H30. Registrados al iniciar E3-05 (2
 
 **Resolución (E3-08):** la migración `20261010000000_e308_cancelacion_especial_propuestas` añade `configuracion_barberia.permite_cancelacion_especial` (BOOLEAN NOT NULL DEFAULT FALSE) y, en `reservas`, `cancelado_por_id` (FK a `usuarios`), `cancelacion_especial_estado`, `cancelacion_especial_motivo` y `cancelacion_especial_detalle`, con sus CHECK de catálogo. Lo que sigue abierto es el flujo de SOLICITUD del cliente de D17: ver H43.
 
-### H34: Comentarios corruptos en `roles.ts`
+### ~~H34: Comentarios corruptos en `roles.ts`~~ · ✅ RESUELTO (Ola 3)
 - **Módulo / Ruta afectada:** Backend, `src/iam/domain/roles.ts` (líneas 75 y 107)
 - **Tipo:** Documentación
 - **Severidad:** Informativa
-- **Estado:** abierto — no se toca aquí porque E3-05 no modifica ese archivo
+- **Estado:** **RESUELTO en la Ola 3** (2026-10-13, rama `chore/sprint-estabilizacion-p3`): el comentario dice ahora «el guard lo trata como comodín» (línea 75) y «el decorador de la ruta y el guard ya filtran el ROL» (línea 107). Evidencia: `grep -n "laractable\|yailtersan" src/iam/domain/roles.ts` → 0 coincidencias (antes: 2)
 - **Qué consta:** dos palabras del comentario están destrozadas: línea 75 `el guard laractable como comodín` (debería ser «lo trata como comodín») y línea 107 `el decorador de la ruta y el guard yailtersan el ROL` («el decorador … y el guard ya filtran el ROL»). El código de esas funciones es correcto; solo el comentario está dañado
 - **Evidencia:** `grep -n "laractable\|yailtersan" src/iam/domain/roles.ts` devuelve las líneas 75 y 107
 
@@ -646,7 +646,7 @@ Identificadores provisionales, libres desde H44. Registrados al cerrar E2-02 (20
 - **Evidencia:** la ruta ya no existe (`git grep "@Patch(':id/estado')"` sin coincidencias en `src/`); la matriz pasa de **64 rutas × 4 roles = 256** a **63 × 4 = 252** decisiones y el E2E HTTP de **41 a 40 rutas**; `ReservaService.cambiarEstado` es ahora privado y su primera línea es `ReservaStateMachine.assertTransition`; el botón «No Asistió» apunta a `POST /reservas/:id/inasistencia` y solo se muestra en `CONFIRMADA`
 - **Nota:** el `codigo` de D40 `PROPUESTA_PENDIENTE` (E3-08) coincide con el nombre de un estado y confunde; se deja como está porque renombrarlo es un cambio de contrato del API (debería entrar en una pasada del catálogo D40)
 
-### H47: `pago.service` marca `COMPLETADA` sin pasar por la máquina de estados
+### ~~H47: `pago.service` marca `COMPLETADA` sin pasar por la máquina de estados~~ · ✅ RESUELTO (Ola 1)
 - **Módulo / Ruta afectada:** Backend, `pago.service.ts` (`registrarPagoEnPersona`), §5.2 fila 11
 - **Tipo:** Integridad de negocio / transición fuera del grafo
 - **Severidad:** Media
@@ -687,7 +687,7 @@ Identificador provisional, libre desde H49. Registrado al cerrar E3-11 (2026-10-
 
 Identificadores provisionales, libres desde H50. Registrados al cerrar E3-13 (2026-10-11).
 
-### H50: El ledger de `dev` registra una migración que el repo no tiene (y una columna huérfana)
+### ~~H50: El ledger de `dev` registra una migración que el repo no tiene (y una columna huérfana)~~ · ✅ RESUELTO (Ola 1)
 - **Módulo / Ruta afectada:** Backend, `prisma/migrations/` frente a la BD de desarrollo `neondb`
 - **Tipo:** Integridad de esquema / drift de migraciones (misma familia que H37 y H49)
 - **Severidad:** Media-Alta — una base creada desde cero NO reproduce lo que hay en `dev`, y `migrate deploy` deja de ser una fuente de verdad
@@ -718,7 +718,7 @@ Estabilización (`fix/sprint-estabilizacion-p1`, 2026-10-12), ya fusionada E4-03
 - **Evidencia:** `pg_get_constraintdef` de `dev` → `CHECK (((zona_horaria)::text = 'America/Santo_Domingo'::text))`; `grep -rn "zonaHoraria" src` solo la LEE (ninguna ruta la escribe) y los E2E nunca insertan otra zona
 - **Remedio propuesto:** sustituirlo por un catálogo (`zona_horaria IN (...)`) o por una validación contra `pg_timezone_names`, en una migración propia
 
-### H57: El bloque INDIVIDUAL sumaba `margen_grupal_minutos` (minutos fantasma) — RESUELTO
+### ~~H57: El bloque INDIVIDUAL sumaba `margen_grupal_minutos` (minutos fantasma)~~ · ✅ RESUELTO (Ola 1)
 - **Módulo / Ruta afectada:** Backend, `src/reserva/application/reserva.service.ts` (`calcularBloque`, `bloqueRequeridoParaAlternativas` y la creación en `crearReserva`)
 - **Tipo:** Bug de negocio / regla mal aplicada (D01/E2-05 frente a D42)
 - **Severidad:** Media — inflaba la agenda y la cotización de CADA reserva individual
@@ -727,7 +727,7 @@ Estabilización (`fix/sprint-estabilizacion-p1`, 2026-10-12), ya fusionada E4-03
 - **Evidencia:** unitarios en `src/reserva/application/reserva.service.spec.ts` → «cotizar un INDIVIDUAL devuelve Σ márgenes de los servicios, nunca el de la sede» (8 min, no 20) y «D42 intacto: la cotización GRUPAL sí lleva el margen de la sede» (12 min); el test de E4-02 pasa a exigir la ventana pedida (30) SIN margen de sede. Antes: `margenTotal = Σ márgenes + (margenGrupalMinutos ?? 10)` y `margenGrupalHistorico: 10` en una reserva individual
 - **Nota:** las reservas individuales YA creadas conservan su `margen_grupal_historico` —es el pacto que se congeló— y las tres rutas posteriores (aceptar, reprogramar) lo siguen respetando a propósito
 
-### H58: Las consultas SQL crudas resuelven `"barberias"` por `search_path` (pooler de Neon)
+### ~~H58: Las consultas SQL crudas resuelven `"barberias"` por `search_path` (pooler de Neon)~~ · ✅ RESUELTO (Ola 2)
 - **Módulo / Ruta afectada:** Backend, `src/reserva/application/reserva.service.ts` (los 9 `tx.$queryRaw` del bloqueo pesimista: `SELECT id FROM "barberias" WHERE id = $1::uuid FOR UPDATE`)
 - **Tipo:** Fragilidad de entorno / acoplamiento implícito al esquema por defecto
 - **Severidad:** Baja — solo se dispara si OTRO cliente de la misma base mueve `search_path`
@@ -742,7 +742,7 @@ Registrados al ejecutar la Ola 2 — P2 «Brechas de Negocio» del [`docs/PLAN_S
 rama `fix/sprint-estabilizacion-p2` (2026-10-12). H52 y H54 vivían SOLO en [`reporte-e4-03.md`](reporte-e4-03.md);
 aquí quedan con ID, estado y evidencia, como pide P3.9.
 
-### H52: Faltaba la ventana de 15 minutos del NO PRESENTADO (§5.2 fila 12) — RESUELTO
+### ~~H52: Faltaba la ventana de 15 minutos del NO PRESENTADO (§5.2 fila 12)~~ · ✅ RESUELTO (Ola 2)
 - **Módulo / Ruta afectada:** Backend, `src/reserva/application/reserva.service.ts` (`marcarInasistencia`), `src/reserva/domain/fidelizacion.ts`
 - **Tipo:** Regla de negocio ausente (E3-10 / §5.8)
 - **Severidad:** Media — la sede podía marcar un no presentado con la cita recién empezada (o antes de empezar), cobrando una inasistencia que todavía no había ocurrido
@@ -751,7 +751,7 @@ aquí quedan con ID, estado y evidencia, como pide P3.9.
 - **Evidencia:** `PUNTUALIDAD_MARGEN_MIN = 5` y `TOLERANCIA_MIN = 10` viven ahora en `src/reserva/domain/fidelizacion.ts`; `ReservaService.exigirVentanaNoPresentado` aplica `VENTANA_NO_PRESENTADO_MIN = 15` con la zona de la SEDE. Unitarios con reloj FIJO en `src/reserva/application/reserva.service.spec.ts` (describe «H52 · ventana de 15 minutos del no presentado»): a los 14 min → 422 `FUERA_DE_VENTANA` sin escribir nada (ni reserva, ni contador, ni auditoría), a los 13 min → 422 sin escribir nada, a los 15 min exactos → se marca y el contador sube, a los 16 min → igual. Cada caso de la suite que marca un no presentado usa citas del PASADO
 - **Nota:** la ruta sigue llamándose `POST /barberias/:barberiaId/reservas/:id/inasistencia`; renombrarla a `.../no-presentado` (E3-10/1) queda como tarea aparte y no se mezcló con la regla
 
-### H54: El cliente nunca veía su advertencia ni su restricción — RESUELTO
+### ~~H54: El cliente nunca veía su advertencia ni su restricción~~ · ✅ RESUELTO (Ola 2)
 - **Módulo / Ruta afectada:** Backend, `GET /barberias/:barberiaId/mi-estado` (nuevo: `src/barberia/infrastructure/mi-estado.controller.ts` + `src/barberia/application/mi-estado.service.ts`)
 - **Tipo:** Brecha funcional / el dato existía y no se exponía (E4-03/2)
 - **Severidad:** Media — el cliente descubría su restricción al recibir el 403 `CLIENTE_RESTRINGIDO` al intentar reservar
@@ -760,7 +760,7 @@ aquí quedan con ID, estado y evidencia, como pide P3.9.
 - **Evidencia:** el endpoint devuelve `contadorNoPresentado`, `estaRestringido`, `motivoRestriccion`, `advertencia`, `inasistenciasParaRestriccion`, `limiteInasistencias` y `mensaje`, proyectados por la regla pura `describirEstadoFidelizacion` (mismo contador que cobra la inasistencia, D47). `test/e4-03-fidelizacion.e2e-spec.ts` → «H54: el cliente ve su contador, su advertencia y su restricción (y solo la suya)» (0 → sin mensaje; 3 → «Estás a 2 inasistencias…»; 4 → singular; 5 → el motivo de la sede; el staff y el admin de otra sede reciben 403; la sede B no ve nada) y «H54: sin vinculación con la sede → 403 NO_VINCULADO, sin filtrar nada». Unitarios: `src/barberia/application/mi-estado.service.spec.ts` y `src/reserva/domain/fidelizacion.spec.ts`
 - **Pendiente de la misma tarea:** la notificación al cliente al llegar a 3 inasistencias (E3-10/3) NO se implementó en esta ola; el campo `reactivacion` del contrato del plan tampoco, porque el flujo cliente-iniciado es P2.3 (E4-03/3) y aún no existe
 
-### H59: Colgar la auditoría de `IamModule` rompía el grafo mínimo de las pruebas E2E — RESUELTO
+### ~~H59: Colgar la auditoría de `IamModule` rompía el grafo mínimo de las pruebas E2E~~ · ✅ RESUELTO (Ola 2)
 - **Módulo / Ruta afectada:** Backend, `src/iam/iam.module.ts`, `src/iam/infrastructure/plataforma-usuarios.module.ts` (nuevo) y `test/cliente-ficha-roles.e2e-spec.ts`
 - **Tipo:** Regresión de arquitectura de módulos detectada por la propia suite (introducida y corregida dentro de la Ola 2)
 - **Severidad:** Media — dejaba en rojo una suite E2E completa sin ningún fallo de negocio
@@ -778,4 +778,122 @@ aquí quedan con ID, estado y evidencia, como pide P3.9.
 - **Qué consta:** `UsuariosPlataformaService.cambiarEstado` no compara `usuarioId` con el `solicitante.id`, así que un ADMINISTRADOR puede suspender su cuenta (y con ella sus tokens: la acción sube `token_version`) aunque sea el único administrador de la plataforma. Recuperarse exige volver a poner `estado_cuenta = 'ACTIVO'` a mano en la base
 - **Evidencia:** el servicio no consulta al solicitante más allá de la auditoría; los E2E de suspensión usan un administrador distinto del suspendido y no cubren el caso
 - **Remedio propuesto:** rechazar `usuarioId === solicitante.id` con 422 (o 409) y contar los administradores ACTIVOS antes de suspender al último. Fuera del alcance de la Ola 2: lo pedido era la suspensión manual auditada
+
+---
+
+## HALLAZGOS DEL SPRINT DE ESTABILIZACIÓN · OLA 3 (reconciliación documental)
+
+Registrada al ejecutar la Ola 3 — P3 «Higiene» del [`docs/PLAN_SPRINT_ESTABILIZACION.md`](docs/PLAN_SPRINT_ESTABILIZACION.md),
+rama `chore/sprint-estabilizacion-p3` (2026-10-13). Esta ola NO añade reglas de negocio: cierra deuda de
+higiene y pone el registro al día, como pedía P3.9. Ninguno de los hallazgos cerrados aquí se reabre.
+
+### 3.1 · Marcador del Sprint de Estabilización
+
+Los ocho hallazgos que el Sprint resolvió quedan **tachados** en su ficha; los dos que siguen abiertos se
+quedan legibles a propósito.
+
+| ID | Ola que lo cerró | Estado |
+| :--- | :---: | :--- |
+| H34 | Ola 3 | ✅ **RESUELTO** — comentarios corruptos de `roles.ts` reparados (`laractable` → «lo trata como comodín», `yailtersan` → «ya filtran») |
+| **H61** | Ola 3 | ✅ **RESUELTO** — `GET /barberias/:id/personal` no tenía `orderBy`: el listado salía en el orden físico de las filas |
+| H47 | Ola 1 | ✅ **RESUELTO** — `registrarPagoEnPersona` pasa por `ReservaStateMachine.assertTransition` y fija `completada_at` |
+| H50 | Ola 1 | ✅ **RESUELTO** — `e203_integridad_base` reconstruida en el repo con el nombre del ledger y los 15 CHECK huérfanos |
+| H52 | Ola 2 | ✅ **RESUELTO** — ventana de 15 minutos del NO PRESENTADO (`422 FUERA_DE_VENTANA`) |
+| H54 | Ola 2 | ✅ **RESUELTO** — `GET /barberias/:barberiaId/mi-estado` con contador, advertencia y restricción |
+| H57 | Ola 1 | ✅ **RESUELTO** — el bloque INDIVIDUAL ya no suma `margen_grupal_minutos` |
+| H58 | Ola 2 | ✅ **RESUELTO** — esquema calificado en las 9 consultas crudas del bloqueo pesimista |
+| H59 | Ola 2 | ✅ **RESUELTO** — la auditoría no cuelga del grafo mínimo de `IamModule` (`PlataformaUsuariosModule`) |
+| **H56** | — | ⬜ **ABIERTO** — a decisión del dueño: `barberias_zona_horaria_check` fija una única zona literal |
+| **H60** | — | ⬜ **ABIERTO** — a decisión del dueño: el ADMINISTRADOR puede suspender su propia cuenta y no hay protección del último administrador |
+| **H62** | — | ⬜ **ABIERTO** — la suite E2E dependía de un Redis remoto con cuota mensual; agotada la cuota, 9 archivos caen con 500 en el alta de reserva (medida esta ola, sin tocar código) |
+
+### 3.2 · Higiene de código cerrada (P3.1 a P3.3, P3.5)
+
+- **P3.1 · spec de borrador eliminado.** `test/e4-02-oportunidades.clean.e2e-spec.ts` (52 líneas, un solo
+  `it('flujo básico')` con `expect(true).toBe(true)`) entró en el mismo commit que el spec real de E4-02 y
+  SÍ lo alcanzaba el glob `**/*.e2e-spec.ts`, así que inflaba el conteo de la suite sin probar nada. Su
+  cobertura la da `test/e4-02-oportunidades.e2e-spec.ts`.
+- **P3.2 · `CreateReservaDto` duplicado y muerto eliminado (H-N1).** `src/reserva/application/dto/cotizacion.dto.ts`
+  declaraba una segunda clase `CreateReservaDto` que nadie importaba: el import vivo es
+  `./create-reserva.dto.ts` (`reserva.controller.ts`, `reserva.service.ts`) y de `cotizacion.dto.ts` solo se
+  consumen los TIPOS (`CotizacionResponse`, `BloqueCalculado`). Era una trampa latente de edición. El
+  archivo queda solo con los tipos y sin el import de `class-validator` que su clase usaba.
+- **P3.3 · los dos «specs huérfanos» quedan como guiones manuales explícitos.** Ninguno era basura: la
+  guardia de `test/manual/smoke-test-live.ts` está **probada** por `test/smoke-db-guard.spec.ts` (4 casos
+  que ejecutan el script real como proceso hijo) y el smoke test se invoca con `npm run test:smoke`; el de
+  SEC-01 importa `dist/` y se ejecuta a mano. Se movieron a `test/manual/` (`smoke-test-live.ts` y
+  `sec01-recovery.ts`) para que `test/` contenga solo archivos que un runner ejecuta, y se actualizaron sus
+  tres referencias: la ruta del spec de guardia, el script `test:smoke` de `package.json` y los imports
+  `../../dist/` del guion de SEC-01.
+- **P3.5 · H34 reparado** (ver su ficha, ahora tachada).
+
+### 3.3 · E2-07 (`@Delete`) — **EJECUTADO** (la premisa del encargo estaba equivocada)
+
+El encargo pedía «borrar las 4 rutas `@Delete` que quedaron huérfanas». Comprobado antes de tocar nada,
+**las cuatro rutas NO estaban huérfanas**: cada una llamaba a un método de servicio vivo y las ejercitaban
+tests y el frontend. Borrarlas sin migrar a sus consumidores habría puesto en rojo la matriz de permisos,
+los tres E2E y el borrado de bloqueos de la pantalla de horarios. Con el dueño avisado, se ejecutó **E2-07
+completo** (no un borrado): el vocabulario del diseño de Spec 01 §9.
+
+| Antes | Ahora | Qué cambia |
+| :--- | :--- | :--- |
+| `DELETE /catalogo/servicios/:id` | `PATCH /catalogo/servicios/:id/desactivar` · `.../reactivar` | 422 `SERVICIO_EN_USO` (reservas `PENDIENTE`/`PROPUESTA_PENDIENTE`) y 422 `SERVICIO_EN_COMBO_ACTIVO` (con la lista de combos); reactivar no existía |
+| `DELETE /catalogo/combos/:id` | `PATCH /catalogo/combos/:id/desactivar` · `.../reactivar` | Idempotentes; es la acción que desbloquea la regla del combo |
+| `DELETE /barberias/:barberiaId/agenda/bloqueos/:id` | `POST /barberias/:barberiaId/agenda/bloqueos/:id/liberar` | Migración `20261013120000_e207_liberado_at`: `bloqueos_agenda.liberado_at` (con índice parcial de vigentes). La fila se conserva, la disponibilidad ignora los liberados, el job de liberación automática hace lo mismo y el cambio se audita (`BLOQUEO_LIBERADO`, D29) en la misma transacción |
+| `DELETE /barberias/:id` | `PATCH /barberias/:id/estado` (`{estado}`) | Suspender y REACTIVAR son la misma operación; la vuelta atrás exigía tocar la base a mano |
+
+**Criterios de aceptación del backlog:** `@Delete` en el backend = **0** (lo fija
+`test/vocabulario-sin-delete.spec.ts`, que además exige que los verbos nuevos sigan declarados) y las tres
+reglas de desactivación tienen pruebas unitarias y E2E (`test/e2-07-vocabulario.e2e-spec.ts`).
+
+**Consumidores migrados:** el frontend (`core/services/servicios.service.ts` y `core/services/horarios.service.ts`),
+`test/permisos-matriz.spec.ts` (75 rutas × 4 roles = 300), `test/permisos-matriz.e2e-spec.ts`,
+`test/e1-06-cross-tenant-admin.e2e-spec.ts` (que ahora comprueba que el intento cross-tenant **no** deja el
+bloqueo liberado) y `docs/MATRIZ_RUTAS.md`.
+
+### 3.4 · Lo que la Ola 3 deja fuera a propósito
+
+- **E2-08** (`docs/MATRIZ_CUMPLIMIENTO.md`) sigue sin existir.
+- **H29 / P3.6** (lockfiles por proyecto): sin tocar; el CI usa el de la raíz y borrarlos no es inocuo.
+- **H56 y H60**: abiertos por decisión del dueño, no por deuda técnica.
+- **H48, H44, H43, H41/H42, H32, H55, H51, H53**: siguen como estaban; ninguna es de higiene.
+
+### 3.5 · H61 (nuevo) — `GET /barberias/:id/personal` devolvía el personal en orden no determinista
+
+- **Módulo / Ruta afectada:** Backend, `src/barberia/application/barberia.service.ts` (`findPersonal`), `GET /barberias/:id/personal`
+- **Tipo:** Determinismo de lectura / prueba frágil por orden implícito
+- **Severidad:** Baja — el contenido siempre fue correcto; el ORDEN era el que no estaba definido
+- **Estado:** **RESUELTO en la Ola 3** (2026-10-13)
+- **Qué constaba:** el `usuarioRol.findMany` no llevaba `orderBy`, así que Postgres devolvía las filas en su orden FÍSICO. El servicio las agrupa en un `Map` y devuelve `Array.from(map.values())`: el orden de salida era, literalmente, el de las páginas de la tabla. `test/h19-h20-lecturas-abiertas.e2e-spec.ts` afirmaba `res.body[0].correo === 'admin.b.h19@test.com'`, es decir daba por hecho que el ADMIN_BARBERIA iba primero.
+- **Cómo apareció:** se detectó al correr la suite E2E completa de esta ola. La suite nueva de E2-07 inserta y **borra** usuarios y `usuario_roles` en su `afterAll`; esos huecos de página los reutilizan las inserciones de la prueba siguiente, de modo que la fila del barbero pudo colocarse antes que la del admin. No es un fallo introducido por E2-07: es una lectura sin orden que quedó expuesta al mover filas.
+- **Evidencia:** corrida E2E completa de la Ola 3 → `Test Files 1 failed | 26 passed (27)` y `Tests 2 failed | 201 passed (203)`, con `AssertionError: expected 'barbero.b.h19@test.com' to be 'admin.b.h19@test.com'` en `test/h19-h20-lecturas-abiertas.e2e-spec.ts:206` y `:216`.
+- **Remedio aplicado:** `orderBy: [{ rol: { nombre: 'asc' } }, { usuario: { correo: 'asc' } }]`. Es determinista y tiene sentido para la pantalla: primero el ADMIN_BARBERIA de la sede —el orden alfabético de los roles lo pone delante— y, dentro del mismo rol, por correo. La aserción de la prueba pasa a ser correcta sin tocarla.
+- **Nota:** la unidad (`barberia.service.spec.ts`) no cambia: simula el `findMany`, así que su expectativa sobre `result[0]` sigue midiendo la agrupación, no el orden del motor.
+
+### 3.6 · H62 (nuevo) — el E2E dependía de un Redis remoto con cuota, y el alta de reserva devuelve 500 si el `enqueue` falla
+
+- **Módulo / Ruta afectada:** entorno de pruebas (`REDIS_URL` de `backend-barberias/.env`), `src/app.module.ts` (`BullModule.forRoot`) y `POST /barberias/:barberiaId/reservas`
+- **Tipo:** Dependencia de una infraestructura externa con cuota para que la suite pueda estar verde / propagación de un fallo de cola al cliente HTTP
+- **Severidad:** Media — la suite completa se vuelve NO fiable (61 casos en rojo) sin que haya un solo fallo de negocio
+- **Estado:** **ABIERTO** — a decisión del dueño. Medido y documentado en la Ola 3; **no se tocó código** para cerrarlo
+- **Qué consta (dos cosas distintas):**
+  1. La suite E2E se corrió contra el Redis **remoto** de `REDIS_URL` (Upstash). Agotada la cuota mensual del plan, TODA operación de cola falla y con ella el alta de reserva, que encola el job de expiración. Los 9 archivos que encolan quedan rojos y los 18 que no encolan pasan: la suite no mide el código, mide la cuota del proveedor.
+  2. `POST /barberias/:barberiaId/reservas` responde **500 `Internal server error`** cuando el `enqueue` revienta. Es el comportamiento actual y coherente con «no confirmar una reserva sin su job de expiración», pero deja el alta de reserva dependiente de un servicio externo. Decisión del dueño si se prefiere degradar, reintentar o mantener el fallo duro.
+- **Evidencia (corrida completa con la cuota agotada, `APP_ENV=dev npm run test:e2e`):**
+  ```
+   Test Files  9 failed | 18 passed (27)
+        Tests  61 failed | 142 passed (203)
+  ```
+  con una sola causa literal, repetida 33 204 veces en el log:
+  ```
+  SimpleError [ReplyError]: ERR max requests limit exceeded. Limit: 500000, Usage: 500001.
+  See https://upstash.com/docs/redis/troubleshooting/max_requests_limit for details
+  Error: read ECONNRESET  (errno -4077)
+  ```
+  y el síntoma en los casos: `AssertionError: expected 500 to be 201` en `test/e3-03-validaciones.e2e-spec.ts:290`, `:310` y `crearPendiente test/e3-04-aceptar-rechazar.e2e-spec.ts:273`. Los archivos rojos son exactamente los que encolan: `e3-03` (3), `e3-04` (13/13), `e3-05` (9/9), `e3-06-07` (9/9), `e3-08` (15/15), `hallazgo14` (5/5), `e4-01` (2), `e4-03-fidelizacion` (2) y `reserva-walkin-split` (3).
+- **Remedio aplicado SIN tocar código (y con el que la Ola 3 cierra en verde):** el `docker-compose.yml` del repo ya declara el servicio `redis`; con el daemon de Docker levantado (`docker compose up -d redis`) y `REDIS_URL=redis://127.0.0.1:6379` el mismo comando cierra en `Test Files 27 passed (27)` / `Tests 203 passed (203)` / `EXIT=0` en 703.79 s. No se cambió `.env` ni el código: sólo el entorno de la corrida.
+- **Remedio propuesto (a decisión del dueño):**
+  - fijar en el README/CI que el E2E se corre contra el Redis de `docker-compose.yml` (local, sin cuota) en vez del remoto, o
+  - decidir el contrato del alta de reserva cuando la cola no está disponible (500 actual, 503 con reintento, o confirmar sin job y reconciliar en el arranque como ya hace `ExpiracionReservaService`),
+  - y, si se mantiene Upstash para el runtime, separar su cuota de la de las pruebas.
 

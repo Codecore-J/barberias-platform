@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -15,6 +14,7 @@ import { SolicitudCambioService } from '../application/solicitud-cambio.service.
 import { CreateBarberiaDto } from '../application/dto/create-barberia.dto.js';
 import { CreateSolicitudCambioDto } from '../application/dto/create-solicitud-cambio.dto.js';
 import { UpdateBarberiaDto } from '../application/dto/update-barberia.dto.js';
+import { CambiarEstadoBarberiaDto } from '../application/dto/cambiar-estado-barberia.dto.js';
 import { VincularBarberiaDto } from '../application/dto/vincular-barberia.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
@@ -169,18 +169,24 @@ export class BarberiaController {
   }
 
   /**
-   * DELETE /barberias/:id
-   * Soft-delete — cambia estado a INACTIVO.
-   * Suspender una sede es una decisión de plataforma (decisión 4): solo el
-   * ADMINISTRADOR global lo hace.
+   * PATCH /barberias/:id/estado · E2-07 (y E1-07)
+   *
+   * El borrado lógico pasa a ser un CAMBIO DE ESTADO explícito: suspender una
+   * sede (`INACTIVO`) y volver a activarla (`ACTIVO`) son la misma operación, y
+   * el verbo deja de decir «eliminar» cuando el efecto es «suspender». Antes,
+   * volver a activar una sede exigía tocar la base a mano.
+   *
+   * Suspender una sede sigue siendo una decisión de plataforma (decisión 4):
+   * solo el ADMINISTRADOR global.
    */
   @Roles('ADMINISTRADOR')
-  @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  remove(
+  @Patch(':id/estado')
+  @HttpCode(HttpStatus.OK)
+  cambiarEstado(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CambiarEstadoBarberiaDto,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.barberiaService.remove(id, user.id, esAdministradorGlobal(user));
+    return this.barberiaService.cambiarEstado(id, user.id, dto.estado, esAdministradorGlobal(user));
   }
 }

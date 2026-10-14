@@ -5,7 +5,6 @@ import {
   Body,
   Patch,
   Param,
-  Delete,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
@@ -70,13 +69,29 @@ export class CombosController {
     return this.combosService.update(barberiaId, id, updateComboDto);
   }
 
-  @Delete(':id')
+  /**
+   * PATCH /catalogo/combos/:id/desactivar · E2-07 (D29)
+   * El combo pasa a INACTIVO y sale del catálogo. Es además la acción que
+   * desbloquea la regla `SERVICIO_EN_COMBO_ACTIVO` de sus servicios.
+   */
+  @Patch(':id/desactivar')
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @HttpCode(HttpStatus.OK)
-  deactivate(
+  desactivar(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.combosService.deactivate(barberiaId, id);
+    return this.combosService.desactivar(barberiaId, id);
+  }
+
+  /** PATCH /catalogo/combos/:id/reactivar · E2-07 (D29) */
+  @Patch(':id/reactivar')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @HttpCode(HttpStatus.OK)
+  reactivar(
+    @CurrentBarberiaId() barberiaId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.combosService.reactivar(barberiaId, id);
   }
 }

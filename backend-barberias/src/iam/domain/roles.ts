@@ -72,7 +72,7 @@ export async function esAdministradorGlobalPorId(
 
 /**
  * Un rol de ámbito BARBERIA SIEMPRE lleva barbería (D05). Sin ella la fila no
- * identifica un tenant y el guard laractable como comodín, así que se rechaza
+ * identifica un tenant y el guard lo trata como comodín, así que se rechaza
  * en el dominio en lugar de dejar que llegue a la base.
  */
 export function validarAsignacionRol(
@@ -104,7 +104,7 @@ export function alcanceCumple(rol: RolConAlcance, barberiaId: string): boolean {
 /**
  * E1-06 · parte 3: ¿el solicitante pertenece de verdad a esta barbería?
  *
- * El decorador de la ruta y el guard yailtersan el ROL, pero el rol no es la
+ * El decorador de la ruta y el guard ya filtran el ROL, pero el rol no es la
  * pertenencia: un `CLIENTE` es GLOBAL y su `barberiaId` es nulo, así que
  * `alcanceCumple` lo deja pasar contra cualquier sede. Eso convertía
  * `/agenda/disponibilidad` en una lectura cross-tenant para cualquier cliente

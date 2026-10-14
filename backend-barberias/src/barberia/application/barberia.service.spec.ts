@@ -561,17 +561,55 @@ describe('BarberiaService', () => {
     });
   });
 
-  describe('remove (soft-delete)', () => {
-      it('debe actualizar el estado a INACTIVO', async () => {
-        const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1' };
+  /**
+   * E2-07: suspender y reactivar son la MISMA operación (`cambiarEstado`), así
+   * que comparten ruta y reglas. Antes solo existía el camino hacia INACTIVO.
+   */
+  describe('cambiarEstado (E2-07 · D29)', () => {
+      it('suspende: actualiza el estado a INACTIVO', async () => {
+        const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1', estado: 'ACTIVO' };
         (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
         (prisma.barberia.update as any).mockResolvedValue({ ...mockBarberia, estado: 'INACTIVO' });
   
-        await service.remove('uuid-1', 'res-1', false);
+        await service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false);
         expect(prisma.barberia.update).toHaveBeenCalledWith({
             where: { id: 'uuid-1' },
             data: { estado: 'INACTIVO' }
         });
+      });
+
+      it('reactiva: la vuelta atrás que el DELETE no ofrecía', async () => {
+        const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1', estado: 'INACTIVO' };
+        (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
+        (prisma.barberia.update as any).mockResolvedValue({ ...mockBarberia, estado: 'ACTIVO' });
+
+        await service.cambiarEstado('uuid-1', 'res-1', 'ACTIVO', false);
+
+        expect(prisma.barberia.update).toHaveBeenCalledWith({
+            where: { id: 'uuid-1' },
+            data: { estado: 'ACTIVO' }
+        });
+      });
+
+      it('es idempotente: pedir el estado que ya tiene no escribe', async () => {
+        (prisma.barberia.findUnique as any).mockResolvedValue({
+          id: 'uuid-1', responsableId: 'res-1', estado: 'INACTIVO',
+        });
+
+        await service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false);
+
+        expect(prisma.barberia.update).not.toHaveBeenCalled();
+      });
+
+      it('un responsable ajeno sigue recibiendo ForbiddenException', async () => {
+        (prisma.barberia.findUnique as any).mockResolvedValue({
+          id: 'uuid-1', responsableId: 'otro', estado: 'ACTIVO',
+        });
+
+        await expect(
+          service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false),
+        ).rejects.toThrow(ForbiddenException);
+        expect(prisma.barberia.update).not.toHaveBeenCalled();
       });
   });
 

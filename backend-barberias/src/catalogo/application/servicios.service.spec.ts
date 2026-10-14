@@ -16,6 +16,9 @@ describe('ServiciosService', () => {
     reserva: {
       findMany: ReturnType<typeof vi.fn>;
     };
+    combo: {
+      findMany: ReturnType<typeof vi.fn>;
+    };
   };
 
   const mockBarberiaId = 'barberia-uuid-1';
@@ -30,6 +33,9 @@ describe('ServiciosService', () => {
         update: vi.fn(),
       },
       reserva: {
+        findMany: vi.fn(),
+      },
+      combo: {
         findMany: vi.fn(),
       },
     };
@@ -133,74 +139,113 @@ describe('ServiciosService', () => {
     });
   });
 
-  describe('deactivate (FUNC-01)', () => {
-    it('debe retornar el servicio directamente si ya está INACTIVO', async () => {
-      const mockInactivo = { id: mockServicioId, barberiaId: mockBarberiaId, estado: 'INACTIVO' };
-      prisma.servicio.findFirst.mockResolvedValue(mockInactivo);
+  /**
+   * E2-07 · D29: las tres reglas de la desactivación y su vuelta atrás. Cada
+   * `it` lleva la REGLA que cubre para que el mapa con el backlog sea directo.
+   */
+  describe('desactivar y reactivar (E2-07 · D29)', () => {
+    const activo = { id: mockServicioId, barberiaId: mockBarberiaId, estado: 'ACTIVO' };
 
-      const result = await service.deactivate(mockBarberiaId, mockServicioId);
-
-      expect(result).toEqual(mockInactivo);
-      expect(prisma.reserva.findMany).not.toHaveBeenCalled();
-      expect(prisma.servicio.update).not.toHaveBeenCalled();
-    });
-
-    it('debe lanzar BadRequestException si existen reservas futuras en estado PENDIENTE', async () => {
-      const mockActivo = { id: mockServicioId, barberiaId: mockBarberiaId, estado: 'ACTIVO' };
-      prisma.servicio.findFirst.mockResolvedValue(mockActivo);
-
+    it('REGLA 1 · 422 SERVICIO_EN_USO si hay reservas PENDIENTE o PROPUESTA_PENDIENTE', async () => {
+      prisma.servicio.findFirst.mockResolvedValue(activo);
       const mockFecha = new Date('2026-10-15T10:00:00.000Z');
       prisma.reserva.findMany.mockResolvedValue([
-        {
-          id: 'reserva-pend-1',
-          fechaCita: mockFecha,
-          horaInicio: mockFecha,
-        },
+        { id: 'reserva-pend-1', fechaCita: mockFecha, horaInicio: mockFecha },
       ]);
 
-      await expect(service.deactivate(mockBarberiaId, mockServicioId)).rejects.toThrow(BadRequestException);
+      const error = await service.desactivar(mockBarberiaId, mockServicioId).catch((e) => e);
+
+      expect(error.response.statusCode).toBe(422);
+      expect(error.response.codigo).toBe('SERVICIO_EN_USO');
+      // El filtro pide los DOS estados abiertos del catálogo (E2-02), no un literal.
       expect(prisma.reserva.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             barberiaId: mockBarberiaId,
-            estado: 'PENDIENTE',
+            estado: { in: ['PENDIENTE', 'PROPUESTA_PENDIENTE'] },
           }),
         }),
       );
       expect(prisma.servicio.update).not.toHaveBeenCalled();
     });
 
-    it('debe permitir la desactivación si NO hay reservas pendientes (incluso si existen confirmadas)', async () => {
-      const mockActivo = { id: mockServicioId, barberiaId: mockBarberiaId, estado: 'ACTIVO' };
-      const mockDeactivated = { ...mockActivo, estado: 'INACTIVO' };
-
-      prisma.servicio.findFirst.mockResolvedValue(mockActivo);
-      // La consulta solo busca PENDIENTE, por lo que reservas CONFIRMADAS no se retornan (length === 0)
+    it('REGLA 2 · 422 SERVICIO_EN_COMBO_ACTIVO con la lista de combos activos', async () => {
+      prisma.servicio.findFirst.mockResolvedValue(activo);
       prisma.reserva.findMany.mockResolvedValue([]);
-      prisma.servicio.update.mockResolvedValue(mockDeactivated);
+      prisma.combo.findMany.mockResolvedValue([
+        { id: 'combo-1', nombre: 'Combo Barba' },
+        { id: 'combo-2', nombre: 'Combo VIP' },
+      ]);
 
-      const result = await service.deactivate(mockBarberiaId, mockServicioId);
+      const error = await service.desactivar(mockBarberiaId, mockServicioId).catch((e) => e);
 
-      expect(result).toEqual(mockDeactivated);
-      expect(prisma.reserva.findMany).toHaveBeenCalledWith(
+      expect(error.response.statusCode).toBe(422);
+      expect(error.response.codigo).toBe('SERVICIO_EN_COMBO_ACTIVO');
+      expect(error.response.mensaje).toContain('Combo Barba');
+      expect(error.response.combos).toEqual([
+        { id: 'combo-1', nombre: 'Combo Barba' },
+        { id: 'combo-2', nombre: 'Combo VIP' },
+      ]);
+      expect(prisma.combo.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({
-            barberiaId: mockBarberiaId,
-            estado: 'PENDIENTE',
-          }),
+          where: expect.objectContaining({ barberiaId: mockBarberiaId, estado: 'ACTIVO' }),
         }),
       );
+      expect(prisma.servicio.update).not.toHaveBeenCalled();
+    });
+
+    it('REGLA 3 · se permite si no hay reservas abiertas (aunque haya CONFIRMADAS: su snapshot está congelado)', async () => {
+      prisma.servicio.findFirst.mockResolvedValue(activo);
+      // La consulta solo devuelve PENDIENTE / PROPUESTA_PENDIENTE: las
+      // CONFIRMADAS no aparecen y por eso la desactivación es válida.
+      prisma.reserva.findMany.mockResolvedValue([]);
+      prisma.combo.findMany.mockResolvedValue([]);
+      prisma.servicio.update.mockResolvedValue({ ...activo, estado: 'INACTIVO' });
+
+      const result = await service.desactivar(mockBarberiaId, mockServicioId);
+
+      expect(result).toEqual({ ...activo, estado: 'INACTIVO' });
       expect(prisma.servicio.update).toHaveBeenCalledWith({
         where: { id: mockServicioId },
         data: { estado: 'INACTIVO' },
       });
     });
 
+    it('es idempotente: sobre un servicio ya INACTIVO no consulta ni escribe', async () => {
+      prisma.servicio.findFirst.mockResolvedValue({ ...activo, estado: 'INACTIVO' });
+
+      const result = await service.desactivar(mockBarberiaId, mockServicioId);
+
+      expect(result.estado).toBe('INACTIVO');
+      expect(prisma.reserva.findMany).not.toHaveBeenCalled();
+      expect(prisma.combo.findMany).not.toHaveBeenCalled();
+      expect(prisma.servicio.update).not.toHaveBeenCalled();
+    });
+
     it('debe propagar NotFoundException si el servicio a desactivar no existe', async () => {
       prisma.servicio.findFirst.mockResolvedValue(null);
 
-      await expect(service.deactivate(mockBarberiaId, 'no-existe')).rejects.toThrow(NotFoundException);
+      await expect(service.desactivar(mockBarberiaId, 'no-existe')).rejects.toThrow(NotFoundException);
       expect(prisma.reserva.findMany).not.toHaveBeenCalled();
+    });
+
+    it('reactivar devuelve el servicio a ACTIVO (y es idempotente si ya lo está)', async () => {
+      prisma.servicio.findFirst.mockResolvedValue({ ...activo, estado: 'INACTIVO' });
+      prisma.servicio.update.mockResolvedValue(activo);
+
+      const result = await service.reactivar(mockBarberiaId, mockServicioId);
+
+      expect(result).toEqual(activo);
+      expect(prisma.servicio.update).toHaveBeenCalledWith({
+        where: { id: mockServicioId },
+        data: { estado: 'ACTIVO' },
+      });
+
+      prisma.servicio.update.mockClear();
+      prisma.servicio.findFirst.mockResolvedValue(activo);
+
+      expect(await service.reactivar(mockBarberiaId, mockServicioId)).toEqual(activo);
+      expect(prisma.servicio.update).not.toHaveBeenCalled();
     });
   });
 });

@@ -270,6 +270,10 @@ model BloqueosAgenda {
   horaFin    DateTime  @map("hora_fin") @db.Time
   motivo     String?   @db.Text
   jobId      String?   @map("job_id") @db.VarChar(100)
+  // E2-07 · D29: un bloqueo no se BORRA, se LIBERA. `liberado_at` marca el
+  // instante (UTC) en que dejó de ocupar agenda; la fila se conserva para la
+  // auditoría y la disponibilidad ignora los liberados. NULL = sigue ocupando.
+  liberadoAt DateTime? @map("liberado_at") @db.Timestamptz
   creadoPor  String?   @map("creado_por") @db.Uuid
   creadoAt   DateTime? @default(now()) @map("creado_at") @db.Timestamptz
 

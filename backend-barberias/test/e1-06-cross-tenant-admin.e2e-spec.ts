@@ -240,8 +240,8 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       .set('x-barberia-id', barberiaA)
       .send({ nombre: 'SECUESTRADO-POR-A' }));
 
-    await registrar('DELETE /catalogo/servicios/:id', 'desactivar servicio de B', request(app.getHttpServer())
-      .delete(`${api}/catalogo/servicios/${servicioB}`)
+    await registrar('PATCH /catalogo/servicios/:id/desactivar', 'desactivar servicio de B', request(app.getHttpServer())
+      .patch(`${api}/catalogo/servicios/${servicioB}/desactivar`)
       .set('Authorization', jwt(tokenAdminA))
       .set('x-barberia-id', barberiaA));
 
@@ -256,8 +256,8 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       .set('x-barberia-id', barberiaA)
       .send({ nombre: 'SECUESTRADO-POR-A' }));
 
-    await registrar('DELETE /catalogo/combos/:id', 'desactivar combo de B', request(app.getHttpServer())
-      .delete(`${api}/catalogo/combos/${comboB}`)
+    await registrar('PATCH /catalogo/combos/:id/desactivar', 'desactivar combo de B', request(app.getHttpServer())
+      .patch(`${api}/catalogo/combos/${comboB}/desactivar`)
       .set('Authorization', jwt(tokenAdminA))
       .set('x-barberia-id', barberiaA));
 
@@ -280,8 +280,8 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       .set('Authorization', jwt(tokenAdminA))
       .set('x-barberia-id', barberiaB));
 
-    await registrar('DELETE /barberias/:id/agenda/bloqueos/:id', 'borrar un bloqueo de B', request(app.getHttpServer())
-      .delete(`${api}/barberias/${barberiaB}/agenda/bloqueos/${bloqueoB}`)
+    await registrar('POST /barberias/:id/agenda/bloqueos/:id/liberar', 'liberar un bloqueo de B', request(app.getHttpServer())
+      .post(`${api}/barberias/${barberiaB}/agenda/bloqueos/${bloqueoB}/liberar`)
       .set('Authorization', jwt(tokenAdminA)));
 
     await registrar('GET /cobros/auditoria', 'leer la auditoría de cobros de B', request(app.getHttpServer())
@@ -441,5 +441,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
     expect(comboBDespues?.nombre).toBe('Combo E1-06-CTA de B');
     expect(comboBDespues?.estado).toBe('ACTIVO');
     expect(bloqueoBDespues?.motivo).toBe('MOTIVO-PRIVADO-DE-B');
+    // E2-07: liberar escribe `liberado_at`; el intento cross-tenant no lo tocó.
+    expect(bloqueoBDespues?.liberadoAt).toBeNull();
   }, 120000);
 });
