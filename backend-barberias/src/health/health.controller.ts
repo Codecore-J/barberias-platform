@@ -44,8 +44,41 @@ export class HealthController implements OnModuleDestroy {
   }
 
   /**
-   * Endpoint de monitoreo de salud con probes reales (MON-01 / Hallazgo 08).
-   * Accesible públicamente tanto en /health (probes de Render/K8s) como en /api/v1/health.
+   * Sonda de VIDA (liveness) — H64.
+   *
+   * POR QUÉ EXISTE: `check()` comprueba Base de Datos **y Redis**, así que con
+   * Redis caído devuelve 503 aunque el proceso esté perfectamente vivo y
+   * sirviendo. `render.yaml` usaba esa ruta como `healthCheckPath`, de modo que
+   * el orquestador podía reiniciar en bucle una instancia sana y anular la
+   * degradación elegante del arranque (H63).
+   *
+   * QUÉ COMPRUEBA: nada externo. Solo que el proceso responde. Ni base de datos
+   * ni Redis: una sonda de vida que dependa de un servicio de terceros convierte
+   * el parpadeo de ese servicio en un reinicio. Tampoco usa `@HealthCheck()`
+   * (Terminus) para no arrastrar indicadores: responde directo y en milisegundos.
+   *
+   * LA PREPARACIÓN sigue en `check()` (`/health`, `/api/v1/health`): eso es lo que
+   * debe mirar el balanceador o la alerta antes de mandar tráfico.
+   */
+  @Public()
+  @SkipThrottle()
+  @Get(['health/liveness', 'api/v1/health/liveness'])
+  liveness() {
+    return {
+      status: 'ok',
+      // Datos del proceso: útiles para distinguir "vivo y recién arrancado" de
+      // "vivo tras un reinicio" sin tocar nada externo.
+      uptimeSegundos: Math.round(process.uptime()),
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Sonda de PREPARACIÓN (readiness) — MON-01 / Hallazgo 08.
+   *
+   * Comprueba lo que hace falta para atender tráfico de verdad: Base de Datos,
+   * Redis y memoria. Accesible públicamente tanto en /health como en /api/v1/health.
+   * Devuelve 503 si algo falta, y eso es correcto: NO se usa como sonda de vida.
    */
   @Public()
   @SkipThrottle()
