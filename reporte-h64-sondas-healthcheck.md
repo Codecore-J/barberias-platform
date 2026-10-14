@@ -60,6 +60,24 @@ entorno.
       Tests  5 passed (5)                     ← EXIT=0
 ```
 
+Además, contra el **proceso real** (`node dist/main.js`, lo que sirve Render) con el mismo Redis muerto, que
+es lo que demuestra que el prefijo y las exclusiones de `src/main.ts` dejan las rutas donde deben (un test
+con su propio `setGlobalPrefix` no lo probaría):
+
+```
+================ H64 · PROCESO REAL ================
+arrancado en        : 5114 ms
+GET /api/v1/health/liveness        : 200 {"status":"ok","uptimeSegundos":5,"timestamp":"2026-10-14T18:59:24.103Z"}
+GET /health/liveness               : 200 {"status":"ok","uptimeSegundos":5,"timestamp":"2026-10-14T18:59:24.129Z"}
+GET /api/v1/health (preparación)   : 503 {"status":"error","info":{"database":{"responseTime":145,"status":"up"},"memory_heap":{"status":"up"}},"error":{"redis":{"status":"down","message":"Connection i
+liveness 200 y preparación 503     : SÍ
+EXIT=0
+```
+
+El arnés de esa comprobación quedó versionado en
+[backend-barberias/test/manual/h64-sondas-sin-redis.mjs](backend-barberias/test/manual/h64-sondas-sin-redis.mjs)
+(sale con código 0 solo si la vida responde 200 y la preparación 503 con la cola caída), junto al de H63.
+
 Y los dos E2E que ya existían, con el Redis del repositorio sano (preparación intacta):
 
 ```
@@ -115,7 +133,7 @@ npm run build  → nest build                                        BUILD_EXIT=
 - [x] **Endpoint `GET /api/v1/health/liveness` que solo verifica que Nest está vivo.** `liveness()` no usa `@HealthCheck()` ni ningún indicador: responde `{"status":"ok","uptimeSegundos":6,"timestamp":"…"}` y el E2E comprueba que no trae `info`/`details` (o sea, que no hay indicadores) y que tarda **7 ms** con Redis caído.
 - [x] **Mantener la preparación comprobando base de datos y Redis.** `check()` sin cambios: `/health` y `/api/v1/health` siguen con `database`, `redis` y `memory_heap`; medido con Redis caído devuelve **503** con `redis: down`. El E2E con Redis sano (`test/health.e2e-spec.ts`) sigue en verde.
 - [x] **`healthCheckPath` apuntando a la sonda de vida.** `render.yaml`: `healthCheckPath: /api/v1/health/liveness` (antes `/health`), con el motivo escrito en el propio fichero.
-- [x] **Con Redis apagado (puerto cerrado), `liveness` responde 200.** Puerto libre reservado y liberado por el propio test para garantizar que nadie escucha: `200 {"status":"ok",…}` en **7 ms** y la app arrancando en **1,6 s**.
+- [x] **Con Redis apagado (puerto cerrado), `liveness` responde 200.** En el E2E, con puerto libre reservado y liberado por el propio test: `200 {"status":"ok",…}` en **7 ms** y la app arrancando en **1,6 s**. Y contra el **proceso real** (`dist/main.js`) con `REDIS_URL` apuntando a un puerto cerrado: `GET /api/v1/health/liveness → 200` (y el alias `/health/liveness → 200`), mientras `GET /api/v1/health → 503` con `redis: down` y la base `up`.
 - [x] **Unitarios 100 % verdes.** `Test Files 48 passed (48)` / `Tests 526 passed (526)` / `EXIT=0`.
 - [x] **`AUDITORIA_HALLAZGOS.md` con H64 RESUELTO.** Tabla F2.1 y ficha F2.4 reescrita (qué, cómo, evidencia roja y verde, trade-off); además quedan abiertos H65 y H66 (nuevos).
 - [x] **Reporte con la plantilla 8.4.** Este documento.
@@ -141,6 +159,7 @@ npm run build  → nest build                                        BUILD_EXIT=
 - **No se corrió la suite E2E completa** (27 ficheros): se ejecutaron el E2E nuevo con Redis caído y los dos ficheros que tocan las rutas modificadas (`health`, `app`) con Redis sano. La afirmación «sin regresiones» vale para esos casos.
 - **No se verificó en Render.** El cambio de `healthCheckPath` está en el repositorio, pero el comportamiento del orquestador (y que la ruta responda 200 en el arranque real del despliegue) no se puede comprobar desde aquí: queda para el siguiente despliegue.
 - **No se midió el `SIGTERM` con Redis caído *y* `enableShutdownHooks()` activado**, porque esa opción no existe hoy en el código (por eso H66 se clasifica como riesgo futuro y no como fallo actual).
+- **La intermitencia de H65 se observó en las dos direcciones:** en la corrida contra el proceso real el indicador de base salió `database: {responseTime: 145, status: 'up'}`; en las dos corridas del E2E salió `timeout of 1000ms exceeded`. No se persiguió más porque está fuera del alcance de H64.
 - **H65 y H66 siguen abiertos** y fuera del alcance de H64.
 - **El frontend no se toca** y no consume estas rutas.
 
