@@ -263,6 +263,58 @@ describe('ReservaService', () => {
       ).rejects.toMatchObject({ response: { codigo: 'RESERVAS_PAUSADAS', statusCode: 422 } });
     });
 
+    // P-SD-4: suspender la sede no solo quitaba el nombre de la lista, dejaba
+    // la puerta abierta: la sede INACTIVO seguía creando reservas. El bloqueo
+    // va ANTES del vínculo (es decisión de la plataforma, no una relación con
+    // el cliente) y responde 422 SEDE_INACTIVA.
+    it('RECHAZA el alta con 422 SEDE_INACTIVA si la sede está suspendida', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ estado: 'INACTIVO' });
+
+      await expect(
+        service.crearReserva('uuid-cliente', 'uuid-barberia', {
+          fecha: '2026-10-10',
+          horaInicio: '09:00',
+          horaFin: '09:30',
+          serviciosIds: ['s1'],
+          precioTotalEsperado: 15,
+        }),
+      ).rejects.toMatchObject({ response: { codigo: 'SEDE_INACTIVA', statusCode: 422 } });
+
+      // Ni se consulta el vínculo (la regla de la plataforma manda antes) ni
+      // se escribe nada: la suspensión corta la demanda NUEVA, no toca datos.
+      expect(mockPrismaService.clienteBarberia.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaService.reserva.create).not.toHaveBeenCalled();
+    });
+
+    it('control: con la sede ACTIVO el alta no lo toca (regla solo para INACTIVO)', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
+        modoReserva: 'MANUAL',
+        nuevasReservasActivas: true,
+        aceptaIndividual: true,
+        margenGrupalMinutos: 10,
+      });
+      mockPrismaService.servicio.findMany.mockResolvedValue([
+        { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 5 },
+      ]);
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
+        { inicio: enSede('2026-10-10', 9), fin: enSede('2026-10-10', 9, 30) },
+      ]);
+      mockPrismaService.reserva.create.mockResolvedValue({ id: 'uuid-reserva' });
+      mockPrismaService.participanteReserva.create.mockResolvedValue({ id: 'uuid-part' });
+
+      await expect(
+        service.crearReserva('uuid-cliente', 'uuid-barberia', {
+          fecha: '2026-10-10',
+          horaInicio: '09:00',
+          horaFin: '09:30',
+          serviciosIds: ['s1'],
+          precioTotalEsperado: 15,
+        }),
+      ).resolves.toMatchObject({ id: 'uuid-reserva' });
+    });
+
     it('debe fallar con ConflictException si no hay disponibilidad en la fecha solicitada', async () => {
       mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({

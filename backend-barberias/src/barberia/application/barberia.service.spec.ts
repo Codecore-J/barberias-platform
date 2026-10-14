@@ -3,6 +3,7 @@ import { vi } from 'vitest';
 import * as bcrypt from 'bcrypt';
 import { BarberiaService } from './barberia.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
@@ -91,6 +92,7 @@ function filaRol(usuarioId: string, nombreRol: string, barberiaId = BARBERIA_B) 
 describe('BarberiaService', () => {
   let service: BarberiaService;
   let prisma: PrismaService;
+  let auditoria: AuditoriaService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -122,21 +124,27 @@ describe('BarberiaService', () => {
             },
             configuracionBarberia: {
               create: vi.fn(),
-            },
-            clienteBarberia: {
-              findUnique: vi.fn(),
-              count: vi.fn(),
-              create: vi.fn(),
-              updateMany: vi.fn(),
-              update: vi.fn(),
-            },
+            },              clienteBarberia: {
+                findUnique: vi.fn(),
+                count: vi.fn(),
+                create: vi.fn(),
+                updateMany: vi.fn(),
+                update: vi.fn(),
+              },
           },
+        },
+        {
+          // P-SD-4: suspender/reactivar una sede deja rastro en auditoría,
+          // así que el servicio lo exige en el módulo y aquí se mockea.
+          provide: AuditoriaService,
+          useValue: { registrarEvento: vi.fn().mockResolvedValue({ id: 'uuid-auditoria' }) },
         },
       ],
     }).compile();
 
     service = module.get<BarberiaService>(BarberiaService);
     prisma = module.get<PrismaService>(PrismaService);
+    auditoria = module.get<AuditoriaService>(AuditoriaService);
   });
 
   it('should be defined', () => {
@@ -599,6 +607,73 @@ describe('BarberiaService', () => {
         await service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false);
 
         expect(prisma.barberia.update).not.toHaveBeenCalled();
+      });
+
+      // P-SD-4: antes el único rastro era un `logger.log` en consola. La
+      // suspensión de una sede es una decisión de plataforma y tiene que
+      // poderse auditar después, con anterior y nuevo.
+      it('suspende: deja BARBERIA_SUSPENDIDA en auditoría con el estado anterior y el nuevo', async () => {
+        (prisma.barberia.findUnique as any).mockResolvedValue({
+          id: 'uuid-1', responsableId: 'res-1', estado: 'ACTIVO',
+        });
+
+        await service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false);
+
+        expect(auditoria.registrarEvento).toHaveBeenCalledWith(
+          expect.objectContaining({
+            usuarioId: 'res-1',
+            accion: 'BARBERIA_SUSPENDIDA',
+            entidad: 'barberias',
+            entidadId: 'uuid-1',
+            contexto: {
+              anterior: { estado: 'ACTIVO' },
+              nuevo: { estado: 'INACTIVO' },
+            },
+          }),
+          expect.anything(),
+        );
+      });
+
+      it('reactiva: el evento es BARBERIA_REACTIVADA', async () => {
+        (prisma.barberia.findUnique as any).mockResolvedValue({
+          id: 'uuid-1', responsableId: 'res-1', estado: 'INACTIVO',
+        });
+
+        await service.cambiarEstado('uuid-1', 'res-1', 'ACTIVO', false);
+
+        expect(auditoria.registrarEvento).toHaveBeenCalledWith(
+          expect.objectContaining({
+            accion: 'BARBERIA_REACTIVADA',
+            contexto: {
+              anterior: { estado: 'INACTIVO' },
+              nuevo: { estado: 'ACTIVO' },
+            },
+          }),
+          expect.anything(),
+        );
+      });
+
+      it('el evento y la escritura salen juntos, en la MISMA transacción', async () => {
+        (prisma.barberia.findUnique as any).mockResolvedValue({
+          id: 'uuid-1', responsableId: 'res-1', estado: 'ACTIVO',
+        });
+
+        await service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false);
+
+        expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+        // El segundo argumento es el `tx` de la transacción: si hiciera rollback
+        // no puede quedar el evento sin el cambio ni el cambio sin el evento.
+        expect((auditoria.registrarEvento as any).mock.calls[0][1]).toBe(prisma);
+      });
+
+      it('sin cambio no hay evento: la auditoría no registra nada que no pasó', async () => {
+        (prisma.barberia.findUnique as any).mockResolvedValue({
+          id: 'uuid-1', responsableId: 'res-1', estado: 'ACTIVO',
+        });
+
+        await service.cambiarEstado('uuid-1', 'res-1', 'ACTIVO', false);
+
+        expect(auditoria.registrarEvento).not.toHaveBeenCalled();
       });
 
       it('un responsable ajeno sigue recibiendo ForbiddenException', async () => {
