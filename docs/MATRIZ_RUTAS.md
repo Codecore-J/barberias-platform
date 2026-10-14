@@ -128,6 +128,13 @@
 | 61 | POST | `/barberias/:id/clientes/:clienteId/reactivar` | ClientesRestringidosController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E4-03** (D48) | **sí** — misma regla que la fila 60, más 404 si no hay vinculación | **sí** — 422 `SIN_RESTRICCION` si el cliente no estaba restringido; levanta la restricción, reinicia el contador de ESA sede y audita `RESTRICCION_LEVANTADA` con el valor anterior y el nuevo (D28) | no — pendiente del panel de la sede | `test/e4-03-fidelizacion.e2e-spec.ts`; `src/barberia/application/clientes-restringidos.service.spec.ts` |
 | 62 | GET | `/barberias/:barberiaId/mi-estado` | MiEstadoController | — no existía | `@Roles(CLIENTE)` | **H54** (E4-03/2) | **sí** — la ruta usa `:barberiaId`, así que el guard SÍ acota la sede; el servicio vuelve a acotar por el usuario del token | **sí** — 403 `NO_VINCULADO` sin fila en `cliente_barberias` y `mensaje` calculado con la regla pura de §5.8 | no — pendiente del perfil del cliente | `test/e4-03-fidelizacion.e2e-spec.ts` (H54); `src/barberia/application/mi-estado.service.spec.ts`; `src/reserva/domain/fidelizacion.spec.ts` |
 | 63 | PATCH | `/plataforma/usuarios/:id/estado` | PlataformaUsuariosController | — no existía | `@Roles(ADMINISTRADOR)` | **E4-03/5** (D09/D24) | no (el guard ya acota: es una ruta de plataforma) | **sí** — 422 `MOTIVO_REQUERIDO`, 409 `ESTADO_INVALIDO`, 404 si la cuenta no existe; al suspender sube `token_version` (cierra TODAS las sesiones) y audita `CUENTA_SUSPENDIDA`/`CUENTA_REACTIVADA` con anterior y nuevo (D28) | no — pendiente del panel de plataforma | `test/e4-03-suspension-cuenta.e2e-spec.ts`; `src/iam/application/usuarios-plataforma.service.spec.ts`; `test/estado-cuenta-guard.spec.ts` |
+| 64 | GET | `/health/liveness` · `api/v1/health/liveness` | HealthController | — no existía | `@Public` | **H64** | — | — | no | `test/h64-sondas-liveness.e2e-spec.ts`; `test/permisos-matriz.spec.ts` |
+
+> **Fila 64 (H64, 2026-10-14).** Sonda de VIDA separada de la de preparación: `check()` sigue en
+> `/health` · `/api/v1/health` mirando base de datos, Redis y memoria, y la vida responde sin tocar nada
+> externo. `render.yaml` apunta `healthCheckPath` a esta ruta. La fila se numera al final y no junto a la 7
+> (que es la otra ruta de `HealthController`) para no renumerar las 56 filas siguientes ni romper las
+> referencias del texto a «fila 57», «fila 62», etc.
 
 ## Recuento aplicado
 
@@ -209,6 +216,13 @@ el usuario del token y 63 por el rol global. Evidencia: `test/e4-03-fidelizacion
 `src/barberia/application/mi-estado.service.spec.ts`, `src/iam/application/usuarios-plataforma.service.spec.ts`
 y `test/estado-cuenta-guard.spec.ts` (D48 sobre el código fuente: los únicos escritores de
 `usuarios.estado_cuenta` son el alta y esta ruta manual).
+
+**Estado real tras la Ola 3 y H64 (2026-10-14):** `test/route-security.spec.ts` cuenta **76 rutas**
+(`@Public` 7 · `@Autenticado` 5 · `@Roles` 64 · ninguna 0) y `test/permisos-matriz.spec.ts` comprueba
+**76 rutas × 4 roles = 304** decisiones. La Ola 3 había dejado el total en **75** (el párrafo anterior se
+quedó en 73: retiró cuatro `@Delete` y añadió los seis verbos del vocabulario del diseño) y H64 sumó `+1`
+con la sonda de vida (fila 64), que es la única ruta nueva de las tres iteraciones de la Fase 2. Evidencia:
+la tabla que imprime `test/route-security.spec.ts` y la matriz rol × ruta de `test/permisos-matriz.spec.ts`.
 
 ## Decisiones tomadas
 

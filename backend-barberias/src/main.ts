@@ -21,9 +21,12 @@ async function bootstrap() {
   // Confianza en proxy inverso (Render / Cloudflare) para resolución de IP real (SEC-02)
   app.set('trust proxy', 1);
 
-  // Prefijo global de API — todas las rutas serán /api/v1/..., excluyendo healthchecks de infraestructura (MON-01)
+  // Prefijo global de API — todas las rutas serán /api/v1/..., excluyendo healthchecks de infraestructura (MON-01).
+  // H64: la sonda de vida (liveness) se excluye igual que la de preparación, para que
+  // Render pueda apuntar `healthCheckPath` a /api/v1/health/liveness sin que un Redis
+  // caído provoque reinicios de una instancia que sí está sirviendo.
   app.setGlobalPrefix('api/v1', {
-    exclude: ['health', 'api/v1/health'],
+    exclude: ['health', 'api/v1/health', 'health/liveness', 'api/v1/health/liveness'],
   });
 
   // Configuración estricta de CORS (CONF-02):
