@@ -910,13 +910,20 @@ abre **H64** (`/health` en 503 con Redis caído + `healthCheckPath` de Render). 
 a `origin` en esa iteración; el merge a `main` sigue pendiente de decisión. Reporte:
 `reporte-fase2-h63-arranque-seguro.md`.
 
+**Actualización (3.ª iteración, 2026-10-14):** el PR #59 se fusionó y `main` ya contiene la Fase 2. Se
+cierra **H64** (sondas de vida y de preparación separadas) y quedan abiertos **H65** (intermitencia del
+indicador de base por el tope de 1 s) y **H66** (`app.close()` no termina con Redis caído). Reporte:
+`reporte-h64-sondas-healthcheck.md`.
+
 ### F2.1 · Marcador de la fase
 
 | ID | Estado |
 | :--- | :--- |
 | **H62** | ✅ **RESUELTO** — el alta de reserva no depende de la cola: encolado best-effort y con techo de tiempo (`src/shared/queues/encolado-seguro.ts`) |
 | **H63** | ✅ **RESUELTO** (2.ª iteración) — con Redis INALCANZABLE la aplicación **sí** arranca: los hooks de arranque no esperan a la cola y el cron de purga se registra con techo de 3 s |
-| **H64** | ⬜ **ABIERTO** — `/health` responde 503 con Redis caído y `render.yaml` lo usa como `healthCheckPath`: el orquestador puede reiniciar en bucle una instancia que sí está sirviendo |
+| **H64** | ✅ **RESUELTO** (3.ª iteración) — sondas separadas: `/api/v1/health/liveness` (vida, sin dependencias) responde 200 con Redis caído y `render.yaml` ya apunta ahí; `/api/v1/health` sigue siendo la de preparación (BD + Redis) y devuelve 503 |
+| **H65** | ⬜ **ABIERTO** — el `pingCheck` de la base en la sonda de PREPARACIÓN tiene un tope de 1 s: con la base remota se agota a veces y el indicador `database` sale `down`. No afecta a la vida; sí puede hacer parpadear una alerta de preparación |
+| **H66** | ⬜ **ABIERTO** — con Redis caído `app.close()` no termina (el cierre espera a las conexiones de BullMQ y ioredis sigue reintentando). Hoy no afecta a producción porque `main.ts` no llama a `enableShutdownHooks()` y SIGTERM mata el proceso en 22 ms; sería un problema al añadir apagado controlado |
 
 ### F2.2 · H62 — **RESUELTO**: el alta de reserva ya no devuelve 500 cuando la cola falla
 
@@ -953,14 +960,41 @@ a `origin` en esa iteración; el merge a `main` sigue pendiente de decisión. Re
 - **Contrato que fija:** la cola es una dependencia **opcional en el arranque**. Ni el cron de purga diario ni la purga de expiraciones pueden ser requisito para escuchar HTTP: se degradan con log y se auto-recuperan cuando Redis vuelve.
 - **Límites:** (a) el cron no se reintenta explícitamente —confía en la cola offline de ioredis mientras el proceso viva—; (b) la reconciliación de arranque sigue siendo secuencial (2 s por reserva vigente en segundo plano con la cola muerta); (c) persisten los límites ya anotados en H62 (`getJob` sin techo en aceptar/rechazar/cancelar y el encolado del alta dentro de la transacción); (d) **H64**, abajo.
 
-### F2.4 · H64 (nuevo) — `/health` en 503 con Redis caído, y Render lo usa como sonda de vida
+### F2.4 · H64 — **RESUELTO** (3.ª iteración): sondas de vida y de preparación separadas
 
-- **Módulo afectado:** `src/health/health.controller.ts`, `render.yaml` (`healthCheckPath: /health`)
-- **Tipo:** Contrato de monitorización incompatible con la degradación elegante recién conseguida
-- **Severidad:** Media — no rompe la app, pero puede anular el arreglo de H63 en producción
-- **Estado:** **ABIERTO** (medido; pendiente de decisión del dueño)
-- **Qué consta:** con la aplicación arrancada y sirviendo (`successfully started` en 3,9 s), `GET /api/v1/health` respondió **503 a los 4659 ms** con Redis inalcanzable: Terminus convierte en 503 cualquier indicador `down`, y el controlador devuelve `redis: { status: 'down' }`. `render.yaml` declara `healthCheckPath: /health`, así que el orquestador puede marcar unhealthy —y reiniciar en bucle— una instancia que sí está atendiendo reservas, pagos y catálogos.
-- **Remedio propuesto (decisión del dueño, no aplicado):** separar sonda de vida de sonda de preparación (una ruta que solo mire proceso y BD para `healthCheckPath`, y el detalle de Redis en la de preparación), o degradar el indicador de Redis a `degraded` sin tumbar el 200 cuando la cola es secundaria. Cambia el contrato de monitorización, así que no se toca sin visto bueno.
-- **Nota:** el cliente de Redis de la sonda ya está acotado (`maxRetriesPerRequest: 1`, `connectTimeout: 5000`), de modo que ese endpoint no se cuelga: el 503 es correcto como *readiness* y peligroso como *liveness*.
-- **Requiere decidir además:** si se acota `getJob` en aceptar/rechazar/cancelar, para que la degradación sea completa y homogénea.
+- **Módulo afectado:** `src/health/health.controller.ts`, `src/main.ts` (prefijo global), `render.yaml` (`healthCheckPath`)
+- **Tipo:** Contrato de monitorización incompatible con la degradación elegante de H63
+- **Severidad:** Media — no rompe la app, pero podía anular el arreglo de H63 en producción
+- **Estado:** **RESUELTO** (2026-10-14)
+- **Qué estaba mal:** con la aplicación arrancada y sirviendo (`successfully started` en 3,9 s), `GET /api/v1/health` respondía **503 a los 4659 ms** con Redis inalcanzable: Terminus convierte en 503 cualquier indicador `down` y el controlador devolvía `redis: { status: 'down' }`. Como `render.yaml` declaraba `healthCheckPath: /health`, el orquestador podía marcar unhealthy —y reiniciar en bucle— una instancia que sí estaba atendiendo reservas, pagos y catálogos.
+- **Qué se cambió:**
+  1. **Sonda de VIDA nueva:** `GET /health/liveness` · `/api/v1/health/liveness` (`@Public`, `@SkipThrottle`, sin `@HealthCheck()`). No toca base de datos ni Redis —no puede: una sonda de vida que dependa de un servicio de terceros convierte su parpadeo en un reinicio— y responde directo `{ status: 'ok', uptimeSegundos, timestamp }`.
+  2. **La de PREPARACIÓN se mantiene** en `check()` (`/health` y `/api/v1/health`) con base de datos, Redis y memoria: sigue devolviendo 503 si falta la cola, que es lo correcto para un balanceador o una alerta.
+  3. `render.yaml` pasa a `healthCheckPath: /api/v1/health/liveness`.
+  4. `src/main.ts` excluye las dos rutas nuevas del prefijo global, igual que ya hacía con las otras dos.
+  5. `test/permisos-matriz.spec.ts` registra la ruta (fail-closed: `@Public` explícito) y sus números pasan a **76 rutas · 304 decisiones**; `docs/MATRIZ_RUTAS.md` la documenta.
+- **Evidencia ROJA (2026-10-14, Redis caído en un puerto libre del sistema):** `Tests 3 failed | 2 passed (5)` con `AssertionError: expected 404 to be 200` —la ruta no existía— y, en la misma corrida, `GET /api/v1/health (readiness) → 503 {"redis":{"status":"down","message":"Connection is closed."}}`.
+- **Evidencia VERDE:** `test/h64-sondas-liveness.e2e-spec.ts` → `Test Files 1 passed (1)` / `Tests 5 passed (5)` con Redis caído: `liveness → 200 {"status":"ok",…}` en **7 ms**, alias `/health/liveness` 200, preparación 503 con `redis: down`, y la app arrancando en **1580 ms**. Suite unitaria `48 passed (48)` / `526 passed (526)` (`EXIT=0`); E2E previo de salud con Redis sano `2 passed (2)`; lint `54 warnings / 0 errors`; `nest build` OK.
+- **Lo que fija este hallazgo:** la vida de la instancia y la disponibilidad de sus dependencias son dos señales distintas y se exponen por rutas distintas. `healthCheckPath` solo debe apuntar a la primera.
+- **Trade-off aceptado (y por qué):** con `healthCheckPath` en la sonda de vida, un despliegue puede declararse sano aunque la base no esté lista. Render solo admite **una** ruta de comprobación, así que se prefiere que un fallo de Redis no provoque reinicios; la preparación sigue disponible en `/api/v1/health` para alertas, uptime monitors o un balanceador externo. Si el dueño prefiere lo contrario, el cambio es una línea de `render.yaml`.
+
+### F2.5 · H65 (nuevo) — el indicador de base de datos de la sonda de preparación es intermitente
+
+- **Módulo afectado:** `src/health/health.controller.ts` (`prismaIndicator.pingCheck('database', …)`)
+- **Tipo:** Sonda con un tope por defecto demasiado corto para una base remota
+- **Severidad:** Baja — no afecta a la vida ni al servicio; puede hacer parpadear una alerta de preparación
+- **Estado:** **ABIERTO** (medido; fuera del alcance de H64)
+- **Qué consta:** en dos corridas del E2E de H64 el indicador salió `{"database":{"message":"timeout of 1000ms exceeded","responseTime":1001,"status":"down"}}` mientras la API servía con normalidad; en la corrida anterior, con la misma base, salió `up`. El `pingCheck` de Terminus usa 1000 ms por defecto y la base de `dev` está en Neon (remota).
+- **Remedio propuesto:** subir el `timeout` del `pingCheck` (o pasar un `PrismaHealthIndicatorOptions` acorde a la latencia real) y decidir si un timeout de base debe marcar `down` o un estado intermedio. No se toca aquí para no ampliar el alcance de H64.
+- **Nota:** el E2E de H64 **no** afirma el estado de la base a propósito (solo que el indicador existe): si lo afirmara, sería un test intermitente por una latencia ajena al hallazgo.
+
+### F2.6 · H66 (nuevo) — con Redis caído, el cierre controlado (`app.close()`) no termina
+
+- **Módulo afectado:** cierre de la aplicación (`app.close()`), conexiones de BullMQ/ioredis
+- **Tipo:** Apagado dependiente de la cola
+- **Severidad:** Baja hoy, Media si se añade apagado controlado
+- **Estado:** **ABIERTO** (medido; fuera del alcance de H64)
+- **Qué consta:** con Redis caído, el `afterAll` del E2E de H64 agotó el hook con `Error: Hook timed out in 10000ms` al llamar a `app.close()`, y una espera acotada de 5 s tampoco terminó. El cierre espera a las conexiones de BullMQ y ioredis sigue reintentando contra el puerto muerto.
+- **Por qué hoy no es un problema en producción:** `src/main.ts` **no** llama a `enableShutdownHooks()`, así que el proceso no ejecuta un apagado controlado: medido con el artefacto real y SIGTERM, el proceso muere en **22 ms**.
+- **Remedio propuesto:** al añadir apagado controlado, acotar el cierre de las colas (`queue.close()` con tope y `disconnect()` del cliente de ioredis) para que un Redis caído no bloquee el apagado; y en tests, cerrar acotado (lo que ya hace el E2E de H64) o usar opciones de conexión desechables.
 

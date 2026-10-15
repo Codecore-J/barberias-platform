@@ -1,8 +1,8 @@
 # PLAN_MIGRACION_SOFT_DELETE.md
 
 **Tarea:** E2-07 · Transición a soft-deletes («Phase-Out» del borrado físico).
-**Fecha:** 2026-10-14 · **Rama de este documento:** `fix/h64-healthcheck-sondas` (árbol limpio) · **Contra `origin/main` = `60ecd8b`.**
-**Estado:** **propuesta para aprobación.** No se ha escrito código productivo ni ninguna migración de Prisma: sólo este documento.
+**Fecha:** 2026-10-14 (análisis) · 2026-10-15 (cierre) · **Rama de este documento:** `fix/soft-delete-gaps`, con `origin/main` = `33f2690` ya fusionado.
+**Estado:** **análisis y ejecución.** Las Fases 1-3 y §4-§6 se conservan tal como se aprobaron (el texto largo es el bueno); §4.1 registra qué fue de cada punto. **Ejecutados: P-SD-1, P-SD-2, P-SD-3, P-SD-4, P-SD-6 y P-SD-7.** **Abiertos: P-SD-5** (la guarda de vocabulario sigue sin cubrir el nivel de datos ni el frontend: medido, no heredado) **y P-SD-8.**
 
 ---
 
@@ -266,7 +266,7 @@ backend. Es el hallazgo que justifica la propuesta P-SD-5 (§4).
 
 ## 4 · Plan de lo que realmente falta (para aprobar)
 
-Ordenado por lo que rompe antes si no se hace. Cada punto es **propuesta**, no ejecución.
+Ordenado por lo que rompe antes si no se hace. Cada punto nació como **propuesta**; §4.1 registra qué fue de cada uno al ejecutarlo.
 
 > **Nivel de evidencia, para que nadie confunda lectura con medición:** todo lo de esta tabla se verificó **leyendo
 > el código y el esquema** (grep + lectura + `git`). En esta fase de análisis **no** levanté la aplicación ni el
@@ -274,16 +274,16 @@ Ordenado por lo que rompe antes si no se hace. Cada punto es **propuesta**, no e
 > consumidor, una guarda que no mira lo que debería): la ejecución de §4 empezará por reproducir cada uno en rojo antes
 > de tocar nada, que es la regla del sprint.
 
-| # | Severidad | Qué | Evidencia medida | Criterio de aceptación |
-| :--- | :--- | :--- | :--- | :--- |
-| **P-SD-1** | **Alta** | **`reactivar` existe en la API pero no se puede alcanzar desde la app**, y `findAll` filtra `estado: 'ACTIVO'`: un servicio desactivado desaparece del listado sin vuelta atrás en la interfaz | `reactivarServicio()` declarado en `core/services/servicios.service.ts:109` y **sin ningún llamador** (grep en todo `features/` = 0); backend `servicios.service.ts:61` filtra `estado: 'ACTIVO'` | Pantalla (o filtro «incluir inactivos») que liste `INACTIVO` y permita reactivar; E2E de ida y vuelta desde la UI |
-| **P-SD-2** | **Alta** | **La acción que desbloquea el 422 `SERVICIO_EN_COMBO_ACTIVO` no tiene llamador en el frontend**: una sede que recibe el error se queda sin salida | `PATCH /catalogo/combos/:id/desactivar` (`combos.controller.ts:77`) sin uso: no hay ninguna llamada a `/combos` en `core/services/*`; el listado declara `esCombo` (`servicios.service.ts:12`) pero `GET /servicios` devuelve filas de `servicios`, sin ese campo | La pantalla puede desactivar un combo (o, como mínimo, el 422 ofrece la ruta de resolución) |
-| **P-SD-3** | Media | **Suspender una sede no se audita ni propaga**: sólo `logger.log`, sin rastro durable, y la sede `INACTIVO` sigue aceptando reservas y calculando disponibilidad | `barberia.service.ts:428-453` (devuelve `void`, sin `Auditoria`; el único rastro es el `logger.log` de `:452`); único chequeo de `barberia.estado` = `barberia.service.ts:468` | (i) `Auditoria` `SEDE_ESTADO_CAMBIADO` con anterior/nuevo; (ii) decisión de dueño sobre reservas abiertas, con prueba en el alta de reserva |
-| **P-SD-4** | Media | **`servicios.estado` y `combos.estado` sin CHECK**: la base admite cualquier cadena para el estado del catálogo | grep de `servicios_estado_check`/`combos_estado_check` = 0; `barberias_estado_check` sí existe (`e203_integridad_base:41-42`) | Migración aditiva con los dos CHECK, `npm run check:integridad` en verde (lo recoge solo: `check-integridad.cjs:57-72`), y el `SELECT DISTINCT` del catálogo inventariado antes |
-| **P-SD-5** | Media | **La guarda de E2-07 no cubre el nivel de datos ni el frontend**: vigila decoradores, no `prisma.delete*` | `grep -n "delete" test/vocabulario-sin-delete.spec.ts` = 0 | Extender la guarda con **allowlist explícita** (la tabla de abajo) y, si se puede, una comprobación equivalente sobre el frontend |
-| **P-SD-6** | Baja | Vocabulario del frontend (`eliminarServicio`, `confirmDelete`, `eliminarBloqueo`) | §3.3 | Nombres y textos con el verbo del efecto («desactivar», «liberar»). Ojo: el de `horarios.service.ts` es una **decisión documentada en un comentario**, así que esto es una revisión a propósito, no un bug |
-| **P-SD-7** | Baja | Documentación que aún dice que E2-07 está pendiente | `docs/PLAN_SPRINT_ESTABILIZACION.md:92` | Nota de actualización en esa tabla (la de P3.8 ya dice ejecutado: la contradicción es interna al mismo documento) |
-| **P-SD-8** | Baja | **E2-08** (`docs/MATRIZ_CUMPLIMIENTO.md`) sigue sin existir | el archivo no está | Documento creado; es el siguiente escalón natural de E2-07 |
+| # | Severidad | Qué | Evidencia medida | Criterio de aceptación | Estado (2026-10-15) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **P-SD-1** | **Alta** | **`reactivar` existe en la API pero no se puede alcanzar desde la app**, y `findAll` filtra `estado: 'ACTIVO'`: un servicio desactivado desaparece del listado sin vuelta atrás en la interfaz | `reactivarServicio()` declarado en `core/services/servicios.service.ts:109` y **sin ningún llamador** (grep en todo `features/` = 0); backend `servicios.service.ts:61` filtra `estado: 'ACTIVO'` | Pantalla (o filtro «incluir inactivos») que liste `INACTIVO` y permita reactivar; E2E de ida y vuelta desde la UI | **[EJECUTADO]** |
+| **P-SD-2** | **Alta** | **La acción que desbloquea el 422 `SERVICIO_EN_COMBO_ACTIVO` no tiene llamador en el frontend**: una sede que recibe el error se queda sin salida | `PATCH /catalogo/combos/:id/desactivar` (`combos.controller.ts:77`) sin uso: no hay ninguna llamada a `/combos` en `core/services/*`; el listado declara `esCombo` (`servicios.service.ts:12`) pero `GET /servicios` devuelve filas de `servicios`, sin ese campo | La pantalla puede desactivar un combo (o, como mínimo, el 422 ofrece la ruta de resolución) | **[EJECUTADO]** |
+| **P-SD-3** | Media | **Suspender una sede no se audita ni propaga**: sólo `logger.log`, sin rastro durable, y la sede `INACTIVO` sigue aceptando reservas y calculando disponibilidad | `barberia.service.ts:428-453` (devuelve `void`, sin `Auditoria`; el único rastro es el `logger.log` de `:452`); único chequeo de `barberia.estado` = `barberia.service.ts:468` | (i) `Auditoria` `SEDE_ESTADO_CAMBIADO` con anterior/nuevo; (ii) decisión de dueño sobre reservas abiertas, con prueba en el alta de reserva | **[EJECUTADO]** |
+| **P-SD-4** | Media | **`servicios.estado` y `combos.estado` sin CHECK**: la base admite cualquier cadena para el estado del catálogo | grep de `servicios_estado_check`/`combos_estado_check` = 0; `barberias_estado_check` sí existe (`e203_integridad_base:41-42`) | Migración aditiva con los dos CHECK, `npm run check:integridad` en verde (lo recoge solo: `check-integridad.cjs:57-72`), y el `SELECT DISTINCT` del catálogo inventariado antes | **[EJECUTADO]** |
+| **P-SD-5** | Media | **La guarda de E2-07 no cubre el nivel de datos ni el frontend**: vigila decoradores, no `prisma.delete*` | `grep -n "delete" test/vocabulario-sin-delete.spec.ts` = 0 | Extender la guarda con **allowlist explícita** (la tabla de abajo) y, si se puede, una comprobación equivalente sobre el frontend | **Pendiente** — medido: la guarda no se tocó desde `432c372` y sigue viendo solo decoradores del backend |
+| **P-SD-6** | Baja | Vocabulario del frontend (`eliminarServicio`, `confirmDelete`, `eliminarBloqueo`) | §3.3 | Nombres y textos con el verbo del efecto («desactivar», «liberar»). Ojo: el de `horarios.service.ts` es una **decisión documentada en un comentario**, así que esto es una revisión a propósito, no un bug | **[EJECUTADO]** (quedan los dos alias documentados de §3.3) |
+| **P-SD-7** | Baja | Documentación que aún dice que E2-07 está pendiente | `docs/PLAN_SPRINT_ESTABILIZACION.md:92` | Nota de actualización en esa tabla (la de P3.8 ya dice ejecutado: la contradicción es interna al mismo documento) | **[EJECUTADO]** |
+| **P-SD-8** | Baja | **E2-08** (`docs/MATRIZ_CUMPLIMIENTO.md`) sigue sin existir | el archivo no está | Documento creado; es el siguiente escalón natural de E2-07 | **Pendiente** |
 
 **Los borrados a nivel de datos que hoy existen, con mi veredicto** (para pasar de excepción invisible a allowlist
 declarada, que es lo que P-SD-5 pide):
@@ -299,6 +299,73 @@ declarada, que es lo que P-SD-5 pide):
 sede, sin migración) → `P-SD-1` + `P-SD-2` (que la vuelta atrás sea alcanzable) → `P-SD-5` + `P-SD-6` (guardas y
 vocabulario) → `P-SD-7` + `P-SD-8` (documentación). Cada uno con su rojo medido antes del verde y su informe 8.4, como
 el resto del sprint.
+
+### 4.1 · Cómo se cerró cada punto (2026-10-15)
+
+Orden de ejecución: el de arriba. Cada punto con su rojo medido antes del verde y su informe 8.4.
+
+**P-SD-4 · esquema (primero, porque es migración).** `20261014000000_e207_catalogo_estado_check/migration.sql` añade
+`servicios_estado_check` y `combos_estado_check` (`estado IN ('ACTIVO','INACTIVO')`): aditiva, sin tocar datos ni
+reformular los CHECK existentes. Inventario previo **medido en solo lectura** sobre `dev`: `servicios.estado` =
+`ACTIVO` (125), `combos.estado` = `ACTIVO` (4), y 0 CHECK en las dos tablas, así que el `ALTER` no puede fallar por
+datos. `check-integridad.cjs` no necesitó cambios y eso está medido, no supuesto: los recoge de `prisma/migrations/**`
+por sí solo (en rojo antes de aplicar, verde después). Además, `estado` pasa de texto libre a
+`@IsIn(ESTADOS_CATALOGO_VALORES)` en los DTO de servicio y combo, para que un valor fuera de catálogo responda **400**
+en la API en lugar del **500** por violación del CHECK nuevo. **Ojo al fusionar: la migración NO está aplicada en
+`dev`**, y `render.yaml` no corre `prisma migrate deploy` en el despliegue, así que hay que aplicarla a mano; hasta
+entonces `npm run check:integridad` contra `dev` falla a propósito, que es la guardia haciendo su trabajo.
+
+**P-SD-3 · que suspender una sede signifique algo.** `src/shared/domain/sede.ts` (nuevo) concentra la regla en una
+sola definición, `exigirSedeActiva(db, barberiaId)` → 422 `SEDE_INACTIVA`. La llaman el alta de reserva —antes de
+mirar el vínculo, porque es decisión de la plataforma y no una relación cliente-sede— y las tres puertas de agenda
+(`calcularDisponibilidadDeSolicitante`, `buscarAlternativasDeSolicitante` y `huecosDeLaSede`), siempre **después** de
+la pertenencia: si fuera antes, el 422 serviría para que un cliente de otra sede sondee qué sedes están suspendidas.
+`cambiarEstado` es ahora transaccional y deja rastro **durable** (`AuditoriaService.registrarEvento` con
+`BARBERIA_SUSPENDIDA` / `BARBERIA_REACTIVADA` y `contexto = { anterior, nuevo }`, en la misma transacción que el
+`update`); es idempotente, así que pedir el estado que ya está no escribe ni audita. La decisión de dueño sobre las
+reservas abiertas quedó tomada y probada: **se quedan operables** —el bloqueo es de demanda nueva, y suspender sin
+ese matiz dejaría las `PENDIENTE`/`CONFIRMADA` de la sede huérfanas, sin nadie que pudiera confirmarlas, rechazarlas
+ni cancelarlas—. Evidencia: +5 unitarios en `disponibilidad.service.spec.ts`, +2 en `reserva.service.spec.ts`, +4 en
+`barberia.service.spec.ts` y 9 E2E nuevos en `test/e2-07-sede-inactiva.e2e-spec.ts` (HTTP real y base real); 537/537
+unitarios, 212/212 E2E y `check:integridad` OK, con el rojo previo documentado en `reporte-p-sd-3-p-sd-4.md`.
+
+**P-SD-1 · «Reactivar» inalcanzable.** El botón existía, pero la lista del panel no podía mostrar un ítem INACTIVO:
+`GET /servicios` y `GET /catalogo/combos` filtraban `estado: 'ACTIVO'` para todo el mundo, así que desactivar hacía
+desaparecer la fila y la vuelta atrás no tenía dónde pulsarse. Ahora `findAll` deja ver los inactivos al
+ADMIN_BARBERIA de la sede y al ADMINISTRADOR global (el CLIENTE sigue viendo solo ACTIVOS, que es la regla de E2-07)
+y el panel pinta badge `ACTIVO`/`INACTIVO` con la tarjeta atenuada, además de mostrar el `mensaje` del 422 en la
+lista y no sólo dentro del formulario, que era donde se perdía.
+
+**P-SD-2 · desactivar combos sin llamador.** El frontend no pedía `/catalogo/combos` en ninguna parte: la pestaña
+«Combos» estaba siempre vacía y `desactivarCombo` no tenía a quién llamar —justo la acción que libera a un servicio
+del 422 `SERVICIO_EN_COMBO_ACTIVO`—. `ServiciosService.cargarServicios(true)` compone servicios + combos (entran con
+`esCombo: true` y su `precioEspecial`/`duracionPropia` normalizados a la forma de la tabla) y el toggle elige el
+endpoint según ese flag. Si la lectura de combos falla, el catálogo del admin se degrada a solo servicios en lugar
+de quedarse en blanco.
+
+**P-SD-6 · vocabulario del frontend.** `confirmDelete()` pasa a `toggleEstado(servicio)` con el verbo del efecto
+(«Desactivar»/«Reactivar») y textos que lo dicen («Dejará de ofrecerse, pero no se borra»). Sobreviven dos residuos
+**a propósito y documentados**: `eliminarServicio()` queda como alias de `desactivarServicio()` sin llamadores, y
+`eliminarBloqueo()` conserva su nombre viejo con el comentario que lo justifica (§3.3).
+
+**P-SD-7 · documentación obsoleta.** `docs/PLAN_SPRINT_ESTABILIZACION.md` seguía dando E2-07 por pendiente «siguen 4
+`@Delete`»; con `grep @Delete backend-barberias/src/` = 0 la fila se corrige, y `docs/MATRIZ_RUTAS.md` pasa a declarar
+los llamadores reales del frontend en las rutas 49 y 54.
+
+**P-SD-5 · sigue abierto, y conviene decir por qué no lo marco.** Medido hoy sobre el árbol fusionado:
+`test/vocabulario-sin-delete.spec.ts` **no se ha tocado desde `432c372`** (único commit de su historia), su
+`BORRADOS_AUTORIZADOS` sigue vacío y sigue leyendo **solo** `backend-barberias/src/**` en busca de decoradores
+`@Delete`: no mira `prisma.*.delete*` ni el frontend. La allowlist de la tabla de arriba sigue siendo papel, no
+guardia. El cierre es pequeño —pasar los cuatro veredictos a `BORRADOS_AUTORIZADOS` y añadir una comprobación de
+vocabulario sobre `frontend-barberias/src/app/core/services/`— pero no se hizo en ninguna de las dos ramas, así que
+marcarlo [EJECUTADO] sería un documento que miente. **P-SD-8** sigue en el mismo estado que se describió:
+`docs/MATRIZ_CUMPLIMIENTO.md` no existe.
+
+**Checks del árbol fusionado (2026-10-15, ya con `origin/main` dentro).** `npm run build` del backend (exit 0) y
+**543/543** unitarios en 48 archivos; `ng build` del frontend (exit 0) y **17/17** en `ng test`. La suite **E2E no se
+re-corrió** en este merge: el contenedor local de Postgres + Redis con el que se midió `reporte-p-sd-3-p-sd-4.md` está
+apagado. Como el merge no puso en conflicto ni una línea de código —el único conflicto fue este documento—, las dos
+suites E2E siguen vigentes por separado, pero la verificación conjunta queda a cargo del CI.
 
 ---
 
@@ -334,6 +401,10 @@ git branch -r --contains 432c372                                            # in
 
 **Estado git en el momento de escribir esto:** rama `fix/h64-healthcheck-sondas`, árbol limpio, `origin/main` en
 `60ecd8b` y conteniendo `432c372` (E2-07). Este documento es el único archivo que añade.
+
+**Actualización (2026-10-15):** ese `HEAD` es el del análisis, y todo lo de arriba se midió contra él. El cierre
+está en §4.1 y en los informes `reporte-p-sd-3-p-sd-4.md` (P-SD-3 y P-SD-4) y `reporte-final-p-sd-1-p-sd-2.md`
+(P-SD-1, P-SD-2 y P-SD-7).
 
 **Nota de contexto (no forma parte de E2-07):** `fix/h64-healthcheck-sondas` está **subida pero no fusionada**
 (`git branch -r --contains 7368710` sólo devuelve su propia rama); el merge de `origin/main` (`60ecd8b`) es el PR #59

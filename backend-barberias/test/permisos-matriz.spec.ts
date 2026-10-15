@@ -69,6 +69,11 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /auth/forgot-password': TODOS,
   'POST /auth/reset-password': TODOS,
   'GET /health,api/v1/health': TODOS,
+  // H64 (2026-10-14): sonda de VIDA separada de la de preparación. Es `@Public`
+  // como la otra (la consulta la infraestructura, sin token) y no comprueba nada
+  // externo: si dependiera de Redis, un parpadeo de la cola se convertiría en un
+  // reinicio de la instancia.
+  'GET /health/liveness,api/v1/health/liveness': TODOS,
   'GET /notificaciones/mis-notificaciones': TODOS,
 
   'GET /auditoria/': [ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA],
@@ -368,10 +373,11 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // sumó `mi-estado` (H54) y la suspensión de cuenta (E4-03/5): 73. La Ola 3
   // (E2-07) retiró los cuatro `@Delete` y añadió los verbos del vocabulario del
   // diseño: `PATCH /barberias/:id/estado`, `POST .../bloqueos/:id/liberar` y los
-  // cuatro `desactivar`/`reactivar` del catálogo → 73 − 4 + 6 = 75.
-  it('descubrir las 75 rutas del servidor y todas tienen decision', () => {
+  // cuatro `desactivar`/`reactivar` del catálogo → 73 − 4 + 6 = 75. La Fase 2
+  // (H63, 2026-10-14) no añadió rutas. H64 suma la sonda de vida separada: 76.
+  it('descubrir las 76 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(75);
+    expect(claves.length).toBe(76);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -466,8 +472,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     // solicitudes de cambio, E4-02 la de huecos de espacio y E4-03 las dos de
     // restringidos: 71. La Ola 2 del sprint sumó `mi-estado` (H54) y
     // `PATCH /plataforma/usuarios/:id/estado` (E4-03/5): 73. La Ola 3 sumó los
-    // seis verbos de E2-07 y retiró cuatro `@Delete`: 75 × 4 = 300.
-    expect(evaluaciones).toBe(300);
+    // seis verbos de E2-07 y retiró cuatro `@Delete`: 75 × 4 = 300. H64 sumó la
+    // sonda de vida separada (76 rutas) y con ella la decisión de sus 4 roles: 304.
+    expect(evaluaciones).toBe(304);
     expect(
       desviaciones.length === 0
         ? ''

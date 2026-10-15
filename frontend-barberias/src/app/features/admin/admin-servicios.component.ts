@@ -1,6 +1,7 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Observable } from 'rxjs';
 import { ServiciosService, Servicio } from '../../core/services/servicios.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
@@ -74,11 +75,20 @@ import { AuthService } from '../../auth/auth.service';
         </div>
       }
 
+      <!-- Reglas de negocio del 422: SERVICIO_EN_USO, SERVICIO_EN_COMBO_ACTIVO -->
+      @if (!showForm() && serviciosService.error()) {
+        <div class="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-2 transform translate-z-8" role="alert">
+          <i class="pi pi-exclamation-triangle mt-0.5"></i>
+          <span>{{ serviciosService.error() }}</span>
+        </div>
+      }
+
       <!-- Grid de Servicios -->
       @if (!showForm()) {
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 transform-style-3d">
           @for (servicio of serviciosFiltrados(); track servicio.id) {
-            <div class="glass-card rounded-2xl p-6 relative group hover:-translate-y-2 hover:rotate-x-2 transition-all duration-300 transform-style-3d flex flex-col h-full border border-white/5 hover:border-amber-500/30">
+            <div class="glass-card rounded-2xl p-6 relative group hover:-translate-y-2 hover:rotate-x-2 transition-all duration-300 transform-style-3d flex flex-col h-full border border-white/5 hover:border-amber-500/30"
+                 [ngClass]="servicio.estado === 'INACTIVO' ? 'opacity-60 saturate-50' : ''">
               
               <div class="flex justify-between items-start mb-3 transform translate-z-12">
                 <div class="flex items-center gap-3">
@@ -107,13 +117,25 @@ import { AuthService } from '../../auth/auth.service';
                 {{ servicio.descripcion || 'Sin descripción detallada.' }}
               </p>
 
-              <!-- Actions -->
+              <!-- Estado y Acciones -->
+              <div class="flex items-center justify-between mb-3 transform translate-z-8">
+                <span class="text-xs px-2 py-0.5 rounded-full border"
+                      [ngClass]="servicio.estado === 'INACTIVO' ? 'bg-zinc-800 border-zinc-600 text-zinc-400' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'">
+                  {{ servicio.estado === 'INACTIVO' ? 'INACTIVO' : 'ACTIVO' }}
+                </span>
+              </div>
+
               <div class="flex gap-2 pt-4 border-t border-zinc-800 transform translate-z-12">
                 <button (click)="openForm(servicio)" class="flex-1 py-2 rounded-lg text-xs font-bold text-zinc-300 bg-zinc-800 hover:text-white hover:bg-zinc-700 transition-colors flex justify-center items-center gap-2">
                   <i class="pi pi-pencil"></i> Editar
                 </button>
-                <button (click)="confirmDelete(servicio.id)" class="px-4 py-2 rounded-lg text-xs font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 hover:text-red-300 transition-colors">
-                  <i class="pi pi-trash"></i>
+                <button (click)="toggleEstado(servicio)"
+                        class="px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5"
+                        [ngClass]="servicio.estado === 'INACTIVO' 
+                          ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300' 
+                          : 'bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300'">
+                  <i [class]="servicio.estado === 'INACTIVO' ? 'pi pi-refresh' : 'pi pi-ban'"></i>
+                  {{ servicio.estado === 'INACTIVO' ? 'Reactivar' : 'Desactivar' }}
                 </button>
               </div>
             </div>
@@ -287,7 +309,8 @@ export class AdminServiciosComponent implements OnInit {
   });
 
   ngOnInit() {
-    this.serviciosService.cargarServicios().subscribe();
+    // E2-07: el panel necesita ver combos e inactivos para poder reactivarlos.
+    this.serviciosService.cargarServicios(true).subscribe();
     
     // Si se activa/desactiva esCombo, reiniciar serviciosComboIds
     this.form.get('esCombo')?.valueChanges.subscribe(isCombo => {
@@ -338,9 +361,32 @@ export class AdminServiciosComponent implements OnInit {
     }
   }
 
-  confirmDelete(id: string) {
-    if (confirm('¿Estás seguro de eliminar este servicio?')) {
-      this.serviciosService.eliminarServicio(id).subscribe();
-    }
+  /**
+   * E2-07 · P-SD-1/P-SD-2: un único botón que cambia de verbo según el estado.
+   *
+   * El error se consume con `error: () => {}` porque el texto ya queda en
+   * `serviciosService.error()` y la lista lo pinta: si se dejara escapar, un 422
+   * de regla de negocio —lo normal aquí, no lo excepcional— acabaría además en
+   * un error no capturado por consola.
+   */
+  toggleEstado(servicio: Servicio) {
+    const tipo = servicio.esCombo ? 'el combo' : 'el servicio';
+    const esReactivacion = servicio.estado === 'INACTIVO';
+
+    const pregunta = esReactivacion
+      ? `¿Deseas reactivar ${tipo} "${servicio.nombre}"? Volverá al catálogo de los clientes.`
+      : `¿Deseas desactivar ${tipo} "${servicio.nombre}"? Dejará de ofrecerse, pero no se borra.`;
+
+    if (!confirm(pregunta)) return;
+
+    const peticion$: Observable<unknown> = esReactivacion
+      ? (servicio.esCombo
+          ? this.serviciosService.reactivarCombo(servicio.id)
+          : this.serviciosService.reactivarServicio(servicio.id))
+      : (servicio.esCombo
+          ? this.serviciosService.desactivarCombo(servicio.id)
+          : this.serviciosService.desactivarServicio(servicio.id));
+
+    peticion$.subscribe({ error: () => undefined });
   }
 }

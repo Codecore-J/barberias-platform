@@ -7,7 +7,12 @@ services:
     rootDir: backend-barberias
     buildCommand: rm -f ../package.json && npm install --include=dev && npm run build
     startCommand: npm run start:prod
-    healthCheckPath: /health
+    # H64: sonda de VIDA, no de preparación. `/health` comprueba Base de Datos Y
+    # Redis, así que con la cola caída devolvía 503 y Render podía reiniciar en
+    # bucle una instancia que estaba sirviendo con normalidad. La preparación
+    # (con Redis incluido) sigue disponible en /api/v1/health para alertas y
+    # balanceadores: no se usa como `healthCheckPath`.
+    healthCheckPath: /api/v1/health/liveness
     autoDeploy: true
     envVars:
       - key: NODE_ENV
