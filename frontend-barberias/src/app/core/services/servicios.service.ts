@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, catchError, of, map } from 'rxjs';
+import { Observable, tap, catchError, of, map, forkJoin } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 
 export interface Servicio {
@@ -21,23 +21,37 @@ export interface Servicio {
 export class ServiciosService {
   private readonly http = inject(HttpClient);
   private readonly apiUrl = `${API_URL}/servicios`;
+  private readonly combosUrl = `${API_URL}/catalogo/combos`;
 
   readonly servicios = signal<Servicio[]>([]);
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
 
-  cargarServicios(): Observable<Servicio[]> {
+  /**
+   * E2-07 · P-SD-1/P-SD-2: el panel de administración lee el catálogo con
+   * `incluirCombos = true`, y eso cambia DOS cosas respecto a las vistas de
+   * cliente:
+   *
+   *  - Se suman los COMBOS, que en la API son otro recurso (`/catalogo/combos`).
+   *    Sin ellos la pestaña «Combos» está siempre vacía, así que el
+   *    `desactivarCombo` no tenía a quién llamar: era justo la acción que
+   *    desbloquea el 422 `SERVICIO_EN_COMBO_ACTIVO` y no existía en la UI
+   *    (P-SD-2). Los combos entran con `esCombo: true` para que la plantilla y
+   *    el toggle elijan el endpoint correcto.
+   *  - El admin recibe también los INACTIVOS (visibilidad por rol en el
+   *    backend). Si la lista solo trajera ACTIVOS, desactivar un ítem lo hacía
+   *    desaparecer y «Reactivar» quedaba inalcanzable desde la app (P-SD-1).
+   *
+   * El catálogo público, el wizard de reserva y el walk-in siguen llamando sin
+   * argumento: solo servicios y solo ACTIVOS, como antes.
+   */
+  cargarServicios(incluirCombos = false): Observable<Servicio[]> {
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.get<any>(this.apiUrl).pipe(
-      map(res => {
-        const raw = Array.isArray(res) ? res : (res.data || []);
-        return raw.map((s: any) => ({
-          ...s,
-          duracionMinutos: s.duracionMinutos ?? s.duracionEstimada ?? 30,
-        }));
-      }),
+    const peticion$ = incluirCombos ? this.peticionCatalogoAdmin() : this.peticionServicios();
+
+    return peticion$.pipe(
       tap((data: Servicio[]) => {
         this.servicios.set(data);
         this.isLoading.set(false);
@@ -50,6 +64,61 @@ export class ServiciosService {
     );
   }
 
+  private peticionServicios(): Observable<Servicio[]> {
+    return this.http.get<any>(this.apiUrl).pipe(
+      map(res => this.extraerLista(res).map((s: any) => this.aServicio(s))),
+    );
+  }
+
+  /** Servicios + combos en una sola lista, como la pinta el panel de admin. */
+  private peticionCatalogoAdmin(): Observable<Servicio[]> {
+    const combos$ = this.http.get<any>(this.combosUrl).pipe(
+      map(res => this.extraerLista(res).map((c: any) => this.aCombo(c))),
+      // Un fallo al leer los combos no debe dejar al admin sin catálogo: se
+      // degrada a solo servicios en vez de romper toda la pantalla.
+      catchError(() => of([] as Servicio[])),
+    );
+
+    return forkJoin([this.peticionServicios(), combos$]).pipe(
+      map(([servicios, combos]) =>
+        [...servicios, ...combos].sort((a, b) => a.nombre.localeCompare(b.nombre)),
+      ),
+    );
+  }
+
+  private extraerLista(res: any): any[] {
+    return Array.isArray(res) ? res : (res?.data || []);
+  }
+
+  private aServicio(s: any): Servicio {
+    return {
+      ...s,
+      duracionMinutos: s.duracionMinutos ?? s.duracionEstimada ?? 30,
+      // La API no manda `esCombo` en los servicios. La tabla lo usa para elegir
+      // el endpoint, así que se fija a `false` en vez de quedar indefinido.
+      esCombo: s.esCombo ?? false,
+    };
+  }
+
+  /**
+   * El combo tiene otro nombre para las mismas columnas (`precioEspecial`,
+   * `duracionPropia`) y no tiene fecha de creación, así que se normaliza a la
+   * forma que ya consume la tabla.
+   */
+  private aCombo(c: any): Servicio {
+    return {
+      id: c.id,
+      nombre: c.nombre,
+      descripcion: c.descripcion ?? '',
+      precio: Number(c.precioEspecial ?? 0),
+      duracionMinutos: Number(c.duracionPropia ?? 0),
+      esCombo: true,
+      barberiaId: c.barberiaId,
+      fechaCreacion: '',
+      estado: c.estado,
+    };
+  }
+
   crearServicio(dto: any): Observable<Servicio> {
     this.isLoading.set(true);
     const payload = {
@@ -58,11 +127,11 @@ export class ServiciosService {
     };
     return this.http.post<Servicio>(this.apiUrl, payload).pipe(
       tap(() => {
-        this.cargarServicios().subscribe(); // Recargar tras crear
+        this.recargarCatalogo(); // Recargar tras crear
       }),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al crear servicio');
+        this.error.set(err.error?.mensaje || err.error?.message || 'Error al crear servicio');
         throw err;
       })
     );
@@ -76,11 +145,11 @@ export class ServiciosService {
     };
     return this.http.patch<Servicio>(`${this.apiUrl}/${id}`, payload).pipe(
       tap(() => {
-        this.cargarServicios().subscribe();
+        this.recargarCatalogo();
       }),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al actualizar servicio');
+        this.error.set(err.error?.mensaje || err.error?.message || 'Error al actualizar servicio');
         throw err;
       })
     );
@@ -96,7 +165,7 @@ export class ServiciosService {
     this.isLoading.set(true);
     return this.http.patch<void>(`${this.apiUrl}/${id}/desactivar`, {}).pipe(
       tap(() => {
-        this.cargarServicios().subscribe();
+        this.recargarCatalogo();
       }),
       catchError(err => {
         this.isLoading.set(false);
@@ -106,6 +175,7 @@ export class ServiciosService {
     );
   }
 
+  /** Nombre antiguo de `desactivarServicio`, conservado para no romper llamadas. */
   eliminarServicio(id: string): Observable<void> {
     return this.desactivarServicio(id);
   }
@@ -115,7 +185,7 @@ export class ServiciosService {
     this.isLoading.set(true);
     return this.http.patch<Servicio>(`${this.apiUrl}/${id}/reactivar`, {}).pipe(
       tap(() => {
-        this.cargarServicios().subscribe();
+        this.recargarCatalogo();
       }),
       catchError(err => {
         this.isLoading.set(false);
@@ -125,11 +195,12 @@ export class ServiciosService {
     );
   }
 
+  /** P-SD-2: apagar el combo es lo que libera a sus servicios del 422. */
   desactivarCombo(id: string): Observable<void> {
     this.isLoading.set(true);
-    return this.http.patch<void>(`${API_URL}/catalogo/combos/${id}/desactivar`, {}).pipe(
+    return this.http.patch<void>(`${this.combosUrl}/${id}/desactivar`, {}).pipe(
       tap(() => {
-        this.cargarServicios().subscribe();
+        this.recargarCatalogo();
       }),
       catchError(err => {
         this.isLoading.set(false);
@@ -141,9 +212,9 @@ export class ServiciosService {
 
   reactivarCombo(id: string): Observable<Servicio> {
     this.isLoading.set(true);
-    return this.http.patch<Servicio>(`${API_URL}/catalogo/combos/${id}/reactivar`, {}).pipe(
+    return this.http.patch<Servicio>(`${this.combosUrl}/${id}/reactivar`, {}).pipe(
       tap(() => {
-        this.cargarServicios().subscribe();
+        this.recargarCatalogo();
       }),
       catchError(err => {
         this.isLoading.set(false);
@@ -151,5 +222,14 @@ export class ServiciosService {
         throw err;
       })
     );
+  }
+
+  /**
+   * Las seis escrituras del catálogo son del panel de administración y son las
+   * únicas que necesitan recomponer servicios + combos: tras un toggle, la
+   * tarjeta sigue en la lista con su estado nuevo.
+   */
+  private recargarCatalogo(): void {
+    this.cargarServicios(true).subscribe();
   }
 }

@@ -1,6 +1,7 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Observable } from 'rxjs';
 import { ServiciosService, Servicio } from '../../core/services/servicios.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
@@ -74,11 +75,20 @@ import { AuthService } from '../../auth/auth.service';
         </div>
       }
 
+      <!-- Reglas de negocio del 422: SERVICIO_EN_USO, SERVICIO_EN_COMBO_ACTIVO -->
+      @if (!showForm() && serviciosService.error()) {
+        <div class="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-2 transform translate-z-8" role="alert">
+          <i class="pi pi-exclamation-triangle mt-0.5"></i>
+          <span>{{ serviciosService.error() }}</span>
+        </div>
+      }
+
       <!-- Grid de Servicios -->
       @if (!showForm()) {
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 transform-style-3d">
           @for (servicio of serviciosFiltrados(); track servicio.id) {
-            <div class="glass-card rounded-2xl p-6 relative group hover:-translate-y-2 hover:rotate-x-2 transition-all duration-300 transform-style-3d flex flex-col h-full border border-white/5 hover:border-amber-500/30">
+            <div class="glass-card rounded-2xl p-6 relative group hover:-translate-y-2 hover:rotate-x-2 transition-all duration-300 transform-style-3d flex flex-col h-full border border-white/5 hover:border-amber-500/30"
+                 [ngClass]="servicio.estado === 'INACTIVO' ? 'opacity-60 saturate-50' : ''">
               
               <div class="flex justify-between items-start mb-3 transform translate-z-12">
                 <div class="flex items-center gap-3">
@@ -299,7 +309,8 @@ export class AdminServiciosComponent implements OnInit {
   });
 
   ngOnInit() {
-    this.serviciosService.cargarServicios().subscribe();
+    // E2-07: el panel necesita ver combos e inactivos para poder reactivarlos.
+    this.serviciosService.cargarServicios(true).subscribe();
     
     // Si se activa/desactiva esCombo, reiniciar serviciosComboIds
     this.form.get('esCombo')?.valueChanges.subscribe(isCombo => {
@@ -350,29 +361,32 @@ export class AdminServiciosComponent implements OnInit {
     }
   }
 
+  /**
+   * E2-07 · P-SD-1/P-SD-2: un único botón que cambia de verbo según el estado.
+   *
+   * El error se consume con `error: () => {}` porque el texto ya queda en
+   * `serviciosService.error()` y la lista lo pinta: si se dejara escapar, un 422
+   * de regla de negocio —lo normal aquí, no lo excepcional— acabaría además en
+   * un error no capturado por consola.
+   */
   toggleEstado(servicio: Servicio) {
-    if (servicio.estado === 'INACTIVO') {
-      if (confirm(`¿Deseas reactivar ${servicio.esCombo ? 'el combo' : 'el servicio'} "${servicio.nombre}"?`)) {
-        if (servicio.esCombo) {
-          this.serviciosService.reactivarCombo(servicio.id).subscribe();
-        } else {
-          this.serviciosService.reactivarServicio(servicio.id).subscribe();
-        }
-      }
-    } else {
-      if (confirm(`¿Deseas desactivar ${servicio.esCombo ? 'el combo' : 'el servicio'} "${servicio.nombre}"? Esto lo ocultará para clientes.`)) {
-        if (servicio.esCombo) {
-          this.serviciosService.desactivarCombo(servicio.id).subscribe();
-        } else {
-          this.serviciosService.desactivarServicio(servicio.id).subscribe();
-        }
-      }
-    }
-  }
+    const tipo = servicio.esCombo ? 'el combo' : 'el servicio';
+    const esReactivacion = servicio.estado === 'INACTIVO';
 
-  confirmDelete(id: string) {
-    if (confirm('¿Estás seguro de eliminar este servicio?')) {
-      this.serviciosService.eliminarServicio(id).subscribe();
-    }
+    const pregunta = esReactivacion
+      ? `¿Deseas reactivar ${tipo} "${servicio.nombre}"? Volverá al catálogo de los clientes.`
+      : `¿Deseas desactivar ${tipo} "${servicio.nombre}"? Dejará de ofrecerse, pero no se borra.`;
+
+    if (!confirm(pregunta)) return;
+
+    const peticion$: Observable<unknown> = esReactivacion
+      ? (servicio.esCombo
+          ? this.serviciosService.reactivarCombo(servicio.id)
+          : this.serviciosService.reactivarServicio(servicio.id))
+      : (servicio.esCombo
+          ? this.serviciosService.desactivarCombo(servicio.id)
+          : this.serviciosService.desactivarServicio(servicio.id));
+
+    peticion$.subscribe({ error: () => undefined });
   }
 }
