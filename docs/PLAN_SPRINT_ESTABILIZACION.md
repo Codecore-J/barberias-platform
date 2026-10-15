@@ -90,7 +90,7 @@ En el repo sí están declarados (por tanto no son problema): `configuracion_bar
 | **E2-05** (margen sumado, D01) | **A verificar:** `calcularBloque` suma los márgenes de los servicios **y añade `margenGrupalMinutos` también en el flujo INDIVIDUAL** (`reserva.service.ts:193`), lo que merece contraste con D42/§5.4 |
 | **E2-06** (estabilizar E2E) | **Parcial:** `testTimeout: 30_000` y `fileParallelism: false` hechos (H38); **faltan** prefijos `e2e_` con limpieza en `afterAll`, el test de carrera real y el renombre de `test-sec01-recovery.ts` |
 | **E2-07** (vocabulario) | **Ejecutado:** `grep @Delete src/` = 0 rutas; los cuatro pasaron a `PATCH :id/desactivar`/`reactivar` (Ola 3, `chore/sprint-estabilizacion-p3`). El cableado de la UI que faltaba (P-SD-1/P-SD-2) va en `fix/soft-delete-frontend-wiring` |
-| **E2-08** (matriz de cumplimiento) | **Pendiente:** no existe `docs/MATRIZ_CUMPLIMIENTO.md` |
+| **E2-08** (matriz de cumplimiento) | **Cerrado (2026-10-15, `docs/e2-08-matriz-cumplimiento`):** `docs/MATRIZ_CUMPLIMIENTO.md` son 72 reglas con evidencia `archivo:línea`, test certificante y estado; sustituye a `COMPARACION_DISENO_VS_REAL.md` |
 | **E3-09** (pago/COMPLETADA) | **Pendiente** salvo «quién cobra»: ver H47 y la fila de P1.2 |
 | **E3-10** (no presentado) | **Parcial:** falta la ventana de 15 min (H52) y el renombre de la ruta a `.../no-presentado` (hoy `POST :id/inasistencia`, `reserva.controller.ts:250`) |
 | **E4-02** (oportunidades) | **Parcial:** el Carril A (alternativas) y el endpoint de huecos están; **D22 proactivo no existe** — `oportunidad` solo aparece en la lectura de disponibilidad y en la bandera de configuración; no hay job ni processor |
@@ -282,7 +282,7 @@ D17 del cliente (`SOLICITADA`/`RECHAZADA`, H43); cerrar con `docs/diseno/01_Espe
 | P3.5 | H34 (comentarios corruptos de `roles.ts`, líneas 75 y 107) y revisar la observación de `calcularBloque` (P1 de E2-05: el margen **grupal** se suma también en el flujo individual) | `grep -n "laractable\|yailtersan"`; contraste con D42/§5.4 |
 | P3.6 | H29: borrar o regenerar los lockfiles por proyecto (el CI usa el de la raíz) | `git log -- <archivo>` = 1 commit vs 8 del de la raíz |
 | P3.7 | H48: `jobId` determinístico del recordatorio + la mitad «cancelar el recordatorio» de §E3-07/4 | `CANCELAR_JOBS` ya declara la intención; hoy no es ejecutable |
-| P3.8 | E2-07 (4 `@Delete` → `PATCH :id/desactivar`/`reactivar`) y E2-08 (`docs/MATRIZ_CUMPLIMIENTO.md`) | E2-07 **cerrado**: `grep @Delete` = 0 rutas. Del punto solo queda E2-08: el documento sigue sin existir |
+| P3.8 | E2-07 (4 `@Delete` → `PATCH :id/desactivar`/`reactivar`) y E2-08 (`docs/MATRIZ_CUMPLIMIENTO.md`) | E2-07 **cerrado**: `grep @Delete` = 0 rutas. E2-08 **cerrado** (2026-10-15): el documento existe y es la fuente de verdad (72 reglas, evidencia y test por regla) |
 | P3.9 | Reconciliación documental: registrar **H52–H55** en `AUDITORIA_HALLAZGOS.md`, refrescar el reporte obsoleto de E4-02, marcar el backlog | Hoy el backlog tiene 4 `- [x]`; H52-H55 viven solo en un reporte |
 | P3.10 | H51: evaluar renombrar `:id` → `:barberiaId` en las rutas que lo permitan | Reduce la dependencia de que el servicio recuerde el 403 |
 

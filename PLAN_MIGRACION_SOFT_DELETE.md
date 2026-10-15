@@ -2,7 +2,7 @@
 
 **Tarea:** E2-07 · Transición a soft-deletes («Phase-Out» del borrado físico).
 **Fecha:** 2026-10-14 (análisis) · 2026-10-15 (cierre) · **Rama de este documento:** `fix/soft-delete-gaps`, con `origin/main` = `33f2690` ya fusionado.
-**Estado:** **análisis y ejecución.** Las Fases 1-3 y §4-§6 se conservan tal como se aprobaron (el texto largo es el bueno); §4.1 registra qué fue de cada punto. **Ejecutados: P-SD-1 a P-SD-7** —P-SD-5 se cerró el 2026-10-15 en `chore/psd5-guarda-vocabulario`: la guarda ya cubre decoradores, borrados de datos y frontend, con allowlist documentada y comprobada en los dos sentidos—. **Abierto: P-SD-8** (`docs/MATRIZ_CUMPLIMIENTO.md`).
+**Estado:** **análisis y ejecución. Ejecutados: P-SD-1 a P-SD-8, ningún punto abierto.** Las Fases 1-3 y §4-§6 se conservan tal como se aprobaron (el texto largo es el bueno) y §4.1 registra qué fue de cada punto. Los dos últimos se cerraron el 2026-10-15: **P-SD-5** en `chore/psd5-guarda-vocabulario` (la guarda de vocabulario cubre ya decoradores, borrados de datos y frontend, con allowlist documentada y comprobada en los dos sentidos) y **P-SD-8** en `docs/e2-08-matriz-cumplimiento`, con [`docs/MATRIZ_CUMPLIMIENTO.md`](docs/MATRIZ_CUMPLIMIENTO.md) —72 reglas con evidencia `archivo:línea`, test certificante y estado— en lugar de `COMPARACION_DISENO_VS_REAL.md`.
 
 ---
 
@@ -290,7 +290,7 @@ Ordenado por lo que rompe antes si no se hace. Cada punto nació como **propuest
 | **P-SD-5** | Media | **La guarda de E2-07 no cubre el nivel de datos ni el frontend**: vigila decoradores, no `prisma.delete*` | `grep -n "delete" test/vocabulario-sin-delete.spec.ts` = 0 | Extender la guarda con **allowlist explícita** (la tabla de abajo) y, si se puede, una comprobación equivalente sobre el frontend | **[EJECUTADO]** — cerrado el 2026-10-15 en `chore/psd5-guarda-vocabulario`: la guarda cubre ahora rutas, datos (`prisma.*.delete*` y `DELETE FROM`) y frontend, con allowlist documentada y comparada contra el código en los dos sentidos (§4.1) |
 | **P-SD-6** | Baja | Vocabulario del frontend (`eliminarServicio`, `confirmDelete`, `eliminarBloqueo`) | §3.3 | Nombres y textos con el verbo del efecto («desactivar», «liberar»). Ojo: el de `horarios.service.ts` es una **decisión documentada en un comentario**, así que esto es una revisión a propósito, no un bug | **[EJECUTADO]** (quedan los dos alias documentados de §3.3) |
 | **P-SD-7** | Baja | Documentación que aún dice que E2-07 está pendiente | `docs/PLAN_SPRINT_ESTABILIZACION.md:92` | Nota de actualización en esa tabla (la de P3.8 ya dice ejecutado: la contradicción es interna al mismo documento) | **[EJECUTADO]** |
-| **P-SD-8** | Baja | **E2-08** (`docs/MATRIZ_CUMPLIMIENTO.md`) sigue sin existir | el archivo no está | Documento creado; es el siguiente escalón natural de E2-07 | **Pendiente** |
+| **P-SD-8** | Baja | **E2-08** (`docs/MATRIZ_CUMPLIMIENTO.md`) sigue sin existir | el archivo no está | Documento creado; es el siguiente escalón natural de E2-07 | **[EJECUTADO]** — el documento existe con 72 reglas, evidencia `archivo:línea` y test certificante por regla, y sustituye a `COMPARACION_DISENO_VS_REAL.md` (§4.1) |
 
 **Los borrados a nivel de datos que hoy existen, con mi veredicto** (para pasar de excepción invisible a allowlist
 declarada, que es lo que P-SD-5 pide):
@@ -394,7 +394,7 @@ entrada obsoleta, el motivo corto y la petición del frontend; las cinco mutacio
 
 **Checks de este cierre.** `npx vitest run test/vocabulario-sin-delete.spec.ts` → **6/6** (antes 2, y los dos de
 siempre siguen intactos); suite unitaria del backend **547/547** en 48 archivos (543 + los 4 casos nuevos); `npm run
-lint` con **0 errores**. **P-SD-8** sigue en el mismo estado que se describió: `docs/MATRIZ_CUMPLIMIENTO.md` no existe.
+lint` con **0 errores**. **P-SD-8 · cerrado el 2026-10-15** (rama `docs/e2-08-matriz-cumplimiento`), el último punto del plan. `docs/MATRIZ_CUMPLIMIENTO.md` existe y es la fuente de verdad: **72 filas** que unen cada regla con su evidencia `archivo:línea`, el test que la certifica y la tarea que la cierra, con el vocabulario de estados del backlog (`OK-PROBADO` 61, `OK-SIN-TEST` 3, `PARCIAL` 2, `NO-EXISTE` 5, `NO-VERIFICADO` 1). Sustituye a `COMPARACION_DISENO_VS_REAL.md`, que queda como aviso de sustitución con su contenido intacto en `git show 72531e9:COMPARACION_DISENO_VS_REAL.md`. Y deja a la vista lo que ningún informe había puesto junto: **E3-12 nunca se cerró** (la 6.ª vinculación queda `PENDIENTE_APROBACION` sin flujo que la apruebe, y no hay desvinculación ni enlace único), la corrección de pagos de §7.1 no existe, tres reglas se cumplen sin test que las vigile y la sección 6 del PDF 01 no es localizable desde el repositorio. Informe: `reporte-e2-08-matriz-cumplimiento.md`.
 
 **Checks del árbol fusionado (2026-10-15, ya con `origin/main` dentro).** `npm run build` del backend (exit 0) y
 **543/543** unitarios en 48 archivos; `ng build` del frontend (exit 0) y **17/17** en `ng test`. La suite **E2E no se
@@ -440,7 +440,7 @@ git branch -r --contains 432c372                                            # in
 
 **Actualización (2026-10-15):** ese `HEAD` es el del análisis, y todo lo de arriba se midió contra él. El cierre
 está en §4.1 y en los informes `reporte-p-sd-3-p-sd-4.md` (P-SD-3 y P-SD-4), `reporte-final-p-sd-1-p-sd-2.md`
-(P-SD-1, P-SD-2 y P-SD-7) y `reporte-p-sd-5-guarda-vocabulario.md` (P-SD-5).
+(P-SD-1, P-SD-2 y P-SD-7), `reporte-p-sd-5-guarda-vocabulario.md` (P-SD-5) y `reporte-e2-08-matriz-cumplimiento.md` (P-SD-8).
 
 **Nota de contexto (no forma parte de E2-07):** `fix/h64-healthcheck-sondas` está **subida pero no fusionada**
 (`git branch -r --contains 7368710` sólo devuelve su propia rama); el merge de `origin/main` (`60ecd8b`) es el PR #59
