@@ -97,6 +97,18 @@ export const routes: Routes = [
           import('./features/admin/tickets/admin-tickets.component').then((m) => m.AdminTicketsComponent),
       },
       {
+        // E3-12 · bandeja de plataforma de la 6.ª vinculación (D10).
+        // SIN `tenantGuard`: es una pantalla TRANSVERSAL de la plataforma y el
+        // ADMINISTRADOR no necesita sede activa para decidir sobre una sexta
+        // vinculación. El backend la declara `@Roles('ADMINISTRADOR')`.
+        path: 'admin/vinculaciones',
+        canActivate: [authGuard, roleGuard(['ADMINISTRADOR'])],
+        loadComponent: () =>
+          import('./features/admin/vinculaciones/admin-vinculaciones.component').then(
+            (m) => m.AdminVinculacionesComponent,
+          ),
+      },
+      {
         path: 'barbero/horarios',
         canActivate: [tenantGuard, roleGuard(['BARBERO'])],
         loadComponent: () =>

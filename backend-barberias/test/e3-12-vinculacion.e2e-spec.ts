@@ -513,4 +513,87 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
         .expect(403);
     });
   });
+
+  // ── Fase 5 · H71 · el rechazo no condena al cliente ────────────────────────
+
+  describe('H71 · revincular reabre el vínculo cerrado (D21)', () => {
+    it('el cliente rechazado vuelve a introducir el código y su vínculo se reabre', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`${API}/barberias/vincular`)
+        .set('Authorization', `Bearer ${tokenClienteB}`)
+        .send({ codigoAcceso: codigoObjetivoB })
+        .expect(201);
+
+      // La MISMA fila: no se crea otra (el `uk_cliente_barberia` lo impediría).
+      expect(res.body).toMatchObject({
+        id: pendienteB,
+        estadoVinculacion: 'PENDIENTE_APROBACION',
+      });
+
+      const fila = await prisma.clienteBarberia.findUniqueOrThrow({
+        where: { id: pendienteB },
+        select: { estadoVinculacion: true },
+      });
+      expect(fila.estadoVinculacion).toBe('PENDIENTE_APROBACION');
+
+      const evento = await prisma.auditoria.findFirst({
+        where: { accion: 'VINCULACION_REACTIVADA', entidadId: pendienteB },
+      });
+      expect(evento).not.toBeNull();
+      expect(evento?.usuarioId).toBe(clienteBId);
+      expect(evento?.contexto).toMatchObject({
+        anterior: { estadoVinculacion: 'DESVINCULADO' },
+        nuevo: { estadoVinculacion: 'PENDIENTE_APROBACION' },
+      });
+    });
+
+    it('la plataforma recibe el aviso de que hay algo que aprobar otra vez', async () => {
+      // El aviso es best-effort y en segundo plano: se espera sin inventar tiempos.
+      await vi.waitFor(() =>
+        expect(notificaciones.enviarNotificacion).toHaveBeenCalledWith(
+          expect.objectContaining({
+            usuarioId: adminGlobalId,
+            tipo: 'VINCULACION_PENDIENTE_APROBACION',
+          }),
+        ),
+      );
+    });
+
+    it('la vinculación reabierta vuelve a la bandeja: ya no hay callejón sin salida', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`${API}/plataforma/vinculaciones/pendientes`)
+        .set('Authorization', `Bearer ${tokenGlobal}`)
+        .expect(200);
+
+      const reabierta = res.body.data.find(
+        (fila: { vinculacionId: string }) => fila.vinculacionId === pendienteB,
+      );
+
+      expect(reabierta).toMatchObject({
+        vinculacionId: pendienteB,
+        clienteId: clienteBId,
+        estadoVinculacion: 'PENDIENTE_APROBACION',
+        vinculacionesDelCliente: 6,
+      });
+    });
+
+    it('la segunda oportunidad termina bien: se aprueba y el cliente ya opera', async () => {
+      await request(app.getHttpServer())
+        .post(`${API}/plataforma/vinculaciones/${pendienteB}/aprobar`)
+        .set('Authorization', `Bearer ${tokenGlobal}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .patch(`${API}/barberias/${sedeObjetivoB}/seleccionar`)
+        .set('Authorization', `Bearer ${tokenClienteB}`)
+        .expect(200);
+
+      const estado = await request(app.getHttpServer())
+        .get(`${API}/barberias/${sedeObjetivoB}/mi-estado`)
+        .set('Authorization', `Bearer ${tokenClienteB}`)
+        .expect(200);
+
+      expect(estado.body.estadoVinculacion).toBe('ACTIVO');
+    });
+  });
 });

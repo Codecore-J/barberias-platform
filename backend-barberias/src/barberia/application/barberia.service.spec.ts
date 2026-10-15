@@ -4,6 +4,7 @@ import * as bcrypt from 'bcrypt';
 import { BarberiaService } from './barberia.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
+import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
@@ -93,8 +94,11 @@ describe('BarberiaService', () => {
   let service: BarberiaService;
   let prisma: PrismaService;
   let auditoria: AuditoriaService;
+  let notificacion: { enviarNotificacion: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
+    notificacion = { enviarNotificacion: vi.fn().mockResolvedValue({ id: 'uuid-notificacion' }) };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BarberiaService,
@@ -138,6 +142,11 @@ describe('BarberiaService', () => {
           // así que el servicio lo exige en el módulo y aquí se mockea.
           provide: AuditoriaService,
           useValue: { registrarEvento: vi.fn().mockResolvedValue({ id: 'uuid-auditoria' }) },
+        },
+        {
+          // H71: reabrir un vínculo cerrado avisa a la plataforma.
+          provide: NotificacionService,
+          useValue: notificacion,
         },
       ],
     }).compile();
@@ -714,6 +723,127 @@ describe('BarberiaService', () => {
       expect(result.estadoVinculacion).toBe('PENDIENTE_APROBACION');
       expect(result.esBarberiaActiva).toBe(false);
     });
+
+    // ── H71 · D21: el vínculo CERRADO se reabre, no se devuelve muerto ──────
+
+    it('H71 · reabre un vínculo DESVINCULADO y lo devuelve a la bandeja si el cliente sigue por encima del límite', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue({
+        id: 'barberia-1',
+        nombre: 'Barbería Uno',
+        codigoAcceso: 'ABC12345',
+        estado: 'ACTIVO',
+      });
+      (prisma.clienteBarberia.findUnique as any).mockResolvedValue({
+        id: 'vinculo-1',
+        usuarioId: 'user-1',
+        barberiaId: 'barberia-1',
+        estadoVinculacion: 'DESVINCULADO',
+        esBarberiaActiva: false,
+      });
+      // Cinco vínculos MÁS: el que se reabre no se cuenta a sí mismo.
+      (prisma.clienteBarberia.count as any).mockResolvedValue(5);
+      (prisma.clienteBarberia.update as any).mockResolvedValue({
+        id: 'vinculo-1',
+        usuarioId: 'user-1',
+        estadoVinculacion: 'PENDIENTE_APROBACION',
+      });
+      (prisma.usuarioRol.findMany as any).mockResolvedValue([{ usuarioId: 'admin-global' }]);
+
+      const result = await service.vincularCliente('user-1', { codigoAcceso: 'ABC12345' });
+
+      expect(prisma.clienteBarberia.create).not.toHaveBeenCalled();
+      expect(prisma.clienteBarberia.count).toHaveBeenCalledWith({
+        where: { usuarioId: 'user-1', NOT: { id: 'vinculo-1' } },
+      });
+      expect(prisma.clienteBarberia.update).toHaveBeenCalledWith({
+        where: { id: 'vinculo-1' },
+        data: { estadoVinculacion: 'PENDIENTE_APROBACION' },
+      });
+      expect(result.estadoVinculacion).toBe('PENDIENTE_APROBACION');
+
+      const [evento] = (auditoria.registrarEvento as any).mock.calls[0];
+      expect(evento).toMatchObject({
+        usuarioId: 'user-1',
+        accion: 'VINCULACION_REACTIVADA',
+        entidad: 'cliente_barberias',
+        entidadId: 'vinculo-1',
+        contexto: {
+          anterior: { estadoVinculacion: 'DESVINCULADO' },
+          nuevo: { estadoVinculacion: 'PENDIENTE_APROBACION' },
+        },
+      });
+      // El rastro sale con la transacción del cambio, como en el resto del módulo.
+      expect((auditoria.registrarEvento as any).mock.calls[0][1]).toBe(prisma);
+
+      // El aviso a la plataforma es en segundo plano: se le da un turno.
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(notificacion.enviarNotificacion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          usuarioId: 'admin-global',
+          tipo: 'VINCULACION_PENDIENTE_APROBACION',
+        }),
+      );
+    });
+
+    it('H71 · con hueco libre la fila vuelve ACTIVA (D21) y no hay nada que avisar a la plataforma', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue({
+        id: 'barberia-1',
+        nombre: 'Barbería Uno',
+        codigoAcceso: 'ABC12345',
+        estado: 'ACTIVO',
+      });
+      (prisma.clienteBarberia.findUnique as any).mockResolvedValue({
+        id: 'vinculo-1',
+        usuarioId: 'user-1',
+        estadoVinculacion: 'DESVINCULADO',
+      });
+      (prisma.clienteBarberia.count as any).mockResolvedValue(1);
+      (prisma.clienteBarberia.update as any).mockResolvedValue({
+        id: 'vinculo-1',
+        estadoVinculacion: 'ACTIVO',
+      });
+
+      const result = await service.vincularCliente('user-1', { codigoAcceso: 'ABC12345' });
+
+      expect(prisma.clienteBarberia.update).toHaveBeenCalledWith({
+        where: { id: 'vinculo-1' },
+        data: { estadoVinculacion: 'ACTIVO' },
+      });
+      expect(result.estadoVinculacion).toBe('ACTIVO');
+
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(notificacion.enviarNotificacion).not.toHaveBeenCalled();
+      expect(prisma.usuarioRol.findMany).not.toHaveBeenCalled();
+    });
+
+    it.each(['ACTIVO', 'PENDIENTE_APROBACION'])(
+      'un vínculo VIVO (%s) se devuelve tal cual: reintroducir el código no reabre ni reaudita',
+      async (estadoVinculacion) => {
+        (prisma.barberia.findUnique as any).mockResolvedValue({
+          id: 'barberia-1',
+          nombre: 'Barbería Uno',
+          codigoAcceso: 'ABC12345',
+          estado: 'ACTIVO',
+        });
+        const existente = {
+          id: 'vinculo-1',
+          usuarioId: 'user-1',
+          barberiaId: 'barberia-1',
+          estadoVinculacion,
+          esBarberiaActiva: false,
+        };
+        (prisma.clienteBarberia.findUnique as any).mockResolvedValue(existente);
+
+        const result = await service.vincularCliente('user-1', { codigoAcceso: 'ABC12345' });
+
+        // Idempotencia intacta: ni un UPDATE de más ni una segunda aprobación.
+        expect(result).toBe(existente);
+        expect(prisma.clienteBarberia.count).not.toHaveBeenCalled();
+        expect(prisma.clienteBarberia.update).not.toHaveBeenCalled();
+        expect(prisma.clienteBarberia.create).not.toHaveBeenCalled();
+        expect(auditoria.registrarEvento).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('findPersonal (E1-03 · H19)', () => {
