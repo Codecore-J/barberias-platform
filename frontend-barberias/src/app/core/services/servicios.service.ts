@@ -12,6 +12,7 @@ export interface Servicio {
   esCombo: boolean;
   barberiaId: string;
   fechaCreacion: string;
+  estado?: string;
 }
 
 @Injectable({
@@ -91,7 +92,7 @@ export class ServiciosService {
    * hay reservas por confirmar, `SERVICIO_EN_COMBO_ACTIVO` si está en un combo),
    * así que se muestra tal cual en lugar de un texto genérico.
    */
-  eliminarServicio(id: string): Observable<void> {
+  desactivarServicio(id: string): Observable<void> {
     this.isLoading.set(true);
     return this.http.patch<void>(`${this.apiUrl}/${id}/desactivar`, {}).pipe(
       tap(() => {
@@ -105,6 +106,10 @@ export class ServiciosService {
     );
   }
 
+  eliminarServicio(id: string): Observable<void> {
+    return this.desactivarServicio(id);
+  }
+
   /** E2-07: la vuelta atrás que `DELETE` no ofrecía. */
   reactivarServicio(id: string): Observable<Servicio> {
     this.isLoading.set(true);
@@ -115,6 +120,34 @@ export class ServiciosService {
       catchError(err => {
         this.isLoading.set(false);
         this.error.set(err.error?.mensaje || err.error?.message || 'Error al reactivar servicio');
+        throw err;
+      })
+    );
+  }
+
+  desactivarCombo(id: string): Observable<void> {
+    this.isLoading.set(true);
+    return this.http.patch<void>(`${API_URL}/catalogo/combos/${id}/desactivar`, {}).pipe(
+      tap(() => {
+        this.cargarServicios().subscribe();
+      }),
+      catchError(err => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.mensaje || err.error?.message || 'Error al desactivar combo');
+        throw err;
+      })
+    );
+  }
+
+  reactivarCombo(id: string): Observable<Servicio> {
+    this.isLoading.set(true);
+    return this.http.patch<Servicio>(`${API_URL}/catalogo/combos/${id}/reactivar`, {}).pipe(
+      tap(() => {
+        this.cargarServicios().subscribe();
+      }),
+      catchError(err => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.mensaje || err.error?.message || 'Error al reactivar combo');
         throw err;
       })
     );

@@ -107,13 +107,25 @@ import { AuthService } from '../../auth/auth.service';
                 {{ servicio.descripcion || 'Sin descripción detallada.' }}
               </p>
 
-              <!-- Actions -->
+              <!-- Estado y Acciones -->
+              <div class="flex items-center justify-between mb-3 transform translate-z-8">
+                <span class="text-xs px-2 py-0.5 rounded-full border"
+                      [ngClass]="servicio.estado === 'INACTIVO' ? 'bg-zinc-800 border-zinc-600 text-zinc-400' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'">
+                  {{ servicio.estado === 'INACTIVO' ? 'INACTIVO' : 'ACTIVO' }}
+                </span>
+              </div>
+
               <div class="flex gap-2 pt-4 border-t border-zinc-800 transform translate-z-12">
                 <button (click)="openForm(servicio)" class="flex-1 py-2 rounded-lg text-xs font-bold text-zinc-300 bg-zinc-800 hover:text-white hover:bg-zinc-700 transition-colors flex justify-center items-center gap-2">
                   <i class="pi pi-pencil"></i> Editar
                 </button>
-                <button (click)="confirmDelete(servicio.id)" class="px-4 py-2 rounded-lg text-xs font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 hover:text-red-300 transition-colors">
-                  <i class="pi pi-trash"></i>
+                <button (click)="toggleEstado(servicio)"
+                        class="px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5"
+                        [ngClass]="servicio.estado === 'INACTIVO' 
+                          ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300' 
+                          : 'bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300'">
+                  <i [class]="servicio.estado === 'INACTIVO' ? 'pi pi-refresh' : 'pi pi-ban'"></i>
+                  {{ servicio.estado === 'INACTIVO' ? 'Reactivar' : 'Desactivar' }}
                 </button>
               </div>
             </div>
@@ -335,6 +347,26 @@ export class AdminServiciosComponent implements OnInit {
       this.serviciosService.crearServicio(dto).subscribe(() => {
         this.closeForm();
       });
+    }
+  }
+
+  toggleEstado(servicio: Servicio) {
+    if (servicio.estado === 'INACTIVO') {
+      if (confirm(`¿Deseas reactivar ${servicio.esCombo ? 'el combo' : 'el servicio'} "${servicio.nombre}"?`)) {
+        if (servicio.esCombo) {
+          this.serviciosService.reactivarCombo(servicio.id).subscribe();
+        } else {
+          this.serviciosService.reactivarServicio(servicio.id).subscribe();
+        }
+      }
+    } else {
+      if (confirm(`¿Deseas desactivar ${servicio.esCombo ? 'el combo' : 'el servicio'} "${servicio.nombre}"? Esto lo ocultará para clientes.`)) {
+        if (servicio.esCombo) {
+          this.serviciosService.desactivarCombo(servicio.id).subscribe();
+        } else {
+          this.serviciosService.desactivarServicio(servicio.id).subscribe();
+        }
+      }
     }
   }
 
