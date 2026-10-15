@@ -860,7 +860,7 @@ bloqueo liberado) y `docs/MATRIZ_RUTAS.md`.
 
 ### 3.4 · Lo que la Ola 3 deja fuera a propósito
 
-- **E2-08** (`docs/MATRIZ_CUMPLIMIENTO.md`) sigue sin existir.
+- **E2-08** (`docs/MATRIZ_CUMPLIMIENTO.md`): **resuelto el 2026-10-15.** El documento existe y pasa a ser la fuente de verdad —72 reglas con evidencia `archivo:línea`, el test que certifica cada una y su estado—, y sustituye a `COMPARACION_DISENO_VS_REAL.md` (retirado, contenido conservado en `git show 72531e9:COMPARACION_DISENO_VS_REAL.md`). Lo que deja a la vista, por si acaso: E3-12 sin cerrar, la corrección de pagos de §7.1 sin existir y tres reglas cumplidas sin test que las vigile.
 - **H29 / P3.6** (lockfiles por proyecto): sin tocar; el CI usa el de la raíz y borrarlos no es inocuo.
 - **H56 y H60**: abiertos por decisión del dueño, no por deuda técnica.
 - **H48, H44, H43, H41/H42, H32, H55, H51, H53**: siguen como estaban; ninguna es de higiene.
@@ -922,6 +922,8 @@ cierra **H64** (sondas de vida y de preparación separadas) y quedan abiertos **
 indicador de base por el tope de 1 s) y **H66** (`app.close()` no termina con Redis caído). Reporte:
 `reporte-h64-sondas-healthcheck.md`.
 
+**Actualización (4.ª iteración, 2026-10-15):** se cierra **E2-08** (la matriz de cumplimiento existe: `docs/MATRIZ_CUMPLIMIENTO.md`) y su reconciliación abre **H67 a H70**, que quedan **ABIERTOS**. Reporte: `reporte-e2-08-matriz-cumplimiento.md`.
+
 ### F2.1 · Marcador de la fase
 
 | ID | Estado |
@@ -931,6 +933,10 @@ indicador de base por el tope de 1 s) y **H66** (`app.close()` no termina con Re
 | **H64** | ✅ **RESUELTO** (3.ª iteración) — sondas separadas: `/api/v1/health/liveness` (vida, sin dependencias) responde 200 con Redis caído y `render.yaml` ya apunta ahí; `/api/v1/health` sigue siendo la de preparación (BD + Redis) y devuelve 503 |
 | **H65** | ⬜ **ABIERTO** — el `pingCheck` de la base en la sonda de PREPARACIÓN tiene un tope de 1 s: con la base remota se agota a veces y el indicador `database` sale `down`. No afecta a la vida; sí puede hacer parpadear una alerta de preparación |
 | **H66** | ⬜ **ABIERTO** — con Redis caído `app.close()` no termina (el cierre espera a las conexiones de BullMQ y ioredis sigue reintentando). Hoy no afecta a producción porque `main.ts` no llama a `enableShutdownHooks()` y SIGTERM mata el proceso en 22 ms; sería un problema al añadir apagado controlado |
+| **H67** | ⬜ **ABIERTO** (E2-08) — E3-12 sin cerrar: la 6.ª vinculación se asigna `PENDIENTE_APROBACION` y bloquea, pero **nadie puede aprobarla**, y no existen desvinculación ni enlace único/QR |
+| **H68** | ⬜ **ABIERTO** (E2-08) — §7.1: el pago se registra y se audita, pero **no existe la corrección** del pago que el diseño sí permite |
+| **H69** | ⬜ **ABIERTO** (E2-08) — tres reglas se cumplen sin test que las vigile: recuperación de contraseña, `ESTADO_NO_EDITABLE` y la prioridad de las excepciones de horario |
+| **H70** | ⬜ **ABIERTO** (E2-08) — la sección 6 del PDF 01 no es localizable desde el repositorio: su cumplimiento no se puede acreditar |
 
 ### F2.2 · H62 — **RESUELTO**: el alta de reserva ya no devuelve 500 cuando la cola falla
 
@@ -1004,4 +1010,46 @@ indicador de base por el tope de 1 s) y **H66** (`app.close()` no termina con Re
 - **Qué consta:** con Redis caído, el `afterAll` del E2E de H64 agotó el hook con `Error: Hook timed out in 10000ms` al llamar a `app.close()`, y una espera acotada de 5 s tampoco terminó. El cierre espera a las conexiones de BullMQ y ioredis sigue reintentando contra el puerto muerto.
 - **Por qué hoy no es un problema en producción:** `src/main.ts` **no** llama a `enableShutdownHooks()`, así que el proceso no ejecuta un apagado controlado: medido con el artefacto real y SIGTERM, el proceso muere en **22 ms**.
 - **Remedio propuesto:** al añadir apagado controlado, acotar el cierre de las colas (`queue.close()` con tope y `disconnect()` del cliente de ioredis) para que un Redis caído no bloquee el apagado; y en tests, cerrar acotado (lo que ya hace el E2E de H64) o usar opciones de conexión desechables.
+
+### F2.7 · Hallazgos nuevos de E2-08 (H67 a H70) — lo que la matriz de cumplimiento deja a la vista
+
+- **Origen:** `docs/MATRIZ_CUMPLIMIENTO.md` (E2-08) une 72 reglas del diseño con el código que las garantiza y el test
+  que las certifica. Los cuatro hallazgos de abajo son las filas que **no** quedaron `OK-PROBADO` por algo distinto de
+  una decisión de alcance ya registrada (E4-05, por ejemplo, sí es alcance: su fila lo dice).
+- **Estado de los cuatro:** **ABIERTOS** y documentados, no corregidos: E2-08 es una tarea de documentación y corregirlos
+  sería otro encargo.
+
+#### H67 · E3-12 nunca se cerró: la 6.ª vinculación no se puede aprobar, y no hay desvinculación
+
+- **Módulo / Ruta afectada:** `src/barberia/application/barberia.service.ts:521` (asigna `PENDIENTE_APROBACION`). No existen `GET /plataforma/vinculaciones/pendientes`, `POST /plataforma/vinculaciones/:id/aprobar|rechazar`, `POST /barberias/:id/desvincular` ni `GET /barberias/por-enlace/:enlace`.
+- **Tipo:** Tarea del backlog sin ejecutar (E3-12) con un estado ya en circulación
+- **Severidad:** Media — un cliente que llega al límite de 5 queda con una vinculación **pendiente para siempre** y sin salida: el estado se asignó (D10) sin el flujo que lo resuelve
+- **Qué consta:** `grep -ri "plataforma/vinculaciones" backend-barberias/src` = 0 coincidencias; `grep -ri "desvincular" backend-barberias/src` = 0; `grep -ri "por-enlace" backend-barberias/src` = 0. Lo que sí está probado es el límite: `src/barberia/application/barberia.service.spec.ts:705` y `test/barberia.e2e-spec.ts:141`.
+- **Por qué no se cerró entonces:** ni el plan del sprint ni el informe de la Ola 3 lo dieron por hecho, y ninguna lista de pendientes lo tenía abierto: pasó entre las grietas de dos épicas (E3-12 se solapa con E2-03 en el índice único de sede activa).
+- **Remedio propuesto:** ejecutar E3-12 (bandeja de aprobación, desvinculación con bloqueo por reservas futuras y enlace único/QR) o, si se decide no hacerlo, retirar `PENDIENTE_APROBACION` de la circulación para no dejar vínculos sin salida.
+
+#### H68 · §7.1: un pago se puede registrar, no corregir
+
+- **Módulo / Ruta afectada:** `src/pago/infrastructure/pago.controller.ts` (solo `POST /pagos` en persona y `GET /pagos/auditoria`)
+- **Tipo:** Regla del diseño sin implementar
+- **Severidad:** Baja-Media — hoy no rompe nada porque no hay operación; el día que se corrija un pago a mano en la base, quedará sin rastro (que es justo lo que el diseño prohíbe)
+- **Qué consta:** `grep -ri "corregir" backend-barberias/src/pago` = 0 coincidencias. La mitad que sí se cumple —alta auditada dentro de la transacción serializable— está en `src/pago/application/pago.service.ts:214` y probada en `src/pago/application/pago.service.spec.ts`.
+- **Remedio propuesto:** endpoint de corrección/anulación con motivo obligatorio y evento de auditoría, o dejar por escrito que las correcciones son de base de datos y quién las autoriza.
+
+#### H69 · Tres reglas se cumplen sin un test que las vigile
+
+- **Módulos afectados:** `src/iam/infrastructure/auth.controller.ts` (`forgot-password` / `reset-password`), `src/barberia/application/barberia.service.ts:363` (`ESTADO_NO_EDITABLE`) y `src/horario/application/dto/create-excepcion-horario.dto.ts` (`CERRADA` / `HORARIO_ESPECIAL`)
+- **Tipo:** Cobertura ausente sobre reglas ya implementadas (`OK-SIN-TEST` en la matriz)
+- **Severidad:** Baja — funcionalmente están; el riesgo es de regresión silenciosa
+- **Qué consta:** `grep -r "reset-password" backend-barberias/test/*.e2e-spec.ts` = 0 (la recuperación solo tiene el guion manual `test/manual/sec01-recovery.ts`); `grep -r "ESTADO_NO_EDITABLE"` no aparece en ningún test; no hay test de la prioridad de una excepción `CERRADA` sobre la rejilla.
+- **Remitente del patrón:** es el mismo que originó **P-SD-5** — una regla marcada como hecha sin una guarda que la sostenga.
+- **Remedio propuesto:** un E2E de recuperación de contraseña, un caso para `ESTADO_NO_EDITABLE` y un test de prioridad de excepciones. Los tres son pequeños.
+
+#### H70 · La sección 6 del PDF 01 no es localizable
+
+- **Módulo afectado:** documentación (`docs/MATRIZ_CUMPLIMIENTO.md`)
+- **Tipo:** Requisito no verificable por ausencia del documento de origen
+- **Severidad:** Baja (documental) — ninguna sección del repositorio cita `Spec 01 §6`, así que la fila 6.1 queda `NO-VERIFICADO`
+- **Qué consta:** `grep -rn "Spec 01 §6"` = 0 coincidencias; el PDF 01 no está versionado. Hay citas de §1.2, §2, §3.1, §4, §5.2, §5.3, §5.4, §5.5, §5.7, §5.8, §5.9, §7.1, §7.5, §8.3, §9 y §10.
+- **Remedio propuesto:** incorporar el PDF 01 al repositorio (o al menos su índice) y rellenar la fila; mientras tanto, la matriz no puede afirmar cumplimiento de esa sección y lo dice.
 
