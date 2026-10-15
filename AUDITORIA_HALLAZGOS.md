@@ -846,6 +846,13 @@ completo** (no un borrado): el vocabulario del diseño de Spec 01 §9.
 `test/vocabulario-sin-delete.spec.ts`, que además exige que los verbos nuevos sigan declarados) y las tres
 reglas de desactivación tienen pruebas unitarias y E2E (`test/e2-07-vocabulario.e2e-spec.ts`).
 
+**Ampliación (2026-10-15, P-SD-5):** esa guarda vigilaba solo decoradores `@Delete`. Ahora cubre también el nivel de
+datos (llamadas `cliente.modelo.delete()` / `deleteMany()` y `DELETE FROM` crudo, con los cuatro borrados legítimos
+—rejilla de la sede, rejilla del barbero, retención de auditoría y movimiento de rol— en una allowlist que lleva su
+porqué escrito) y el frontend (`frontend-barberias/src/app`: ninguna petición HTTP `DELETE` y el vocabulario de
+`core/services/` limitado a los alias documentados). La allowlist se compara contra el código en los dos sentidos, así
+que ni crece sin control ni deja entradas muertas.
+
 **Consumidores migrados:** el frontend (`core/services/servicios.service.ts` y `core/services/horarios.service.ts`),
 `test/permisos-matriz.spec.ts` (75 rutas × 4 roles = 300), `test/permisos-matriz.e2e-spec.ts`,
 `test/e1-06-cross-tenant-admin.e2e-spec.ts` (que ahora comprueba que el intento cross-tenant **no** deja el
