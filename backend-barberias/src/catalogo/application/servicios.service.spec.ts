@@ -99,6 +99,55 @@ describe('ServiciosService', () => {
       });
     });
 
+    it('para cliente devuelve solo ACTIVOS', async () => {
+      prisma.servicio.findMany.mockResolvedValue([]);
+      const usuario = {
+        id: 'u1',
+        correo: 'c@test.com',
+        roles: ['CLIENTE'],
+        rolesDetallados: [],
+      } as any;
+      await service.findAll(mockBarberiaId, usuario);
+      expect(prisma.servicio.findMany).toHaveBeenCalledWith({
+        where: { estado: 'ACTIVO', barberiaId: mockBarberiaId },
+        orderBy: { nombre: 'asc' },
+      });
+    });
+
+    it('para ADMIN_BARBERIA de la sede devuelve TODOS (incluye INACTIVOS)', async () => {
+      prisma.servicio.findMany.mockResolvedValue([]);
+      const usuario = {
+        id: 'u2',
+        correo: 'a@test.com',
+        roles: ['ADMIN_BARBERIA'],
+        rolesDetallados: [{
+          nombre: 'ADMIN_BARBERIA',
+          barberiaId: mockBarberiaId,
+          ambito: 'BARBERIA',
+        }],
+      } as any;
+      await service.findAll(mockBarberiaId, usuario);
+      expect(prisma.servicio.findMany).toHaveBeenCalledWith({
+        where: { barberiaId: mockBarberiaId },
+        orderBy: { nombre: 'asc' },
+      });
+    });
+
+    it('para ADMINISTRADOR global devuelve TODOS', async () => {
+      prisma.servicio.findMany.mockResolvedValue([]);
+      const usuario = {
+        id: 'u3',
+        correo: 'g@test.com',
+        roles: ['ADMINISTRADOR'],
+        rolesDetallados: [],
+      } as any;
+      await service.findAll(mockBarberiaId, usuario);
+      expect(prisma.servicio.findMany).toHaveBeenCalledWith({
+        where: { barberiaId: mockBarberiaId },
+        orderBy: { nombre: 'asc' },
+      });
+    });
+
     it('NO devuelve el catalogo de todas las barberias si la sede llega vacia', async () => {
       prisma.servicio.findMany.mockResolvedValue([]);
 

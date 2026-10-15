@@ -13,6 +13,8 @@ import {
 import { reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { CreateServicioDto } from './dto/create-servicio.dto.js';
 import { UpdateServicioDto } from './dto/update-servicio.dto.js';
+import { esAdministradorGlobal } from '../../iam/domain/roles.js';
+import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 @Injectable()
 export class ServiciosService {
@@ -55,10 +57,20 @@ export class ServiciosService {
    * desde una ruta con `@Roles`. Ahora la ausencia es un 400 en el servicio y el
    * `where` lleva siempre `barberiaId`.
    */
-  async findAll(barberiaId: string) {
+  async findAll(barberiaId: string, usuario?: UsuarioAutenticado) {
     const sede = ServiciosService.exigirSede(barberiaId);
+    const esAdmin =
+      esAdministradorGlobal(usuario) ||
+      usuario?.rolesDetallados?.some(
+        (rol) =>
+          rol.barberiaId === sede &&
+          (rol.nombre === 'ADMIN_BARBERIA' || rol.nombre === 'ADMINISTRADOR'),
+      );
     return this.prisma.servicio.findMany({
-      where: { estado: 'ACTIVO', barberiaId: sede },
+      where: {
+        barberiaId: sede,
+        ...(esAdmin ? {} : { estado: 'ACTIVO' }),
+      },
       orderBy: { nombre: 'asc' },
     });
   }
