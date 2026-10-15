@@ -27,7 +27,7 @@ $ git diff --cached --stat
  5 files changed, 314 insertions(+), 66 deletions(-)
 ```
 
-El informe que estás leyendo no aparece en ese `--stat` porque se escribió después: `reporte-e2-08-matriz-cumplimiento.md` (133 líneas).
+El informe que estás leyendo no aparece en ese `--stat` porque se escribió después: `reporte-e2-08-matriz-cumplimiento.md` (133 líneas en ese commit; ver la decisión 7 de la sección 7).
 
 ## 3. TEST ROJO
 
@@ -91,6 +91,7 @@ No hay código de producción ni tests tocados: el diff es documentación. La su
 4. **Los informes anteriores no se han reescrito.** `reporte-final-p-sd-1-p-sd-2.md` decía «P-SD-8 no existe» y era verdad cuando se escribió; cambiar ese texto sería falsificar el registro. Se actualizan los documentos **vivos** (backlog, planes, auditoría) y los informes quedan como lo que son: fotos de su momento.
 5. **La numeración de tareas sigue al backlog, no a los informes.** Hay repartos distintos (el informe de E3-06/E3-07 cubre la reprogramación y el de E3-08 la cancelación especial con la propuesta de horario); cada fila cita la tarea del backlog y el test real, y la discrepancia está anotada en el propio documento.
 6. **Hallazgos nuevos con ID `H67` a `H70`.** `H65` y `H66` ya estaban abiertos (sondas de salud), así que la numeración continúa desde ahí.
+7. **Corrección posterior al primer commit de la rama, y por qué se ve.** Al releer el plan para el informe aparecieron dos defectos del propio commit: la cabecera de estado había quedado con **dos afirmaciones seguidas** («Ejecutados: P-SD-1 a P-SD-7» y, a continuación, «Ejecutados: P-SD-1 a P-SD-8») y las dos referencias al informe citaban un nombre que no era el del archivo (`reporte-e2-08.md`). Las tres líneas se corrigieron en un commit de seguimiento, en lugar de reescribir un commit ya subido. El `--stat` de la sección 2 y el estado de la sección 10 son los del primer commit: el segundo solo toca esos textos del plan.
 
 ## 8. HALLAZGOS NUEVOS
 
