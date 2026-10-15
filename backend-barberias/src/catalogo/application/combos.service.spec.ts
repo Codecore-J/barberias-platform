@@ -60,6 +60,58 @@ describe('CombosService · filtro de sede (E1-06)', () => {
     });
   });
 
+  it('findAll para cliente devuelve solo ACTIVOS', async () => {
+    prisma.combo.findMany.mockResolvedValue([]);
+    const usuario = {
+      id: 'u1',
+      correo: 'c@test.com',
+      roles: ['CLIENTE'],
+      rolesDetallados: [],
+    } as any;
+    await service.findAll(SEDE_A, usuario);
+    expect(prisma.combo.findMany).toHaveBeenCalledWith({
+      where: { barberiaId: SEDE_A, estado: 'ACTIVO' },
+      include: { comboItemsAsParent: true },
+      orderBy: { nombre: 'asc' },
+    });
+  });
+
+  it('findAll para ADMIN_BARBERIA de la sede devuelve TODOS', async () => {
+    prisma.combo.findMany.mockResolvedValue([]);
+    const usuario = {
+      id: 'u2',
+      correo: 'a@test.com',
+      roles: ['ADMIN_BARBERIA'],
+      rolesDetallados: [{
+        nombre: 'ADMIN_BARBERIA',
+        barberiaId: SEDE_A,
+        ambito: 'BARBERIA',
+      }],
+    } as any;
+    await service.findAll(SEDE_A, usuario);
+    expect(prisma.combo.findMany).toHaveBeenCalledWith({
+      where: { barberiaId: SEDE_A },
+      include: { comboItemsAsParent: true },
+      orderBy: { nombre: 'asc' },
+    });
+  });
+
+  it('findAll para ADMINISTRADOR global devuelve TODOS', async () => {
+    prisma.combo.findMany.mockResolvedValue([]);
+    const usuario = {
+      id: 'u3',
+      correo: 'g@test.com',
+      roles: ['ADMINISTRADOR'],
+      rolesDetallados: [],
+    } as any;
+    await service.findAll(SEDE_A, usuario);
+    expect(prisma.combo.findMany).toHaveBeenCalledWith({
+      where: { barberiaId: SEDE_A },
+      include: { comboItemsAsParent: true },
+      orderBy: { nombre: 'asc' },
+    });
+  });
+
   it('findAll NO lista los combos de otras sedes cuando la sede no llega', async () => {
     prisma.combo.findMany.mockResolvedValue([]);
 

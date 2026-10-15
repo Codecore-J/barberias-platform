@@ -16,6 +16,8 @@ import { UpdateServicioDto } from '../application/dto/update-servicio.dto.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import { VinculoBarberiaGuard } from '../../iam/infrastructure/vinculo-barberia.guard.js';
+import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
+import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 /**
  * Catálogo de servicios de una barbería (E1-05).
@@ -48,8 +50,11 @@ export class ServiciosController {
   @Get()
   @Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR')
   @UseGuards(VinculoBarberiaGuard)
-  findAll(@CurrentBarberiaId() barberiaId: string) {
-    return this.serviciosService.findAll(barberiaId);
+  findAll(
+    @CurrentBarberiaId() barberiaId: string,
+    @CurrentUser() usuario?: UsuarioAutenticado,
+  ) {
+    return this.serviciosService.findAll(barberiaId, usuario);
   }
 
   @Get(':id')

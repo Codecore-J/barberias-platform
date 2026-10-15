@@ -8,6 +8,8 @@ import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { CreateComboDto } from './dto/create-combo.dto.js';
 import { UpdateComboDto } from './dto/update-combo.dto.js';
 import { ComboCycleDetector } from '../domain/combo-cycle.detector.js';
+import { esAdministradorGlobal } from '../../iam/domain/roles.js';
+import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 @Injectable()
 export class CombosService {
@@ -59,10 +61,20 @@ export class CombosService {
     return combo;
   }
 
-  async findAll(barberiaId: string) {
+  async findAll(barberiaId: string, usuario?: UsuarioAutenticado) {
     const sede = CombosService.exigirSede(barberiaId);
+    const esAdmin =
+      esAdministradorGlobal(usuario) ||
+      usuario?.rolesDetallados?.some(
+        (rol) =>
+          rol.barberiaId === sede &&
+          (rol.nombre === 'ADMIN_BARBERIA' || rol.nombre === 'ADMINISTRADOR'),
+      );
     return this.prisma.combo.findMany({
-      where: { barberiaId: sede, estado: 'ACTIVO' },
+      where: {
+        barberiaId: sede,
+        ...(esAdmin ? {} : { estado: 'ACTIVO' }),
+      },
       include: { comboItemsAsParent: true },
       orderBy: { nombre: 'asc' },
     });
