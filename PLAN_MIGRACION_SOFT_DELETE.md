@@ -2,7 +2,7 @@
 
 **Tarea:** E2-07 · Transición a soft-deletes («Phase-Out» del borrado físico).
 **Fecha:** 2026-10-14 (análisis) · 2026-10-15 (cierre) · **Rama de este documento:** `fix/soft-delete-gaps`, con `origin/main` = `33f2690` ya fusionado.
-**Estado:** **análisis y ejecución.** Las Fases 1-3 y §4-§6 se conservan tal como se aprobaron (el texto largo es el bueno); §4.1 registra qué fue de cada punto. **Ejecutados: P-SD-1, P-SD-2, P-SD-3, P-SD-4, P-SD-6 y P-SD-7.** **Abiertos: P-SD-5** (la guarda de vocabulario sigue sin cubrir el nivel de datos ni el frontend: medido, no heredado) **y P-SD-8.**
+**Estado:** **análisis y ejecución.** Las Fases 1-3 y §4-§6 se conservan tal como se aprobaron (el texto largo es el bueno); §4.1 registra qué fue de cada punto. **Ejecutados: P-SD-1 a P-SD-7** —P-SD-5 se cerró el 2026-10-15 en `chore/psd5-guarda-vocabulario`: la guarda ya cubre decoradores, borrados de datos y frontend, con allowlist documentada y comprobada en los dos sentidos—. **Abierto: P-SD-8** (`docs/MATRIZ_CUMPLIMIENTO.md`).
 
 ---
 
@@ -108,6 +108,12 @@ incompleta: tiene la columna, pero sin la red que el resto sí tiene.
 1. Sólo detectan **decoradores `@Delete`**. No miran `prisma.*.delete()` / `deleteMany()` en los servicios; de hecho
    `grep -n "delete" test/vocabulario-sin-delete.spec.ts` no devuelve nada.
 2. Sólo miran el **backend**. El frontend no está cubierto por ninguna guarda de vocabulario.
+
+> **Actualización (2026-10-15) · P-SD-5.** Los dos límites de arriba son la foto del análisis, y los dos
+> quedaron cerrados: la guarda detecta `cliente.modelo.delete()` / `deleteMany()` (y `DELETE FROM` por SQL crudo) con
+> los cuatro borrados legítimos en una allowlist que lleva su porqué escrito, y vigila también
+> `frontend-barberias/src/app`: cero peticiones HTTP `DELETE` y el vocabulario de `core/services/` reducido a los alias
+> documentados. Detalle y verificación por mutación en §4.1.
 
 ---
 
@@ -225,7 +231,8 @@ vez), pero
    `test/e1-06-cross-tenant-admin.e2e-spec.ts`. Se migraron **antes** de retirar los verbos, y la corrección al
    enunciado quedó escrita en `docs/BACKLOG_BARBERIAS_V1.md` (nota «Corrección al enunciado» de E2-07).
 3. **La ventana dual tiene un coste que no es gratis.** Mantener `DELETE` vivo obliga a una excepción en
-   `vocabulario-sin-delete.spec.ts` (cuyo `BORRADOS_AUTORIZADOS` está vacío *a propósito*) y deja en producción,
+   `vocabulario-sin-delete.spec.ts` (cuyo `BORRADOS_AUTORIZADOS` estaba vacío *a propósito* en el momento del análisis;
+   desde el cierre de P-SD-5 ese array declara los cuatro borrados legítimos, §4.1) y deja en producción,
    durante semanas, la ruta que Spec 01 §9 prohíbe. La guarda que hoy impide la vuelta atrás tendría que aflojarse
    justo en la tarea que la creó.
 
@@ -280,7 +287,7 @@ Ordenado por lo que rompe antes si no se hace. Cada punto nació como **propuest
 | **P-SD-2** | **Alta** | **La acción que desbloquea el 422 `SERVICIO_EN_COMBO_ACTIVO` no tiene llamador en el frontend**: una sede que recibe el error se queda sin salida | `PATCH /catalogo/combos/:id/desactivar` (`combos.controller.ts:77`) sin uso: no hay ninguna llamada a `/combos` en `core/services/*`; el listado declara `esCombo` (`servicios.service.ts:12`) pero `GET /servicios` devuelve filas de `servicios`, sin ese campo | La pantalla puede desactivar un combo (o, como mínimo, el 422 ofrece la ruta de resolución) | **[EJECUTADO]** |
 | **P-SD-3** | Media | **Suspender una sede no se audita ni propaga**: sólo `logger.log`, sin rastro durable, y la sede `INACTIVO` sigue aceptando reservas y calculando disponibilidad | `barberia.service.ts:428-453` (devuelve `void`, sin `Auditoria`; el único rastro es el `logger.log` de `:452`); único chequeo de `barberia.estado` = `barberia.service.ts:468` | (i) `Auditoria` `SEDE_ESTADO_CAMBIADO` con anterior/nuevo; (ii) decisión de dueño sobre reservas abiertas, con prueba en el alta de reserva | **[EJECUTADO]** |
 | **P-SD-4** | Media | **`servicios.estado` y `combos.estado` sin CHECK**: la base admite cualquier cadena para el estado del catálogo | grep de `servicios_estado_check`/`combos_estado_check` = 0; `barberias_estado_check` sí existe (`e203_integridad_base:41-42`) | Migración aditiva con los dos CHECK, `npm run check:integridad` en verde (lo recoge solo: `check-integridad.cjs:57-72`), y el `SELECT DISTINCT` del catálogo inventariado antes | **[EJECUTADO]** |
-| **P-SD-5** | Media | **La guarda de E2-07 no cubre el nivel de datos ni el frontend**: vigila decoradores, no `prisma.delete*` | `grep -n "delete" test/vocabulario-sin-delete.spec.ts` = 0 | Extender la guarda con **allowlist explícita** (la tabla de abajo) y, si se puede, una comprobación equivalente sobre el frontend | **Pendiente** — medido: la guarda no se tocó desde `432c372` y sigue viendo solo decoradores del backend |
+| **P-SD-5** | Media | **La guarda de E2-07 no cubre el nivel de datos ni el frontend**: vigila decoradores, no `prisma.delete*` | `grep -n "delete" test/vocabulario-sin-delete.spec.ts` = 0 | Extender la guarda con **allowlist explícita** (la tabla de abajo) y, si se puede, una comprobación equivalente sobre el frontend | **[EJECUTADO]** — cerrado el 2026-10-15 en `chore/psd5-guarda-vocabulario`: la guarda cubre ahora rutas, datos (`prisma.*.delete*` y `DELETE FROM`) y frontend, con allowlist documentada y comparada contra el código en los dos sentidos (§4.1) |
 | **P-SD-6** | Baja | Vocabulario del frontend (`eliminarServicio`, `confirmDelete`, `eliminarBloqueo`) | §3.3 | Nombres y textos con el verbo del efecto («desactivar», «liberar»). Ojo: el de `horarios.service.ts` es una **decisión documentada en un comentario**, así que esto es una revisión a propósito, no un bug | **[EJECUTADO]** (quedan los dos alias documentados de §3.3) |
 | **P-SD-7** | Baja | Documentación que aún dice que E2-07 está pendiente | `docs/PLAN_SPRINT_ESTABILIZACION.md:92` | Nota de actualización en esa tabla (la de P3.8 ya dice ejecutado: la contradicción es interna al mismo documento) | **[EJECUTADO]** |
 | **P-SD-8** | Baja | **E2-08** (`docs/MATRIZ_CUMPLIMIENTO.md`) sigue sin existir | el archivo no está | Documento creado; es el siguiente escalón natural de E2-07 | **Pendiente** |
@@ -352,14 +359,42 @@ de quedarse en blanco.
 `@Delete`»; con `grep @Delete backend-barberias/src/` = 0 la fila se corrige, y `docs/MATRIZ_RUTAS.md` pasa a declarar
 los llamadores reales del frontend en las rutas 49 y 54.
 
-**P-SD-5 · sigue abierto, y conviene decir por qué no lo marco.** Medido hoy sobre el árbol fusionado:
-`test/vocabulario-sin-delete.spec.ts` **no se ha tocado desde `432c372`** (único commit de su historia), su
-`BORRADOS_AUTORIZADOS` sigue vacío y sigue leyendo **solo** `backend-barberias/src/**` en busca de decoradores
-`@Delete`: no mira `prisma.*.delete*` ni el frontend. La allowlist de la tabla de arriba sigue siendo papel, no
-guardia. El cierre es pequeño —pasar los cuatro veredictos a `BORRADOS_AUTORIZADOS` y añadir una comprobación de
-vocabulario sobre `frontend-barberias/src/app/core/services/`— pero no se hizo en ninguna de las dos ramas, así que
-marcarlo [EJECUTADO] sería un documento que miente. **P-SD-8** sigue en el mismo estado que se describió:
-`docs/MATRIZ_CUMPLIMIENTO.md` no existe.
+**P-SD-5 · cerrado el 2026-10-15** (rama `chore/psd5-guarda-vocabulario`). El diagnóstico de la jornada anterior
+queda como estaba —medido, no heredado— y es justo lo que se ha reparado: `test/vocabulario-sin-delete.spec.ts` no se
+había tocado desde `432c372`, su `BORRADOS_AUTORIZADOS` estaba vacío y leía **solo** `backend-barberias/src/**` en
+busca de decoradores `@Delete`. La misma prueba cubre ahora los tres niveles:
+
+1. **Rutas** · sin cambios: `@Delete` = 0 y los cuatro verbos nuevos siguen declarados.
+2. **Datos** · detecta `cliente.modelo.delete()` / `deleteMany()` exigiendo **dos niveles** a propósito: el único
+   `.delete(` de un solo nivel de `src/` es el de un `Set` en memoria (`combo-cycle.detector.ts · recursionStack.delete`),
+   que no toca ninguna tabla. El detector no depende de que el cliente se llame `prisma` ni de que la transacción use el
+   alias `tx`, así que renombrarlos no lo esquiva; y suma `DELETE FROM` por SQL crudo, que es la otra vía para borrar
+   filas sin pasar por el cliente. Los cuatro veredictos de la tabla de arriba pasan a `BORRADOS_AUTORIZADOS`
+   **con su porqué escrito** (`horario.deleteMany`, `horarioBarbero.deleteMany`, `auditoria.deleteMany` y
+   `usuarioRol.deleteMany`).
+3. **Frontend** · `http.delete` / `DELETE` en todo `src/app` **sin allowlist** (ninguna es legítima: desactivar es
+   `PATCH`, liberar es `POST` y la sede se suspende con `PATCH :id/estado`) y el vocabulario de `core/services/`
+   limitado a tres alias documentados: `eliminarServicio` (delega en `desactivarServicio`), `eliminarBloqueo`
+   (llama a `.../liberar`) y el `localStorage.removeItem` de la sede activa, que no es persistencia de dominio.
+
+**La allowlist es exacta en los dos sentidos, y eso es lo que la separa del papel.** Si el código gana un borrado que
+no está listado → rojo; si una entrada listada ya no corresponde a ningún borrado real → rojo; y si un motivo no llega
+a 40 caracteres → rojo. Con la guarda anterior, retirar una excepción dejaba el test en verde. La assertion
+`expect(Object.keys(BORRADOS_AUTORIZADOS)).toHaveLength(0)` se retiró —su premisa, «la allowlist está vacía», dejó de
+ser cierta al darle contenido— y su función la cumple ahora la comparación bidireccional, que es más estricta. La
+comprobación del frontend falla en duro si no encuentra el árbol: un monorepo sin `frontend-barberias/` al lado haría
+que esa guarda pasara en falso, que es exactamente el defecto que P-SD-5 vino a corregir.
+
+**Verificación por mutación** (una guarda que nunca falla no es una guarda, y ese era el problema de fondo): se añadió
+a mano `this.prisma.servicio.delete(...)` en `src/catalogo/application/servicios.service.ts`, un `eliminarDeMentira()`
+con `this.http.delete(...)` en `frontend-barberias/src/app/core/services/clientes.service.ts`, se renombró una clave
+de la allowlist a `horarioBarberosBogus` y se acortó el motivo de `removeItem` a 39 caracteres. La guarda falló en los
+cinco casos, diciendo el archivo y la línea (`catalogo/application/servicios.service.ts:229 · servicio.delete`), la
+entrada obsoleta, el motivo corto y la petición del frontend; las cinco mutaciones se retiraron y el árbol quedó limpio.
+
+**Checks de este cierre.** `npx vitest run test/vocabulario-sin-delete.spec.ts` → **6/6** (antes 2, y los dos de
+siempre siguen intactos); suite unitaria del backend **547/547** en 48 archivos (543 + los 4 casos nuevos); `npm run
+lint` con **0 errores**. **P-SD-8** sigue en el mismo estado que se describió: `docs/MATRIZ_CUMPLIMIENTO.md` no existe.
 
 **Checks del árbol fusionado (2026-10-15, ya con `origin/main` dentro).** `npm run build` del backend (exit 0) y
 **543/543** unitarios en 48 archivos; `ng build` del frontend (exit 0) y **17/17** en `ng test`. La suite **E2E no se
@@ -394,7 +429,8 @@ grep -rn "liberadoAt" backend-barberias/src/ | grep -v .spec.ts             # di
 grep -rn "servicios_estado_check\|combos_estado_check" backend-barberias/prisma/ scripts/   # 0
 grep -rn "barberia.estado\|estado !== 'ACTIVO'" backend-barberias/src/reserva backend-barberias/src/agenda backend-barberias/src/barberia
 grep -rn "\.delete(\|\.deleteMany(" backend-barberias/src/ | grep -v "\.spec\.ts"
-grep -n "delete" backend-barberias/test/vocabulario-sin-delete.spec.ts      # 0
+grep -n "delete" backend-barberias/test/vocabulario-sin-delete.spec.ts      # 0 (foto del análisis:
+grep -rn "\.delete(\|\.deleteMany(" backend-barberias/src/                 # así estaba la guarda antes de P-SD-5)
 grep -rn "reactivarServicio\|eliminarServicio\|liberarBloqueo" frontend-barberias/src/
 git branch -r --contains 432c372                                            # incluye origin/main → E2-07 fusionado
 ```
@@ -403,8 +439,8 @@ git branch -r --contains 432c372                                            # in
 `60ecd8b` y conteniendo `432c372` (E2-07). Este documento es el único archivo que añade.
 
 **Actualización (2026-10-15):** ese `HEAD` es el del análisis, y todo lo de arriba se midió contra él. El cierre
-está en §4.1 y en los informes `reporte-p-sd-3-p-sd-4.md` (P-SD-3 y P-SD-4) y `reporte-final-p-sd-1-p-sd-2.md`
-(P-SD-1, P-SD-2 y P-SD-7).
+está en §4.1 y en los informes `reporte-p-sd-3-p-sd-4.md` (P-SD-3 y P-SD-4), `reporte-final-p-sd-1-p-sd-2.md`
+(P-SD-1, P-SD-2 y P-SD-7) y `reporte-p-sd-5-guarda-vocabulario.md` (P-SD-5).
 
 **Nota de contexto (no forma parte de E2-07):** `fix/h64-healthcheck-sondas` está **subida pero no fusionada**
 (`git branch -r --contains 7368710` sólo devuelve su propia rama); el merge de `origin/main` (`60ecd8b`) es el PR #59
