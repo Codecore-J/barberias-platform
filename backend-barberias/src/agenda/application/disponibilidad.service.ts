@@ -3,6 +3,7 @@ import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { TipoExcepcionHorario } from '../../horario/application/dto/create-excepcion-horario.dto.js';
 import { esAdministradorGlobalPorId, perteneceABarberia } from '../../iam/domain/roles.js';
 import { ESTADOS } from '../../shared/domain/estados.js';
+import { exigirSedeActiva } from '../../shared/domain/sede.js';
 import {
   TiempoService,
   ZONA_POR_DEFECTO,
@@ -107,6 +108,10 @@ export class DisponibilidadService {
     const db = txClient ?? this.prisma;
 
     await this.exigirPertenencia(db, solicitud.barberiaId, solicitanteId);
+    // P-SD-4: la sede suspendida no expone agenda. La comprobación va DESPUÉS
+    // de la pertenencia a propósito: un cliente de otra sede sigue recibiendo
+    // 403 y no puede usar el 422 para sondear el estado de una sede ajena.
+    await exigirSedeActiva(db, solicitud.barberiaId);
 
     return this.calcularDisponibilidad(solicitud, txClient);
   }
@@ -117,6 +122,7 @@ export class DisponibilidadService {
     solicitanteId: string,
   ): Promise<AlternativaEtiquetada[]> {
     await this.exigirPertenencia(this.prisma, solicitud.barberiaId, solicitanteId);
+    await exigirSedeActiva(this.prisma, solicitud.barberiaId);
     return this.buscarAlternativas(solicitud);
   }
 
@@ -281,6 +287,8 @@ export class DisponibilidadService {
     consulta: { fecha?: string; duracionTotal: number; participantes: number },
   ): Promise<AlternativaEtiquetada[]> {
     await this.exigirPertenencia(this.prisma, barberiaId, solicitanteId);
+    // P-SD-4: una sede suspendida no vende huecos, tampoco por este carril.
+    await exigirSedeActiva(this.prisma, barberiaId);
 
     const config = await this.prisma.configuracionBarberia.findUnique({
       where: { barberiaId },

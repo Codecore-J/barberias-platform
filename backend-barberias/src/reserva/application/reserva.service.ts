@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, ConflictException, ForbiddenException, HttpException, Logger, NotFoundException, Optional, UnprocessableEntityException } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { exigirSedeActiva } from '../../shared/domain/sede.js';
 import { errorDeConflicto, errorDePermiso, errorDeSolicitud, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import {
   ACTORES,
@@ -502,14 +503,23 @@ export class ReservaService {
     const duracionSolicitada = (fin.getTime() - inicio.getTime()) / 60000;
 
     return withSerializableTransaction(this.prisma, async (tx) => {
-      // 0. Orden de validaciones (principio 9): sesión → rol → DTO → vinculación
-      //    ACTIVO con esa barbería → no restringido → configuración (pausa, tipo
-      //    aceptado, horizonte, max_pendientes) → bloque → servicios y combos
-      //    activos de ESA barbería → disponibilidad bajo SERIALIZABLE y FOR UPDATE
-      //    → persistir con snapshots y modo_confirmacion.
+      // 0. Orden de validaciones (principio 9): sesión → rol → DTO → sede
+      //    ACTIVA (P-SD-4) → vinculación ACTIVO con esa barbería → no restringido
+      //    → configuración (pausa, tipo aceptado, horizonte, max_pendientes) →
+      //    bloque → servicios y combos activos de ESA barbería → disponibilidad
+      //    bajo SERIALIZABLE y FOR UPDATE → persistir con snapshots y
+      //    modo_confirmacion.
       //
       //    Las reglas de negocio se resuelven ANTES del lock FOR UPDATE: un
       //    rechazo por D40 (403/422) no necesita serializar la barbería entera.
+
+      // P-SD-4: una sede suspendida no admite NUEVA demanda de nadie, así que
+      // esta regla va ANTES que la del vínculo —es una decisión de la
+      // plataforma, no una relación entre el cliente y la sede— y responde 422
+      // `SEDE_INACTIVA` (misma familia que `RESERVAS_PAUSADAS`). Las reservas
+      // abiertas de la sede siguen siendo operables por su staff.
+      await exigirSedeActiva(tx, barberiaId);
+
       const vinculo = await tx.clienteBarberia.findUnique({
         where: {
           uk_cliente_barberia: {

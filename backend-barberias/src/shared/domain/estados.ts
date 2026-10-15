@@ -28,6 +28,25 @@ export const ESTADOS = {
 
 export type EstadoReserva = (typeof ESTADOS)[keyof typeof ESTADOS];
 
+/**
+ * E2-07 · P-SD-4 · catálogo del ESTADO DEL CATÁLOGO (servicios y combos).
+ *
+ * Mismos dos valores que `barberias.estado`, y ahora igual de duros: la
+ * migración `20261014000000_e207_catalogo_estado_check` añadió los CHECK
+ * `servicios_estado_check` y `combos_estado_check` a la base. Estas constantes
+ * son la barrera en la capa de API —el DTO valida con `@IsIn`—, para que un
+ * valor fuera de catálogo responda 400 y no un 500 de violación de CHECK.
+ */
+export const ESTADOS_CATALOGO = {
+  ACTIVO: 'ACTIVO',
+  INACTIVO: 'INACTIVO',
+} as const;
+
+export type EstadoCatalogo = (typeof ESTADOS_CATALOGO)[keyof typeof ESTADOS_CATALOGO];
+
+/** Los dos valores en el orden del catálogo, para validar y recorrer. */
+export const ESTADOS_CATALOGO_VALORES: readonly EstadoCatalogo[] = Object.values(ESTADOS_CATALOGO);
+
 /** Los 8 estados en el orden de §5.1, para recorrerlos (tests, validaciones). */
 export const ESTADOS_RESERVA: readonly EstadoReserva[] = Object.values(ESTADOS);
 

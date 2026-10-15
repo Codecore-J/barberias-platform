@@ -16,6 +16,7 @@ import { reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { BarberiaResponseDto as BarberiaResponse } from './dto/barberia-response.dto.js';
 import type { BarberiaLecturaDto } from './dto/barberia-lectura.dto.js';
 import { BarberiaLecturaDto as BarberiaLectura } from './dto/barberia-lectura.dto.js';
+import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import {
   alcanceCumple,
@@ -50,7 +51,14 @@ function generateCodigoAcceso(): string {
 export class BarberiaService {
   private readonly logger = new Logger(BarberiaService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // P-SD-4: suspender o reactivar una sede deja rastro DURABLE en la tabla
+    // de auditoría, no solo un `logger.log`. Dependencia requerida (no
+    // `@Optional`): el módulo ya importa `AuditoriaModule` y un cambio de estado
+    // sin rastro no puede degradarse en silencio.
+    private readonly auditoria: AuditoriaService,
+  ) {}
 
   // ── Helpers de mapeo ───────────────────────────────────────────────────────
 
@@ -444,9 +452,29 @@ export class BarberiaService {
       return;
     }
 
-    await this.prisma.barberia.update({
-      where: { id },
-      data: { estado },
+    // P-SD-4: el cambio y su rastro salen juntos (misma transacción): no puede
+    // quedar la sede suspendida sin el evento ni el evento sin la suspensión.
+    // El contexto guarda anterior/nuevo, que es lo que la auditoría de una
+    // suspensión tiene que poder responder un mes después.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.barberia.update({
+        where: { id },
+        data: { estado },
+      });
+
+      await this.auditoria.registrarEvento(
+        {
+          usuarioId: authUserId,
+          accion: estado === 'INACTIVO' ? 'BARBERIA_SUSPENDIDA' : 'BARBERIA_REACTIVADA',
+          entidad: 'barberias',
+          entidadId: id,
+          contexto: {
+            anterior: { estado: barberia.estado },
+            nuevo: { estado },
+          },
+        },
+        tx,
+      );
     });
 
     this.logger.log(`Barbería ${id} pasó a ${estado} por usuario ${authUserId}`);
