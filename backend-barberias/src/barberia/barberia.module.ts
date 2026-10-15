@@ -9,11 +9,16 @@ import { ClientesRestringidosService } from './application/clientes-restringidos
 import { MiEstadoController } from './infrastructure/mi-estado.controller.js';
 import { MiEstadoService } from './application/mi-estado.service.js';
 import { PlataformaSolicitudesCambioController } from './infrastructure/plataforma-solicitudes-cambio.controller.js';
+import { PlataformaVinculacionesController } from './infrastructure/plataforma-vinculaciones.controller.js';
+import { VinculacionService } from './application/vinculacion.service.js';
 import { AuditoriaModule } from '../auditoria/infrastructure/auditoria.module.js';
+// E3-12: aprobar o rechazar la 6.ª vinculación avisa al cliente. La cola es
+// best-effort (`@Optional` en el servicio), pero el módulo tiene que exponerla.
+import { NotificacionModule } from '../notificacion/infrastructure/notificacion.module.js';
 import { SharedModule } from '../shared/shared.module.js';
 
 @Module({
-  imports: [SharedModule, AuditoriaModule],
+  imports: [SharedModule, AuditoriaModule, NotificacionModule],
   controllers: [
     BarberiaController,
     ConfiguracionBarberiaController,
@@ -23,6 +28,8 @@ import { SharedModule } from '../shared/shared.module.js';
     // restricción sin depender del staff.
     MiEstadoController,
     PlataformaSolicitudesCambioController,
+    // E3-12: bandeja de plataforma de la 6.ª vinculación (D10).
+    PlataformaVinculacionesController,
   ],
   providers: [
     BarberiaService,
@@ -30,6 +37,7 @@ import { SharedModule } from '../shared/shared.module.js';
     SolicitudCambioService,
     ClientesRestringidosService,
     MiEstadoService,
+    VinculacionService,
   ],
   exports: [
     BarberiaService,
@@ -37,6 +45,7 @@ import { SharedModule } from '../shared/shared.module.js';
     SolicitudCambioService,
     ClientesRestringidosService,
     MiEstadoService,
+    VinculacionService,
   ],
 })
 export class BarberiaModule {}

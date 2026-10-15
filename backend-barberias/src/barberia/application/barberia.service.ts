@@ -24,6 +24,9 @@ import {
   esAdministradorGlobalPorId,
   validarAsignacionRol,
 } from '../../iam/domain/roles.js';
+// E3-12: el estado de la 6.ª vinculación y su límite viven en el dominio de la
+// vinculación, compartidos con el flujo que las resuelve (VinculacionService).
+import { ESTADOS_VINCULACION, LIMITE_VINCULACIONES } from '../domain/vinculacion.js';
 
 /** Genera un slug URL-safe de hasta `maxLen` caracteres */
 function generateSlug(text: string, maxLen = 40): string {
@@ -517,8 +520,14 @@ export class BarberiaService {
         where: { usuarioId },
       });
 
-      // D10 · la 6.ª vinculación queda PENDIENTE_APROBACION hasta que el ADMINISTRADOR la apruebe.
-      const estadoVinculacion = count >= 5 ? 'PENDIENTE_APROBACION' : 'ACTIVO';
+      // D10 · la 6.ª vinculación queda PENDIENTE_APROBACION hasta que el
+      // ADMINISTRADOR la apruebe. El estado y el límite NO son literales de
+      // aquí: los comparte con el flujo que la resuelve (E3-12), que es el
+      // único que puede sacar a un cliente de esta espera.
+      const estadoVinculacion =
+        count >= LIMITE_VINCULACIONES
+          ? ESTADOS_VINCULACION.PENDIENTE_APROBACION
+          : ESTADOS_VINCULACION.ACTIVO;
       const esBarberiaActiva = count === 0; // Si es la primera, la marcamos como activa por defecto
 
       const nuevaVinculacion = await tx.clienteBarberia.create({

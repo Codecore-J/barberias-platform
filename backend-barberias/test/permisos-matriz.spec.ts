@@ -115,6 +115,14 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   ],
   'GET /plataforma/solicitudes-cambio/': [ROL_ADMINISTRADOR],
   'POST /plataforma/solicitudes-cambio/:id/resolver': [ROL_ADMINISTRADOR],
+  // E3-12 (2026-10-15): la 6.ª vinculación (D10) la resuelve la PLATAFORMA.
+  // El límite se cuenta por USUARIO, no por sede, así que la sede es parte
+  // interesada y no puede decidir: `@Roles(ADMINISTRADOR)` en las tres rutas,
+  // como las otras dos bandejas globales. `test/e3-12-vinculacion.e2e-spec.ts`
+  // comprueba además que el ADMIN_BARBERIA de la sede recibe 403.
+  'GET /plataforma/vinculaciones/pendientes': [ROL_ADMINISTRADOR],
+  'POST /plataforma/vinculaciones/:id/aprobar': [ROL_ADMINISTRADOR],
+  'POST /plataforma/vinculaciones/:id/rechazar': [ROL_ADMINISTRADOR],
   // H54 (E4-03/2, 2026-10-12): el cliente consulta su PROPIO estado en esa sede.
   // La ruta usa `:barberiaId`, así que el guard SÍ acota por el parámetro; el
   // servicio vuelve a acotar por el usuario del token (nunca datos de otro).
@@ -375,9 +383,11 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // diseño: `PATCH /barberias/:id/estado`, `POST .../bloqueos/:id/liberar` y los
   // cuatro `desactivar`/`reactivar` del catálogo → 73 − 4 + 6 = 75. La Fase 2
   // (H63, 2026-10-14) no añadió rutas. H64 suma la sonda de vida separada: 76.
-  it('descubrir las 76 rutas del servidor y todas tienen decision', () => {
+  // E3-12 (2026-10-15) suma la bandeja de plataforma de la 6.ª vinculación y sus
+  // dos resoluciones (aprobar y rechazar): 79.
+  it('descubrir las 79 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(76);
+    expect(claves.length).toBe(79);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -473,8 +483,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     // restringidos: 71. La Ola 2 del sprint sumó `mi-estado` (H54) y
     // `PATCH /plataforma/usuarios/:id/estado` (E4-03/5): 73. La Ola 3 sumó los
     // seis verbos de E2-07 y retiró cuatro `@Delete`: 75 × 4 = 300. H64 sumó la
-    // sonda de vida separada (76 rutas) y con ella la decisión de sus 4 roles: 304.
-    expect(evaluaciones).toBe(304);
+    // sonda de vida separada (76 rutas) y con ella la decisión de sus 4 roles:
+    // 304. E3-12 sumó las tres rutas de la 6.ª vinculación: 79 × 4 = 316.
+    expect(evaluaciones).toBe(316);
     expect(
       desviaciones.length === 0
         ? ''

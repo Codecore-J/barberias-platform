@@ -130,6 +130,18 @@
 | 63 | PATCH | `/plataforma/usuarios/:id/estado` | PlataformaUsuariosController | — no existía | `@Roles(ADMINISTRADOR)` | **E4-03/5** (D09/D24) | no (el guard ya acota: es una ruta de plataforma) | **sí** — 422 `MOTIVO_REQUERIDO`, 409 `ESTADO_INVALIDO`, 404 si la cuenta no existe; al suspender sube `token_version` (cierra TODAS las sesiones) y audita `CUENTA_SUSPENDIDA`/`CUENTA_REACTIVADA` con anterior y nuevo (D28) | no — pendiente del panel de plataforma | `test/e4-03-suspension-cuenta.e2e-spec.ts`; `src/iam/application/usuarios-plataforma.service.spec.ts`; `test/estado-cuenta-guard.spec.ts` |
 | 64 | GET | `/health/liveness` · `api/v1/health/liveness` | HealthController | — no existía | `@Public` | **H64** | — | — | no | `test/h64-sondas-liveness.e2e-spec.ts`; `test/permisos-matriz.spec.ts` |
 
+| 65 | GET | `/plataforma/vinculaciones/pendientes` | PlataformaVinculacionesController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-12** (D10 · H67) | no (el guard ya acota: es una ruta de plataforma) | no | no — pendiente del panel de plataforma | `test/e3-12-vinculacion.e2e-spec.ts`; `src/barberia/application/vinculacion.service.spec.ts` |
+| 66 | POST | `/plataforma/vinculaciones/:id/aprobar` | PlataformaVinculacionesController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-12** (D10 · H67) | no | **sí** — 404 si la vinculación no existe y 409 `ESTADO_INVALIDO` si ya se resolvió; deja el vínculo `ACTIVO` y audita `VINCULACION_APROBADA` con el valor anterior y el nuevo (D28) en UNA transacción | no — pendiente del panel de plataforma | `test/e3-12-vinculacion.e2e-spec.ts`; `src/barberia/application/vinculacion.service.spec.ts` |
+| 67 | POST | `/plataforma/vinculaciones/:id/rechazar` | PlataformaVinculacionesController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-12** (D10 · H67) | no | **sí** — 422 `MOTIVO_REQUERIDO` sin motivo (o con una palabra suelta), 409 `ESTADO_INVALIDO`; deja `DESVINCULADO` con `es_barberia_activa = false` y audita `VINCULACION_RECHAZADA` con el motivo | no — pendiente del panel de plataforma | `test/e3-12-vinculacion.e2e-spec.ts`; `src/barberia/application/vinculacion.service.spec.ts` |
+
+> **Filas 65 a 67 (E3-12, 2026-10-15).** La 6.ª vinculación (D10) la resuelve la PLATAFORMA y no la
+> sede, y el motivo es el conteo: `vincularCliente` cuenta las vinculaciones del USUARIO
+> (`cliente_barberias` de esa persona), no las de una sede. La sede interesada en captar al cliente
+> aprobaría siempre, así que el límite dejaría de existir; por eso las tres rutas son
+> `@Roles(ADMINISTRADOR)` y el E2E comprueba que el `ADMIN_BARBERIA` de la sede recibe 403. Las filas se
+> numeran al final (65 a 67) para no renumerar las anteriores ni romper las referencias del texto a
+> «fila 57», «fila 62», etc.
+
 > **Fila 64 (H64, 2026-10-14).** Sonda de VIDA separada de la de preparación: `check()` sigue en
 > `/health` · `/api/v1/health` mirando base de datos, Redis y memoria, y la vida responde sin tocar nada
 > externo. `render.yaml` apunta `healthCheckPath` a esta ruta. La fila se numera al final y no junto a la 7
@@ -223,6 +235,16 @@ y `test/estado-cuenta-guard.spec.ts` (D48 sobre el código fuente: los únicos e
 quedó en 73: retiró cuatro `@Delete` y añadió los seis verbos del vocabulario del diseño) y H64 sumó `+1`
 con la sonda de vida (fila 64), que es la única ruta nueva de las tres iteraciones de la Fase 2. Evidencia:
 la tabla que imprime `test/route-security.spec.ts` y la matriz rol × ruta de `test/permisos-matriz.spec.ts`.
+
+**Estado real tras E3-12 (2026-10-15):** `test/route-security.spec.ts` cuenta **79 rutas**
+(`@Public` 7 · `@Autenticado` 5 · `@Roles` 67 · ninguna 0) y `test/permisos-matriz.spec.ts` comprueba
+**79 rutas × 4 roles = 316** decisiones. Sobre las 76 de H64, `+3` por la bandeja de aprobación de la 6.ª
+vinculación (filas 65 a 67): las tres declaran `@Roles(ADMINISTRADOR)` porque el límite de D10 se cuenta
+por USUARIO y no por sede, así que la sede es parte interesada y no puede decidir. Cierra H67: el estado
+`PENDIENTE_APROBACION` ya tiene flujo que lo resuelve. Evidencia: `test/e3-12-vinculacion.e2e-spec.ts`
+(19 casos, con el ciclo pendiente → aprobado → el cliente ya opera, y el rechazo con motivo) y
+`src/barberia/application/vinculacion.service.spec.ts` (11 casos) más
+`src/barberia/domain/vinculacion.spec.ts` (5 casos).
 
 ## Decisiones tomadas
 

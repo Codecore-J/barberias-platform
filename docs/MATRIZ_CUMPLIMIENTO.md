@@ -2,7 +2,7 @@
 
 **Tarea:** E2-08 · Matriz de cumplimiento reconciliada (`docs/BACKLOG_BARBERIAS_V1.md`).
 **Sustituye a:** [`COMPARACION_DISENO_VS_REAL.md`](../COMPARACION_DISENO_VS_REAL.md), que comparaba el diseño con el sistema de septiembre de 2026 y quedó desactualizado (daba por no global el `RolesGuard`, entre otros puntos).
-**Fecha:** 2026-10-15. **Filas:** 72.
+**Fecha:** 2026-10-15 (**1.8** pasó a `OK-PROBADO` el mismo día al cerrarse E3-12). **Filas:** 72.
 
 > **Qué es este documento.** La fuente de verdad técnica que une cada regla del diseño con el código que la garantiza y con el test que la certifica. No es un resumen de intenciones: cada `archivo:línea` de la columna *Evidencia* se resolvió **leyendo el fichero en el momento de escribir esto**, y cada test citado existe y menciona la regla. Si alguno no cuadraba, la matriz no se generaba.
 >
@@ -33,19 +33,19 @@
 | 1.4 | Una cuenta `SUSPENDIDO` no entra ni se registra (D09) | OK-PROBADO | `backend-barberias/src/iam/application/auth.service.ts:138` | `backend-barberias/test/e4-03-suspension-cuenta.e2e-spec.ts:165`<br>`backend-barberias/test/estado-cuenta-guard.spec.ts:63` | E4-03 |
 | 1.5 | El secreto de firma del JWT está validado (CONF-01) | OK-PROBADO | `backend-barberias/src/iam/iam.config.ts:16` | `backend-barberias/test/conf01-security.spec.ts:2` | E0-01 |
 | 1.6 | Recuperación de contraseña: olvido y restablecimiento por correo | OK-SIN-TEST | `backend-barberias/src/iam/infrastructure/auth.controller.ts:75` | — | E1-10 |
-| 1.7 | Límite de 5 vinculaciones: la 6.ª queda `PENDIENTE_APROBACION` (D10) | PARCIAL | `backend-barberias/src/barberia/application/barberia.service.ts:521` | `backend-barberias/src/barberia/application/barberia.service.spec.ts:705`<br>`backend-barberias/test/barberia.e2e-spec.ts:141` | E3-12 |
-| 1.8 | Bandeja de aprobación de la 6.ª vinculación (ADMINISTRADOR) | NO-EXISTE | `grep -ri "plataforma/vinculaciones" backend-barberias/src` → 0 coincidencias | — | E3-12 |
+| 1.7 | Límite de 5 vinculaciones: la 6.ª queda `PENDIENTE_APROBACION` (D10) | OK-PROBADO | `backend-barberias/src/barberia/application/barberia.service.ts:528` | `backend-barberias/src/barberia/application/barberia.service.spec.ts:705`<br>`backend-barberias/test/barberia.e2e-spec.ts:141`<br>`backend-barberias/test/e3-12-vinculacion.e2e-spec.ts:239` | E3-12 |
+| 1.8 | Bandeja de aprobación de la 6.ª vinculación (ADMINISTRADOR) | OK-PROBADO | `backend-barberias/src/barberia/infrastructure/plataforma-vinculaciones.controller.ts:37` | `backend-barberias/test/e3-12-vinculacion.e2e-spec.ts:374`<br>`backend-barberias/src/barberia/application/vinculacion.service.spec.ts:161` | E3-12 |
 | 1.9 | Desvinculación por el cliente con el historial intacto (D20/D21) | NO-EXISTE | `grep -ri "desvincular" backend-barberias/src` → 0 coincidencias | — | E3-12 |
 | 1.10 | Vinculación por enlace único y QR | NO-EXISTE | `grep -ri "por-enlace" backend-barberias/src` → 0 coincidencias | — | E3-12 |
 | 1.11 | Cambiar de sede activa: una sola `es_barberia_activa` por usuario | OK-PROBADO | `backend-barberias/src/barberia/infrastructure/barberia.controller.ts:149` | `backend-barberias/src/barberia/application/barberia.service.spec.ts:122`<br>`backend-barberias/test/barberia.e2e-spec.ts:208` | E2-03 |
 
 **1.6 · OK-SIN-TEST** — Los dos endpoints existen, pero ningún test los ejecuta: la única comprobación es el guion manual `backend-barberias/test/manual/sec01-recovery.ts`. `test/auth.e2e-spec.ts` cubre registro, login y `/me`.
 
-**1.7 · PARCIAL** — El estado se asigna y bloquea el acceso (el vínculo pendiente no autoriza la sede), pero no existe el flujo que lo aprueba (1.8).
+**1.7 · OK-PROBADO** — El límite y el estado se asignan en `vincularCliente` con las constantes del dominio de la vinculación (`LIMITE_VINCULACIONES` = 5, `ESTADOS_VINCULACION`), el vínculo pendiente NO autoriza la sede y, desde el 2026-10-15, existe el flujo que lo resuelve (1.8).
 
-**1.8 · NO-EXISTE** — E3-12 punto 1: sin `GET /plataforma/vinculaciones/pendientes` ni `POST .../aprobar|rechazar`, la vinculación queda pendiente para siempre.
+**1.8 · OK-PROBADO** (cerrado por E3-12 el 2026-10-15) — `GET /plataforma/vinculaciones/pendientes` y `POST /plataforma/vinculaciones/:id/aprobar|rechazar { motivo }`, los tres solo para el `ADMINISTRADOR` global: el límite de D10 se cuenta por USUARIO, no por sede, así que la sede es parte interesada y no decide. El E2E cubre el ciclo completo (pendiente → aprobado → el cliente ya opera) y el rechazo con motivo.
 
-**1.9 · NO-EXISTE** — E3-12 punto 3: no hay ruta de desvinculación; el estado `DESVINCULADO` solo aparece descrito en un comentario de `mi-estado.service.ts`.
+**1.9 · NO-EXISTE** — E3-12 punto 3: no hay ruta de desvinculación, así que el cliente no puede salir de una sede por su cuenta. El estado `DESVINCULADO` ya se ESCRIBE (es el desenlace del rechazo de la 6.ª vinculación, 1.8), pero no a petición suya.
 
 **1.10 · NO-EXISTE** — E3-12 punto 2: hoy solo se vincula por código en `POST /barberias/vincular`; no hay enlace único ni QR que codificar.
 
@@ -198,10 +198,10 @@
 
 | Estado | Filas |
 | :--- | :--- |
-| OK-PROBADO | 61 |
+| OK-PROBADO | 63 |
 | OK-SIN-TEST | 3 |
-| PARCIAL | 2 |
-| NO-EXISTE | 5 |
+| PARCIAL | 1 |
+| NO-EXISTE | 4 |
 | NO-VERIFICADO | 1 |
 | **Total** | **72** |
 
@@ -210,9 +210,7 @@
 Ninguna regla con estado distinto de `OK-PROBADO`, que es lo que la matriz existe para no esconder:
 
 - **1.6 · OK-SIN-TEST · E1-10** — Recuperación de contraseña: olvido y restablecimiento por correo Los dos endpoints existen, pero ningún test los ejecuta: la única comprobación es el guion manual `backend-barberias/test/manual/sec01-recovery.ts`. `test/auth.e2e-spec.ts` cubre registro, login y `/me`.
-- **1.7 · PARCIAL · E3-12** — Límite de 5 vinculaciones: la 6.ª queda `PENDIENTE_APROBACION` (D10) El estado se asigna y bloquea el acceso (el vínculo pendiente no autoriza la sede), pero no existe el flujo que lo aprueba (1.8).
-- **1.8 · NO-EXISTE · E3-12** — Bandeja de aprobación de la 6.ª vinculación (ADMINISTRADOR) E3-12 punto 1: sin `GET /plataforma/vinculaciones/pendientes` ni `POST .../aprobar|rechazar`, la vinculación queda pendiente para siempre.
-- **1.9 · NO-EXISTE · E3-12** — Desvinculación por el cliente con el historial intacto (D20/D21) E3-12 punto 3: no hay ruta de desvinculación; el estado `DESVINCULADO` solo aparece descrito en un comentario de `mi-estado.service.ts`.
+- **1.9 · NO-EXISTE · E3-12** — Desvinculación por el cliente con el historial intacto (D20/D21) E3-12 punto 3: no hay ruta de desvinculación, así que el cliente no puede salir de una sede por su cuenta. El estado `DESVINCULADO` ya se ESCRIBE (es el desenlace del rechazo de la 6.ª vinculación, 1.8), pero no a petición suya.
 - **1.10 · NO-EXISTE · E3-12** — Vinculación por enlace único y QR E3-12 punto 2: hoy solo se vincula por código en `POST /barberias/vincular`; no hay enlace único ni QR que codificar.
 - **2.3 · OK-SIN-TEST · E3-13** — El estado de la sede no se edita por el `PATCH` general La regla se aplica (422 con su código), pero ningún test cita `ESTADO_NO_EDITABLE`: se cumple sin certificado.
 - **4.3 · OK-SIN-TEST · E3-02** — Las excepciones `CERRADA` y `HORARIO_ESPECIAL` mandan sobre el horario habitual El tipo está tipado y el servicio exige horas para `HORARIO_ESPECIAL`, pero no hay test que demuestre la prioridad de la excepción sobre la rejilla.
@@ -223,8 +221,8 @@ Ninguna regla con estado distinto de `OK-PROBADO`, que es lo que la matriz exist
 
 ### Lectura de los hallazgos
 
-- **`NO-EXISTE` no siempre es un defecto.** E4-05 está desactivado a propósito (H22) y su fila lo dice; las tres filas de E3-12 y la corrección de pagos (7.3) sí son trabajo pendiente real, con la particularidad de que **E3-12 nunca se cerró**: la lista de tareas del sprint no lo dio por hecho y esta matriz lo deja por escrito.
-- **`PARCIAL` señala una mitad hecha.** En 1.7 el estado `PENDIENTE_APROBACION` se asigna, bloquea y está probado, pero nadie puede aprobarlo (1.8); en T.4 los entornos están separados y el despliegue no aplica migraciones.
+- **`NO-EXISTE` no siempre es un defecto.** E4-05 está desactivado a propósito (H22) y su fila lo dice; 1.9 (desvinculación por el cliente), 1.10 (enlace único/QR) y la corrección de pagos (7.3) sí son trabajo pendiente real. Las dos primeras son las mitades de E3-12 que siguen abiertas: **la mitad que creaba el callejón sin salida (1.8) se cerró el 2026-10-15**, y esta matriz lo registra en la propia fila.
+- **`PARCIAL` señala una mitad hecha.** Queda una sola fila en ese estado: T.4, donde los entornos están separados y el despliegue no aplica migraciones. 1.7 estuvo `PARCIAL` mientras el vínculo pendiente bloqueaba sin flujo que lo resolviera; al llegar E3-12, la mitad que faltaba existe y la fila pasó a `OK-PROBADO`.
 - **`OK-SIN-TEST` es la deuda barata de cerrar.** 1.6 (recuperación de contraseña), 2.3 (`ESTADO_NO_EDITABLE`) y 4.3 (prioridad de las excepciones) están implementadas y justificadas en el código, pero nadie las vigila: cualquiera de ellas puede romperse sin que el CI se entere. Es el mismo patrón que P-SD-5, que empezó siendo un `[EJECUTADO]` sin guarda que lo respaldara.
 - **`NO-VERIFICADO` (6.1) es una petición, no un veredicto:** hay que conseguir el PDF 01 y rellenar la fila.
 

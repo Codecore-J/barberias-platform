@@ -924,6 +924,13 @@ indicador de base por el tope de 1 s) y **H66** (`app.close()` no termina con Re
 
 **Actualización (4.ª iteración, 2026-10-15):** se cierra **E2-08** (la matriz de cumplimiento existe: `docs/MATRIZ_CUMPLIMIENTO.md`) y su reconciliación abre **H67 a H70**, que quedan **ABIERTOS**. Reporte: `reporte-e2-08-matriz-cumplimiento.md`.
 
+**Actualización (5.ª iteración, 2026-10-15):** se ejecuta **E3-12/1** y con ello se cierra **H67**: la 6.ª
+vinculación ya tiene el flujo que la resuelve (`GET /plataforma/vinculaciones/pendientes` y
+`POST .../aprobar|rechazar`, solo para el ADMINISTRADOR) y el cliente dejó de quedarse en
+`PENDIENTE_APROBACION` para siempre. La ejecución deja además un hallazgo nuevo, **H71**: la
+REVINCULACIÓN de D21 sigue sin implementar, así que un vínculo `DESVINCULADO` no vuelve al entrar otra
+vez el código de la sede. Quedan **ABIERTOS** H65, H66, H68, H69, H70 y H71. Reporte: `reporte-e3-12.md`.
+
 ### F2.1 · Marcador de la fase
 
 | ID | Estado |
@@ -933,10 +940,11 @@ indicador de base por el tope de 1 s) y **H66** (`app.close()` no termina con Re
 | **H64** | ✅ **RESUELTO** (3.ª iteración) — sondas separadas: `/api/v1/health/liveness` (vida, sin dependencias) responde 200 con Redis caído y `render.yaml` ya apunta ahí; `/api/v1/health` sigue siendo la de preparación (BD + Redis) y devuelve 503 |
 | **H65** | ⬜ **ABIERTO** — el `pingCheck` de la base en la sonda de PREPARACIÓN tiene un tope de 1 s: con la base remota se agota a veces y el indicador `database` sale `down`. No afecta a la vida; sí puede hacer parpadear una alerta de preparación |
 | **H66** | ⬜ **ABIERTO** — con Redis caído `app.close()` no termina (el cierre espera a las conexiones de BullMQ y ioredis sigue reintentando). Hoy no afecta a producción porque `main.ts` no llama a `enableShutdownHooks()` y SIGTERM mata el proceso en 22 ms; sería un problema al añadir apagado controlado |
-| **H67** | ⬜ **ABIERTO** (E2-08) — E3-12 sin cerrar: la 6.ª vinculación se asigna `PENDIENTE_APROBACION` y bloquea, pero **nadie puede aprobarla**, y no existen desvinculación ni enlace único/QR |
+| **H67** | ✅ **RESUELTO** (5.ª iteración, E3-12/1) — la 6.ª vinculación tiene flujo que la resuelve: bandeja `GET /plataforma/vinculaciones/pendientes` y `POST /plataforma/vinculaciones/:id/aprobar|rechazar { motivo }`, los tres solo para el ADMINISTRADOR. Siguen **pendientes** las otras dos mitades de E3-12 (desvinculación del cliente y enlace único/QR) |
 | **H68** | ⬜ **ABIERTO** (E2-08) — §7.1: el pago se registra y se audita, pero **no existe la corrección** del pago que el diseño sí permite |
 | **H69** | ⬜ **ABIERTO** (E2-08) — tres reglas se cumplen sin test que las vigile: recuperación de contraseña, `ESTADO_NO_EDITABLE` y la prioridad de las excepciones de horario |
 | **H70** | ⬜ **ABIERTO** (E2-08) — la sección 6 del PDF 01 no es localizable desde el repositorio: su cumplimiento no se puede acreditar |
+| **H71** | ⬜ **ABIERTO** (E3-12) — D21 sin implementar: revincular NO reactiva la fila. Un vínculo `DESVINCULADO` (incluido el que deja el rechazo de la 6.ª) sigue cerrado aunque el cliente vuelva a introducir el código de acceso, así que la única salida del rechazo es la base de datos |
 
 ### F2.2 · H62 — **RESUELTO**: el alta de reserva ya no devuelve 500 cuando la cola falla
 
@@ -1016,17 +1024,27 @@ indicador de base por el tope de 1 s) y **H66** (`app.close()` no termina con Re
 - **Origen:** `docs/MATRIZ_CUMPLIMIENTO.md` (E2-08) une 72 reglas del diseño con el código que las garantiza y el test
   que las certifica. Los cuatro hallazgos de abajo son las filas que **no** quedaron `OK-PROBADO` por algo distinto de
   una decisión de alcance ya registrada (E4-05, por ejemplo, sí es alcance: su fila lo dice).
-- **Estado de los cuatro:** **ABIERTOS** y documentados, no corregidos: E2-08 es una tarea de documentación y corregirlos
-  sería otro encargo.
+- **Estado a 2026-10-15:** **H67 RESUELTO** por E3-12/1 (5.ª iteración); H68, H69 y H70 siguen **ABIERTOS**
+  y documentados: E2-08 era una tarea de documentación y corregirlos sería otro encargo.
 
-#### H67 · E3-12 nunca se cerró: la 6.ª vinculación no se puede aprobar, y no hay desvinculación
+#### H67 · E3-12 nunca se cerró: la 6.ª vinculación no se puede aprobar, y no hay desvinculación — **RESUELTO**
 
-- **Módulo / Ruta afectada:** `src/barberia/application/barberia.service.ts:521` (asigna `PENDIENTE_APROBACION`). No existen `GET /plataforma/vinculaciones/pendientes`, `POST /plataforma/vinculaciones/:id/aprobar|rechazar`, `POST /barberias/:id/desvincular` ni `GET /barberias/por-enlace/:enlace`.
+- **Módulo / Ruta afectada:** `src/barberia/application/barberia.service.ts:528` (asigna `PENDIENTE_APROBACION`). No existían `GET /plataforma/vinculaciones/pendientes`, `POST /plataforma/vinculaciones/:id/aprobar|rechazar`, `POST /barberias/:id/desvincular` ni `GET /barberias/por-enlace/:enlace`.
 - **Tipo:** Tarea del backlog sin ejecutar (E3-12) con un estado ya en circulación
 - **Severidad:** Media — un cliente que llega al límite de 5 queda con una vinculación **pendiente para siempre** y sin salida: el estado se asignó (D10) sin el flujo que lo resuelve
-- **Qué consta:** `grep -ri "plataforma/vinculaciones" backend-barberias/src` = 0 coincidencias; `grep -ri "desvincular" backend-barberias/src` = 0; `grep -ri "por-enlace" backend-barberias/src` = 0. Lo que sí está probado es el límite: `src/barberia/application/barberia.service.spec.ts:705` y `test/barberia.e2e-spec.ts:141`.
+- **Estado:** **RESUELTO** (2026-10-15) para la mitad que creaba el callejón sin salida. Reporte: `reporte-e3-12.md`
+- **Qué constaba (evidencia original de E2-08, 2026-10-15):** `grep -ri "plataforma/vinculaciones" backend-barberias/src` = 0 coincidencias; `grep -ri "desvincular" backend-barberias/src` = 0; `grep -ri "por-enlace" backend-barberias/src` = 0. Lo que sí estaba probado es el límite: `src/barberia/application/barberia.service.spec.ts:705` y `test/barberia.e2e-spec.ts:141`.
 - **Por qué no se cerró entonces:** ni el plan del sprint ni el informe de la Ola 3 lo dieron por hecho, y ninguna lista de pendientes lo tenía abierto: pasó entre las grietas de dos épicas (E3-12 se solapa con E2-03 en el índice único de sede activa).
-- **Remedio propuesto:** ejecutar E3-12 (bandeja de aprobación, desvinculación con bloqueo por reservas futuras y enlace único/QR) o, si se decide no hacerlo, retirar `PENDIENTE_APROBACION` de la circulación para no dejar vínculos sin salida.
+- **Qué se hizo:** ejecutar el punto 1 de E3-12 — la bandeja de aprobación y sus dos desenlaces:
+  1. `GET /plataforma/vinculaciones/pendientes`: listado paginado (D32) de los vínculos en espera, por orden de llegada, con el cliente, la sede y el número de vínculos que el cliente ya acumula (el dato que explica por qué está pendiente).
+  2. `POST /plataforma/vinculaciones/:id/aprobar`: deja el vínculo `ACTIVO` y audita `VINCULACION_APROBADA` con el valor anterior y el nuevo, en una transacción.
+  3. `POST /plataforma/vinculaciones/:id/rechazar { motivo }`: deja `DESVINCULADO` con `es_barberia_activa = false`, exige motivo (422 `MOTIVO_REQUERIDO`) y audita `VINCULACION_RECHAZADA` con él.
+  4. Quién resuelve: el **ADMINISTRADOR** global y solo él, en las tres rutas. El límite de D10 se cuenta por USUARIO —no por sede—, así que la sede es parte interesada: un `ADMIN_BARBERIA` aprobando su propia solicitud convertiría el límite en un trámite. El E2E comprueba el 403.
+  5. `LIMITE_VINCULACIONES` y `ESTADOS_VINCULACION` se movieron al dominio de la vinculación (`src/barberia/domain/vinculacion.ts`) para que el flujo que crea el estado y el que lo resuelve no puedan divergir.
+  6. El aviso al cliente se despacha best-effort y DESPUÉS del commit (mismo criterio que H62): una cola caída no puede dejar sin resolver una decisión ya tomada.
+- **Evidencia ROJA (2026-10-15, con el código de producción aún sin escribir):** `test/e3-12-vinculacion.e2e-spec.ts` → `Test Files 1 failed (1)` / `Tests 13 failed | 6 passed (19)`, con `expected 200 "OK", got 404 "Not Found"` y `expected 422 "Unprocessable Entity", got 404 "Not Found"` en las rutas de la bandeja (no existían) y `Cannot find module './vinculacion.js'` en los dos specs unitarios.
+- **Evidencia VERDE:** E2E dirigido `Test Files 1 passed (1)` / `Tests 19 passed (19)` (`EXIT=0`); unitarios dirigidos `3 passed (3)` / `67 passed (67)`, incluida la matriz de permisos con **79 rutas × 4 roles = 316** decisiones; suite unitaria completa `Test Files 50 passed (50)` / `Tests 563 passed (563)` (`EXIT=0`).
+- **Lo que sigue pendiente (y NO se cerró con esto):** los puntos 2 (enlace único/QR), 3 (desvinculación por el cliente con bloqueo por reservas futuras) y 4 (D21, revincular reactiva la misma fila, que queda como **H71**) de E3-12.
 
 #### H68 · §7.1: un pago se puede registrar, no corregir
 
@@ -1053,3 +1071,12 @@ indicador de base por el tope de 1 s) y **H66** (`app.close()` no termina con Re
 - **Qué consta:** `grep -rn "Spec 01 §6"` = 0 coincidencias; el PDF 01 no está versionado. Hay citas de §1.2, §2, §3.1, §4, §5.2, §5.3, §5.4, §5.5, §5.7, §5.8, §5.9, §7.1, §7.5, §8.3, §9 y §10.
 - **Remedio propuesto:** incorporar el PDF 01 al repositorio (o al menos su índice) y rellenar la fila; mientras tanto, la matriz no puede afirmar cumplimiento de esa sección y lo dice.
 
+
+### F2.8 · H71 (nuevo) — cerrar un vínculo `DESVINCULADO` no tiene vuelta (D21 sin implementar)
+
+- **Módulo / Ruta afectada:** `src/barberia/application/barberia.service.ts:515` (`vincularCliente` devuelve la fila existente) y `POST /barberias/vincular`.
+- **Tipo:** Regla del diseño sin implementar (D21) que la mitad recién construida de E3-12 deja a la vista
+- **Severidad:** Baja-Media — el rechazo de la 6.ª vinculación ya se resuelve y se comunica (H67), pero deja la fila `DESVINCULADO` y esa fila no vuelve: quien reintroduzca el código de la sede recibe la MISMA fila cerrada. Antes de E3-12 el estado `DESVINCULADO` no lo escribía nadie; ahora lo escribe el rechazo, así que la brecha tiene un camino que la produce.
+- **Qué consta:** `vincularCliente` devuelve `existing` en cuanto encuentra la fila del par (usuario, sede), sin mirar `estadoVinculacion` (`barberia.service.ts:508-516`). D21 dice lo contrario: «revincular reactiva la misma fila», y D20 que el contador y la restricción se conservan.
+- **Reproducible en el E2E nuevo:** el caso «el vínculo rechazado sigue sin autorizar la sede (403)» de `test/e3-12-vinculacion.e2e-spec.ts` mide el estado en que queda la fila; volver a introducir el código no lo cambia.
+- **Remedio propuesto:** implementar el punto 4 de E3-12 — al vincular, si la fila existe y está `DESVINCULADO`, reactivarla (`ACTIVO` y `es_barberia_activa` según la regla de E2-03) conservando `contador_no_presentado`, `esta_restringido` y `motivo_restriccion` (D20), con auditoría del cambio. Decidir además si el rechazo de la 6.ª debe bloquear el reintento con una ventana temporal en lugar de dejarlo abierto.
