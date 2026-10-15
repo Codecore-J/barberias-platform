@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
@@ -19,11 +20,16 @@ import { BarberiaLecturaDto as BarberiaLectura } from './dto/barberia-lectura.dt
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import {
+  ROL_ADMINISTRADOR,
   alcanceCumple,
   esAdministradorGlobal,
   esAdministradorGlobalPorId,
   validarAsignacionRol,
 } from '../../iam/domain/roles.js';
+import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
+// E3-12: el estado de la 6.ª vinculación y su límite viven en el dominio de la
+// vinculación, compartidos con el flujo que las resuelve (VinculacionService).
+import { ESTADOS_VINCULACION, LIMITE_VINCULACIONES } from '../domain/vinculacion.js';
 
 /** Genera un slug URL-safe de hasta `maxLen` caracteres */
 function generateSlug(text: string, maxLen = 40): string {
@@ -58,6 +64,11 @@ export class BarberiaService {
     // `@Optional`): el módulo ya importa `AuditoriaModule` y un cambio de estado
     // sin rastro no puede degradarse en silencio.
     private readonly auditoria: AuditoriaService,
+    // H71: reabrir una vinculación cerrada avisa a la plataforma. `@Optional`
+    // a propósito: el aviso es best-effort y su ausencia (una cola caída, un
+    // test unitario que no lo necesita) no puede impedir que el cliente vuelva
+    // a pedir paso.
+    @Optional() private readonly notificacion?: NotificacionService,
   ) {}
 
   // ── Helpers de mapeo ───────────────────────────────────────────────────────
@@ -484,11 +495,21 @@ export class BarberiaService {
 
   /**
    * Vincula a un usuario a una barbería utilizando su código de acceso.
-   * Si el usuario ya tiene 5 o más vinculaciones, la nueva queda en estado PENDIENTE.
+   * Si el usuario ya tiene 5 o más vinculaciones, la nueva queda PENDIENTE.
    * Utiliza SERIALIZABLE para evitar condición de carrera en el conteo.
+   *
+   * H71 · D21: un vínculo `DESVINCULADO` NO se devuelve muerto. Hasta E3-12 ese
+   * estado no lo escribía nadie, así que devolver la fila tal cual era inocuo;
+   * desde que el rechazo de la 6.ª vinculación lo escribe, devolverla sin más
+   * dejaba al cliente condenado de por vida, porque la única fila posible del
+   * par (usuario, sede) ya existía y el `uk_cliente_barberia` impide crear otra.
+   * Ahora la fila se REABRE: vuelve a la circulación y, si el cliente sigue por
+   * encima del límite de D10, otra vez a la bandeja de la plataforma.
    */
   async vincularCliente(usuarioId: string, dto: VincularBarberiaDto) {
-    return withSerializableTransaction(this.prisma, async (tx) => {
+    // H71: la transacción devuelve la fila Y, si tocó reabrir, lo que hay que
+    // avisar. El aviso se despacha DESPUÉS del commit y fuera de la transacción.
+    const { vinculo, reapertura } = await withSerializableTransaction(this.prisma, async (tx) => {
       const barberia = await tx.barberia.findUnique({
         where: { codigoAcceso: dto.codigoAcceso },
       });
@@ -497,7 +518,6 @@ export class BarberiaService {
         throw new NotFoundException('Barbería no encontrada o inactiva.');
       }
 
-      // Check if already linked
       const existing = await tx.clienteBarberia.findUnique({
         where: {
           uk_cliente_barberia: {
@@ -507,18 +527,62 @@ export class BarberiaService {
         },
       });
 
-      if (existing) {
-        // Idempotent return or throw conflict
-        return existing;
+      // Idempotencia: un vínculo VIVO se devuelve tal cual. Volver a introducir
+      // el código no cambia nada ni pide aprobación otra vez. Solo la fila
+      // CERRADA se reabre.
+      if (existing && existing.estadoVinculacion !== ESTADOS_VINCULACION.DESVINCULADO) {
+        return { vinculo: existing, reapertura: null };
       }
 
-      // Conteo estricto (T2.2)
+      // Conteo estricto (T2.2). La fila que se está reabriendo no se cuenta a
+      // sí misma: es la misma vinculación que vuelve, no una nueva, así que el
+      // límite de D10 se mide contra las OTRAS.
       const count = await tx.clienteBarberia.count({
-        where: { usuarioId },
+        where: existing ? { usuarioId, NOT: { id: existing.id } } : { usuarioId },
       });
 
-      // D10 · la 6.ª vinculación queda PENDIENTE_APROBACION hasta que el ADMINISTRADOR la apruebe.
-      const estadoVinculacion = count >= 5 ? 'PENDIENTE_APROBACION' : 'ACTIVO';
+      // D10 · la 6.ª vinculación queda PENDIENTE_APROBACION hasta que el
+      // ADMINISTRADOR la apruebe. El estado y el límite NO son literales de
+      // aquí: los comparte con el flujo que la resuelve (E3-12), que es el
+      // único que puede sacar a un cliente de esta espera.
+      const estadoVinculacion =
+        count >= LIMITE_VINCULACIONES
+          ? ESTADOS_VINCULACION.PENDIENTE_APROBACION
+          : ESTADOS_VINCULACION.ACTIVO;
+
+      // H71 · D21: la fila cerrada se REABRE con el estado que le toca hoy
+      // —pendiente si el cliente sigue por encima del límite, activa si ya
+      // tiene hueco— y deja rastro del antes y el después (D28).
+      if (existing) {
+        const reactivada = await tx.clienteBarberia.update({
+          where: { id: existing.id },
+          data: { estadoVinculacion },
+        });
+
+        await this.auditoria.registrarEvento(
+          {
+            usuarioId,
+            accion: 'VINCULACION_REACTIVADA',
+            entidad: 'cliente_barberias',
+            entidadId: existing.id,
+            contexto: {
+              barberiaId: barberia.id,
+              anterior: { estadoVinculacion: existing.estadoVinculacion },
+              nuevo: { estadoVinculacion },
+            },
+          },
+          tx,
+        );
+
+        this.logger.log(
+          `Vinculación ${existing.id} de ${usuarioId} con la barbería ${barberia.id} reabierta como ${estadoVinculacion}`,
+        );
+        return {
+          vinculo: reactivada,
+          reapertura: { nombreBarberia: barberia.nombre, estadoVinculacion },
+        };
+      }
+
       const esBarberiaActiva = count === 0; // Si es la primera, la marcamos como activa por defecto
 
       const nuevaVinculacion = await tx.clienteBarberia.create({
@@ -531,8 +595,61 @@ export class BarberiaService {
       });
 
       this.logger.log(`Usuario ${usuarioId} vinculado a Barbería ${barberia.id}. Estado: ${estadoVinculacion}`);
-      return nuevaVinculacion;
+      return { vinculo: nuevaVinculacion, reapertura: null };
     });
+
+    // Solo hay algo que avisar cuando la reapertura devuelve trabajo a la
+    // plataforma: si la fila volvió ACTIVA no hay nada que aprobar.
+    if (reapertura && reapertura.estadoVinculacion === ESTADOS_VINCULACION.PENDIENTE_APROBACION) {
+      this.avisarReaperturaPendiente(reapertura.nombreBarberia);
+    }
+
+    return vinculo;
+  }
+
+  /**
+   * H71 · avisa a la plataforma de que una vinculación cerrada volvió a pedir
+   * paso, para que la bandeja de E3-12 no sea la única forma de enterarse.
+   *
+   * Best-effort y en segundo plano (H62): resolver la búsqueda de administradores
+   * o encolar el aviso no puede hacer esperar al cliente que acaba de introducir
+   * su código, y una cola caída tampoco puede dejar sin reabrir una vinculación
+   * que en la base ya está reabierta. Todos los fallos se registran, ninguno sube.
+   */
+  private avisarReaperturaPendiente(nombreBarberia: string): void {
+    void this.notificarReaperturaPendiente(nombreBarberia).catch(() => undefined);
+  }
+
+  private async notificarReaperturaPendiente(nombreBarberia: string): Promise<void> {
+    if (!this.notificacion) {
+      return;
+    }
+
+    try {
+      const admins = await this.prisma.usuarioRol.findMany({
+        where: { rol: { nombre: ROL_ADMINISTRADOR } },
+        select: { usuarioId: true },
+        distinct: ['usuarioId'],
+      });
+
+      for (const admin of admins) {
+        this.notificacion
+          .enviarNotificacion({
+            usuarioId: admin.usuarioId,
+            tipo: 'VINCULACION_PENDIENTE_APROBACION',
+            contenido: `Una vinculación cerrada volvió a quedar pendiente de aprobación (${nombreBarberia}). Revísala en la bandeja de vinculaciones.`,
+          })
+          .catch((error: Error) =>
+            this.logger.warn(
+              `No se pudo despachar el aviso de vinculación reabierta a ${admin.usuarioId}: ${error.message}`,
+            ),
+          );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `No se pudieron resolver los ADMINISTRADOR para avisar de la vinculación reabierta: ${(error as Error).message}`,
+      );
+    }
   }
 
   // ── SELECCIONAR BARBERÍA ACTIVA (T2.3) ─────────────────────────────────────
