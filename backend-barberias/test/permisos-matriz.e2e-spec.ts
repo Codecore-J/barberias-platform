@@ -124,6 +124,15 @@ const CASOS: Caso[] = [
   { verbo: 'patch', ruta: `/catalogo/combos/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
   { verbo: 'patch', ruta: `/catalogo/combos/${randomUUID()}/desactivar`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
   { verbo: 'patch', ruta: `/catalogo/combos/${randomUUID()}/reactivar`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
+
+  // ── E3-12/3 · la salida del cliente por su cuenta ─────────────────────────
+  // Va al FINAL a propósito: es la única ruta de la matriz que CAMBIA el
+  // fixture (deja el vínculo del CLIENTE con la sede A en `DESVINCULADO`) y
+  // ninguna comprobación posterior depende de que siga ACTIVO. El
+  // ADMINISTRADOR no se mide aquí: no tiene vínculo propio en la sede, así que
+  // recibiría un 403 `NO_VINCULADO` del servicio y eso no es una decisión del
+  // guard (misma razón que en `GET .../mi-estado`).
+  { verbo: 'post', ruta: '/barberias/{A}/mi-estado/desvincular', permitidos: ['CLIENTE'], sinAdministrador: true },
 ];
 
 describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {

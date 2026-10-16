@@ -2,8 +2,9 @@
 
 > **Estado: aplicada.** Este documento nació como inventario de solo lectura en `main` y
 > ahora refleja la política que hay en `fix/matriz-permisos`, rama de E1-05.
-> La tabla de rutas es la que produce `test/route-security.spec.ts` (`=== TABLA DE RUTAS (55) ===`)
-> y la que verifica `test/permisos-matriz.spec.ts` (55 rutas × 4 roles = 220 decisiones).
+> La tabla de rutas es la que produce `test/route-security.spec.ts` (`=== TABLA DE RUTAS (80) ===`)
+> y la que verifica `test/permisos-matriz.spec.ts` (80 rutas × 4 roles = 320 decisiones). El número
+> crece con cada épica: la tabla de abajo se amplía al final para no renumerar las filas ya citadas.
 
 ## Cómo leerla
 
@@ -126,13 +127,14 @@
 | 59 | POST | `/plataforma/solicitudes-cambio/:id/resolver` | PlataformaSolicitudesCambioController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-13** (D26) | no | **sí** — 409 `ESTADO_INVALIDO` y 422 `MOTIVO_REQUERIDO`; al aprobar un RESPONSABLE mueve `responsable_id`, el rol `ADMIN_BARBERIA` y audita en UNA transacción | no — pendiente del panel de plataforma | `test/e3-13-solicitudes-cambio.e2e-spec.ts`; `src/barberia/application/solicitud-cambio.service.spec.ts` |
 | 60 | GET | `/barberias/:id/clientes-restringidos` | ClientesRestringidosController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E4-03** (D48) | **sí** — la ruta usa `:id`, así que el guard NO resuelve la sede del parámetro: la pertenencia la exige el servicio (403), igual que la fila 57 | no | no — pendiente del panel de la sede | `test/e4-03-fidelizacion.e2e-spec.ts`; `src/barberia/application/clientes-restringidos.service.spec.ts` |
 | 61 | POST | `/barberias/:id/clientes/:clienteId/reactivar` | ClientesRestringidosController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E4-03** (D48) | **sí** — misma regla que la fila 60, más 404 si no hay vinculación | **sí** — 422 `SIN_RESTRICCION` si el cliente no estaba restringido; levanta la restricción, reinicia el contador de ESA sede y audita `RESTRICCION_LEVANTADA` con el valor anterior y el nuevo (D28) | no — pendiente del panel de la sede | `test/e4-03-fidelizacion.e2e-spec.ts`; `src/barberia/application/clientes-restringidos.service.spec.ts` |
-| 62 | GET | `/barberias/:barberiaId/mi-estado` | MiEstadoController | — no existía | `@Roles(CLIENTE)` | **H54** (E4-03/2) | **sí** — la ruta usa `:barberiaId`, así que el guard SÍ acota la sede; el servicio vuelve a acotar por el usuario del token | **sí** — 403 `NO_VINCULADO` sin fila en `cliente_barberias` y `mensaje` calculado con la regla pura de §5.8 | no — pendiente del perfil del cliente | `test/e4-03-fidelizacion.e2e-spec.ts` (H54); `src/barberia/application/mi-estado.service.spec.ts`; `src/reserva/domain/fidelizacion.spec.ts` |
+| 62 | GET | `/barberias/:barberiaId/mi-estado` | MiEstadoController | — no existía | `@Roles(CLIENTE)` | **H54** (E4-03/2) | **sí** — la ruta usa `:barberiaId`, así que el guard SÍ acota la sede; el servicio vuelve a acotar por el usuario del token | **sí** — 403 `NO_VINCULADO` sin fila en `cliente_barberias` y `mensaje` calculado con la regla pura de §5.8 | **sí** — la tarjeta de estado de `features/barberias/barberias.component.ts` vía `core/services/mi-estado.service.ts` (E3-12/3) | `test/e4-03-fidelizacion.e2e-spec.ts` (H54); `src/barberia/application/mi-estado.service.spec.ts`; `src/reserva/domain/fidelizacion.spec.ts` |
 | 63 | PATCH | `/plataforma/usuarios/:id/estado` | PlataformaUsuariosController | — no existía | `@Roles(ADMINISTRADOR)` | **E4-03/5** (D09/D24) | no (el guard ya acota: es una ruta de plataforma) | **sí** — 422 `MOTIVO_REQUERIDO`, 409 `ESTADO_INVALIDO`, 404 si la cuenta no existe; al suspender sube `token_version` (cierra TODAS las sesiones) y audita `CUENTA_SUSPENDIDA`/`CUENTA_REACTIVADA` con anterior y nuevo (D28) | no — pendiente del panel de plataforma | `test/e4-03-suspension-cuenta.e2e-spec.ts`; `src/iam/application/usuarios-plataforma.service.spec.ts`; `test/estado-cuenta-guard.spec.ts` |
 | 64 | GET | `/health/liveness` · `api/v1/health/liveness` | HealthController | — no existía | `@Public` | **H64** | — | — | no | `test/h64-sondas-liveness.e2e-spec.ts`; `test/permisos-matriz.spec.ts` |
 
 | 65 | GET | `/plataforma/vinculaciones/pendientes` | PlataformaVinculacionesController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-12** (D10 · H67) | no (el guard ya acota: es una ruta de plataforma) | no | sí — `features/admin/vinculaciones/admin-vinculaciones.component.ts` (bandeja) + `core/services/vinculaciones.service.ts` (E3-12/2) | `test/e3-12-vinculacion.e2e-spec.ts`; `src/barberia/application/vinculacion.service.spec.ts` |
 | 66 | POST | `/plataforma/vinculaciones/:id/aprobar` | PlataformaVinculacionesController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-12** (D10 · H67) | no | **sí** — 404 si la vinculación no existe y 409 `ESTADO_INVALIDO` si ya se resolvió; deja el vínculo `ACTIVO` y audita `VINCULACION_APROBADA` con el valor anterior y el nuevo (D28) en UNA transacción | sí — el botón «Aprobar» de la bandeja | `test/e3-12-vinculacion.e2e-spec.ts`; `src/barberia/application/vinculacion.service.spec.ts` |
 | 67 | POST | `/plataforma/vinculaciones/:id/rechazar` | PlataformaVinculacionesController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-12** (D10 · H67) | no | **sí** — 422 `MOTIVO_REQUERIDO` sin motivo (o con una palabra suelta), 409 `ESTADO_INVALIDO`; deja `DESVINCULADO` con `es_barberia_activa = false` y audita `VINCULACION_RECHAZADA` con el motivo | sí — el botón «Rechazar» de la bandeja, con modal de motivo | `test/e3-12-vinculacion.e2e-spec.ts`; `src/barberia/application/vinculacion.service.spec.ts` |
+| 68 | POST | `/barberias/:barberiaId/mi-estado/desvincular` | MiEstadoController | — no existía | `@Roles(CLIENTE)` | **E3-12/3** (D20/D21 · regla 1.9) | **sí** — misma ruta base que la 62: el `:barberiaId` deja que el guard acote la sede y el servicio vuelve a acotar por el usuario del token | **sí** — cierra la PROPIA fila (403 `NO_VINCULADO` sin vínculo, 409 `ESTADO_INVALIDO` si ya estaba cerrada) y 422 `RESERVAS_EN_CURSO` con el conteo si hay reservas `PENDIENTE`/`PROPUESTA_PENDIENTE`/`CONFIRMADA` de hoy en adelante; conserva contador y restricción (D20) y audita `CLIENTE_DESVINCULADO_VOLUNTARIAMENTE` con anterior y nuevo | **sí** — el botón «Desvincularme de esta Barbería» de la tarjeta, con modal de confirmación | `test/e3-12-desvinculacion.e2e-spec.ts`; `src/barberia/application/mi-estado.service.spec.ts`; `test/permisos-matriz.e2e-spec.ts` |
 
 > **Filas 65 a 67 (E3-12, 2026-10-15).** La 6.ª vinculación (D10) la resuelve la PLATAFORMA y no la
 > sede, y el motivo es el conteo: `vincularCliente` cuenta las vinculaciones del USUARIO
@@ -148,8 +150,19 @@
 > ninguna queda sin interfaz. Además, `POST /barberias/vincular` deja de devolver la fila muerta (fila
 > 20, H71): si el vínculo está `DESVINCULADO`, lo reabre (D21). Con eso el rechazo de la 6.ª vinculación
 > deja de ser un callejón sin salida: el cliente reintroduce el código, la fila vuelve a la bandeja y la
-> plataforma puede aprobarla. Siguen abiertas las otras dos mitades de E3-12 (desvinculación por el
-> cliente y enlace único/QR), que no tienen fila en esta matriz porque no existen como ruta.
+> plataforma puede aprobarla.
+
+> **Fila 68 · la salida del cliente (2026-10-15, E3-12/3).** La otra mitad de la regla 1.9: el cliente ya
+> puede CERRAR su propio vínculo. La fila se numera al final (68) y **la ruta se desvía a propósito** de la
+> que sugería el backlog (`POST /barberias/:id/desvincular`): vive bajo `mi-estado`, el mismo recurso que la
+> fila 62, para que el `:barberiaId` del path deje que el `RolesGuard` acote la sede — con `:id` el guard no
+> la resuelve y la pertenencia quedaría solo en el servicio. Además, cerrar un vínculo devuelve el CUPO de
+> D10: el conteo de `vincularCliente` (fila 20) pasa a mirar los vínculos VIVOS, así que desvincularse no
+> condena a la bandeja de aprobación para la siguiente sede. Queda abierta **una** mitad de E3-12: el
+> enlace único y su QR (sin fila en esta matriz porque no existe como ruta). Y hay un límite de alcance
+> conocido y anterior: **no existe ninguna ruta que liste las barberías de un `CLIENTE`** (hallazgo 5 de
+> este mismo documento), así que la tarjeta del cliente solo aparece donde su lista de sedes trae algo — el
+> botón ya está cableado y probado, pero su visibilidad depende de esa tarea pendiente.
 
 > **Fila 64 (H64, 2026-10-14).** Sonda de VIDA separada de la de preparación: `check()` sigue en
 > `/health` · `/api/v1/health` mirando base de datos, Redis y memoria, y la vida responde sin tocar nada

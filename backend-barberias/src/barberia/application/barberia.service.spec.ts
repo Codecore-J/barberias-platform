@@ -752,8 +752,14 @@ describe('BarberiaService', () => {
       const result = await service.vincularCliente('user-1', { codigoAcceso: 'ABC12345' });
 
       expect(prisma.clienteBarberia.create).not.toHaveBeenCalled();
+      // E3-12/3: el conteo mira los vínculos VIVOS. La fila que vuelve sigue
+      // `DESVINCULADO` en la base mientras se cuenta, así que el filtro por
+      // estado ya la deja fuera sin necesidad de excluirla por `id`.
       expect(prisma.clienteBarberia.count).toHaveBeenCalledWith({
-        where: { usuarioId: 'user-1', NOT: { id: 'vinculo-1' } },
+        where: {
+          usuarioId: 'user-1',
+          estadoVinculacion: { not: 'DESVINCULADO' },
+        },
       });
       expect(prisma.clienteBarberia.update).toHaveBeenCalledWith({
         where: { id: 'vinculo-1' },
@@ -814,6 +820,40 @@ describe('BarberiaService', () => {
       await new Promise((resolve) => setImmediate(resolve));
       expect(notificacion.enviarNotificacion).not.toHaveBeenCalled();
       expect(prisma.usuarioRol.findMany).not.toHaveBeenCalled();
+    });
+
+    // E3-12/3 · D10: el límite cuenta VÍNCULOS VIVOS, así que cerrar uno
+    // devuelve el cupo. Sin esto, desvincularse condenaría al cliente a la
+    // bandeja de aprobación para siempre (que es la otra cara de H71).
+    it('el cupo es de los vínculos VIVOS: un DESVINCULADO no ocupa plaza', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue({
+        id: 'barberia-1',
+        nombre: 'Barbería Uno',
+        codigoAcceso: 'ABC12345',
+        estado: 'ACTIVO',
+      });
+      (prisma.clienteBarberia.findUnique as any).mockResolvedValue(null);
+      // Cuatro vínculos vigentes: el quinto que hubo quedó DESVINCULADO.
+      (prisma.clienteBarberia.count as any).mockResolvedValue(4);
+      (prisma.clienteBarberia.create as any).mockImplementation(async (args: any) => ({
+        id: 'vinculo-2',
+        ...args.data,
+      }));
+
+      const result = await service.vincularCliente('user-1', { codigoAcceso: 'ABC12345' });
+
+      expect(prisma.clienteBarberia.count).toHaveBeenCalledWith({
+        where: { usuarioId: 'user-1', estadoVinculacion: { not: 'DESVINCULADO' } },
+      });
+      expect(prisma.clienteBarberia.create).toHaveBeenCalledWith({
+        data: {
+          usuarioId: 'user-1',
+          barberiaId: 'barberia-1',
+          estadoVinculacion: 'ACTIVO',
+          esBarberiaActiva: false,
+        },
+      });
+      expect(result.estadoVinculacion).toBe('ACTIVO');
     });
 
     it.each(['ACTIVO', 'PENDIENTE_APROBACION'])(

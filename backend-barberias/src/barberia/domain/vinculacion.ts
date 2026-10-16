@@ -12,6 +12,8 @@
  * archivo.
  */
 
+import { ESTADOS } from '../../shared/domain/estados.js';
+
 export const ESTADOS_VINCULACION = {
   ACTIVO: 'ACTIVO',
   PENDIENTE_APROBACION: 'PENDIENTE_APROBACION',
@@ -35,6 +37,25 @@ export const LIMITE_VINCULACIONES = 5;
 
 /** El rechazo exige un motivo con contenido, no una palabra suelta. */
 export const MOTIVO_RECHAZO_VINCULACION_MIN = 10;
+
+/**
+ * E3-12 · punto 3 · las reservas que ANCLAN la desvinculación.
+ *
+ * El cliente no puede cerrar su vínculo dejando trabajo vivo en la sede: una
+ * reserva futura `PENDIENTE`, `PROPUESTA_PENDIENTE` o `CONFIRMADA` es una cita
+ * comprometida por las dos partes, y cerrar el vínculo la dejaría huérfana —la
+ * agenda la sigue ocupando y el cliente ya no puede verla ni cancelarla—. Los
+ * tres estados salen del catálogo de E2-02 (`ESTADOS`); aquí solo se declara
+ * CUÁLES anclan, para que la regla no vuelva a ser una lista literal suelta.
+ *
+ * `COMPLETADA`, `CANCELADA`, `RECHAZADA`, `EXPIRADA` y `NO_PRESENTADO` son
+ * terminales (§5.1) y no anclan nada: la cita ya ocurrió o se deshizo.
+ */
+export const ESTADOS_RESERVA_QUE_ANCLAN = [
+  ESTADOS.PENDIENTE,
+  ESTADOS.PROPUESTA_PENDIENTE,
+  ESTADOS.CONFIRMADA,
+] as const;
 
 /** Solo una vinculación que ESPERA se puede resolver; el resto son terminales. */
 export function esVinculacionResoluble(estado: unknown): boolean {
