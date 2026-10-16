@@ -128,6 +128,12 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // servicio vuelve a acotar por el usuario del token (nunca datos de otro).
   // `@Get()` sin argumento compone la ruta con barra final (igual que `GET /barberias/`).
   'GET /barberias/:barberiaId/mi-estado/': [ROL_CLIENTE],
+  // E3-12/3 (2026-10-15): la desvinculación a petición del cliente (la otra
+  // mitad de 1.9). Misma ruta base que `mi-estado` y por la misma razón: el
+  // `:barberiaId` deja que el guard acote la sede del parámetro, y el servicio
+  // vuelve a acotar por el usuario del token. Solo `CLIENTE`: cerrar el vínculo
+  // de otro no es una operación de nadie más.
+  'POST /barberias/:barberiaId/mi-estado/desvincular': [ROL_CLIENTE],
   // E4-03/5 (2026-10-12): suspender o reactivar la CUENTA global es exclusivo del
   // ADMINISTRADOR de la plataforma (D05/D09/D48). La sede no entra por aquí: su
   // penalización es local y su vía es `clientes/:clienteId/reactivar`.
@@ -384,10 +390,11 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // cuatro `desactivar`/`reactivar` del catálogo → 73 − 4 + 6 = 75. La Fase 2
   // (H63, 2026-10-14) no añadió rutas. H64 suma la sonda de vida separada: 76.
   // E3-12 (2026-10-15) suma la bandeja de plataforma de la 6.ª vinculación y sus
-  // dos resoluciones (aprobar y rechazar): 79.
-  it('descubrir las 79 rutas del servidor y todas tienen decision', () => {
+  // dos resoluciones (aprobar y rechazar): 79. E3-12/3 suma la salida del
+  // cliente (`POST .../mi-estado/desvincular`): 80.
+  it('descubrir las 80 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(79);
+    expect(claves.length).toBe(80);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -484,8 +491,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     // `PATCH /plataforma/usuarios/:id/estado` (E4-03/5): 73. La Ola 3 sumó los
     // seis verbos de E2-07 y retiró cuatro `@Delete`: 75 × 4 = 300. H64 sumó la
     // sonda de vida separada (76 rutas) y con ella la decisión de sus 4 roles:
-    // 304. E3-12 sumó las tres rutas de la 6.ª vinculación: 79 × 4 = 316.
-    expect(evaluaciones).toBe(316);
+    // 304. E3-12 sumó las tres rutas de la 6.ª vinculación (79 rutas) y E3-12/3
+    // la desvinculación del cliente: 80 × 4 = 320.
+    expect(evaluaciones).toBe(320);
     expect(
       desviaciones.length === 0
         ? ''

@@ -505,6 +505,11 @@ export class BarberiaService {
    * par (usuario, sede) ya existía y el `uk_cliente_barberia` impide crear otra.
    * Ahora la fila se REABRE: vuelve a la circulación y, si el cliente sigue por
    * encima del límite de D10, otra vez a la bandeja de la plataforma.
+   *
+   * E3-12/3: ese MISMO estado es el que libera el cupo. Al cerrar un vínculo el
+   * cliente recupera la plaza (el conteo de abajo solo mira los vivos), así que
+   * quien se desvincula de una sede no queda condenado a la bandeja de
+   * aprobación para la siguiente.
    */
   async vincularCliente(usuarioId: string, dto: VincularBarberiaDto) {
     // H71: la transacción devuelve la fila Y, si tocó reabrir, lo que hay que
@@ -534,11 +539,18 @@ export class BarberiaService {
         return { vinculo: existing, reapertura: null };
       }
 
-      // Conteo estricto (T2.2). La fila que se está reabriendo no se cuenta a
-      // sí misma: es la misma vinculación que vuelve, no una nueva, así que el
-      // límite de D10 se mide contra las OTRAS.
+      // Conteo estricto (T2.2) sobre los vínculos VIVOS. D10 limita las
+      // barberías en las que el cliente ESTÁ, no las filas que alguna vez tuvo:
+      // un `DESVINCULADO` conserva su historial (D20/D21) pero no ocupa plaza,
+      // así que al cerrar un vínculo el cliente recupera el cupo. Ese único
+      // filtro cubre también la fila que se está reabriendo —en la base todavía
+      // está `DESVINCULADO`, y no se cuenta a sí misma—, y por eso la exclusión
+      // explicita por `id` ya no hace falta.
       const count = await tx.clienteBarberia.count({
-        where: existing ? { usuarioId, NOT: { id: existing.id } } : { usuarioId },
+        where: {
+          usuarioId,
+          estadoVinculacion: { not: ESTADOS_VINCULACION.DESVINCULADO },
+        },
       });
 
       // D10 · la 6.ª vinculación queda PENDIENTE_APROBACION hasta que el

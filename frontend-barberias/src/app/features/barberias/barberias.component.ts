@@ -2,7 +2,10 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { TenantService } from '../../core/services/tenant.service';
+import type { BarberiaResumen } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
+import { MiEstadoService } from '../../core/services/mi-estado.service';
+import type { MiEstado } from '../../core/services/mi-estado.service';
 import { VincularModalComponent } from './components/vincular-modal/vincular-modal.component';
 
 @Component({
@@ -21,6 +24,24 @@ import { VincularModalComponent } from './components/vincular-modal/vincular-mod
           Gestiona las barberías a las que tienes acceso. Selecciona una para activar tu sesión y acceder al catálogo y agendamiento.
         </p>
       </section>
+
+      <!-- Aviso tras cerrar un vínculo (E3-12/3) -->
+      @if (mensajeExito()) {
+        <div class="max-w-6xl mx-auto px-4">
+          <div class="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm flex items-center gap-2">
+            <i class="pi pi-check-circle"></i> {{ mensajeExito() }}
+          </div>
+        </div>
+      }
+
+      <!-- Error de la desvinculación (contrato D40: 422 con reservas en curso, 409 ya cerrado) -->
+      @if (miEstado.error()) {
+        <div class="max-w-6xl mx-auto px-4">
+          <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center gap-2">
+            <i class="pi pi-exclamation-triangle"></i> {{ miEstado.error() }}
+          </div>
+        </div>
+      }
 
       <!-- Estado de Carga -->
       @if (tenantService.isLoading()) {
@@ -66,18 +87,73 @@ import { VincularModalComponent } from './components/vincular-modal/vincular-mod
                   </p>
                 </div>
 
+                <!--
+                  Mi vínculo con esta sede (H54 · E3-12/3): el contador de
+                  inasistencias, el aviso de la sede y —para el CLIENTE— la
+                  salida. Los datos los sirve GET .../mi-estado; si no hay
+                  vínculo de cliente, el bloque no existe.
+                -->
+                @if (estadoDe(barberia.id); as mi) {
+                  <div class="rounded-2xl border p-3.5 space-y-1.5 transform translate-z-12"
+                       [class.border-rose-500/40]="mi.estaRestringido"
+                       [class.bg-rose-500/10]="mi.estaRestringido"
+                       [class.border-amber-500/30]="!mi.estaRestringido && mi.advertencia"
+                       [class.bg-amber-500/10]="!mi.estaRestringido && mi.advertencia"
+                       [class.border-zinc-700/60]="!mi.estaRestringido && !mi.advertencia"
+                       [class.bg-zinc-800/40]="!mi.estaRestringido && !mi.advertencia">
+                    <div class="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider">
+                      <span class="text-zinc-400">Tu vínculo</span>
+                      <span [class.text-emerald-400]="mi.estadoVinculacion === 'ACTIVO'"
+                            [class.text-amber-400]="mi.estadoVinculacion === 'PENDIENTE_APROBACION'"
+                            [class.text-rose-400]="mi.estadoVinculacion === 'DESVINCULADO'">
+                        {{ mi.estadoVinculacion }}
+                      </span>
+                    </div>
+                    <p class="text-xs text-zinc-300 flex items-center gap-2">
+                      <i class="pi pi-exclamation-circle"
+                         [class.text-rose-400]="mi.estaRestringido"
+                         [class.text-amber-400]="!mi.estaRestringido"
+                         [class.text-zinc-500]="mi.contadorNoPresentado === 0"></i>
+                      Inasistencias: {{ mi.contadorNoPresentado }} de {{ mi.limiteInasistencias }}
+                    </p>
+                    @if (mi.mensaje) {
+                      <p class="text-[11px] leading-snug"
+                         [class.text-rose-300]="mi.estaRestringido"
+                         [class.text-amber-300]="!mi.estaRestringido">
+                        {{ mi.mensaje }}
+                      </p>
+                    }
+                  </div>
+                }
+
                 <!-- Acciones -->
-                <div class="pt-4 flex gap-3 transform translate-z-12">
-                  @if (barberia.id !== tenantService.barberiaActivaId()) {
-                    <button (click)="seleccionar(barberia.id)"
-                            class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-md shadow-amber-500/20 hover:scale-105 transition-transform flex items-center justify-center gap-2">
-                      <i class="pi pi-check-circle"></i> Seleccionar
+                <div class="pt-4 space-y-3 transform translate-z-12">
+                  <div class="flex gap-3">
+                    @if (barberia.id !== tenantService.barberiaActivaId()) {
+                      <button (click)="seleccionar(barberia.id)"
+                              class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-md shadow-amber-500/20 hover:scale-105 transition-transform flex items-center justify-center gap-2">
+                        <i class="pi pi-check-circle"></i> Seleccionar
+                      </button>
+                    } @else {
+                      <a [routerLink]="rutaEntrar()"
+                              class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-zinc-200 bg-zinc-800 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center justify-center gap-2">
+                        <i class="pi pi-arrow-right"></i> Entrar
+                      </a>
+                    }
+                  </div>
+
+                  <!--
+                    El botón de salida (E3-12/3). Solo aparece donde el cliente
+                    TIENE un vínculo consultado —si el backend responde
+                    NO_VINCULADO no hay nada que cerrar— y nunca sobre una fila
+                    ya cerrada (el estado se relee tras cada cambio).
+                  -->
+                  @if (puedeDesvincularse(barberia.id)) {
+                    <button (click)="abrirDesvinculacion(barberia)"
+                            class="w-full px-4 py-2.5 rounded-xl text-xs font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition-colors flex items-center justify-center gap-2">
+                      <i class="pi pi-sign-out"></i>
+                      <span>Desvincularme de esta Barbería</span>
                     </button>
-                  } @else {
-                    <a [routerLink]="rutaEntrar()"
-                            class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-zinc-200 bg-zinc-800 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center justify-center gap-2">
-                      <i class="pi pi-arrow-right"></i> Entrar
-                    </a>
                   }
                 </div>
               </div>
@@ -136,17 +212,152 @@ import { VincularModalComponent } from './components/vincular-modal/vincular-mod
         <app-vincular-modal (close)="showVincularModal.set(false)"></app-vincular-modal>
       }
 
+      <!--
+        Confirmación de la salida (E3-12/3). El cierre es reversible solo
+        volviendo a introducir el código de acceso (D21), así que se avisa antes
+        de hacerlo y con las consecuencias exactas de D20: el historial y el
+        contador de inasistencias NO se borran.
+      -->
+      @if (barberiaADesvincular(); as objetivo) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+          <div class="bg-zinc-900 border border-rose-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div class="p-6 space-y-5">
+              <div class="flex justify-between items-start">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                    <i class="pi pi-sign-out text-lg"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-lg font-bold text-white">Desvincularme</h3>
+                    <p class="text-xs text-zinc-400">{{ objetivo.nombre }}</p>
+                  </div>
+                </div>
+                <button (click)="cerrarDesvinculacion()" class="text-zinc-500 hover:text-white transition-colors">
+                  <i class="pi pi-times text-xl"></i>
+                </button>
+              </div>
+
+              <div class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 space-y-2">
+                <p>
+                  Vas a cerrar tu vínculo con
+                  <span class="font-semibold">{{ objetivo.nombre }}</span>: dejarás de ver su catálogo
+                  y no podrás reservar en esa sede.
+                </p>
+                <p class="text-rose-200/80">
+                  Tu historial y tu contador de inasistencias se conservan (D20/D21). Si vuelves a
+                  introducir su código de acceso, recuperas la misma vinculación.
+                </p>
+                @if (estadoDe(objetivo.id)?.estaRestringido) {
+                  <p class="text-rose-200 font-semibold">
+                    Esta sede te tiene restringido: desvincularte NO levanta esa restricción.
+                  </p>
+                }
+              </div>
+
+              @if (miEstado.error()) {
+                <div class="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-start gap-2">
+                  <i class="pi pi-exclamation-triangle mt-0.5"></i>
+                  <span>{{ miEstado.error() }}</span>
+                </div>
+              }
+
+              <div class="flex gap-3 pt-2 border-t border-zinc-800">
+                <button (click)="cerrarDesvinculacion()"
+                        class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
+                  Cancelar
+                </button>
+                <button (click)="confirmarDesvinculacion()" [disabled]="miEstado.isLoading()"
+                        class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-40 transition-all flex items-center justify-center gap-2">
+                  <i class="pi" [ngClass]="miEstado.isLoading() ? 'pi-spin pi-spinner' : 'pi-user-minus'"></i>
+                  <span>Sí, desvincularme</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+
     </div>
   `
 })
 export class BarberiasComponent implements OnInit {
   protected readonly tenantService = inject(TenantService);
   protected readonly authService = inject(AuthService);
-  
+  protected readonly miEstado = inject(MiEstadoService);
+
   showVincularModal = signal(false);
 
+  /** Sede pendiente de confirmar su salida; `null` cuando no hay modal. */
+  readonly barberiaADesvincular = signal<BarberiaResumen | null>(null);
+  readonly mensajeExito = signal('');
+
   ngOnInit() {
-    this.tenantService.cargarBarberias().subscribe();
+    this.tenantService.cargarBarberias().subscribe(() => this.cargarEstados());
+  }
+
+  /**
+   * Mi estado (H54) solo lo sirve el backend al CLIENTE y solo donde hay fila en
+   * `cliente_barberias`: una sede sin vínculo responde 403 NO_VINCULADO y el
+   * servicio lo traduce a `null`, así que aquí no se pinta nada.
+   */
+  private cargarEstados(): void {
+    if (this.userRole() !== 'CLIENTE') {
+      return;
+    }
+
+    for (const barberia of this.tenantService.barberiasVinculadas()) {
+      this.miEstado.cargarEstado(barberia.id).subscribe();
+    }
+  }
+
+  estadoDe(barberiaId: string): MiEstado | null {
+    return this.miEstado.estados()[barberiaId] ?? null;
+  }
+
+  /** Solo se puede salir de un vínculo que existe y que sigue vivo. */
+  puedeDesvincularse(barberiaId: string): boolean {
+    const estado = this.estadoDe(barberiaId);
+    return (
+      this.userRole() === 'CLIENTE' &&
+      !!estado &&
+      estado.estadoVinculacion !== 'DESVINCULADO'
+    );
+  }
+
+  abrirDesvinculacion(barberia: BarberiaResumen): void {
+    this.miEstado.error.set(null);
+    this.barberiaADesvincular.set(barberia);
+  }
+
+  cerrarDesvinculacion(): void {
+    this.barberiaADesvincular.set(null);
+  }
+
+  /**
+   * El cierre lo decide el backend: aquí solo se muestra lo que responda. Si la
+   * sede tiene reservas en curso responde 422 y el modal se queda abierto con el
+   * mensaje del contrato D40, que es lo que el cliente necesita leer.
+   */
+  confirmarDesvinculacion(): void {
+    const objetivo = this.barberiaADesvincular();
+    if (!objetivo) {
+      return;
+    }
+
+    this.miEstado.desvincular(objetivo.id).subscribe({
+      next: (resultado) => {
+        this.barberiaADesvincular.set(null);
+        this.avisar(
+          `Te desvinculaste de ${resultado.barberiaNombre}. Te quedan ${resultado.vinculacionesVigentes} barberías vinculadas.`,
+        );
+        this.tenantService.cargarBarberias().subscribe(() => this.cargarEstados());
+      },
+    });
+  }
+
+  private avisar(texto: string): void {
+    this.mensajeExito.set(texto);
+    setTimeout(() => this.mensajeExito.set(''), 6000);
   }
 
   userRole(): string {
