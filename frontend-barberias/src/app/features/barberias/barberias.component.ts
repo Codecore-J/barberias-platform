@@ -1,6 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { TenantService } from '../../core/services/tenant.service';
 import type { BarberiaResumen } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
@@ -228,6 +228,7 @@ export class BarberiasComponent implements OnInit {
   protected readonly tenantService = inject(TenantService);
   protected readonly authService = inject(AuthService);
   protected readonly miEstado = inject(MiEstadoService);
+  private readonly router = inject(Router);
 
   showVincularModal = signal(false);
 
@@ -283,6 +284,12 @@ export class BarberiasComponent implements OnInit {
    * El cierre lo decide el backend: aquí solo se muestra lo que responda. Si la
    * sede tiene reservas en curso responde 422 y el modal se queda abierto con el
    * mensaje del contrato D40, que es lo que el cliente necesita leer.
+   *
+   * H74 · la purga va en el `next` y ANTES de la recarga: el vínculo ya no existe
+   * en el backend, así que mantener la sede en la sesión mientras viaja la
+   * petición deja al usuario operando sobre una sede fantasma (cabecera y
+   * `x-barberia-id` incluidos). Si la desvinculada era además la ÚLTIMA sede, no
+   * hay contexto de barbería que sostener y se vuelve al dashboard raíz.
    */
   confirmarDesvinculacion(): void {
     const objetivo = this.barberiaADesvincular();
@@ -293,10 +300,20 @@ export class BarberiasComponent implements OnInit {
     this.miEstado.desvincular(objetivo.id).subscribe({
       next: (resultado) => {
         this.barberiaADesvincular.set(null);
+        this.tenantService.purgarBarberia(objetivo.id);
         this.avisar(
           `Te desvinculaste de ${resultado.barberiaNombre}. Te quedan ${resultado.vinculacionesVigentes} barberías vinculadas.`,
         );
-        this.tenantService.cargarBarberias().subscribe(() => this.cargarEstados());
+        this.tenantService.cargarBarberias().subscribe(() => {
+          this.cargarEstados();
+          if (this.tenantService.barberiasVinculadas().length === 0) {
+            // Purga absoluta: sin sedes no queda nada de un vínculo cerrado en la
+            // sesión (ni el estado por sede que alimentaba las tarjetas) y se
+            // vuelve al dashboard raíz, fuera del contexto de barbería.
+            this.miEstado.limpiar();
+            this.router.navigate(['/']);
+          }
+        });
       },
     });
   }
@@ -337,11 +354,11 @@ export class BarberiasComponent implements OnInit {
       next: () => {
         const role = this.userRole();
         if (role === 'ADMINISTRADOR' || role === 'ADMIN_BARBERIA' || role === 'BARBERO') {
-          this.authService['router'].navigate(['/admin/agenda']);
+          this.router.navigate(['/admin/agenda']);
         } else {
-          this.authService['router'].navigate(['/']);
+          this.router.navigate(['/']);
         }
-      }
+      },
     });
   }
 }
