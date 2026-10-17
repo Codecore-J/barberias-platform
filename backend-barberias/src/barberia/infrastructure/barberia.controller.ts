@@ -179,6 +179,9 @@ export class BarberiaController {
    * Suspender una sede sigue siendo una decisión de plataforma (decisión 4):
    * solo el ADMINISTRADOR global.
    */
+  /**
+   * PATCH /barberias/:id/estado · E2-07 (y E1-07)
+   */
   @Roles('ADMINISTRADOR')
   @Patch(':id/estado')
   @HttpCode(HttpStatus.OK)

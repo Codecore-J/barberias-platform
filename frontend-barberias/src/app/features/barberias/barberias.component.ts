@@ -7,11 +7,12 @@ import { AuthService } from '../../auth/auth.service';
 import { MiEstadoService } from '../../core/services/mi-estado.service';
 import type { MiEstado } from '../../core/services/mi-estado.service';
 import { VincularModalComponent } from './components/vincular-modal/vincular-modal.component';
+import { SedeCardComponent } from './components/sede-card/sede-card.component';
 
 @Component({
   selector: 'app-barberias',
   standalone: true,
-  imports: [CommonModule, RouterLink, VincularModalComponent],
+  imports: [CommonModule, RouterLink, VincularModalComponent, SedeCardComponent],
   template: `
     <div class="space-y-12 py-8 perspective-1200 bg-ambient-mesh min-h-screen">
       
@@ -50,114 +51,57 @@ import { VincularModalComponent } from './components/vincular-modal/vincular-mod
         </div>
       }
 
-      <!-- Grid de Barberías (Efecto 3D Tilt) -->
+      <!--
+        Grid de Barberías (Efecto 3D Tilt).
+        H72: la tarjeta vive en SedeCardComponent porque el home del CLIENTE
+        pinta la MISMA tarjeta con la lista de GET /mi-estado/barberias.
+      -->
       @if (!tenantService.isLoading() && tenantService.barberiasVinculadas().length > 0) {
         <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto px-4 transform-style-3d">
           @for (barberia of tenantService.barberiasVinculadas(); track barberia.id) {
-            <div class="glass-card rounded-3xl p-6 sm:p-8 relative overflow-hidden group hover:-translate-y-4 hover:rotate-y-3 hover:rotate-x-3 transition-all duration-500 shadow-[0_15px_40px_rgba(0,0,0,0.5)] transform-style-3d cursor-pointer"
-                 [class.border-amber-500]="barberia.id === tenantService.barberiaActivaId()"
-                 [class.shadow-[0_0_30px_rgba(212,175,55,0.2)]]="barberia.id === tenantService.barberiaActivaId()">
-              
-              <!-- Glow de fondo en hover -->
-              <div class="absolute -right-20 -bottom-20 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700"></div>
-
-              <div class="space-y-6 relative z-10">
-                <!-- Header Card -->
-                <div class="flex justify-between items-start transform translate-z-12">
-                  <div class="w-14 h-14 rounded-2xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-amber-400 text-2xl shadow-inner group-hover:bg-amber-500/10 group-hover:border-amber-500/30 transition-colors">
-                    <i class="pi pi-building"></i>
-                  </div>
-                  
-                  @if (barberia.id === tenantService.barberiaActivaId()) {
-                    <div class="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-2">
-                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                      ACTIVA
-                    </div>
-                  }
-                </div>
-
-                <!-- Info -->
-                <div class="space-y-2 transform translate-z-24">
-                  <h3 class="text-2xl font-display font-bold text-white group-hover:text-amber-300 transition-colors">{{ barberia.nombre }}</h3>
-                  <p class="text-xs text-zinc-400 flex items-center gap-2">
-                    <i class="pi pi-map-marker text-amber-500"></i>{{ barberia.ubicacion }}
-                  </p>
-                  <p class="text-xs text-zinc-400 flex items-center gap-2">
-                    <i class="pi pi-phone text-amber-500"></i>{{ barberia.telefono }}
-                  </p>
-                </div>
-
-                <!--
-                  Mi vínculo con esta sede (H54 · E3-12/3): el contador de
-                  inasistencias, el aviso de la sede y —para el CLIENTE— la
-                  salida. Los datos los sirve GET .../mi-estado; si no hay
-                  vínculo de cliente, el bloque no existe.
-                -->
-                @if (estadoDe(barberia.id); as mi) {
-                  <div class="rounded-2xl border p-3.5 space-y-1.5 transform translate-z-12"
-                       [class.border-rose-500/40]="mi.estaRestringido"
-                       [class.bg-rose-500/10]="mi.estaRestringido"
-                       [class.border-amber-500/30]="!mi.estaRestringido && mi.advertencia"
-                       [class.bg-amber-500/10]="!mi.estaRestringido && mi.advertencia"
-                       [class.border-zinc-700/60]="!mi.estaRestringido && !mi.advertencia"
-                       [class.bg-zinc-800/40]="!mi.estaRestringido && !mi.advertencia">
-                    <div class="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider">
-                      <span class="text-zinc-400">Tu vínculo</span>
-                      <span [class.text-emerald-400]="mi.estadoVinculacion === 'ACTIVO'"
-                            [class.text-amber-400]="mi.estadoVinculacion === 'PENDIENTE_APROBACION'"
-                            [class.text-rose-400]="mi.estadoVinculacion === 'DESVINCULADO'">
-                        {{ mi.estadoVinculacion }}
-                      </span>
-                    </div>
-                    <p class="text-xs text-zinc-300 flex items-center gap-2">
-                      <i class="pi pi-exclamation-circle"
-                         [class.text-rose-400]="mi.estaRestringido"
-                         [class.text-amber-400]="!mi.estaRestringido"
-                         [class.text-zinc-500]="mi.contadorNoPresentado === 0"></i>
-                      Inasistencias: {{ mi.contadorNoPresentado }} de {{ mi.limiteInasistencias }}
-                    </p>
-                    @if (mi.mensaje) {
-                      <p class="text-[11px] leading-snug"
-                         [class.text-rose-300]="mi.estaRestringido"
-                         [class.text-amber-300]="!mi.estaRestringido">
-                        {{ mi.mensaje }}
-                      </p>
-                    }
-                  </div>
-                }
-
-                <!-- Acciones -->
-                <div class="pt-4 space-y-3 transform translate-z-12">
-                  <div class="flex gap-3">
-                    @if (barberia.id !== tenantService.barberiaActivaId()) {
-                      <button (click)="seleccionar(barberia.id)"
-                              class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-md shadow-amber-500/20 hover:scale-105 transition-transform flex items-center justify-center gap-2">
-                        <i class="pi pi-check-circle"></i> Seleccionar
-                      </button>
-                    } @else {
-                      <a [routerLink]="rutaEntrar()"
-                              class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-zinc-200 bg-zinc-800 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center justify-center gap-2">
-                        <i class="pi pi-arrow-right"></i> Entrar
-                      </a>
-                    }
-                  </div>
-
+            <app-sede-card
+              [barberia]="barberia"
+              [estado]="estadoDe(barberia.id)"
+              [esActiva]="barberia.id === tenantService.barberiaActivaId()"
+            >
+              <!-- Acciones -->
+              <div class="flex gap-3">
+                @if (barberia.id === tenantService.barberiaActivaId()) {
+                  <a [routerLink]="rutaEntrar()"
+                          class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-zinc-200 bg-zinc-800 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center justify-center gap-2">
+                    <i class="pi pi-arrow-right"></i> Entrar
+                  </a>
+                } @else if (puedeSeleccionar(barberia)) {
+                  <button (click)="seleccionar(barberia.id)"
+                          class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-md shadow-amber-500/20 hover:scale-105 transition-transform flex items-center justify-center gap-2">
+                    <i class="pi pi-check-circle"></i> Seleccionar
+                  </button>
+                } @else {
                   <!--
-                    El botón de salida (E3-12/3). Solo aparece donde el cliente
-                    TIENE un vínculo consultado —si el backend responde
-                    NO_VINCULADO no hay nada que cerrar— y nunca sobre una fila
-                    ya cerrada (el estado se relee tras cada cambio).
+                    PENDIENTE_APROBACION (D10): la sede no opera todavía para este
+                    cliente —/seleccionar responde 403—, así que no se ofrece el
+                    botón y se explica por qué.
                   -->
-                  @if (puedeDesvincularse(barberia.id)) {
-                    <button (click)="abrirDesvinculacion(barberia)"
-                            class="w-full px-4 py-2.5 rounded-xl text-xs font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition-colors flex items-center justify-center gap-2">
-                      <i class="pi pi-sign-out"></i>
-                      <span>Desvincularme de esta Barbería</span>
-                    </button>
-                  }
-                </div>
+                  <span class="flex-1 px-4 py-2.5 rounded-xl text-xs font-semibold text-amber-300/80 bg-amber-500/10 border border-amber-500/30 flex items-center justify-center gap-2 cursor-default">
+                    <i class="pi pi-clock"></i> Esperando aprobación
+                  </span>
+                }
               </div>
-            </div>
+
+              <!--
+                El botón de salida (E3-12/3 · H72). Solo aparece donde el cliente
+                TIENE un vínculo consultado —si el backend responde NO_VINCULADO
+                no hay nada que cerrar— y nunca sobre una fila ya cerrada (el
+                estado se relee tras cada cambio).
+              -->
+              @if (puedeDesvincularse(barberia.id)) {
+                <button (click)="abrirDesvinculacion(barberia)"
+                        class="w-full px-4 py-2.5 rounded-xl text-xs font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition-colors flex items-center justify-center gap-2">
+                  <i class="pi pi-sign-out"></i>
+                  <span>Desvincularme de esta Barbería</span>
+                </button>
+              }
+            </app-sede-card>
           }
         </section>
       }
@@ -298,7 +242,9 @@ export class BarberiasComponent implements OnInit {
   /**
    * Mi estado (H54) solo lo sirve el backend al CLIENTE y solo donde hay fila en
    * `cliente_barberias`: una sede sin vínculo responde 403 NO_VINCULADO y el
-   * servicio lo traduce a `null`, así que aquí no se pinta nada.
+   * servicio lo traduce a `null`, así que aquí no se pinta nada. Desde H72 la
+   * lista del cliente ya trae SOLO sus sedes, así que el contador se pide una vez
+   * por sede y todas responden.
    */
   private cargarEstados(): void {
     if (this.userRole() !== 'CLIENTE') {
@@ -367,6 +313,15 @@ export class BarberiasComponent implements OnInit {
     if (roles.includes('ADMIN_BARBERIA')) return 'ADMIN_BARBERIA';
     if (roles.includes('BARBERO')) return 'BARBERO';
     return 'CLIENTE';
+  }
+
+  /**
+   * Solo se puede fijar como activa una sede donde el vínculo OPERA: una
+   * `PENDIENTE_APROBACION` responde 403 en `/seleccionar` (D10). El staff no
+   * trae `estadoVinculacion` en su listado y sigue viendo «Seleccionar».
+   */
+  puedeSeleccionar(barberia: BarberiaResumen): boolean {
+    return barberia.estadoVinculacion !== 'PENDIENTE_APROBACION';
   }
 
   rutaEntrar(): string {

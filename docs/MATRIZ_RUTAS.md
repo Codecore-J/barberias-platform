@@ -135,6 +135,7 @@
 | 66 | POST | `/plataforma/vinculaciones/:id/aprobar` | PlataformaVinculacionesController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-12** (D10 · H67) | no | **sí** — 404 si la vinculación no existe y 409 `ESTADO_INVALIDO` si ya se resolvió; deja el vínculo `ACTIVO` y audita `VINCULACION_APROBADA` con el valor anterior y el nuevo (D28) en UNA transacción | sí — el botón «Aprobar» de la bandeja | `test/e3-12-vinculacion.e2e-spec.ts`; `src/barberia/application/vinculacion.service.spec.ts` |
 | 67 | POST | `/plataforma/vinculaciones/:id/rechazar` | PlataformaVinculacionesController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-12** (D10 · H67) | no | **sí** — 422 `MOTIVO_REQUERIDO` sin motivo (o con una palabra suelta), 409 `ESTADO_INVALIDO`; deja `DESVINCULADO` con `es_barberia_activa = false` y audita `VINCULACION_RECHAZADA` con el motivo | sí — el botón «Rechazar» de la bandeja, con modal de motivo | `test/e3-12-vinculacion.e2e-spec.ts`; `src/barberia/application/vinculacion.service.spec.ts` |
 | 68 | POST | `/barberias/:barberiaId/mi-estado/desvincular` | MiEstadoController | — no existía | `@Roles(CLIENTE)` | **E3-12/3** (D20/D21 · regla 1.9) | **sí** — misma ruta base que la 62: el `:barberiaId` deja que el guard acote la sede y el servicio vuelve a acotar por el usuario del token | **sí** — cierra la PROPIA fila (403 `NO_VINCULADO` sin vínculo, 409 `ESTADO_INVALIDO` si ya estaba cerrada) y 422 `RESERVAS_EN_CURSO` con el conteo si hay reservas `PENDIENTE`/`PROPUESTA_PENDIENTE`/`CONFIRMADA` de hoy en adelante; conserva contador y restricción (D20) y audita `CLIENTE_DESVINCULADO_VOLUNTARIAMENTE` con anterior y nuevo | **sí** — el botón «Desvincularme de esta Barbería» de la tarjeta, con modal de confirmación | `test/e3-12-desvinculacion.e2e-spec.ts`; `src/barberia/application/mi-estado.service.spec.ts`; `test/permisos-matriz.e2e-spec.ts` |
+| 69 | GET | `/mi-estado/barberias` | MiEstadoBarberiasController | — no existía | `@Roles('CLIENTE')` | **H72** (hallazgo 5 · cierra la visibilidad de la fila 68) | no — la ruta NO lleva `:barberiaId`, así que el guard solo filtra el rol: el acotado por usuario del TOKEN lo exige el servicio | **sí** — los dos filtros van en la CONSULTA: `estado_vinculacion IN ('ACTIVO','PENDIENTE_APROBACION')` (D10) y `barberias.estado = 'ACTIVO'` (E2-07). Nunca devuelve los vínculos de otro, ni un historial `DESVINCULADO`, ni una sede suspendida; tampoco `codigoAcceso` ni `enlaceUnico` | **sí** — `core/services/tenant.service.ts` (`cargarBarberias`, que la consulta cuando el listado por responsabilidad viene vacío) y la tarjeta `features/barberias/components/sede-card/sede-card.component.ts`, pintada en «Tus Barberías» y en el home del cliente | `test/h72-listado-sedes-cliente.e2e-spec.ts`; `src/barberia/application/cliente-barberias.service.spec.ts`; `test/permisos-matriz.spec.ts` |
 
 > **Filas 65 a 67 (E3-12, 2026-10-15).** La 6.ª vinculación (D10) la resuelve la PLATAFORMA y no la
 > sede, y el motivo es el conteo: `vincularCliente` cuenta las vinculaciones del USUARIO
@@ -163,6 +164,15 @@
 > conocido y anterior: **no existe ninguna ruta que liste las barberías de un `CLIENTE`** (hallazgo 5 de
 > este mismo documento), así que la tarjeta del cliente solo aparece donde su lista de sedes trae algo — el
 > botón ya está cableado y probado, pero su visibilidad depende de esa tarea pendiente.
+
+> **Fila 69 · el cliente ya tiene su lista de sedes (2026-10-16, H72).** Cierra el **hallazgo 5** de este
+> documento, que E3-12/3 dejó a la vista: `GET /barberias` responde por responsabilidad (`responsableId`,
+> fila 12) y a un cliente puro le devuelve `[]`, así que ni «Tus Barberías» ni el botón de salir de la fila
+> 68 tenían lista donde pintarse. La ruta NO cuelga de `/barberias` a propósito —esa base ya significa
+> «donde YO SOY responsable»— y vive bajo `mi-estado`, el espacio de lo que el usuario ve de sí mismo.
+> `TenantService.cargarBarberias()` pregunta primero por responsabilidad y, si viene vacío, por vínculo: el
+> selector de sede vuelve a funcionar para el CLIENTE sin que el frontend tenga que adivinar el rol del
+> token (que en el primer render, antes de que `/auth/me` responda, todavía no conoce).
 
 > **Fila 64 (H64, 2026-10-14).** Sonda de VIDA separada de la de preparación: `check()` sigue en
 > `/health` · `/api/v1/health` mirando base de datos, Redis y memoria, y la vida responde sin tocar nada
@@ -507,12 +517,14 @@ negocio y cada uno necesita su propia tarea.
    responsable recibiera por una ruta lo que por la otra no. Ahora las dos lecturas pasan por el mismo
    helper `veCodigoDe`, aplicado sede a sede dentro de la lista. Cubierto por
    `barberia.service.spec.ts` → `findAllByResponsable · E1-07`.
-5. **No existe ninguna ruta que liste las barberías de un `CLIENTE`.** `cliente_barberias` solo se lee con
-   `findUnique` por `(usuarioId, barberiaId)` —en `vincularCliente`, `seleccionarBarberiaActiva` y
-   `reserva.service.ts:42,316`—, nunca con `findMany`. La única lista del backend es `GET /barberias`, que
-   filtra por `responsableId` y devuelve `[]` a un cliente (hallazgo 1). Resuelve la pregunta que quedaba
-   abierta en el informe de estado: la pantalla de barberías del cliente no puede estar saliendo de ningún
-   endpoint; si el cliente ve sedes hoy, vienen de la caché en `localStorage` o de datos de otra versión.
+5. ~~**No existe ninguna ruta que liste las barberías de un `CLIENTE`.**~~ **Arreglado en H72**
+   (2026-10-16, rama `feat/h72-listado-sedes-cliente`; **fila 69** de esta matriz). `cliente_barberias` solo
+   se leía con `findUnique` por `(usuarioId, barberiaId)` —en `vincularCliente`, `seleccionarBarberiaActiva`
+   y `reserva.service.ts:42,316`—, nunca con `findMany`, y la única lista del backend era `GET /barberias`,
+   que filtra por `responsableId` y devuelve `[]` a un cliente (hallazgo 1). `GET /mi-estado/barberias`
+   (`@Roles('CLIENTE')`, `ClienteBarberiasService`) devuelve las sedes del vínculo propio con sus dos
+   filtros en la consulta —estados vivos de D10 y sede `ACTIVO` de E2-07— y la pantalla del cliente dejó de
+   depender de la caché de `localStorage` para saber dónde está.
 
 ## Qué queda pendiente de esta tarea
 

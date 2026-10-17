@@ -1,6 +1,7 @@
 import { Injectable, signal, computed, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, catchError, of, map } from 'rxjs';
+import { Observable, tap, catchError, of, map, switchMap } from 'rxjs';
+import { API_URL } from '../constants/api.constants.js';
 
 export interface BarberiaResumen {
   id: string;
@@ -8,15 +9,21 @@ export interface BarberiaResumen {
   descripcion?: string | null;
   telefono: string;
   ubicacion: string;
-  codigoAcceso: string;
-  enlaceUnico: string;
+  /**
+   * H72 · `codigoAcceso` y `enlaceUnico` solo los sirve `GET /barberias` (la
+   * sede que uno RESPONSABILIZA): son la puerta de entrada y quien ya está
+   * dentro no los necesita. El listado del CLIENTE
+   * (`GET /mi-estado/barberias`) no los trae, así que la tarjeta no puede
+   * depender de ellos.
+   */
+  codigoAcceso?: string;
+  enlaceUnico?: string;
   responsableId: string;
   estado: string;
   esBarberiaActiva?: boolean;
-  estadoVinculacion?: 'ACTIVO' | 'PENDIENTE';
+  /** D10 · `ACTIVO`, `PENDIENTE_APROBACION` o `DESVINCULADO`. */
+  estadoVinculacion?: string;
 }
-
-import { API_URL } from '../constants/api.constants.js';
 
 @Injectable({
   providedIn: 'root',
@@ -24,6 +31,12 @@ import { API_URL } from '../constants/api.constants.js';
 export class TenantService {
   private readonly http = inject(HttpClient);
   private readonly apiUrl = `${API_URL}/barberias`;
+  /**
+   * H72 · las sedes del CLIENTE son las de su VÍNCULO, no las que responsabiliza.
+   * `GET /barberias` filtra por `responsableId`, así que a un cliente puro le
+   * devuelve `[]` aunque tenga vínculos en `cliente_barberias`.
+   */
+  private readonly apiUrlMisSedes = `${API_URL}/mi-estado/barberias`;
   private readonly storageKey = 'active_barberia_id';
 
   // Signals reactivos para el tenant
@@ -55,14 +68,25 @@ export class TenantService {
   }
 
   /**
-   * Carga las barberías vinculadas del usuario y determina la activa.
+   * Carga las barberías del usuario y determina la activa.
+   *
+   * H72 · dos orígenes, un solo resultado. `GET /barberias` responde por
+   * RESPONSABILIDAD (el dueño, el admin de sede y el barbero que entró por rol);
+   * el CLIENTE responde por VÍNCULO, y esa lista la sirve
+   * `GET /mi-estado/barberias`. Se pregunta primero por responsabilidad y, si
+   * viene vacía, por vínculo: así el selector de sede funciona para los cuatro
+   * roles sin que este servicio tenga que adivinar el rol del token (y sin la
+   * carrera de leer `authState()` antes de que `/auth/me` haya respondido).
    */
   cargarBarberias(): Observable<BarberiaResumen[]> {
     this.isLoading.set(true);
     this.error.set(null);
 
     return this.http.get<any>(this.apiUrl).pipe(
-      map((res) => (Array.isArray(res) ? res : res.data ?? [])),
+      map((res) => this.normalizar(res)),
+      switchMap((sedesPorResponsabilidad) =>
+        sedesPorResponsabilidad.length > 0 ? of(sedesPorResponsabilidad) : this.cargarSedesVinculadas(),
+      ),
       tap((barberias: BarberiaResumen[]) => {
         this.barberiasVinculadas.set(barberias);
         this.isLoading.set(false);
@@ -84,6 +108,24 @@ export class TenantService {
         return of([]);
       }),
     );
+  }
+
+  /**
+   * `GET /mi-estado/barberias` · las sedes del vínculo propio (H72), ya filtradas
+   * por el backend: solo vínculos `ACTIVO` o `PENDIENTE_APROBACION` y solo sedes
+   * activas. Un 403 (el usuario no es CLIENTE) no es un error de pantalla: es que
+   * no hay vínculos que listar, así que se traduce a lista vacía.
+   */
+  private cargarSedesVinculadas(): Observable<BarberiaResumen[]> {
+    return this.http.get<any>(this.apiUrlMisSedes).pipe(
+      map((res) => this.normalizar(res)),
+      catchError(() => of([])),
+    );
+  }
+
+  /** El backend puede envolver la lista (`{ data: [] }`) o devolverla directa. */
+  private normalizar(res: any): BarberiaResumen[] {
+    return Array.isArray(res) ? res : (res?.data ?? []);
   }
 
   /**
@@ -134,14 +176,14 @@ export class TenantService {
       tap((nuevaBarberia) => {
         // Recargar la lista y seleccionarla
         this.cargarBarberias().subscribe(() => {
-           this.seleccionarBarberia((nuevaBarberia as any).id || (nuevaBarberia as any).data?.id).subscribe();
+          this.seleccionarBarberia((nuevaBarberia as any).id || (nuevaBarberia as any).data?.id).subscribe();
         });
       }),
       catchError((err) => {
         this.isLoading.set(false);
         this.error.set(err.error?.message || 'Error al crear la barbería');
         throw err;
-      })
+      }),
     );
   }
 

@@ -159,4 +159,54 @@ describe('BarberiaController', () => {
       expect(service.cambiarEstado).toHaveBeenCalledWith('uuid-barberia', user.id, 'ACTIVO', false);
     });
   });
+
+  describe('E1-04: ADMINISTRADOR frente al rol global inexistente', () => {
+    it('update debe marcar esGlobal=true a un ADMINISTRADOR', async () => {
+      const user: UsuarioAutenticado = {
+        id: 'uuid-global',
+        correo: 'global@test.com',
+        roles: ['ADMINISTRADOR'],
+      };
+
+      await controller.update('uuid-barberia', { nombre: 'Nuevo' } as any, user);
+
+      expect(service.update).toHaveBeenCalledWith('uuid-barberia', user.id, { nombre: 'Nuevo' }, true);
+    });
+
+    it('update NO debe marcar esGlobal a un ADMIN_BARBERIA', async () => {
+      const user: UsuarioAutenticado = {
+        id: 'uuid-admin',
+        correo: 'admin@test.com',
+        roles: ['ADMIN_BARBERIA'],
+      };
+
+      await controller.update('uuid-barberia', { nombre: 'Nuevo' } as any, user);
+
+      expect(service.update).toHaveBeenCalledWith('uuid-barberia', user.id, { nombre: 'Nuevo' }, false);
+    });
+
+    it('cambiarEstado debe marcar esGlobal=true a un ADMINISTRADOR (E2-07)', async () => {
+      const user: UsuarioAutenticado = {
+        id: 'uuid-global',
+        correo: 'global@test.com',
+        roles: ['ADMINISTRADOR'],
+      };
+
+      await controller.cambiarEstado('uuid-barberia', { estado: 'INACTIVO' }, user);
+
+      expect(service.cambiarEstado).toHaveBeenCalledWith('uuid-barberia', user.id, 'INACTIVO', true);
+    });
+
+    it('cambiarEstado NO debe marcar esGlobal a un ADMIN_BARBERIA (E2-07)', async () => {
+      const user: UsuarioAutenticado = {
+        id: 'uuid-admin',
+        correo: 'admin@test.com',
+        roles: ['ADMIN_BARBERIA'],
+      };
+
+      await controller.cambiarEstado('uuid-barberia', { estado: 'ACTIVO' }, user);
+
+      expect(service.cambiarEstado).toHaveBeenCalledWith('uuid-barberia', user.id, 'ACTIVO', false);
+    });
+  });
 });

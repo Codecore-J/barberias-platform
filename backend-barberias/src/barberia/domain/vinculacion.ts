@@ -62,6 +62,23 @@ export function esVinculacionResoluble(estado: unknown): boolean {
   return estado === ESTADOS_VINCULACION.PENDIENTE_APROBACION;
 }
 
+/**
+ * H72 · qué estados del cliente se consideran «sedes donde el cliente está»,
+ * para el listado `GET /mi-estado/barberias` y el dashboard del cliente.
+ *
+ * Regla de filtrado del encargo: devolver solo `ACTIVO` y
+ * `PENDIENTE_APROBACION`, excluyendo `DESVINCULADO` (el historial queda intacto,
+ * pero el cliente ya no opera ahí) y las barberías `INACTIVO` (suspendidas), que
+ * no deben aparecer en la UI operativa.
+ *
+ * Público para que el servicio y las pruebas compartan la misma intención sin
+ * copiar literales sueltos.
+ */
+export const ESTADOS_VINCULACION_VISIBLES_AL_CLIENTE = [
+  ESTADOS_VINCULACION.ACTIVO,
+  ESTADOS_VINCULACION.PENDIENTE_APROBACION,
+] as const;
+
 /** Aprobar deja el vínculo `ACTIVO`; rechazar lo deja `DESVINCULADO`. */
 export function estadoDeResolucion(aprobar: boolean): EstadoVinculacion {
   return aprobar ? ESTADOS_VINCULACION.ACTIVO : ESTADOS_VINCULACION.DESVINCULADO;
