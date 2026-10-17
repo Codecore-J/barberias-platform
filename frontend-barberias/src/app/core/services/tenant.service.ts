@@ -90,17 +90,7 @@ export class TenantService {
       tap((barberias: BarberiaResumen[]) => {
         this.barberiasVinculadas.set(barberias);
         this.isLoading.set(false);
-
-        // Buscar barbería marcada como activa o en caché
-        const guardadaId = localStorage.getItem(this.storageKey);
-        const activa =
-          barberias.find((b) => b.id === guardadaId) ??
-          barberias.find((b) => b.esBarberiaActiva) ??
-          (barberias.length > 0 ? barberias[0] : null);
-
-        if (activa) {
-          this.setBarberiaActiva(activa);
-        }
+        this.sincronizarSedeActiva(barberias);
       }),
       catchError((err) => {
         this.isLoading.set(false);
@@ -185,6 +175,60 @@ export class TenantService {
         throw err;
       }),
     );
+  }
+
+  /**
+   * H74 · la sede activa tiene que estar EN la lista.
+   *
+   * La regla anterior solo fijaba la activa cuando encontraba una sede, así que
+   * con la lista VACÍA no pasaba nada: la señal y la caché de `localStorage`
+   * conservaban la sede anterior y el usuario quedaba anclado a una sede
+   * fantasma —la cabecera la seguía anunciando y `authInterceptor` seguía
+   * mandando su `x-barberia-id`, con el backend respondiendo sobre una sede a la
+   * que ya no pertenece—.
+   *
+   * Si la sede fijada (o la que dejó la caché) ya no está en la lista, se purga
+   * en el acto; después se elige la siguiente: la que el backend marcó activa o,
+   * si ninguna lo está (D10 solo apaga la fila que se cierra), la primera.
+   *
+   * Ojo con el orden de los operadores: esto vive en un `tap`, así que un fallo
+   * de RED no llega hasta aquí y no purga nada. Una carga que sí responde —aunque
+   * responda vacío o sin la sede— sí purga, y eso es lo que se quiere.
+   */
+  private sincronizarSedeActiva(barberias: BarberiaResumen[]): void {
+    const guardadaId = localStorage.getItem(this.storageKey);
+    const referencia = this.barberiaActiva()?.id ?? guardadaId;
+
+    if (referencia && !barberias.some((b) => b.id === referencia)) {
+      this.setBarberiaActiva(null);
+    }
+
+    const activa =
+      barberias.find((b) => b.id === (this.barberiaActiva()?.id ?? guardadaId)) ??
+      barberias.find((b) => b.esBarberiaActiva) ??
+      barberias[0] ??
+      null;
+
+    if (activa) {
+      this.setBarberiaActiva(activa);
+    }
+  }
+
+  /**
+   * H74 · saca UNA sede de la sesión sin esperar a que vuelva la lista.
+   *
+   * Lo llama el flujo de desvinculación: la tarjeta desaparece en el clic y, si
+   * la sede purgada era la ACTIVA, también se va la señal y la caché (si no,
+   * `authInterceptor` seguiría mandando `x-barberia-id` de un vínculo ya
+   * cerrado hasta que llegara la recarga). Si quedan otras sedes, la recarga
+   * inmediatamente posterior elige la siguiente.
+   */
+  purgarBarberia(barberiaId: string): void {
+    this.barberiasVinculadas.update((lista) => lista.filter((b) => b.id !== barberiaId));
+
+    if (this.barberiaActivaId() === barberiaId) {
+      this.setBarberiaActiva(null);
+    }
   }
 
   setBarberiaActiva(barberia: BarberiaResumen | null) {
