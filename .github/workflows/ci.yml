@@ -12,9 +12,13 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
+    # Las imagenes de servicio salen del Docker Hub oficial, NO del espejo
+    # publico de AWS ECR (`public.ecr.aws/docker/library/...`): ese registro
+    # limita las descargas anonimas y el pipeline moria en el arranque con
+    # "toomanyrequests: Data limit exceeded" antes de ejecutar una sola prueba.
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:15
+        image: postgres:15
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: password
@@ -27,7 +31,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       redis:
-        image: public.ecr.aws/docker/library/redis:7
+        image: redis:7
         ports:
           - 6379:6379
 
