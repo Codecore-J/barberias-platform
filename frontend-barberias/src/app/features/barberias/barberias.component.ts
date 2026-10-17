@@ -44,6 +44,20 @@ import { SedeCardComponent } from './components/sede-card/sede-card.component';
         </div>
       }
 
+      <!--
+        Error de la selección de sede (hallazgo 2): el backend es quien
+        autoriza el cambio —403 de un vínculo pendiente, 404 de una sede sin
+        vínculo o caída de red—, así que el fallo deja aquí su mensaje y la
+        sede que había sigue siendo la activa.
+      -->
+      @if (tenantService.error()) {
+        <div class="max-w-6xl mx-auto px-4">
+          <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center gap-2">
+            <i class="pi pi-exclamation-triangle"></i> {{ tenantService.error() }}
+          </div>
+        </div>
+      }
+
       <!-- Estado de Carga -->
       @if (tenantService.isLoading()) {
         <div class="flex justify-center items-center py-20">
@@ -359,6 +373,10 @@ export class BarberiasComponent implements OnInit {
           this.router.navigate(['/']);
         }
       },
+      // Hallazgo 2: si el backend rechaza la selección no se navega y la sede
+      // anterior sigue siendo la activa; el mensaje ya queda en
+      // `tenantService.error()` y lo muestra el banner de arriba.
+      error: () => undefined,
     });
   }
 }

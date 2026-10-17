@@ -119,16 +119,22 @@ export class TenantService {
   }
 
   /**
-   * Cambia la barbería activa para el usuario y sincroniza con el backend.
+   * Fija la sede activa que eligió el USUARIO (el botón «Seleccionar»).
+   *
+   * Hallazgo 2 · el cambio de manos lo autoriza y registra el backend: el
+   * estado local —señal y `localStorage`— solo se toca en el `tap`, es decir,
+   * tras el 200 de `PATCH /barberias/:id/seleccionar`. Si el backend falla
+   * (403 de un vínculo `PENDIENTE_APROBACION`, 404 de una sede sin vínculo o
+   * caída de red) la sede anterior sigue siendo la activa, el mensaje del
+   * contrato D40 queda en `error()` y el error se propaga para que la pantalla
+   * decida qué hacer con él.
    */
   seleccionarBarberia(barberiaId: string): Observable<any> {
     this.isLoading.set(true);
-    return this.http.patch(`${this.apiUrl}/${barberiaId}/seleccionar`, {}).pipe(
+    this.error.set(null);
+    return this.pedirSeleccion(barberiaId).pipe(
       tap(() => {
-        const barberia = this.barberiasVinculadas().find((b) => b.id === barberiaId);
-        if (barberia) {
-          this.setBarberiaActiva(barberia);
-        }
+        this.fijarLocalTrasBackend(barberiaId);
         this.isLoading.set(false);
       }),
       catchError((err) => {
@@ -137,6 +143,28 @@ export class TenantService {
         throw err;
       }),
     );
+  }
+
+  /**
+   * `PATCH /barberias/:id/seleccionar`. La ÚNICA puerta del servicio para que
+   * una sede pase a ser activa: la llaman el botón del usuario y el auto-pick
+   * de `sincronizarSedeActiva`, que por eso ya no decide nada por su cuenta.
+   */
+  private pedirSeleccion(barberiaId: string): Observable<any> {
+    return this.http.patch(`${this.apiUrl}/${barberiaId}/seleccionar`, {});
+  }
+
+  /**
+   * Tras el 200 del backend, la sede de la lista local pasa a ser la activa.
+   * Si no está en la lista no hay objeto completo que cachear y no se fija
+   * nada —los dos llamadores la tienen en la lista (la tarjeta, y la recarga
+   * previa de `crearBarberia`), así que esto es solo defensivo—.
+   */
+  private fijarLocalTrasBackend(barberiaId: string): void {
+    const barberia = this.barberiasVinculadas().find((b) => b.id === barberiaId);
+    if (barberia) {
+      this.setBarberiaActiva(barberia);
+    }
   }
 
   /**
@@ -166,7 +194,11 @@ export class TenantService {
       tap((nuevaBarberia) => {
         // Recargar la lista y seleccionarla
         this.cargarBarberias().subscribe(() => {
-          this.seleccionarBarberia((nuevaBarberia as any).id || (nuevaBarberia as any).data?.id).subscribe();
+          this.seleccionarBarberia((nuevaBarberia as any).id || (nuevaBarberia as any).data?.id).subscribe({
+            // Si el backend rechazara la selección, el mensaje ya queda en
+            // `error()` y la pantalla de creación lo muestra; no se propaga.
+            error: () => undefined,
+          });
         });
       }),
       catchError((err) => {
@@ -188,30 +220,63 @@ export class TenantService {
    * que ya no pertenece—.
    *
    * Si la sede fijada (o la que dejó la caché) ya no está en la lista, se purga
-   * en el acto; después se elige la siguiente: la que el backend marcó activa o,
-   * si ninguna lo está (D10 solo apaga la fila que se cierra), la primera.
+   * en el acto.
+   *
+   * Hallazgo 2 · y la purga no era lo único que decidía el navegador: antes de
+   * este cambio, la sustituta se fijaba en local (caché → `esBarberiaActiva` →
+   * la primera) sin preguntarle a nadie, así que `es_barberia_activa` en la
+   * base podía no coincidir con la sede que operaba el navegador. Ahora las dos
+   * ramas tienen la misma dueña: la que ya era activa y SIGUE en la lista solo
+   * refresca su objeto cacheado (no hubo cambio de manos), y toda sede que
+   * PASA a ser activa lo decide el backend vía `pedirSeleccion`.
    *
    * Ojo con el orden de los operadores: esto vive en un `tap`, así que un fallo
    * de RED no llega hasta aquí y no purga nada. Una carga que sí responde —aunque
    * responda vacío o sin la sede— sí purga, y eso es lo que se quiere.
    */
   private sincronizarSedeActiva(barberias: BarberiaResumen[]): void {
-    const guardadaId = localStorage.getItem(this.storageKey);
-    const referencia = this.barberiaActiva()?.id ?? guardadaId;
+    const referencia = this.barberiaActiva()?.id ?? localStorage.getItem(this.storageKey);
+    const conservada = referencia ? (barberias.find((b) => b.id === referencia) ?? null) : null;
 
-    if (referencia && !barberias.some((b) => b.id === referencia)) {
+    // H74 · la sede fijada (señal o caché) solo sigue siendo la activa si sigue EN la lista.
+    if (referencia && !conservada) {
       this.setBarberiaActiva(null);
     }
 
-    const activa =
-      barberias.find((b) => b.id === (this.barberiaActiva()?.id ?? guardadaId)) ??
+    // Misma sede que la actual: solo se refresca el objeto cacheado (la lista
+    // trae datos más frescos que los de la caché). No hay cambio de manos, así
+    // que no vuelve a pasar por `/seleccionar`: la eligió el usuario y el
+    // backend la registró cuando la fijó.
+    if (conservada && conservada.id === this.barberiaActiva()?.id) {
+      this.setBarberiaActiva(conservada);
+      return;
+    }
+
+    // Rama del cambio de manos: la sustituta (la que el backend marcó activa
+    // o, si ninguna lo está —D10 solo apaga la fila que se cierra—, la primera).
+    const candidata =
+      conservada ??
       barberias.find((b) => b.esBarberiaActiva) ??
       barberias[0] ??
       null;
 
-    if (activa) {
-      this.setBarberiaActiva(activa);
+    if (!candidata) {
+      return;
     }
+
+    // Hallazgo 2 · una sede que PASA a ser activa la decide el backend. Hasta
+    // el 200 no hay sede activa (el guard manda al hub de sedes), y un 403/404
+    // —un vínculo que ya no opera— o una caída de red no fijan NADA: el
+    // mensaje queda en `error()` y la lista de sedes se conserva igual.
+    this.pedirSeleccion(candidata.id)
+      .pipe(
+        tap(() => this.setBarberiaActiva(candidata)),
+        catchError((err) => {
+          this.error.set(err.error?.message || 'No se pudo seleccionar la sede activa');
+          return of(null);
+        }),
+      )
+      .subscribe();
   }
 
   /**
