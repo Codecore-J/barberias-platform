@@ -442,12 +442,23 @@ negocio y cada uno necesita su propia tarea.
    `auth.service.ts:110-119` manda al barbero a `/barberias` porque la lista viene vacía, y ahí no hay
    tarjetas que seleccionar: su sede activa solo sobrevive desde la caché de `localStorage`
    (`tenant.service.ts:145-154`). En un dispositivo nuevo, el barbero queda sin forma de fijar su sede.
-2. **La sede activa del frontend no pasa por `/seleccionar`.** `tenant.service.ts:59-82` la elige localmente
-   entre las que devuelve `GET /barberias` (caché → `esBarberiaActiva` → la primera) y la guarda en
-   `localStorage`; `/seleccionar` solo se invoca desde el botón «Seleccionar» de una tarjeta
-   (`barberias.component.ts:166`) y desde el encadenado de `crearBarberia` (`tenant.service.ts:137`). El
-   interceptor manda ese id en `x-barberia-id` (`auth.interceptor.ts:16-18`), que es lo que leen
-   `@CurrentBarberiaId` y `RolesGuard`.
+2. ~~**La sede activa del frontend no pasa por `/seleccionar`.**~~ **Arreglado en `feat/sincronizar-sede-activa-backend`**
+   (2026-10-17). El texto original del hallazgo: `tenant.service.ts:59-82` la elige localmente entre las que
+   devuelve `GET /barberias` (caché → `esBarberiaActiva` → la primera) y la guarda en `localStorage`;
+   `/seleccionar` solo se invoca desde el botón «Seleccionar» de una tarjeta (`barberias.component.ts:166`) y
+   desde el encadenado de `crearBarberia` (`tenant.service.ts:137`). El interceptor manda ese id en
+   `x-barberia-id` (`auth.interceptor.ts:16-18`), que es lo que leen `@CurrentBarberiaId` y `RolesGuard`.
+   Ahora `TenantService` tiene UNA sola puerta para que una sede pase a ser activa —`pedirSeleccion`, el
+   propio `PATCH /barberias/:id/seleccionar`— y `sincronizarSedeActiva` la usa en su rama de cambio de manos:
+   la sede que ya era activa y SIGUE en la lista solo refresca su objeto cacheado (no hubo cambio de manos:
+   la eligió el usuario y el backend la registró cuando la fijó), y toda sede que PASA a ser activa —la
+   sustituta de una purgada por H74, la que el backend marcó `esBarberiaActiva` o la primera de un
+   dispositivo nuevo— pide el cambio al backend y no se fija en señal ni `localStorage` hasta el 200. Un 403
+   (vínculo `PENDIENTE_APROBACION`), un 404 (sin vínculo) o una caída de red no fijan nada: el mensaje
+   queda en `error()`, que la pantalla de barberías muestra en su banner. El botón «Seleccionar» y el
+   encadenado de `crearBarberia` ya pasaban por la misma ruta; ahora no queda ningún camino que fije sede
+   sin preguntar. Cubierto por `frontend-barberias/src/app/core/services/tenant.service.spec.ts` (13 casos,
+   5 de ellos del contrato nuevo, rojo→verde: con el servicio viejo, `Tests 5 failed | 38 passed (43)`).
 3. ~~**`@CurrentBarberiaId` cae en `params.id`.**~~ **Arreglado en E1-06** (`c5e5111`, rama
    `fix/e1-06-currentbarberiaid-params-id`; cerrado en su totalidad por `d93e9af`). El decorador tenía cuatro
    fuentes y la cuarta era `params.id`,
