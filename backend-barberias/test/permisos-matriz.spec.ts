@@ -134,6 +134,13 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // vuelve a acotar por el usuario del token. Solo `CLIENTE`: cerrar el vínculo
   // de otro no es una operación de nadie más.
   'POST /barberias/:barberiaId/mi-estado/desvincular': [ROL_CLIENTE],
+  // H72 (2026-10-16): `GET /mi-estado/barberias` lista las sedes PROPIAS del
+  // CLIENTE con vínculo `ACTIVO` o `PENDIENTE_APROBACION`, excluyendo
+  // `DESVINCULADO` y las barberías inactivas. No cuelga de `/barberias` porque
+  // esa base ya significa «donde YO SOY responsable» (E1-07). Sin `:barberiaId`,
+  // así que el guard solo filtra el rol y el acotado por el usuario del token lo
+  // exige el servicio. Solo CLIENTE: el staff tiene sus propios listados.
+  'GET /mi-estado/barberias': [ROL_CLIENTE],
   // E4-03/5 (2026-10-12): suspender o reactivar la CUENTA global es exclusivo del
   // ADMINISTRADOR de la plataforma (D05/D09/D48). La sede no entra por aquí: su
   // penalización es local y su vía es `clientes/:clienteId/reactivar`.
@@ -392,9 +399,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // E3-12 (2026-10-15) suma la bandeja de plataforma de la 6.ª vinculación y sus
   // dos resoluciones (aprobar y rechazar): 79. E3-12/3 suma la salida del
   // cliente (`POST .../mi-estado/desvincular`): 80.
-  it('descubrir las 80 rutas del servidor y todas tienen decision', () => {
+  it('descubrir las 81 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(80);
+    expect(claves.length).toBe(81);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -416,9 +423,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
 
     for (const ruta of rutas) {
       const esperados = POLITICA_DECLARADA[ruta.clave];
-      const declarados = ruta.roles;
+      const declarados = ruta.roles ?? [];
 
-      if (declarados && declarados.length > 0) {
+      if (declarados.length > 0) {
         // El orden de la lista de roles no significa nada para el guard: se
         // compara como conjunto.
         const mismaLista =
@@ -455,6 +462,10 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
 
     for (const ruta of rutas) {
       const esperados = MATRIZ_ESPERADA[ruta.clave];
+      if (!esperados || !Array.isArray(esperados)) {
+        desviaciones.push(`${ruta.clave} · sin matriz esperada`);
+        continue;
+      }
       for (const rol of ROLES) {
         evaluaciones += 1;
         const esperado = esperados.includes(rol);
@@ -492,8 +503,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     // seis verbos de E2-07 y retiró cuatro `@Delete`: 75 × 4 = 300. H64 sumó la
     // sonda de vida separada (76 rutas) y con ella la decisión de sus 4 roles:
     // 304. E3-12 sumó las tres rutas de la 6.ª vinculación (79 rutas) y E3-12/3
-    // la desvinculación del cliente: 80 × 4 = 320.
-    expect(evaluaciones).toBe(320);
+    // la desvinculación del cliente: 80 × 4 = 320. H72 sumó la lista de sedes
+    // del cliente (H72): 81 × 4 = 324.
+    expect(evaluaciones).toBe(324);
     expect(
       desviaciones.length === 0
         ? ''

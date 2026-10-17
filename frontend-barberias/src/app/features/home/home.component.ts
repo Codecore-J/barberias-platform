@@ -2,14 +2,16 @@ import { Component, HostListener, OnInit, signal, inject } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { TenantService } from '../../core/services/tenant.service';
+import type { BarberiaResumen } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
 import { ReservasService } from '../../core/services/reservas.service';
 import { PagosService } from '../../core/services/pagos.service';
+import { SedeCardComponent } from '../barberias/components/sede-card/sede-card.component';
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [CommonModule, RouterLink, CurrencyPipe],
+  imports: [CommonModule, RouterLink, CurrencyPipe, SedeCardComponent],
   template: `
     <div class="relative min-h-[150vh] perspective-1200 overflow-hidden bg-ambient-mesh">
       
@@ -220,6 +222,64 @@ import { PagosService } from '../../core/services/pagos.service';
                   }
                 </div>
               </div>
+            </div>
+          </section>
+        }
+
+        <!--
+          H72 · MIS BARBERÍAS (dashboard del CLIENTE).
+
+          La lista la sirve GET /mi-estado/barberias a través de
+          TenantService.cargarBarberias(), ya filtrada por el backend: solo
+          vínculos ACTIVO o PENDIENTE_APROBACION y solo sedes activas, así
+          que aquí no hay que descartar nada. El estado del vínculo se lee en
+          cada tarjeta, que es la misma que usa «Tus Barberías».
+        -->
+        @if (userRole() === 'CLIENTE' && tenantService.barberiasVinculadas().length > 0) {
+          <section class="max-w-6xl mx-auto transform-style-3d">
+            <div class="flex flex-wrap items-center justify-between gap-4 mb-6 transform translate-z-12">
+              <h2 class="text-2xl font-display font-bold text-white flex items-center gap-3">
+                <i class="pi pi-building text-amber-400"></i> Mis Barberías
+              </h2>
+              <a routerLink="/barberias"
+                 class="text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-2">
+                <span>Gestionar mis vínculos</span><i class="pi pi-arrow-right text-[10px]"></i>
+              </a>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 transform-style-3d">
+              @for (sede of tenantService.barberiasVinculadas(); track sede.id) {
+                <app-sede-card [barberia]="sede" [esActiva]="sede.id === tenantService.barberiaActivaId()">
+                  <div class="flex gap-3">
+                    @if (sede.id === tenantService.barberiaActivaId()) {
+                      <a routerLink="/reservas/nueva"
+                         class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-md shadow-amber-500/20 hover:scale-105 transition-transform flex items-center justify-center gap-2">
+                        <i class="pi pi-calendar-plus"></i> Reservar
+                      </a>
+                    } @else if (puedeSeleccionar(sede)) {
+                      <button (click)="seleccionarSede(sede.id)"
+                              class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-md shadow-amber-500/20 hover:scale-105 transition-transform flex items-center justify-center gap-2">
+                        <i class="pi pi-check-circle"></i> Seleccionar
+                      </button>
+                    } @else {
+                      <!--
+                        PENDIENTE_APROBACION (D10): la sede todavía no opera para
+                        este cliente, así que no se ofrece seleccionarla —el
+                        backend respondería 403— ni reservar en ella.
+                      -->
+                      <span class="flex-1 px-4 py-2.5 rounded-xl text-xs font-semibold text-amber-300/80 bg-amber-500/10 border border-amber-500/30 flex items-center justify-center gap-2 cursor-default">
+                        <i class="pi pi-clock"></i> Esperando aprobación
+                      </span>
+                    }
+                  </div>
+
+                  <a routerLink="/barberias"
+                     class="w-full px-4 py-2.5 rounded-xl text-xs font-semibold text-zinc-300 bg-white/5 border border-zinc-700/60 hover:border-amber-500/40 hover:text-amber-300 transition-colors flex items-center justify-center gap-2">
+                    <i class="pi pi-cog"></i>
+                    <span>Ver mi vínculo y gestionar</span>
+                  </a>
+                </app-sede-card>
+              }
             </div>
           </section>
         }
@@ -467,6 +527,28 @@ export class HomeComponent implements OnInit {
        const suma = pagosHoy.reduce((acc: number, p: any) => acc + Number(p.monto), 0);
        this.ingresosHoy.set(suma);
     });
+  }
+
+  /**
+   * H72 · fija la sede activa desde el dashboard del cliente. Es la misma ruta
+   * que usa la pantalla de barberías (`PATCH /barberias/:id/seleccionar`), y el
+   * backend apaga las demás en la misma transacción. El error se ignora aquí
+   * porque `TenantService` ya lo deja en `error()`: si la sede dejara de estar
+   * disponible entre la carga y el clic, la pantalla avisa con ese mensaje en
+   * vez de romperse.
+   */
+  seleccionarSede(barberiaId: string): void {
+    this.tenantService.seleccionarBarberia(barberiaId).subscribe({ error: () => undefined });
+  }
+
+  /**
+   * Solo se puede fijar una sede donde el vínculo OPERA: una
+   * `PENDIENTE_APROBACION` responde 403 en `/seleccionar` (D10), así que el botón
+   * no se ofrece. El staff no trae `estadoVinculacion` en su listado y sigue
+   * viendo «Seleccionar» como siempre.
+   */
+  puedeSeleccionar(sede: BarberiaResumen): boolean {
+    return sede.estadoVinculacion !== 'PENDIENTE_APROBACION';
   }
 
   userRole(): string {
