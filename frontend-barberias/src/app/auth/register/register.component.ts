@@ -1,9 +1,10 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService } from '../auth.service';
 import { CommonModule } from '@angular/common';
 import { RegisterDto } from '../interfaces/auth.interface';
+import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
 
 @Component({
   selector: 'app-register',
@@ -103,7 +104,7 @@ import { RegisterDto } from '../interfaces/auth.interface';
           <div class="mt-8 text-center transform translate-z-8">
             <p class="text-zinc-500 text-sm">
               ¿Ya tienes una cuenta? 
-              <a routerLink="/auth/login" class="text-amber-400 font-bold hover:text-amber-300 hover:underline underline-offset-4 ml-1 transition-colors">
+              <a routerLink="/auth/login" [queryParams]="queryParamsDelRetorno" class="text-amber-400 font-bold hover:text-amber-300 hover:underline underline-offset-4 ml-1 transition-colors">
                 Inicia Sesión
               </a>
             </p>
@@ -130,8 +131,20 @@ import { RegisterDto } from '../interfaces/auth.interface';
 })
 export class RegisterComponent {
   private fb = inject(FormBuilder);
+  private readonly route = inject(ActivatedRoute);
   authService = inject(AuthService);
-  
+
+  /**
+   * H75 · la ruta que la persona pedía al ser interceptada. Se conserva al
+   * saltar entre login y registro, porque quien escanea el QR de una sede por
+   * primera vez no tiene cuenta todavía.
+   */
+  readonly returnUrl = this.route.snapshot.queryParamMap.get(PARAM_RETURN_URL);
+
+  get queryParamsDelRetorno(): Record<string, string> {
+    return this.returnUrl ? { [PARAM_RETURN_URL]: this.returnUrl } : {};
+  }
+
   showPassword = signal(false);
 
   registerForm = this.fb.group({
@@ -155,7 +168,7 @@ export class RegisterComponent {
         ...this.registerForm.value
       } as RegisterDto;
 
-      this.authService.register(data).subscribe({
+      this.authService.register(data, this.returnUrl).subscribe({
         next: () => {},
         error: () => {
           // El error se muestra en la interfaz a través de authService.authState().error

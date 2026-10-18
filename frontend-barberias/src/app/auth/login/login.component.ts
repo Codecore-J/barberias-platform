@@ -1,8 +1,9 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService } from '../auth.service';
 import { CommonModule } from '@angular/common';
+import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
 
 @Component({
   selector: 'app-login',
@@ -97,7 +98,7 @@ import { CommonModule } from '@angular/common';
           <div class="mt-6 text-center transform translate-z-8">
             <p class="text-zinc-500 text-sm">
               ¿No tienes una cuenta? 
-              <a routerLink="/auth/register" class="text-amber-400 font-bold hover:text-amber-300 hover:underline underline-offset-4 ml-1 transition-colors">
+              <a routerLink="/auth/register" [queryParams]="queryParamsDelRetorno" class="text-amber-400 font-bold hover:text-amber-300 hover:underline underline-offset-4 ml-1 transition-colors">
                 Regístrate aquí
               </a>
             </p>
@@ -218,8 +219,23 @@ import { CommonModule } from '@angular/common';
 })
 export class LoginComponent {
   private fb = inject(FormBuilder);
+  private readonly route = inject(ActivatedRoute);
   authService = inject(AuthService);
-  
+
+  /**
+   * H75 · la ruta que la persona pedía antes de que el `authGuard` la mandara
+   * aquí. Se lee de la query (por eso sobrevive a una recarga del formulario) y
+   * se le pasa a `AuthService`, que la valida antes de navegar: este parámetro
+   * lo puede escribir cualquiera.
+   */
+  readonly returnUrl = this.route.snapshot.queryParamMap.get(PARAM_RETURN_URL);
+
+  /** El destino también viaja al registro: quien no tiene cuenta suele ser
+   * justo quien escanea el QR de una sede por primera vez. */
+  get queryParamsDelRetorno(): Record<string, string> {
+    return this.returnUrl ? { [PARAM_RETURN_URL]: this.returnUrl } : {};
+  }
+
   showPassword = signal(false);
   showRecoveryModal = signal(false);
   recoveryStep = signal<1 | 2>(1);
@@ -320,7 +336,7 @@ export class LoginComponent {
 
   onSubmit() {
     if (this.loginForm.valid) {
-      this.authService.login(this.loginForm.value as any).subscribe({
+      this.authService.login(this.loginForm.value as any, this.returnUrl).subscribe({
         next: () => {},
         error: () => {}
       });
