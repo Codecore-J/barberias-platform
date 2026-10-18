@@ -935,6 +935,8 @@ vez el código de la sede. Quedan **ABIERTOS** H65, H66, H68, H69, H70 y H71. Re
 
 **Actualización (7.ª iteración, 2026-10-15):** se ejecuta **E3-12/3** y con ella se cierra la regla **1.9** de la matriz de cumplimiento: el cliente ya puede CERRAR su vínculo por su cuenta (`POST /barberias/:barberiaId/mi-estado/desvincular`, con 422 `RESERVAS_EN_CURSO` si tiene citas vivas, auditoría `CLIENTE_DESVINCULADO_VOLUNTARIAMENTE` y D20 intacto) y el cupo de D10 se recupera —el conteo del límite pasa a mirar los vínculos VIVOS—. E3-12 conserva **una** mitad abierta (el enlace único/QR) y esta ejecución registra **H72**: la tarjeta del cliente de la que cuelga el botón depende de un listado de sedes que NO existe para un `CLIENTE` (hallazgo 5 de `docs/MATRIZ_RUTAS.md`), así que el botón está cableado y probado pero su visibilidad depende de esa tarea pendiente. Siguen **ABIERTOS** H65, H66, H68, H69, H70 y H72. Reporte: `reporte-e3-12-desvinculacion.md`.
 
+**Actualización (9.ª iteración, 2026-10-18):** se cierra **H69** en la rama `chore/h69-cobertura-reglas`. Las tres reglas que la matriz marcaba `OK-SIN-TEST` —1.6 recuperación de contraseña, 2.3 `ESTADO_NO_EDITABLE` y 4.3 prioridad de las excepciones de horario— pasan a `OK-PROBADO` con tests que nombran la regla, así que `docs/MATRIZ_CUMPLIMIENTO.md` ya no tiene ninguna fila en ese estado. No se mueve ningún otro hallazgo de la fase. Reporte: `reporte-h69-cobertura-reglas.md`.
+
 ### F2.1 · Marcador de la fase
 
 | ID | Estado |
@@ -946,7 +948,7 @@ vez el código de la sede. Quedan **ABIERTOS** H65, H66, H68, H69, H70 y H71. Re
 | **H66** | ⬜ **ABIERTO** — con Redis caído `app.close()` no termina (el cierre espera a las conexiones de BullMQ y ioredis sigue reintentando). Hoy no afecta a producción porque `main.ts` no llama a `enableShutdownHooks()` y SIGTERM mata el proceso en 22 ms; sería un problema al añadir apagado controlado |
 | **H67** | ✅ **RESUELTO** (5.ª iteración, E3-12/1) — la 6.ª vinculación tiene flujo que la resuelve: bandeja `GET /plataforma/vinculaciones/pendientes` y `POST /plataforma/vinculaciones/:id/aprobar|rechazar { motivo }`, los tres solo para el ADMINISTRADOR. De las otras dos mitades de E3-12, la desvinculación del cliente se cerró en la 7.ª iteración (E3-12/3) y solo queda **abierto** el enlace único/QR |
 | **H68** | ⬜ **ABIERTO** (E2-08) — §7.1: el pago se registra y se audita, pero **no existe la corrección** del pago que el diseño sí permite |
-| **H69** | ⬜ **ABIERTO** (E2-08) — tres reglas se cumplen sin test que las vigile: recuperación de contraseña, `ESTADO_NO_EDITABLE` y la prioridad de las excepciones de horario |
+| **H69** | ✅ **RESUELTO** (9.ª iteración, 2026-10-18) — las tres reglas ya tienen test que las vigila: recuperación de contraseña (flujo completo forgot → token → reset → login), `ESTADO_NO_EDITABLE` (el `PATCH` general no escribe el estado ni para el ADMINISTRADOR; solo `cambiarEstado`) y la prioridad de las excepciones (`CERRADA` anula la jornada, `HORARIO_ESPECIAL` la sustituye, y solo en su fecha) |
 | **H70** | ⬜ **ABIERTO** (E2-08) — la sección 6 del PDF 01 no es localizable desde el repositorio: su cumplimiento no se puede acreditar |
 | **H71** | ✅ **RESUELTO** (6.ª iteración, E3-12/2) — D21 implementado: `vincularCliente` REABRE el vínculo `DESVINCULADO` EN EL SITIO (`UPDATE`, no otra fila) con el estado que le toca hoy por D10 y audita `VINCULACION_REACTIVADA` con el anterior y el nuevo; si vuelve pendiente, avisa a la plataforma. D20 se conserva y un vínculo VIVO se sigue devolviendo tal cual. Además, la bandeja de E3-12 ya tiene panel (`/admin/vinculaciones`). La 7.ª iteración cerró su otra mitad —la salida a petición del cliente, que devuelve el cupo de D10— |
 | **H72** | ⬜ **ABIERTO** (7.ª iteración, E3-12/3) — **no existe ninguna ruta que liste las barberías de un `CLIENTE`**: la tarjeta de mi-estado (y su botón de desvincularse) solo se pinta donde `GET /barberias` devuelve algo, y esa ruta filtra por `responsableId`, así que para un cliente puro la lista viene vacía. El botón está cableado y probado; su visibilidad depende de esta tarea. Evidencia: hallazgo 5 de `docs/MATRIZ_RUTAS.md` y `findAllByResponsable` (`barberia.service.ts:305`) |
@@ -1029,7 +1031,7 @@ vez el código de la sede. Quedan **ABIERTOS** H65, H66, H68, H69, H70 y H71. Re
 - **Origen:** `docs/MATRIZ_CUMPLIMIENTO.md` (E2-08) une 72 reglas del diseño con el código que las garantiza y el test
   que las certifica. Los cuatro hallazgos de abajo son las filas que **no** quedaron `OK-PROBADO` por algo distinto de
   una decisión de alcance ya registrada (E4-05, por ejemplo, sí es alcance: su fila lo dice).
-- **Estado a 2026-10-15:** **H67 RESUELTO** por E3-12/1 (5.ª iteración); H68, H69 y H70 siguen **ABIERTOS**
+- **Estado a 2026-10-15:** **H67 RESUELTO** por E3-12/1 (5.ª iteración); H68, H69 y H70 siguen **ABIERTOS** (H69 se cerró el 2026-10-18, 9.ª iteración)
   y documentados: E2-08 era una tarea de documentación y corregirlos sería otro encargo.
 
 #### H67 · E3-12 nunca se cerró: la 6.ª vinculación no se puede aprobar, y no hay desvinculación — **RESUELTO**
@@ -1059,14 +1061,16 @@ vez el código de la sede. Quedan **ABIERTOS** H65, H66, H68, H69, H70 y H71. Re
 - **Qué consta:** `grep -ri "corregir" backend-barberias/src/pago` = 0 coincidencias. La mitad que sí se cumple —alta auditada dentro de la transacción serializable— está en `src/pago/application/pago.service.ts:214` y probada en `src/pago/application/pago.service.spec.ts`.
 - **Remedio propuesto:** endpoint de corrección/anulación con motivo obligatorio y evento de auditoría, o dejar por escrito que las correcciones son de base de datos y quién las autoriza.
 
-#### H69 · Tres reglas se cumplen sin un test que las vigile
+#### H69 · Tres reglas se cumplen sin un test que las vigile — **RESUELTO** (9.ª iteración, 2026-10-18)
 
-- **Módulos afectados:** `src/iam/infrastructure/auth.controller.ts` (`forgot-password` / `reset-password`), `src/barberia/application/barberia.service.ts:363` (`ESTADO_NO_EDITABLE`) y `src/horario/application/dto/create-excepcion-horario.dto.ts` (`CERRADA` / `HORARIO_ESPECIAL`)
+- **Estado:** **RESUELTO** (2026-10-18, rama `chore/h69-cobertura-reglas`). Reporte: `reporte-h69-cobertura-reglas.md`
+- **Módulos afectados:** `src/iam/infrastructure/auth.controller.ts` (`forgot-password` / `reset-password`), `src/barberia/application/barberia.service.ts:430` (`ESTADO_NO_EDITABLE`) y `src/agenda/application/disponibilidad.service.ts:169` (`CERRADA` / `HORARIO_ESPECIAL`, con el catálogo en `src/horario/application/dto/create-excepcion-horario.dto.ts:3`)
 - **Tipo:** Cobertura ausente sobre reglas ya implementadas (`OK-SIN-TEST` en la matriz)
 - **Severidad:** Baja — funcionalmente están; el riesgo es de regresión silenciosa
-- **Qué consta:** `grep -r "reset-password" backend-barberias/test/*.e2e-spec.ts` = 0 (la recuperación solo tiene el guion manual `test/manual/sec01-recovery.ts`); `grep -r "ESTADO_NO_EDITABLE"` no aparece en ningún test; no hay test de la prioridad de una excepción `CERRADA` sobre la rejilla.
+- **Qué constaba (evidencia original de E2-08, 2026-10-15):** `grep -r "reset-password" backend-barberias/test/*.e2e-spec.ts` = 0 (la recuperación solo tenía el guion manual `test/manual/sec01-recovery.ts`); `grep -r "ESTADO_NO_EDITABLE"` no aparecía en ningún test; no había test de la prioridad de una excepción `CERRADA` sobre la rejilla.
 - **Remitente del patrón:** es el mismo que originó **P-SD-5** — una regla marcada como hecha sin una guarda que la sostenga.
-- **Remedio propuesto:** un E2E de recuperación de contraseña, un caso para `ESTADO_NO_EDITABLE` y un test de prioridad de excepciones. Los tres son pequeños.
+- **Remedio aplicado:** nueve casos en `src/iam/application/auth.service.spec.ts:273` y `:364` (generación del token, «envío» simulado, reseteo, un solo uso, vencimiento, cuenta no activa, anti-enumeración y el flujo completo hasta el login con la contraseña nueva); cuatro en `src/barberia/application/barberia.service.spec.ts:480` (422 `ESTADO_NO_EDITABLE`, también para el ADMINISTRADOR, el `UPDATE` legítimo sin `estado` y el endpoint específico que sí lo cambia y lo audita); y cinco en `src/agenda/application/disponibilidad.service.spec.ts:219` (sin excepción manda la rejilla, `CERRADA` la anula, `HORARIO_ESPECIAL` la sustituye en instantes reales y solo afecta a su fecha).
+- **Evidencia VERDE:** suite unitaria completa `Test Files 51 passed (51)` / `Tests 615 passed (615)` (`EXIT=0`), con los 18 casos nuevos (9 de recuperación, 4 de `ESTADO_NO_EDITABLE` y 5 de prioridad de excepciones) entre ellos.
 
 #### H70 · La sección 6 del PDF 01 no es localizable
 

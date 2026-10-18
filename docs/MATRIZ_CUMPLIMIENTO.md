@@ -2,7 +2,7 @@
 
 **Tarea:** E2-08 · Matriz de cumplimiento reconciliada (`docs/BACKLOG_BARBERIAS_V1.md`).
 **Sustituye a:** [`COMPARACION_DISENO_VS_REAL.md`](../COMPARACION_DISENO_VS_REAL.md), que comparaba el diseño con el sistema de septiembre de 2026 y quedó desactualizado (daba por no global el `RolesGuard`, entre otros puntos).
-**Fecha:** 2026-10-17 (**1.10** pasó a `OK-PROBADO` al cerrarse el punto 2 de E3-12 —el enlace único y su QR—; **1.8** y **1.9** lo hicieron el 2026-10-15 con E3-12 y su desvinculación). **H75**, el límite que 1.10 anotaba (el retorno del login tras abrir un QR sin sesión), quedó resuelto el mismo día en la rama `fix/h75-return-url-login` **sin mover ninguna fila**: era un límite de recorrido del cliente, no un cambio de cumplimiento. **Filas:** 72.
+**Fecha:** 2026-10-17 (**1.10** pasó a `OK-PROBADO` al cerrarse el punto 2 de E3-12 —el enlace único y su QR—; **1.8** y **1.9** lo hicieron el 2026-10-15 con E3-12 y su desvinculación). **H75**, el límite que 1.10 anotaba (el retorno del login tras abrir un QR sin sesión), quedó resuelto el mismo día en la rama `fix/h75-return-url-login` **sin mover ninguna fila**: era un límite de recorrido del cliente, no un cambio de cumplimiento. **Actualización 2026-10-18 (`chore/h69-cobertura-reglas`):** **H69** cierra las tres filas `OK-SIN-TEST` —1.6, 2.3 y 4.3— con tests que nombran la regla; la matriz ya no tiene ninguna fila en ese estado. **Filas:** 72.
 
 > **Qué es este documento.** La fuente de verdad técnica que une cada regla del diseño con el código que la garantiza y con el test que la certifica. No es un resumen de intenciones: cada `archivo:línea` de la columna *Evidencia* se resolvió **leyendo el fichero en el momento de escribir esto**, y cada test citado existe y menciona la regla. Si alguno no cuadraba, la matriz no se generaba.
 >
@@ -32,14 +32,14 @@
 | 1.3 | Revocar sesiones subiendo `token_version` (E4-03) | OK-PROBADO | `backend-barberias/src/iam/application/auth.service.ts:167` | `backend-barberias/src/iam/application/usuarios-plataforma.service.spec.ts:50` | E4-03 |
 | 1.4 | Una cuenta `SUSPENDIDO` no entra ni se registra (D09) | OK-PROBADO | `backend-barberias/src/iam/application/auth.service.ts:138` | `backend-barberias/test/e4-03-suspension-cuenta.e2e-spec.ts:165`<br>`backend-barberias/test/estado-cuenta-guard.spec.ts:63` | E4-03 |
 | 1.5 | El secreto de firma del JWT está validado (CONF-01) | OK-PROBADO | `backend-barberias/src/iam/iam.config.ts:16` | `backend-barberias/test/conf01-security.spec.ts:2` | E0-01 |
-| 1.6 | Recuperación de contraseña: olvido y restablecimiento por correo | OK-SIN-TEST | `backend-barberias/src/iam/infrastructure/auth.controller.ts:75` | — | E1-10 |
+| 1.6 | Recuperación de contraseña: olvido y restablecimiento por correo | OK-PROBADO | `backend-barberias/src/iam/infrastructure/auth.controller.ts:75` | `backend-barberias/src/iam/application/auth.service.spec.ts:273`<br>`backend-barberias/src/iam/application/auth.service.spec.ts:364` | E1-10 · H69 |
 | 1.7 | Límite de 5 vinculaciones: la 6.ª queda `PENDIENTE_APROBACION` (D10) | OK-PROBADO | `backend-barberias/src/barberia/application/barberia.service.ts:560` | `backend-barberias/src/barberia/application/barberia.service.spec.ts:714`<br>`backend-barberias/test/barberia.e2e-spec.ts:141`<br>`backend-barberias/test/e3-12-vinculacion.e2e-spec.ts:239` | E3-12 |
 | 1.8 | Bandeja de aprobación de la 6.ª vinculación (ADMINISTRADOR) | OK-PROBADO | `backend-barberias/src/barberia/infrastructure/plataforma-vinculaciones.controller.ts:37` | `backend-barberias/test/e3-12-vinculacion.e2e-spec.ts:374`<br>`backend-barberias/src/barberia/application/vinculacion.service.spec.ts:161` | E3-12 |
 | 1.9 | Desvinculación por el cliente con el historial intacto (D20/D21) | OK-PROBADO | `backend-barberias/src/barberia/application/mi-estado.service.ts:158` (`desvincular`: `UPDATE` a `DESVINCULADO` que NO toca contador ni restricción) y `:257` (el cupo que vuelve); `vincularCliente` reabre la fila cerrada (`barberia.service.ts:514`, el `UPDATE` de `:569`) y el conteo del límite mira los vivos (`:552`); los estados que anclan el cierre están en `backend-barberias/src/barberia/domain/vinculacion.ts:54` | `backend-barberias/test/e3-12-desvinculacion.e2e-spec.ts:353` (cierre, fila y auditoría), `:297` (422 `RESERVAS_EN_CURSO`), `:431` (cupo recuperado)<br>`backend-barberias/src/barberia/application/mi-estado.service.spec.ts:180`<br>`backend-barberias/test/e3-12-vinculacion.e2e-spec.ts:517` (H71) | E3-12 · H71 |
 | 1.10 | Vinculación por enlace único y QR | OK-PROBADO | `backend-barberias/src/barberia/application/barberia.service.ts:377` (`obtenerInvitacion`: código + `enlaceUnico`, 403 si la sede no es de quien pregunta), `:570` (el `vincularCliente` de siempre resuelve la sede por la puerta que llegue) y `:698` (`resolverPuertaDeEntrada`: exige EXACTAMENTE una puerta y normaliza el enlace); las rutas, en `backend-barberias/src/barberia/infrastructure/barberia.controller.ts:149` y `backend-barberias/src/barberia/infrastructure/mi-estado-barberias.controller.ts:63`; el QR, en `frontend-barberias/src/app/core/utils/invitacion.util.ts:131` | `backend-barberias/test/e3-12-enlace-qr.e2e-spec.ts:2` (17 casos: invitación del staff, 403 cross-sede, unión por código y por enlace, D10, idempotencia, 422 `INVITACION_REQUERIDA`/`INVITACION_AMBIGUA`)<br>`backend-barberias/src/barberia/application/barberia.service.spec.ts:1117`<br>`frontend-barberias/src/app/core/utils/invitacion.util.spec.ts:13`<br>`frontend-barberias/src/app/core/services/tenant.service.spec.ts:291` | E3-12 |
 | 1.11 | Cambiar de sede activa: una sola `es_barberia_activa` por usuario | OK-PROBADO | `backend-barberias/src/barberia/infrastructure/barberia.controller.ts:149` | `backend-barberias/src/barberia/application/barberia.service.spec.ts:122`<br>`backend-barberias/test/barberia.e2e-spec.ts:208` | E2-03 |
 
-**1.6 · OK-SIN-TEST** — Los dos endpoints existen, pero ningún test los ejecuta: la única comprobación es el guion manual `backend-barberias/test/manual/sec01-recovery.ts`. `test/auth.e2e-spec.ts` cubre registro, login y `/me`.
+**1.6 · OK-PROBADO** (cerrada por H69 el 2026-10-18) — Los dos endpoints existen y un test unitario ejecuta el flujo completo. `forgotPassword` normaliza el correo, quema los tokens pendientes anteriores, guarda SOLO el SHA-256 de un token de 32 bytes con 15 minutos de vida y encola la notificación `EMAIL`/`RECUPERACION_PASSWORD` (el «envío» simulado); un correo desconocido o una cuenta `SUSPENDIDO` reciben la misma respuesta exacta y no generan token. `resetPassword` busca por hash, rechaza el token usado, vencido o de una cuenta no `ACTIVA`, cambia la contraseña hasheada y audita `RECUPERACION_PASSWORD_EXITOSA` en la misma transacción; el test de punta a punta comprueba que después se puede iniciar sesión con la contraseña nueva. El guion manual `backend-barberias/test/manual/sec01-recovery.ts` sigue existiendo, pero ya no es la única comprobación.
 
 **1.7 · OK-PROBADO** — El límite y el estado se asignan en `vincularCliente` con las constantes del dominio de la vinculación (`LIMITE_VINCULACIONES` = 5, `ESTADOS_VINCULACION`), el vínculo pendiente NO autoriza la sede y, desde el 2026-10-15, existe el flujo que lo resuelve (1.8).
 
@@ -57,13 +57,13 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | 2.1 | El nombre solo cambia por solicitud aprobada por plataforma | OK-PROBADO | `backend-barberias/src/barberia/application/barberia.service.ts:356` | `backend-barberias/test/e3-13-solicitudes-cambio.e2e-spec.ts:215`<br>`backend-barberias/src/barberia/application/solicitud-cambio.service.spec.ts:182` | E3-13 |
 | 2.2 | Cambiar el teléfono exige la contraseña actual | OK-PROBADO | `backend-barberias/src/barberia/application/barberia.service.ts:405` | `backend-barberias/test/e3-13-solicitudes-cambio.e2e-spec.ts:257`<br>`backend-barberias/src/barberia/application/barberia.service.spec.ts:397` | E3-13 |
-| 2.3 | El estado de la sede no se edita por el `PATCH` general | OK-SIN-TEST | `backend-barberias/src/barberia/application/barberia.service.ts:363` | — | E3-13 |
+| 2.3 | El estado de la sede no se edita por el `PATCH` general | OK-PROBADO | `backend-barberias/src/barberia/application/barberia.service.ts:430` | `backend-barberias/src/barberia/application/barberia.service.spec.ts:480` | E3-13 · H69 |
 | 2.4 | Descripción, ubicación y logo sí se editan directo (ADMIN_BARBERIA) | OK-PROBADO | `backend-barberias/src/barberia/application/dto/update-barberia.dto.ts:6` | `backend-barberias/test/e3-13-solicitudes-cambio.e2e-spec.ts:239`<br>`backend-barberias/src/barberia/application/barberia.service.spec.ts:229` | E3-13 |
 | 2.5 | Suspender y reactivar la sede es un cambio de estado auditado (E2-07 · D29) | OK-PROBADO | `backend-barberias/src/barberia/application/barberia.service.ts:468` | `backend-barberias/src/barberia/application/barberia.service.spec.ts:637`<br>`backend-barberias/test/e2-07-vocabulario.e2e-spec.ts:387` | E2-07 |
 | 2.6 | Cada sede tiene su zona horaria IANA (E2-04) | OK-PROBADO | `backend-barberias/prisma/migrations/20261011120000_e204_zona_horaria/migration.sql:13` | `backend-barberias/src/agenda/application/disponibilidad-zona.spec.ts:3`<br>`backend-barberias/src/shared/time/tiempo.service.spec.ts:4` | E2-04 |
 | 2.7 | Los estados del catálogo están fijados por CHECK en la base | OK-PROBADO | `backend-barberias/prisma/migrations/20261014000000_e207_catalogo_estado_check/migration.sql:21` | `backend-barberias/test/e2-07-sede-inactiva.e2e-spec.ts:25` | E2-07 |
 
-**2.3 · OK-SIN-TEST** — La regla se aplica (422 con su código), pero ningún test cita `ESTADO_NO_EDITABLE`: se cumple sin certificado.
+**2.3 · OK-PROBADO** (cerrada por H69 el 2026-10-18) — El `PATCH` general rechaza `estado` con 422 `ESTADO_NO_EDITABLE` antes de buscar la sede, así que ni el `ADMINISTRADOR` global puede usarlo como puerta trasera, y una edición legítima de `descripcion`/`ubicacion`/`logoUrl` nunca arrastra `estado` al `UPDATE`. El único camino es `cambiarEstado` (regla 2.5), que escribe únicamente `{ estado }` y audita el anterior y el nuevo.
 
 **2.7 · OK-PROBADO** — La guardia de integridad del CI (`npm run check:integridad`) compara además los CHECK de las migraciones con la base real.
 
@@ -90,12 +90,12 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | 4.1 | La disponibilidad se calcula en cada petición; nunca se almacena | OK-PROBADO | `backend-barberias/src/agenda/application/disponibilidad.service.ts:103` | `backend-barberias/src/agenda/application/disponibilidad.service.spec.ts:3`<br>`backend-barberias/test/e1-06-sede-del-tenant.e2e-spec.ts:436` | E3-02 |
 | 4.2 | El cálculo suma horario, excepciones, reservas, duraciones, márgenes y bloqueos | OK-PROBADO | `backend-barberias/src/agenda/domain/huecos.ts:47` | `backend-barberias/src/agenda/domain/huecos.spec.ts:7`<br>`backend-barberias/src/agenda/application/disponibilidad.service.spec.ts:38` | E3-02 |
-| 4.3 | Las excepciones `CERRADA` y `HORARIO_ESPECIAL` mandan sobre el horario habitual | OK-SIN-TEST | `backend-barberias/src/horario/application/dto/create-excepcion-horario.dto.ts:3` | — | E3-02 |
+| 4.3 | Las excepciones `CERRADA` y `HORARIO_ESPECIAL` mandan sobre el horario habitual | OK-PROBADO | `backend-barberias/src/agenda/application/disponibilidad.service.ts:169` (`findFirst` de la excepción del día), `:173` (`CERRADA` anula la jornada) y `:180` (`HORARIO_ESPECIAL` sustituye las horas); el catálogo, en `backend-barberias/src/horario/application/dto/create-excepcion-horario.dto.ts:3` | `backend-barberias/src/agenda/application/disponibilidad.service.spec.ts:219` | E3-02 · H69 |
 | 4.4 | Una sede `INACTIVO` no vende ni expone agenda (422 `SEDE_INACTIVA`) | OK-PROBADO | `backend-barberias/src/shared/domain/sede.ts:32` | `backend-barberias/test/e2-07-sede-inactiva.e2e-spec.ts:18`<br>`backend-barberias/src/agenda/application/disponibilidad.service.spec.ts:96`<br>`backend-barberias/src/reserva/application/reserva.service.spec.ts:269` | E2-07 |
 | 4.5 | Un bloqueo se libera (`liberado_at`) y deja de ocupar la agenda | OK-PROBADO | `backend-barberias/src/agenda/application/agenda.service.ts:117` | `backend-barberias/src/agenda/application/agenda.service.spec.ts:97`<br>`backend-barberias/test/e2-07-vocabulario.e2e-spec.ts:10` | E2-07 |
 | 4.6 | Qué ocupa espacio (D37) y qué alternativas se ofrecen al cliente | OK-PROBADO | `backend-barberias/src/agenda/domain/huecos.ts:30` | `backend-barberias/test/e4-02-oportunidades.e2e-spec.ts:20` | E4-02 |
 
-**4.3 · OK-SIN-TEST** — El tipo está tipado y el servicio exige horas para `HORARIO_ESPECIAL`, pero no hay test que demuestre la prioridad de la excepción sobre la rejilla.
+**4.3 · OK-PROBADO** (cerrada por H69 el 2026-10-18) — `datosDelDia` lee la excepción de ESA fecha y la aplica antes de proyectar huecos: `CERRADA` deja la jornada en `null` (cero huecos) aunque el `horario` regular diga que se abre, y `HORARIO_ESPECIAL` sustituye las horas de la jornada (10:00–12:00 produce cuatro huecos y ninguno fuera de ahí). El test verifica además que la excepción es de su día —al consultar la fecha siguiente vuelve la rejilla habitual— y que los instantes se componen en la zona de la sede.
 
 ## Sección 5 · Reservas: estados, cálculo y reglas
 
@@ -198,8 +198,8 @@
 
 | Estado | Filas |
 | :--- | :--- |
-| OK-PROBADO | 65 |
-| OK-SIN-TEST | 3 |
+| OK-PROBADO | 68 |
+| OK-SIN-TEST | 0 |
 | PARCIAL | 1 |
 | NO-EXISTE | 2 |
 | NO-VERIFICADO | 1 |
@@ -207,11 +207,8 @@
 
 ## Lo que esta reconciliación deja a la vista
 
-Ninguna regla con estado distinto de `OK-PROBADO`, que es lo que la matriz existe para no esconder:
+Siguen fuera de `OK-PROBADO` estas reglas, que es lo que la matriz existe para no esconder:
 
-- **1.6 · OK-SIN-TEST · E1-10** — Recuperación de contraseña: olvido y restablecimiento por correo Los dos endpoints existen, pero ningún test los ejecuta: la única comprobación es el guion manual `backend-barberias/test/manual/sec01-recovery.ts`. `test/auth.e2e-spec.ts` cubre registro, login y `/me`.
-- **2.3 · OK-SIN-TEST · E3-13** — El estado de la sede no se edita por el `PATCH` general La regla se aplica (422 con su código), pero ningún test cita `ESTADO_NO_EDITABLE`: se cumple sin certificado.
-- **4.3 · OK-SIN-TEST · E3-02** — Las excepciones `CERRADA` y `HORARIO_ESPECIAL` mandan sobre el horario habitual El tipo está tipado y el servicio exige horas para `HORARIO_ESPECIAL`, pero no hay test que demuestre la prioridad de la excepción sobre la rejilla.
 - **6.1 · NO-VERIFICADO · E2-08** — Contenido de la sección 6 del PDF 01 El PDF 01 no está en el repositorio y ninguna cita del código o de los documentos apunta a su sección 6 (`Spec 01 §6` = 0 coincidencias). No se puede afirmar ni negar cumplimiento: hay que conseguir el PDF y rellenar esta fila. Si la sección 6 fuese «antecedentes y privacidad» —la Épica 7 del plan estratégico—, su evidencia sería `backend-barberias/src/antecedente/**`, que hoy existe y tiene tests, pero eso es una hipótesis, no una cita.
 - **7.3 · NO-EXISTE · E3-09** — Un pago puede corregirse después, y cada corrección se audita El controlador de pagos solo expone `POST /pagos` (en persona) y `GET /pagos/auditoria`: no hay operación de corrección ni de anulación. La parte que sí se cumple es la de auditoría del alta (7.1).
 - **T.4 · PARCIAL · E0-02** — Entornos separados: dev, staging y producción (D11) La aplicación exige `APP_ENV` y aborta con un valor no permitido, y los datos viven en bases distintas; queda pendiente que el despliegue aplique las migraciones solo (`render.yaml` no corre `prisma migrate deploy`), que es la causa de que `dev` y `staging` puedan divergir.
@@ -221,7 +218,7 @@ Ninguna regla con estado distinto de `OK-PROBADO`, que es lo que la matriz exist
 
 - **`NO-EXISTE` no siempre es un defecto.** E4-05 está desactivado a propósito (H22) y su fila lo dice; la corrección de pagos (7.3) sí es trabajo pendiente real. **E3-12 quedó cerrada entera el 2026-10-17:** el callejón sin salida (1.8), la vuelta del rechazo (H71), la salida del cliente (1.9) y la puerta de entrada por enlace único y QR (1.10) están los cuatro en `OK-PROBADO`, y esta matriz lo registra en las filas 1.7 a 1.10.
 - **`PARCIAL` señala una mitad hecha.** Queda UNA fila en ese estado: T.4, donde los entornos están separados y el despliegue no aplica migraciones. 1.7 estuvo `PARCIAL` mientras el vínculo pendiente bloqueaba sin flujo que lo resolviera, y 1.9 mientras el cliente no podía salir de una sede: las dos llegaron a `OK-PROBADO` cuando se ejecutó E3-12.
-- **`OK-SIN-TEST` es la deuda barata de cerrar.** 1.6 (recuperación de contraseña), 2.3 (`ESTADO_NO_EDITABLE`) y 4.3 (prioridad de las excepciones) están implementadas y justificadas en el código, pero nadie las vigila: cualquiera de ellas puede romperse sin que el CI se entere. Es el mismo patrón que P-SD-5, que empezó siendo un `[EJECUTADO]` sin guarda que lo respaldara.
+- **`OK-SIN-TEST` ya no tiene filas.** H69 cerró las tres que quedaban (1.6 recuperación de contraseña, 2.3 `ESTADO_NO_EDITABLE` y 4.3 prioridad de las excepciones) con tests que nombran la regla; era el mismo patrón que P-SD-5, una decisión tomada sin guarda que la sostuviera. No es un estado que deba volver a crecer: si una fila nueva no tiene test, su sitio es `OK-SIN-TEST` hasta que lo tenga.
 - **`NO-VERIFICADO` (6.1) es una petición, no un veredicto:** hay que conseguir el PDF 01 y rellenar la fila.
 
 ## Cómo se mantiene
