@@ -32,7 +32,7 @@ export class PagoService {
     // E2-04: el «ahora» de la ventana de cobro sale del reloj central, no de
     // `new Date()` repartido por el servicio.
     private readonly tiempo: TiempoService,
-  ) {}
+  ) { }
 
   /**
    * Perfil con el que se paga: `ADMIN` accede sin restricción de asignación
@@ -229,9 +229,9 @@ export class PagoService {
       const reservaActualizada = reanudandoTrasAnulacion
         ? reserva
         : await tx.reserva.update({
-            where: { id: reserva.id },
-            data: { estado: ESTADOS.COMPLETADA, completadaAt: this.tiempo.ahora() },
-          });
+          where: { id: reserva.id },
+          data: { estado: ESTADOS.COMPLETADA, completadaAt: this.tiempo.ahora() },
+        });
 
       // 3. Auditoría obligatoria delegada formalmente a AuditoriaService (AUDIT-01 / T6.1)
       await this.auditoriaService.registrarEvento(
@@ -447,11 +447,14 @@ export class PagoService {
               cliente: { select: { id: true, nombreCompleto: true } },
               participantes: {
                 select: {
+ chore/h76-e2e-pagos-anulacion
                   // H76: la relación Prisma se llama `participanteServicios`, no
                   // `servicios`. Con el nombre inventado Prisma rechaza la
                   // consulta ENTERA (PrismaClientValidationError → 400) y el
                   // recibo nunca llegaba a la pantalla; los mocks del test de
                   // servicio devolvían la forma equivocada y lo tapaban.
+
+> main
                   participanteServicios: {
                     select: {
                       // El precio es el HISTÓRICO de la reserva, no el del
