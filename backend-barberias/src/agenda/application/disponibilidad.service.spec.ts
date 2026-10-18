@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
 import { DisponibilidadService } from './disponibilidad.service.js';
+import { TiempoService, ZONA_POR_DEFECTO } from '../../shared/time/tiempo.service.js';
 
 /**
  * E1-06 · parte 3: `calcularDisponibilidadDeSolicitante` es la puerta que
@@ -199,5 +200,126 @@ describe('DisponibilidadService · sede INACTIVO (P-SD-4)', () => {
     await expect(
       service.calcularDisponibilidadDeSolicitante(solicitud, 'cliente-1'),
     ).resolves.toEqual([]);
+  });
+});
+
+/**
+ * Regla 4.3 · H69. La prioridad de `HorarioExcepcion` sobre `HorarioRegular` se
+ * aplicaba en `datosDelDia` y nadie la vigilaba: cualquier refactor podía
+ * devolver la rejilla del día festivo y el CI seguiría en verde.
+ *
+ * La regla tiene dos formas y las dos se fijan aquí:
+ *  - `CERRADA` → el día no tiene jornada, diga lo que diga el horario base.
+ *  - `HORARIO_ESPECIAL` → la jornada es la de la excepción, no la habitual.
+ *
+ * `2026-10-05` es lunes: el `horario` simulado es el turno regular de 09:00 a
+ * 18:00 en la zona de la SEDE (`America/Santo_Domingo`, UTC-4), así que las
+ * 09:00 locales son las 13:00 UTC.
+ */
+describe('DisponibilidadService · prioridad de las excepciones (regla 4.3 · H69)', () => {
+  const tz = ZONA_POR_DEFECTO;
+  const tiempo = new TiempoService();
+  const FECHA = '2026-10-05';
+
+  /** `TIME` tal como lo devuelve Prisma: 1970-01-01 en UTC con la hora tecleada. */
+  function time(h: number, m: number): Date {
+    const d = new Date('1970-01-01T00:00:00Z');
+    d.setUTCHours(h, m, 0, 0);
+    return d;
+  }
+
+  const HORARIO_REGULAR = { horaInicio: time(9, 0), horaFin: time(18, 0) };
+
+  function prismaCon(excepcion: any, horario: any = HORARIO_REGULAR) {
+    return {
+      barberia: { findUnique: async () => ({ zonaHoraria: tz }) },
+      horario: { findFirst: async () => horario },
+      // La excepción es de UNA fecha: se devuelve solo si se pide ese día.
+      excepcionHorario: {
+        findFirst: async ({ where }: any) =>
+          where.fecha.getTime() === new Date(`${FECHA}T00:00:00Z`).getTime() ? excepcion : null,
+      },
+      bloqueosAgenda: { findMany: async () => [] },
+      reserva: { findMany: async () => [] },
+    } as any;
+  }
+
+  function servicioCon(excepcion: any, horario?: any) {
+    return new DisponibilidadService(prismaCon(excepcion, horario));
+  }
+
+  const consulta = { barberiaId: 'sede', fecha: FECHA, duracionTotal: 30, margenRequerido: 0 };
+
+  /** Etiquetas locales `HH:mm-HH:mm` de los huecos, para leer la aserción. */
+  function etiquetas(slots: { inicio: Date; fin: Date }[]): string[] {
+    return slots.map(
+      (s) =>
+        `${tiempo.desdeInstante(s.inicio, tz).hora}-${tiempo.desdeInstante(s.fin, tz).hora}`,
+    );
+  }
+
+  it('control: sin excepción manda el horario regular (09:00–18:00 → 18 huecos)', async () => {
+    const slots = await servicioCon(null).calcularDisponibilidad(consulta);
+
+    expect(slots).toHaveLength(18);
+    expect(etiquetas([slots[0]])).toEqual(['09:00-09:30']);
+    expect(etiquetas([slots[slots.length - 1]])).toEqual(['17:30-18:00']);
+  });
+
+  it('CERRADA borra la jornada aunque el horario regular diga que se abre', async () => {
+    const slots = await servicioCon({
+      tipo: 'CERRADA',
+      horaInicio: null,
+      horaFin: null,
+    }).calcularDisponibilidad(consulta);
+
+    expect(slots).toEqual([]);
+  });
+
+  it('HORARIO_ESPECIAL sustituye la rejilla: 10:00–12:00 y nada fuera de ahí', async () => {
+    const slots = await servicioCon({
+      tipo: 'HORARIO_ESPECIAL',
+      horaInicio: time(10, 0),
+      horaFin: time(12, 0),
+    }).calcularDisponibilidad(consulta);
+
+    expect(etiquetas(slots)).toEqual([
+      '10:00-10:30',
+      '10:30-11:00',
+      '11:00-11:30',
+      '11:30-12:00',
+    ]);
+    // Ni el 09:00 del horario base ni el 12:00 que la excepción recorta.
+    expect(etiquetas(slots)).not.toContain('09:00-09:30');
+    expect(etiquetas(slots)).not.toContain('12:00-12:30');
+  });
+
+  it('la excepción también recorta una jornada que empieza antes, en instantes reales', async () => {
+    const slots = await servicioCon({
+      tipo: 'HORARIO_ESPECIAL',
+      horaInicio: time(10, 0),
+      horaFin: time(12, 0),
+    }).calcularDisponibilidad(consulta);
+
+    // 10:00 locales en Santo Domingo (UTC-4) son 14:00 UTC.
+    expect(slots[0].inicio.toISOString()).toBe('2026-10-05T14:00:00.000Z');
+    expect(slots[slots.length - 1].fin.toISOString()).toBe('2026-10-05T16:00:00.000Z');
+  });
+
+  it('la excepción es de su día: al consultar otra fecha vuelve el horario regular', async () => {
+    const service = servicioCon({
+      tipo: 'CERRADA',
+      horaInicio: null,
+      horaFin: null,
+    });
+
+    const festivo = await service.calcularDisponibilidad(consulta);
+    const diaSiguiente = await service.calcularDisponibilidad({
+      ...consulta,
+      fecha: '2026-10-06',
+    });
+
+    expect(festivo).toEqual([]);
+    expect(diaSiguiente).toHaveLength(18);
   });
 });
