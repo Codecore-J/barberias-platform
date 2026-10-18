@@ -468,6 +468,97 @@ describe('BarberiaService', () => {
   });
 
   /**
+   * Regla 2.3 · H69. El estado de la sede NO se edita por el `PATCH` general:
+   * se fija al crearla y después solo cambia por su endpoint específico
+   * (`cambiarEstado`, regla 2.5), que audita el anterior y el nuevo.
+   *
+   * Antes esta regla se cumplía sin certificado: ningún test nombraba
+   * `ESTADO_NO_EDITABLE`, así que una refactorización del `update` podía
+   * convertir la edición de la sede en una puerta trasera al estado y el CI no
+   * se enteraba.
+   */
+  describe('update · estado no editable (regla 2.3 · H69)', () => {
+    it('422 ESTADO_NO_EDITABLE al intentar suspender por el PATCH general y NO toca la base', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue({
+        id: 'uuid-1',
+        nombre: 'Barberia 1',
+        responsableId: 'res-1',
+        estado: 'ACTIVO',
+      });
+
+      const error = await capturarError(
+        service.update('uuid-1', 'res-1', { estado: 'INACTIVO' }, false),
+      );
+
+      expect(error).toEqual({ status: 422, codigo: 'ESTADO_NO_EDITABLE' });
+      expect(prisma.barberia.update).not.toHaveBeenCalled();
+    });
+
+    it('el rechazo gana a la autorización: ni el ADMINISTRADOR global escribe el estado por aquí', async () => {
+      const error = await capturarError(
+        service.update('uuid-1', 'admin-global', { estado: 'INACTIVO' }, true),
+      );
+
+      expect(error).toEqual({ status: 422, codigo: 'ESTADO_NO_EDITABLE' });
+      expect(prisma.barberia.findUnique).not.toHaveBeenCalled();
+      expect(prisma.barberia.update).not.toHaveBeenCalled();
+    });
+
+    it('una edición legítima tampoco puede colar el estado en el UPDATE', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue({
+        id: 'uuid-1',
+        nombre: 'Barberia 1',
+        responsableId: 'res-1',
+        estado: 'ACTIVO',
+      });
+      (prisma.barberia.update as any).mockResolvedValue({
+        id: 'uuid-1',
+        nombre: 'Barberia 1',
+        estado: 'ACTIVO',
+        descripcion: 'Solo cambia la descripción',
+      });
+
+      await service.update('uuid-1', 'res-1', { descripcion: 'Solo cambia la descripción' }, false);
+
+      const datos = (prisma.barberia.update as any).mock.calls[0][0].data;
+      expect(datos).toEqual({ descripcion: 'Solo cambia la descripción' });
+      expect(datos).not.toHaveProperty('estado');
+    });
+
+    it('el endpoint específico sí cambia el estado y lo audita con anterior y nuevo', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue({
+        id: 'uuid-1',
+        nombre: 'Barberia 1',
+        responsableId: 'res-1',
+        estado: 'ACTIVO',
+      });
+      (prisma.barberia.update as any).mockResolvedValue({
+        id: 'uuid-1',
+        nombre: 'Barberia 1',
+        responsableId: 'res-1',
+        estado: 'INACTIVO',
+      });
+
+      await service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false);
+
+      expect(prisma.barberia.update).toHaveBeenCalledWith({
+        where: { id: 'uuid-1' },
+        data: { estado: 'INACTIVO' },
+      });
+      expect(auditoria.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accion: 'BARBERIA_SUSPENDIDA',
+          contexto: {
+            anterior: { estado: 'ACTIVO' },
+            nuevo: { estado: 'INACTIVO' },
+          },
+        }),
+        expect.anything(),
+      );
+    });
+  });
+
+  /**
    * E1-07. `GET /barberias` (findMine) devolvía `toResponse` —con `codigoAcceso`
    * y `enlaceUnico`— filtrando solo por `responsableId`, sin mirar el rol, así
    * que la regla de E1-05 solo estaba escrita en `findOne`. Aquí se exige la
