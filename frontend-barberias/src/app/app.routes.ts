@@ -31,6 +31,18 @@ export const routes: Routes = [
           import('./features/barberias/barberias.component').then((m) => m.BarberiasComponent),
       },
       {
+        //
+        // E3-12/2 · destino del enlace único y de su QR (regla 1.10). Vive dentro
+        // del layout y bajo `authGuard` porque el vínculo que crea es el de un
+        // CLIENTE: a quien llegue sin sesión se le pide entrar antes, en vez de
+        // crear un vínculo que nadie podría reclamar después.
+        //
+        path: 'unirse/:enlaceUnico',
+        canActivate: [authGuard],
+        loadComponent: () =>
+          import('./features/barberias/unirse/unirse.component').then((m) => m.UnirseComponent),
+      },
+      {
         path: 'barberias/nueva',
         canActivate: [authGuard, roleGuard(['ADMIN'])],
         loadComponent: () =>

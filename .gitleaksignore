@@ -12,3 +12,5 @@
 ee7c4ab696cc7833c80a020e371671e3b89580fc:backend-barberias/README.md:generic-api-key:5
 # E3-13: falso positivo confirmado (la contraseña INCORRECTA de un caso 422 en el E2E de solicitudes de cambio)
 f9dacad3a6a714b709624e43d3e0b86526cec809:backend-barberias/test/e3-13-solicitudes-cambio.e2e-spec.ts:generic-api-key:277
+# E3-12/2: falso positivo confirmado (clave de prueba del E2E)
+41cdb87a7570cd05aa1deaa0ee4a457d770fdd68:backend-barberias/test/e3-12-enlace-qr.e2e-spec.ts:generic-api-key:80

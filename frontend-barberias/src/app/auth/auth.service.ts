@@ -18,6 +18,7 @@ export interface AuthState {
 
 import { API_URL } from '../core/constants/api.constants.js';
 import { TenantService } from '../core/services/tenant.service';
+import { returnUrlSeguro } from '../core/utils/return-url.util';
 
 @Injectable({
   providedIn: 'root'
@@ -57,7 +58,12 @@ export class AuthService {
     this.authState.update(state => ({ ...state, ...partialState }));
   }
 
-  register(data: RegisterDto): Observable<AuthResponseDto> {
+  /**
+   * H75 · `returnUrl` es la ruta que la persona pedía cuando el `authGuard` la
+   * mandó a la pantalla de sesión. Llega por query y NO se usa tal cual:
+   * `returnUrlSeguro` la filtra antes de navegar (solo rutas internas).
+   */
+  register(data: RegisterDto, returnUrl?: string | null): Observable<AuthResponseDto> {
     this.updateState({ isLoading: true, error: null });
     return this.http.post<AuthResponseDto>(`${this.apiUrl}/register`, data).pipe(
       tap(response => {
@@ -68,7 +74,9 @@ export class AuthService {
           isLoading: false,
           error: null
         });
-        this.router.navigate(['/']); // Redirect to dashboard or home
+        // Una cuenta recién creada también puede venir de un enlace (el QR de
+        // una sede): si hay destino válido se respeta, si no, al dashboard.
+        this.router.navigateByUrl(returnUrlSeguro(returnUrl) ?? '/');
       }),
       catchError(error => {
         const errorMsg = error.error?.message || 'Error en el registro';
@@ -78,7 +86,12 @@ export class AuthService {
     );
   }
 
-  login(data: LoginDto): Observable<AuthResponseDto> {
+  /**
+   * H75 · `returnUrl` es la ruta que la persona pedía cuando el `authGuard` la
+   * mandó al login; viaja por query y `returnUrlSeguro` la filtra antes de
+   * navegar. Si no hay destino válido se aplica el destino por rol de siempre.
+   */
+  login(data: LoginDto, returnUrl?: string | null): Observable<AuthResponseDto> {
     this.updateState({ isLoading: true, error: null });
     return this.http.post<AuthResponseDto>(`${this.apiUrl}/login`, data).pipe(
       tap(response => {
@@ -89,7 +102,18 @@ export class AuthService {
           isLoading: false,
           error: null
         });
-        
+
+        // H75 · si la persona venía de una ruta concreta, esa ruta manda sobre
+        // el destino por rol: ya había dicho a dónde iba al abrir el enlace (el
+        // QR de una sede, por ejemplo) y devolverla al dashboard sería perderla
+        // otra vez. Que la pantalla de destino pueda o no hacer algo con ese
+        // usuario lo decide ella, no este método.
+        const destino = returnUrlSeguro(returnUrl);
+        if (destino) {
+          this.router.navigateByUrl(destino);
+          return;
+        }
+
         const roles = response.usuario.roles || [];
         const isAdmin =
           roles.includes('ADMINISTRADOR') ||

@@ -1111,4 +1111,148 @@ describe('BarberiaService', () => {
       });
     });
   });
+
+  // ── E3-12/2 · la puerta de entrada de la sede (regla 1.10) ────────────────
+
+  describe('obtenerInvitacion (E3-12/2 · regla 1.10)', () => {
+    const SEDE = BARBERIA_A;
+    const invitacionDeLaSede = {
+      id: SEDE,
+      nombre: 'Barbería A',
+      codigoAcceso: 'ABC12345',
+      enlaceUnico: 'enlace-a',
+    };
+
+    beforeEach(() => {
+      (prisma.barberia.findUnique as any).mockResolvedValue(invitacionDeLaSede);
+    });
+
+    it('el ADMIN_BARBERIA de ESA sede recibe su código y su enlace único', async () => {
+      const result = await service.obtenerInvitacion(SEDE, ADMIN_A);
+
+      expect(result).toMatchObject({
+        barberiaId: SEDE,
+        codigoAcceso: 'ABC12345',
+        enlaceUnico: 'enlace-a',
+      });
+    });
+
+    it('el ADMINISTRADOR global la recibe en cualquier sede (E1-04)', async () => {
+      const result = await service.obtenerInvitacion(SEDE, ADMINISTRADOR);
+
+      expect(result.codigoAcceso).toBe('ABC12345');
+    });
+
+    /**
+     * El caso que separa esto de un `findOne`: la ruta usa `:id`, así que el
+     * guard NO resuelve la sede del parámetro. Un ADMIN_BARBERIA de otra sede
+     * tiene que recibir 403, no un 200 con los datos abiertos de la sede ajena.
+     */
+    it('el ADMIN_BARBERIA de OTRA sede recibe 403 y no ve ningún dato de la sede ajena', async () => {
+      await expect(service.obtenerInvitacion(SEDE, ADMIN_B).then(() => 'sin error')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('un BARBERO de esa misma sede recibe 403: no es quien comparte la entrada', async () => {
+      await expect(service.obtenerInvitacion(SEDE, BARBERO_A).then(() => 'sin error')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('un CLIENTE recibe 403 aunque esté vinculado a esa sede', async () => {
+      await expect(service.obtenerInvitacion(SEDE, CLIENTE).then(() => 'sin error')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('una sede inexistente responde 404', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue(null);
+
+      await expect(
+        service.obtenerInvitacion('barberia-fantasma', ADMIN_A).then(() => 'sin error'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('vincularCliente · la sede también se nombra por enlace único (E3-12/2)', () => {
+    const sede = { id: 'barberia-1', nombre: 'Barbería Uno', estado: 'ACTIVO' };
+
+    beforeEach(() => {
+      (prisma.barberia.findUnique as any).mockResolvedValue(sede);
+      (prisma.clienteBarberia.findUnique as any).mockResolvedValue(null);
+      (prisma.clienteBarberia.count as any).mockResolvedValue(0);
+      (prisma.clienteBarberia.create as any).mockResolvedValue({
+        usuarioId: 'user-1',
+        barberiaId: 'barberia-1',
+        estadoVinculacion: 'ACTIVO',
+        esBarberiaActiva: true,
+      });
+    });
+
+    it('resuelve la sede por `enlaceUnico` y aplica el MISMO camino de D10', async () => {
+      const result = await service.vincularCliente('user-1', { enlaceUnico: 'ENLACE-UNO' });
+
+      // El enlace viaja impreso: se recorta y se baja a minúsculas antes de
+      // buscar, que es como lo guarda `create`.
+      expect(prisma.barberia.findUnique).toHaveBeenCalledWith({
+        where: { enlaceUnico: 'enlace-uno' },
+      });
+      expect(result.estadoVinculacion).toBe('ACTIVO');
+    });
+
+    it('la 6.ª vinculación por enlace nace PENDIENTE_APROBACION (D10)', async () => {
+      (prisma.clienteBarberia.count as any).mockResolvedValue(5);
+      (prisma.clienteBarberia.create as any).mockResolvedValue({
+        usuarioId: 'user-1',
+        barberiaId: 'barberia-1',
+        estadoVinculacion: 'PENDIENTE_APROBACION',
+        esBarberiaActiva: false,
+      });
+
+      const result = await service.vincularCliente('user-1', { enlaceUnico: ' enlace-uno ' });
+
+      expect(result.estadoVinculacion).toBe('PENDIENTE_APROBACION');
+    });
+
+    it('el código de acceso solo se recorta: su alfabeto es de mayúsculas', async () => {
+      await service.vincularCliente('user-1', { codigoAcceso: ' ABC12345 ' });
+
+      expect(prisma.barberia.findUnique).toHaveBeenCalledWith({
+        where: { codigoAcceso: 'ABC12345' },
+      });
+    });
+
+    it('sin código y sin enlace responden 422 INVITACION_REQUERIDA (contrato D40)', async () => {
+      expect(await capturarError(service.vincularCliente('user-1', {}))).toEqual({
+        status: 422,
+        codigo: 'INVITACION_REQUERIDA',
+      });
+      // Un campo en blanco no es una puerta: es una falta de puerta.
+      expect(await capturarError(service.vincularCliente('user-1', { codigoAcceso: '   ' }))).toEqual({
+        status: 422,
+        codigo: 'INVITACION_REQUERIDA',
+      });
+      // Y no se toca la base: la puerta se valida ANTES de abrir la transacción.
+      expect(prisma.barberia.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('con las dos puertas a la vez responden 422 INVITACION_AMBIGUA', async () => {
+      expect(
+        await capturarError(
+          service.vincularCliente('user-1', { codigoAcceso: 'ABC12345', enlaceUnico: 'enlace-uno' }),
+        ),
+      ).toEqual({ status: 422, codigo: 'INVITACION_AMBIGUA' });
+      expect(prisma.barberia.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('un enlace que no existe responde 404 y no crea vínculo', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue(null);
+
+      await expect(
+        service.vincularCliente('user-1', { enlaceUnico: 'enlace-fantasma' }).then(() => 'sin error'),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.clienteBarberia.create).not.toHaveBeenCalled();
+    });
+  });
 });

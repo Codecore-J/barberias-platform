@@ -17,6 +17,9 @@ import { reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { BarberiaResponseDto as BarberiaResponse } from './dto/barberia-response.dto.js';
 import type { BarberiaLecturaDto } from './dto/barberia-lectura.dto.js';
 import { BarberiaLecturaDto as BarberiaLectura } from './dto/barberia-lectura.dto.js';
+import type { UnirseBarberiaDto } from './dto/unirse-barberia.dto.js';
+import type { InvitacionSedeDto } from './dto/invitacion-sede.dto.js';
+import { InvitacionSedeDto as InvitacionSede } from './dto/invitacion-sede.dto.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import {
@@ -52,6 +55,14 @@ function generateCodigoAcceso(): string {
     chars.charAt(Math.floor(Math.random() * chars.length)),
   ).join('');
 }
+
+/**
+ * E3-12/2 · la invitación tal y como llega por el cuerpo: las dos puertas son
+ * opcionales por separado, pero el cliente tiene que traer EXACTAMENTE una. El
+ * tipo es estructural —y no la unión de los dos DTO— para que el acceso a
+ * `enlaceUnico` no dependa de qué DTO concreto envió la petición.
+ */
+type PuertaDeEntradaSolicitada = { codigoAcceso?: string; enlaceUnico?: string };
 
 @Injectable()
 export class BarberiaService {
@@ -345,6 +356,51 @@ export class BarberiaService {
       : this.toLectura(barberia);
   }
 
+  // ── INVITACIÓN DE LA SEDE (E3-12/2 · regla 1.10) ───────────────────────────
+
+  /**
+   * Devuelve la puerta de entrada de UNA sede: su código y su enlace único.
+   *
+   * El decorador de la ruta (`@Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')`) no
+   * basta y esa es la razón de que esto sea un método y no un `findOne`: la ruta
+   * usa `:id`, así que el `RolesGuard` NO resuelve la sede del parámetro y un
+   * ADMIN_BARBERIA de la sede B pasaría el guard preguntando por la A. La
+   * pertenencia la exige aquí la MISMA regla que entrega el código en la lectura
+   * por id (`veCodigoDe`, E1-05/E1-07): el ADMIN_BARBERIA de ESA sede y el
+   * ADMINISTRADOR global.
+   *
+   * Antes de E3-12/2 esto era un `findOne`, que no fallaba: devolvía la LECTURA
+   * abierta de la sede ajena —200 con datos de contacto y sin código—, así que un
+   * admin recibía 200 sobre una sede que no es suya. Un 200 es una respuesta
+   * legible como «es tuya»; por eso aquí el rechazo es explícito.
+   */
+  async obtenerInvitacion(
+    id: string,
+    usuario: UsuarioAutenticado,
+  ): Promise<InvitacionSedeDto> {
+    const barberia = await this.prisma.barberia.findUnique({
+      where: { id },
+      select: { id: true, nombre: true, codigoAcceso: true, enlaceUnico: true },
+    });
+
+    if (!barberia) {
+      throw new NotFoundException(`Barbería ${id} no encontrada.`);
+    }
+
+    if (!this.veCodigoDe(id, usuario)) {
+      throw new ForbiddenException(
+        'Solo el ADMIN_BARBERIA de esa barbería (o el ADMINISTRADOR global) puede ver su invitación.',
+      );
+    }
+
+    return plainToInstance(InvitacionSede, {
+      barberiaId: barberia.id,
+      nombre: barberia.nombre,
+      codigoAcceso: barberia.codigoAcceso,
+      enlaceUnico: barberia.enlaceUnico,
+    });
+  }
+
   // ── ACTUALIZAR ─────────────────────────────────────────────────────────────
 
   /**
@@ -511,12 +567,18 @@ export class BarberiaService {
    * quien se desvincula de una sede no queda condenado a la bandeja de
    * aprobación para la siguiente.
    */
-  async vincularCliente(usuarioId: string, dto: VincularBarberiaDto) {
+  async vincularCliente(usuarioId: string, dto: VincularBarberiaDto | UnirseBarberiaDto) {
+    // E3-12/2: la sede se resuelve por la puerta que trajo el cliente —código o
+    // enlace único—, pero TODO lo demás (el conteo de D10, la reapertura de H71,
+    // la auditoría y el estado resultante) es exactamente el mismo camino que ya
+    // estaba blindado. Resolver la puerta es lo único que cambia.
+    const puerta = this.resolverPuertaDeEntrada(dto);
+
     // H71: la transacción devuelve la fila Y, si tocó reabrir, lo que hay que
     // avisar. El aviso se despacha DESPUÉS del commit y fuera de la transacción.
     const { vinculo, reapertura } = await withSerializableTransaction(this.prisma, async (tx) => {
       const barberia = await tx.barberia.findUnique({
-        where: { codigoAcceso: dto.codigoAcceso },
+        where: puerta,
       });
 
       if (!barberia || barberia.estado !== 'ACTIVO') {
@@ -617,6 +679,43 @@ export class BarberiaService {
     }
 
     return vinculo;
+  }
+
+  /**
+   * E3-12/2 · traduce la invitación que llegó por el cuerpo a la clave con la que
+   * se BUSCA la sede, y rechaza las dos formas en que una puerta puede estar mal
+   * pedida. Se ejecuta ANTES de abrir la transacción: un cuerpo inválido no tiene
+   * por qué llegar a la base (ni ocupar una conexión serializable).
+   *
+   * El enlace se normaliza (`trim` + minúsculas) porque viaja IMPRESO: quien lo
+   * escanea o lo pega suele arrastrar espacios y el diccionario del QR es
+   * indiferente a las mayúsculas, mientras que `enlace_unico` se guarda siempre
+   * en minúsculas (`create` lo compone con `generateSlug`). El código de acceso,
+   * en cambio, solo se recorta: su alfabeto es de mayúsculas y quien lo teclea lo
+   * hace en un campo que ya las fuerza (la pantalla del modal), así que reescribir
+   * aquí lo que el usuario escribió solo escondería un código mal copiado.
+   */
+  private resolverPuertaDeEntrada(
+    dto: PuertaDeEntradaSolicitada,
+  ): { codigoAcceso: string } | { enlaceUnico: string } {
+    const codigoAcceso = dto.codigoAcceso?.trim();
+    const enlaceUnico = dto.enlaceUnico?.trim().toLowerCase();
+
+    if (codigoAcceso && enlaceUnico) {
+      throw reglaDeNegocio(
+        'INVITACION_AMBIGUA',
+        'Envía SOLO el código de acceso o SOLO el enlace de invitación de la sede, no los dos.',
+      );
+    }
+
+    if (!codigoAcceso && !enlaceUnico) {
+      throw reglaDeNegocio(
+        'INVITACION_REQUERIDA',
+        'Falta la puerta de entrada: envía el código de acceso o el enlace de invitación de la sede.',
+      );
+    }
+
+    return codigoAcceso ? { codigoAcceso } : { enlaceUnico: enlaceUnico as string };
   }
 
   /**

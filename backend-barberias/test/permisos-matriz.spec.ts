@@ -93,6 +93,14 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // ADMINISTRADOR global (decisión 4).
   'PATCH /barberias/:id/estado': [ROL_ADMINISTRADOR],
   'POST /barberias/vincular': [ROL_CLIENTE],
+  // E3-12/2 (2026-10-17): la invitación de la sede (regla 1.10). La ruta usa
+  // `:id`, así que el guard NO resuelve la sede del parámetro y la política es
+  // la lista plana del decorador: la pertenencia la exige
+  // `BarberiaService.obtenerInvitacion` (403) con la MISMA regla que ya entrega
+  // `codigoAcceso` en la lectura por id (E1-05/E1-07). El CLIENTE queda fuera
+  // —no es él quien comparte la puerta de entrada— y el ADMINISTRADOR entra por
+  // jerarquía (E1-04).
+  'GET /barberias/:id/invitacion': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // E3-11 (2026-10-11): la configuración de la barbería la consulta y la
   // modifica la SEDE; el `RolesGuard` la acota al `barberiaId` del parámetro.
   'GET /barberias/:barberiaId/configuracion': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -141,6 +149,14 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // así que el guard solo filtra el rol y el acotado por el usuario del token lo
   // exige el servicio. Solo CLIENTE: el staff tiene sus propios listados.
   'GET /mi-estado/barberias': [ROL_CLIENTE],
+  // E3-12/2 (2026-10-17): la entrada del cliente por invitación (regla 1.10).
+  // Hermana de `desvincular`: vive bajo `mi-estado` —el espacio del vínculo
+  // propio— y es del CLIENTE, porque el vínculo que se crea es el suyo. Sin
+  // `:barberiaId` (la sede se nombra por código o por enlace en el CUERPO), así
+  // que el guard solo filtra el rol y el acotado por usuario lo hace el
+  // servicio con el usuario del token. Reutiliza `vincularCliente`, así que D10
+  // y la reapertura de H71 son las mismas que en la fila 20.
+  'POST /mi-estado/unirse': [ROL_CLIENTE],
   // E4-03/5 (2026-10-12): suspender o reactivar la CUENTA global es exclusivo del
   // ADMINISTRADOR de la plataforma (D05/D09/D48). La sede no entra por aquí: su
   // penalización es local y su vía es `clientes/:clienteId/reactivar`.
@@ -399,9 +415,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // E3-12 (2026-10-15) suma la bandeja de plataforma de la 6.ª vinculación y sus
   // dos resoluciones (aprobar y rechazar): 79. E3-12/3 suma la salida del
   // cliente (`POST .../mi-estado/desvincular`): 80.
-  it('descubrir las 81 rutas del servidor y todas tienen decision', () => {
+  it('descubrir las 83 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(81);
+    expect(claves.length).toBe(83);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -504,8 +520,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     // sonda de vida separada (76 rutas) y con ella la decisión de sus 4 roles:
     // 304. E3-12 sumó las tres rutas de la 6.ª vinculación (79 rutas) y E3-12/3
     // la desvinculación del cliente: 80 × 4 = 320. H72 sumó la lista de sedes
-    // del cliente (H72): 81 × 4 = 324.
-    expect(evaluaciones).toBe(324);
+    // del cliente (H72): 81 × 4 = 324. E3-12/2 suma la puerta de entrada
+    // (regla 1.10) —la invitación de la sede y la unión del cliente—: 83 × 4 = 332.
+    expect(evaluaciones).toBe(332);
     expect(
       desviaciones.length === 0
         ? ''

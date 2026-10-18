@@ -285,4 +285,120 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
     expect(service.error()).toBe('No estás vinculado a esta barbería.');
     expect(service.isLoading()).toBe(false);
   });
+
+  // ── E3-12/2 · la puerta de entrada (regla 1.10) ───────────────────────────
+
+  describe('obtenerInvitacion', () => {
+    it('pide la invitación de la sede al endpoint del backend', () => {
+      let recibida: any = null;
+      service.obtenerInvitacion('b1').subscribe((inv) => (recibida = inv));
+
+      const peticion = http.expectOne(`${RESPONSABILIDAD_URL}/b1/invitacion`);
+      expect(peticion.request.method).toBe('GET');
+      peticion.flush({
+        barberiaId: 'b1',
+        nombre: 'Sede b1',
+        codigoAcceso: 'ABC12345',
+        enlaceUnico: 'sede-b1-ab12',
+      });
+
+      expect(recibida).toMatchObject({ codigoAcceso: 'ABC12345', enlaceUnico: 'sede-b1-ab12' });
+    });
+
+    it('un 403 del backend deja el mensaje del contrato D40 en error() y se propaga', () => {
+      let fallo: any = null;
+      service.obtenerInvitacion('b1').subscribe({ error: (err) => (fallo = err) });
+
+      http
+        .expectOne(`${RESPONSABILIDAD_URL}/b1/invitacion`)
+        .flush(
+          { statusCode: 403, codigo: 'SIN_PERMISO', mensaje: 'Solo el ADMIN_BARBERIA ve su invitación.' },
+          { status: 403, statusText: 'Forbidden' },
+        );
+
+      expect(fallo).not.toBeNull();
+      expect(service.error()).toBe('Solo el ADMIN_BARBERIA ve su invitación.');
+    });
+  });
+
+  describe('unirsePorInvitacion', () => {
+    it('manda el código de acceso a POST /mi-estado/unirse', () => {
+      service.unirsePorInvitacion({ codigoAcceso: 'ABC12345' }).subscribe();
+
+      const peticion = http.expectOne(`${API_URL}/mi-estado/unirse`);
+      expect(peticion.request.method).toBe('POST');
+      expect(peticion.request.body).toEqual({ codigoAcceso: 'ABC12345' });
+      peticion.flush({
+        id: 'v1',
+        usuarioId: 'u1',
+        barberiaId: 'b9',
+        estadoVinculacion: 'ACTIVO',
+        esBarberiaActiva: true,
+      });
+
+      // Tras el 200 la lista de sedes se recarga: la tarjeta nueva todavía no
+      // está pintada.
+      http.expectOne(RESPONSABILIDAD_URL).flush([]);
+      http
+        .expectOne(VINCULO_URL)
+        .flush([sede('b9', { estadoVinculacion: 'ACTIVO', esBarberiaActiva: true })]);
+      http.expectOne(`${RESPONSABILIDAD_URL}/b9/seleccionar`).flush({});
+
+      expect(service.barberiasVinculadas().map((b) => b.id)).toEqual(['b9']);
+    });
+
+    it('manda el enlace único a la MISMA ruta: el QR y el código son una sola puerta', () => {
+      service.unirsePorInvitacion({ enlaceUnico: 'sede-b9-ab12' }).subscribe();
+
+      const peticion = http.expectOne(`${API_URL}/mi-estado/unirse`);
+      expect(peticion.request.body).toEqual({ enlaceUnico: 'sede-b9-ab12' });
+      peticion.flush({
+        id: 'v2',
+        usuarioId: 'u1',
+        barberiaId: 'b9',
+        estadoVinculacion: 'PENDIENTE_APROBACION',
+        esBarberiaActiva: false,
+      });
+
+      http.expectOne(RESPONSABILIDAD_URL).flush([]);
+      http.expectOne(VINCULO_URL).flush([]);
+    });
+
+    it('el modal de vinculación sigue funcionando: el código entra por la misma puerta', () => {
+      service.vincularBarberia('ABC12345').subscribe();
+
+      const peticion = http.expectOne(`${API_URL}/mi-estado/unirse`);
+      expect(peticion.request.body).toEqual({ codigoAcceso: 'ABC12345' });
+      peticion.flush({
+        id: 'v3',
+        usuarioId: 'u1',
+        barberiaId: 'b9',
+        estadoVinculacion: 'ACTIVO',
+        esBarberiaActiva: false,
+      });
+
+      http.expectOne(RESPONSABILIDAD_URL).flush([]);
+      http.expectOne(VINCULO_URL).flush([]);
+      expect(service.isLoading()).toBe(false);
+    });
+
+    it('un 404 de código inexistente deja el mensaje del backend y no carga ninguna sede', () => {
+      let fallo: any = null;
+      service.unirsePorInvitacion({ codigoAcceso: 'NOEXISTE' }).subscribe({
+        error: (err) => (fallo = err),
+      });
+
+      http
+        .expectOne(`${API_URL}/mi-estado/unirse`)
+        .flush(
+          { statusCode: 404, message: 'Barbería no encontrada o inactiva.' },
+          { status: 404, statusText: 'Not Found' },
+        );
+
+      expect(fallo).not.toBeNull();
+      expect(service.error()).toBe('Barbería no encontrada o inactiva.');
+      expect(service.isLoading()).toBe(false);
+      http.expectNone(RESPONSABILIDAD_URL);
+    });
+  });
 });
