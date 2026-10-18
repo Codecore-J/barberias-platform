@@ -1,17 +1,19 @@
 import { Component, HostListener, OnInit, signal, inject } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import { TenantService } from '../../core/services/tenant.service';
 import type { BarberiaResumen } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
 import { ReservasService } from '../../core/services/reservas.service';
 import { PagosService } from '../../core/services/pagos.service';
+import { parsearInvitacion } from '../../core/utils/invitacion.util';
 import { SedeCardComponent } from '../barberias/components/sede-card/sede-card.component';
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [CommonModule, RouterLink, CurrencyPipe, SedeCardComponent],
+  imports: [CommonModule, RouterLink, FormsModule, CurrencyPipe, SedeCardComponent],
   template: `
     <div class="relative min-h-[150vh] perspective-1200 overflow-hidden bg-ambient-mesh">
       
@@ -222,6 +224,61 @@ import { SedeCardComponent } from '../barberias/components/sede-card/sede-card.c
                   }
                 </div>
               </div>
+            </div>
+          </section>
+        }
+
+        <!--
+          E3-12/2 · LA PUERTA DE ENTRADA DEL CLIENTE (regla 1.10).
+
+          Un solo campo para las dos formas de entrar: el código de 8 caracteres
+          que se dicta en el mostrador y el enlace único que viaja en el QR
+          (completo o pegado a medias). El texto lo traduce la utilidad de
+          invitación y el vínculo lo crea el backend con la regla de D10 en
+          POST /mi-estado/unirse; aquí solo se cuenta lo que responda —ACTIVO o
+          PENDIENTE_APROBACION— y TenantService recarga la lista de sedes tras el
+          200, así que la tarjeta nueva aparece sola.
+        -->
+        @if (userRole() === 'CLIENTE') {
+          <section class="max-w-6xl mx-auto px-4 transform-style-3d">
+            <div class="glass-card rounded-3xl p-6 sm:p-8 border border-amber-500/25">
+              <h2 class="text-xl font-display font-bold text-white flex items-center gap-3 mb-1">
+                <i class="pi pi-link text-amber-400"></i> Unirme a una barbería
+              </h2>
+              <p class="text-xs text-zinc-400 mb-5">
+                Introduce el código de 8 caracteres o pega el enlace que te compartió la sede.
+              </p>
+
+              <div class="flex flex-col sm:flex-row gap-3">
+                <input type="text"
+                       name="invitacionPegada"
+                       [(ngModel)]="invitacionPegada"
+                       (ngModelChange)="limpiarAviso()"
+                       (keyup.enter)="unirse()"
+                       [disabled]="uniendo()"
+                       placeholder="ABCD1234  ó  https://…/unirse/mi-sede"
+                       class="flex-1 bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3.5 px-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner font-mono text-sm">
+                <button (click)="unirse()"
+                        [disabled]="!invitacionPegada.trim() || uniendo()"
+                        class="px-6 py-3.5 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg shadow-amber-500/20 hover:scale-105 disabled:opacity-40 disabled:hover:scale-100 transition-all flex items-center justify-center gap-2">
+                  <i class="pi" [ngClass]="uniendo() ? 'pi-spin pi-spinner' : 'pi-sign-in'"></i>
+                  <span>Unirme a una Barbería</span>
+                </button>
+              </div>
+
+              @if (mensajeUnion(); as mensaje) {
+                <div class="mt-4 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-xs flex items-start gap-2">
+                  <i class="pi pi-check-circle mt-0.5"></i>
+                  <span>{{ mensaje }}</span>
+                </div>
+              }
+
+              @if (errorUnion(); as error) {
+                <div class="mt-4 p-3.5 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-xs flex items-start gap-2">
+                  <i class="pi pi-exclamation-triangle mt-0.5"></i>
+                  <span>{{ error }}</span>
+                </div>
+              }
             </div>
           </section>
         }
@@ -526,6 +583,62 @@ export class HomeComponent implements OnInit {
        const pagosHoy = pagos.filter((p: any) => p.creadoAt.startsWith(hoy));
        const suma = pagosHoy.reduce((acc: number, p: any) => acc + Number(p.monto), 0);
        this.ingresosHoy.set(suma);
+    });
+  }
+
+  // ── E3-12/2 · la puerta de entrada del cliente (regla 1.10) ──────────────
+
+  /**
+   * Lo que el cliente pegó: un código, un enlace o una URL con el enlace dentro.
+   * Es una propiedad normal (y no una señal) porque `[(ngModel)]` tiene que
+   * poder escribir en ella, igual que el modal de vinculación que ya existía.
+   */
+  invitacionPegada = '';
+  readonly uniendo = signal(false);
+  readonly mensajeUnion = signal<string | null>(null);
+  readonly errorUnion = signal<string | null>(null);
+
+  /** Un texto nuevo borra el aviso del intento anterior. */
+  limpiarAviso(): void {
+    this.mensajeUnion.set(null);
+    this.errorUnion.set(null);
+  }
+
+  /**
+   * E3-12/2 · el cliente ENTRA en una sede.
+   *
+   * El backend es el único que decide el resultado: si es su sexta barbería, el
+   * vínculo nace `PENDIENTE_APROBACION` (D10) y aquí se dice con esas palabras en
+   * vez de dar la unión por hecha. La lista de sedes se recarga dentro de
+   * `TenantService.unirsePorInvitacion`, así que la tarjeta de la sede nueva —y
+   * su estado— aparece sin que esta pantalla tenga que pedirla otra vez.
+   */
+  unirse(): void {
+    const puerta = parsearInvitacion(this.invitacionPegada);
+
+    if (!puerta) {
+      this.mensajeUnion.set(null);
+      this.errorUnion.set('Eso no parece un código de acceso ni un enlace de invitación.');
+      return;
+    }
+
+    this.limpiarAviso();
+    this.uniendo.set(true);
+
+    this.tenantService.unirsePorInvitacion(puerta).subscribe({
+      next: (vinculo) => {
+        this.uniendo.set(false);
+        this.invitacionPegada = '';
+        this.mensajeUnion.set(
+          vinculo.estadoVinculacion === 'PENDIENTE_APROBACION'
+            ? 'Tu solicitud quedó en espera: ya tienes cinco barberías vinculadas y la plataforma tiene que autorizar la sexta (D10).'
+            : '¡Listo! Ya estás vinculado a la barbería. La verás en «Mis Barberías».',
+        );
+      },
+      error: () => {
+        this.uniendo.set(false);
+        this.errorUnion.set(this.tenantService.error() ?? 'No se pudo completar la unión.');
+      },
     });
   }
 

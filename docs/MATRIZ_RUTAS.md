@@ -136,6 +136,8 @@
 | 67 | POST | `/plataforma/vinculaciones/:id/rechazar` | PlataformaVinculacionesController | — no existía | `@Roles(ADMINISTRADOR)` | **E3-12** (D10 · H67) | no | **sí** — 422 `MOTIVO_REQUERIDO` sin motivo (o con una palabra suelta), 409 `ESTADO_INVALIDO`; deja `DESVINCULADO` con `es_barberia_activa = false` y audita `VINCULACION_RECHAZADA` con el motivo | sí — el botón «Rechazar» de la bandeja, con modal de motivo | `test/e3-12-vinculacion.e2e-spec.ts`; `src/barberia/application/vinculacion.service.spec.ts` |
 | 68 | POST | `/barberias/:barberiaId/mi-estado/desvincular` | MiEstadoController | — no existía | `@Roles(CLIENTE)` | **E3-12/3** (D20/D21 · regla 1.9) | **sí** — misma ruta base que la 62: el `:barberiaId` deja que el guard acote la sede y el servicio vuelve a acotar por el usuario del token | **sí** — cierra la PROPIA fila (403 `NO_VINCULADO` sin vínculo, 409 `ESTADO_INVALIDO` si ya estaba cerrada) y 422 `RESERVAS_EN_CURSO` con el conteo si hay reservas `PENDIENTE`/`PROPUESTA_PENDIENTE`/`CONFIRMADA` de hoy en adelante; conserva contador y restricción (D20) y audita `CLIENTE_DESVINCULADO_VOLUNTARIAMENTE` con anterior y nuevo | **sí** — el botón «Desvincularme de esta Barbería» de la tarjeta, con modal de confirmación | `test/e3-12-desvinculacion.e2e-spec.ts`; `src/barberia/application/mi-estado.service.spec.ts`; `test/permisos-matriz.e2e-spec.ts` |
 | 69 | GET | `/mi-estado/barberias` | MiEstadoBarberiasController | — no existía | `@Roles('CLIENTE')` | **H72** (hallazgo 5 · cierra la visibilidad de la fila 68) | no — la ruta NO lleva `:barberiaId`, así que el guard solo filtra el rol: el acotado por usuario del TOKEN lo exige el servicio | **sí** — los dos filtros van en la CONSULTA: `estado_vinculacion IN ('ACTIVO','PENDIENTE_APROBACION')` (D10) y `barberias.estado = 'ACTIVO'` (E2-07). Nunca devuelve los vínculos de otro, ni un historial `DESVINCULADO`, ni una sede suspendida; tampoco `codigoAcceso` ni `enlaceUnico` | **sí** — `core/services/tenant.service.ts` (`cargarBarberias`, que la consulta cuando el listado por responsabilidad viene vacío) y la tarjeta `features/barberias/components/sede-card/sede-card.component.ts`, pintada en «Tus Barberías» y en el home del cliente | `test/h72-listado-sedes-cliente.e2e-spec.ts`; `src/barberia/application/cliente-barberias.service.spec.ts`; `test/permisos-matriz.spec.ts` |
+| 70 | GET | `/barberias/:id/invitacion` | BarberiaController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-12/2** (regla 1.10) | **sí** — la ruta usa `:id`, así que el guard NO resuelve la sede del parámetro: la pertenencia la exige `BarberiaService.obtenerInvitacion` (403) con la MISMA regla que entrega `codigoAcceso` en la fila 11 (`veCodigoDe`, E1-05/E1-07) | **sí** — devuelve SOLO `{ barberiaId, nombre, codigoAcceso, enlaceUnico }` (nunca el resto de datos de la sede) y 404 si la sede no existe | **sí** — el bloque «Invitación de la Sede» de `features/barberias/barberias.component.ts` (código, enlace y QR) vía `core/services/tenant.service.ts` (`obtenerInvitacion`) | `test/e3-12-enlace-qr.e2e-spec.ts` (7 casos de invitación); `src/barberia/application/barberia.service.spec.ts` (`obtenerInvitacion`); `test/permisos-matriz.spec.ts` |
+| 71 | POST | `/mi-estado/unirse` | MiEstadoBarberiasController | — no existía | `@Roles('CLIENTE')` | **E3-12/2** (regla 1.10 · D10/D21) | no — la ruta NO lleva `:barberiaId` (la sede se nombra por código o por enlace en el CUERPO), así que el guard solo filtra el rol y el acotado por usuario lo hace el servicio con el usuario del token | **sí** — reutiliza `vincularCliente`: el vínculo nace `ACTIVO` o `PENDIENTE_APROBACION` según el conteo de D10, reabre la fila `DESVINCULADO` (D21 · H71) y audita `VINCULACION_REACTIVADA` cuando toca; 422 `INVITACION_REQUERIDA` sin puerta y `INVITACION_AMBIGUA` con las dos; 404 de sede inexistente o `INACTIVO` (E2-07); idempotente (200 con la MISMA fila) | **sí** — el campo «Unirme a una barbería» del home del cliente y la pantalla `features/barberias/unirse/unirse.component.ts` (destino del QR), vía `TenantService.unirsePorInvitacion`; el modal de vinculación usa la MISMA puerta | `test/e3-12-enlace-qr.e2e-spec.ts` (10 casos de unión); `src/barberia/application/barberia.service.spec.ts`; `src/app/core/utils/invitacion.util.spec.ts`; `test/permisos-matriz.spec.ts` |
 
 > **Filas 65 a 67 (E3-12, 2026-10-15).** La 6.ª vinculación (D10) la resuelve la PLATAFORMA y no la
 > sede, y el motivo es el conteo: `vincularCliente` cuenta las vinculaciones del USUARIO
@@ -164,6 +166,15 @@
 > conocido y anterior: **no existe ninguna ruta que liste las barberías de un `CLIENTE`** (hallazgo 5 de
 > este mismo documento), así que la tarjeta del cliente solo aparece donde su lista de sedes trae algo — el
 > botón ya está cableado y probado, pero su visibilidad depende de esa tarea pendiente.
+
+> **Filas 70 y 71 · la puerta de entrada del cliente (2026-10-17, E3-12/2 · regla 1.10).** Cierran la última
+> mitad de E3-12. La 70 es de la SEDE —su código de acceso y su `enlaceUnico`, el que codifica el QR— y la 71
+> es del CLIENTE, que entra por cualquiera de las dos. La 71 NO reimplementa la vinculación: llama al mismo
+> `vincularCliente` de la fila 20, así que D10, la reapertura de D21 (H71) y su auditoría son las de siempre y
+> no hay dos sitios donde se decida qué estado le toca a un vínculo. Es hermana de la fila 68 —vive bajo
+> `mi-estado`, el espacio del vínculo propio— y por eso es del CLIENTE. El QR lo compone y lo dibuja el
+> NAVEGADOR (`core/utils/invitacion.util.ts`): el backend no conoce el dominio del frontend, y lo que se
+> codifica es una puerta de entrada, así que no se manda a ningún servicio externo para dibujarla.
 
 > **Fila 69 · el cliente ya tiene su lista de sedes (2026-10-16, H72).** Cierra el **hallazgo 5** de este
 > documento, que E3-12/3 dejó a la vista: `GET /barberias` responde por responsabilidad (`responsableId`,
@@ -267,6 +278,15 @@ y `test/estado-cuenta-guard.spec.ts` (D48 sobre el código fuente: los únicos e
 quedó en 73: retiró cuatro `@Delete` y añadió los seis verbos del vocabulario del diseño) y H64 sumó `+1`
 con la sonda de vida (fila 64), que es la única ruta nueva de las tres iteraciones de la Fase 2. Evidencia:
 la tabla que imprime `test/route-security.spec.ts` y la matriz rol × ruta de `test/permisos-matriz.spec.ts`.
+
+**Estado real tras E3-12/2 (2026-10-17):** `test/route-security.spec.ts` cuenta **83 rutas**
+(`@Public` 7 · `@Autenticado` 5 · `@Roles` 71 · ninguna 0) y `test/permisos-matriz.spec.ts` comprueba
+**83 rutas × 4 roles = 332** decisiones. Sobre las 81 de H72, `+2`: la invitación de la sede (fila 70) y la
+entrada del cliente (fila 71), que cierran la regla 1.10 y con ella el punto 2 de E3-12. La 70 usa `:id` y la
+71 no lleva sede en la ruta, así que en las dos el acotado real es de servicio —pertenencia en la 70, usuario
+del token en la 71—, y las dos se declaran aquí para que el guard no sea la única política que exista.
+Evidencia: `test/e3-12-enlace-qr.e2e-spec.ts` (17 casos), la fila de 1.10 de `docs/MATRIZ_CUMPLIMIENTO.md` y
+las dos suites unitarias del frontend (`invitacion.util.spec.ts` y `tenant.service.spec.ts`).
 
 **Estado real tras E3-12 (2026-10-15):** `test/route-security.spec.ts` cuenta **79 rutas**
 (`@Public` 7 · `@Autenticado` 5 · `@Roles` 67 · ninguna 0) y `test/permisos-matriz.spec.ts` comprueba

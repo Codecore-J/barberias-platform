@@ -1,11 +1,12 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { TenantService } from '../../core/services/tenant.service';
-import type { BarberiaResumen } from '../../core/services/tenant.service';
+import type { BarberiaResumen, InvitacionSede } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
 import { MiEstadoService } from '../../core/services/mi-estado.service';
 import type { MiEstado } from '../../core/services/mi-estado.service';
+import { qrDeInvitacion, urlDeInvitacion } from '../../core/utils/invitacion.util';
 import { VincularModalComponent } from './components/vincular-modal/vincular-modal.component';
 import { SedeCardComponent } from './components/sede-card/sede-card.component';
 
@@ -25,6 +26,73 @@ import { SedeCardComponent } from './components/sede-card/sede-card.component';
           Gestiona las barberías a las que tienes acceso. Selecciona una para activar tu sesión y acceder al catálogo y agendamiento.
         </p>
       </section>
+
+      <!--
+        E3-12/2 · la puerta de entrada de la sede (regla 1.10).
+
+        Lo que el staff COMPARTE: el código para dictarlo, el enlace único para
+        mandarlo y su QR para imprimirlo. Se sirve solo a quien administra la
+        sede —el backend responde 403 al ADMIN_BARBERIA de otra— y el QR se
+        dibuja EN EL NAVEGADOR: lo que codifica es la puerta de entrada de esta
+        sede, y mandarla a un servicio externo para que la pinte sería
+        regalarla.
+      -->
+      @if (puedeVerCodigoInvitacion()) {
+        <section class="max-w-6xl mx-auto px-4">
+          <div class="p-6 rounded-xl bg-zinc-900/60 border border-zinc-700/50 backdrop-blur">
+            <h3 class="text-lg font-bold text-white mb-1 flex items-center gap-2">
+              <i class="pi pi-link text-amber-400"></i>
+              Invitación de la Sede
+            </h3>
+            <p class="text-xs text-zinc-400 mb-5">
+              Comparte el código o el enlace para que tus clientes se unan
+              @if (invitacion(); as inv) { a <span class="text-amber-400 font-semibold">{{ inv.nombre }}</span>. }
+              @else { a tu sede. }
+            </p>
+
+            @if (invitacion(); as inv) {
+              <div class="flex flex-col lg:flex-row gap-6 lg:items-center">
+                <div class="flex-1 space-y-4">
+                  <div>
+                    <span class="text-[11px] uppercase tracking-widest text-zinc-500 font-semibold">Código de acceso</span>
+                    <div class="flex flex-wrap items-center gap-3 mt-1.5">
+                      <code class="px-4 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-amber-400 font-mono text-lg tracking-wider">{{ inv.codigoAcceso }}</code>
+                      <button (click)="copiar(inv.codigoAcceso, 'codigo')"
+                              class="px-4 py-2 rounded-lg bg-amber-500 text-zinc-950 font-semibold hover:bg-amber-400 transition-colors flex items-center gap-2">
+                        <i class="pi pi-copy"></i>
+                        {{ copiado() === 'codigo' ? 'Copiado' : 'Copiar' }}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span class="text-[11px] uppercase tracking-widest text-zinc-500 font-semibold">Enlace de invitación</span>
+                    <div class="flex flex-wrap items-center gap-3 mt-1.5">
+                      <code class="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs break-all">{{ urlInvitacion() }}</code>
+                      <button (click)="copiar(urlInvitacion(), 'enlace')"
+                              class="px-4 py-2 rounded-lg text-xs font-semibold text-zinc-200 bg-zinc-800 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center gap-2">
+                        <i class="pi pi-copy"></i>
+                        {{ copiado() === 'enlace' ? 'Copiado' : 'Copiar Enlace' }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex flex-col items-center gap-2 shrink-0">
+                  <img [src]="qrInvitacion()"
+                       alt="Código QR de invitación a la sede"
+                       class="w-40 h-40 rounded-xl bg-white p-2 shadow-lg">
+                  <span class="text-[11px] text-zinc-500">Escanéalo para unirte</span>
+                </div>
+              </div>
+            } @else {
+              <span class="text-zinc-400 text-sm">
+                Selecciona una barbería activa para ver y compartir su invitación.
+              </span>
+            }
+          </div>
+        </section>
+      }
 
       <!-- Aviso tras cerrar un vínculo (E3-12/3) -->
       @if (mensajeExito()) {
@@ -251,7 +319,39 @@ export class BarberiasComponent implements OnInit {
   readonly mensajeExito = signal('');
 
   ngOnInit() {
-    this.tenantService.cargarBarberias().subscribe(() => this.cargarEstados());
+    this.tenantService.cargarBarberias().subscribe(() => {
+      this.cargarEstados();
+      this.cargarInvitacion();
+    });
+  }
+
+  /**
+   * E3-12/2 · la invitación de la sede que se está administrando.
+   *
+   * Se pide la de la sede ACTIVA y, si todavía no hay ninguna fijada —el
+   * auto-pick de la sede la decide el backend con un `PATCH` posterior—, la de la
+   * primera de la lista: el bloque existe para compartirlo, no para esperar a que
+   * termine una selección. Si la ruta responde 403/404 no se pinta ningún código:
+   * el aviso ya queda en `tenantService.error()`, que la pantalla muestra arriba.
+   */
+  private cargarInvitacion(): void {
+    if (!this.puedeVerCodigoInvitacion()) {
+      this.invitacion.set(null);
+      return;
+    }
+
+    const sedeId =
+      this.tenantService.barberiaActivaId() ?? this.tenantService.barberiasVinculadas()[0]?.id;
+
+    if (!sedeId) {
+      this.invitacion.set(null);
+      return;
+    }
+
+    this.tenantService.obtenerInvitacion(sedeId).subscribe({
+      next: (invitacion) => this.invitacion.set(invitacion),
+      error: () => this.invitacion.set(null),
+    });
   }
 
   /**
@@ -337,6 +437,27 @@ export class BarberiasComponent implements OnInit {
     setTimeout(() => this.mensajeExito.set(''), 6000);
   }
 
+  /** E3-12/2 · lo que el staff comparte: código y enlace único de su sede. */
+  readonly invitacion = signal<InvitacionSede | null>(null);
+  /** Cuál de los dos botones acaba de copiar (`''` = ninguno). */
+  readonly copiado = signal<'' | 'codigo' | 'enlace'>('');
+
+  /**
+   * El enlace completo se compone aquí, con el origen real del navegador: el
+   * backend no conoce (ni debe) el dominio desde el que se sirve esta pantalla,
+   * así que un QR impreso apunta al host donde la sede opera de verdad.
+   */
+  readonly urlInvitacion = computed(() => {
+    const inv = this.invitacion();
+    return inv ? urlDeInvitacion(inv.enlaceUnico, window.location.origin) : null;
+  });
+
+  /** El QR, generado en el navegador y embebido como `data:` URL. */
+  readonly qrInvitacion = computed(() => {
+    const url = this.urlInvitacion();
+    return url ? qrDeInvitacion(url) : null;
+  });
+
   userRole(): string {
     const roles = this.authService.authState().user?.roles;
     if (!roles || roles.length === 0) return 'CLIENTE';
@@ -344,6 +465,26 @@ export class BarberiasComponent implements OnInit {
     if (roles.includes('ADMIN_BARBERIA')) return 'ADMIN_BARBERIA';
     if (roles.includes('BARBERO')) return 'BARBERO';
     return 'CLIENTE';
+  }
+
+  puedeVerCodigoInvitacion(): boolean {
+    const role = this.userRole();
+    return role === 'ADMIN_BARBERIA' || role === 'ADMINISTRADOR';
+  }
+
+  /**
+   * Copia al portapapeles y confirma EN EL BOTÓN que se pulsó, para que no se
+   * confundan el código y el enlace al compartirlos.
+   */
+  copiar(valor: string | null, cual: 'codigo' | 'enlace'): void {
+    if (!valor) {
+      return;
+    }
+
+    navigator.clipboard.writeText(valor).then(() => {
+      this.copiado.set(cual);
+      setTimeout(() => this.copiado.set(''), 2000);
+    });
   }
 
   /**
@@ -366,6 +507,10 @@ export class BarberiasComponent implements OnInit {
   seleccionar(id: string) {
     this.tenantService.seleccionarBarberia(id).subscribe({
       next: () => {
+        // E3-12/2: si la sede que pasa a ser activa es otra, la invitación que se
+        // comparte es la suya.
+        this.cargarInvitacion();
+
         const role = this.userRole();
         if (role === 'ADMINISTRADOR' || role === 'ADMIN_BARBERIA' || role === 'BARBERO') {
           this.router.navigate(['/admin/agenda']);

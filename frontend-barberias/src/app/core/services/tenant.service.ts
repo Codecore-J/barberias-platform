@@ -2,6 +2,28 @@ import { Injectable, signal, computed, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, of, map, switchMap } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
+import type { PuertaDeEntrada } from '../utils/invitacion.util.js';
+
+/**
+ * E3-12/2 · la invitación de una sede (regla 1.10): lo que el staff comparte.
+ * Solo la sirve `GET /barberias/:id/invitacion`, y solo al ADMIN_BARBERIA de esa
+ * sede o al ADMINISTRADOR global.
+ */
+export interface InvitacionSede {
+  barberiaId: string;
+  nombre: string;
+  codigoAcceso: string;
+  enlaceUnico: string;
+}
+
+/** El vínculo que devuelven las rutas de vinculación: el estado es el de D10. */
+export interface VinculoDeCliente {
+  id: string;
+  usuarioId: string;
+  barberiaId: string;
+  estadoVinculacion: string;
+  esBarberiaActiva: boolean;
+}
 
 export interface BarberiaResumen {
   id: string;
@@ -37,6 +59,13 @@ export class TenantService {
    * devuelve `[]` aunque tenga vínculos en `cliente_barberias`.
    */
   private readonly apiUrlMisSedes = `${API_URL}/mi-estado/barberias`;
+  /**
+   * E3-12/2 · la entrada del cliente. La ruta vive bajo `mi-estado` —el espacio
+   * del vínculo propio— y es la MISMA lógica blindada que `POST /barberias/vincular`
+   * (`vincularCliente`): el límite de D10, la reapertura de H71 y su auditoría
+   * son del backend, no de esta pantalla.
+   */
+  private readonly apiUrlUnirse = `${API_URL}/mi-estado/unirse`;
   private readonly storageKey = 'active_barberia_id';
 
   // Signals reactivos para el tenant
@@ -169,17 +198,56 @@ export class TenantService {
 
   /**
    * Vincula al usuario con una barbería usando un código de acceso de 8 caracteres.
+   *
+   * E3-12/2: el modal de vinculación pasa a ser un caso particular de `unirse`
+   * —un código es una de las dos formas de nombrar la misma puerta de entrada—
+   * para que no existan en el navegador dos caminos distintos hacia el mismo
+   * vínculo, con dos manejos de error que podrían divergir.
    */
-  vincularBarberia(codigoAcceso: string): Observable<any> {
+  vincularBarberia(codigoAcceso: string): Observable<VinculoDeCliente> {
+    return this.unirsePorInvitacion({ codigoAcceso });
+  }
+
+  /**
+   * E3-12/2 · la invitación de una sede (regla 1.10).
+   *
+   * El error queda en `error()` con el mensaje del contrato D40 y se propaga: la
+   * pantalla del panel decide si muestra el aviso o simplemente deja el bloque
+   * sin código.
+   */
+  obtenerInvitacion(barberiaId: string): Observable<InvitacionSede> {
+    this.error.set(null);
+    return this.http.get<InvitacionSede>(`${this.apiUrl}/${barberiaId}/invitacion`).pipe(
+      catchError((err) => {
+        this.error.set(
+          err.error?.mensaje || err.error?.message || 'No se pudo obtener la invitación de la sede',
+        );
+        throw err;
+      }),
+    );
+  }
+
+  /**
+   * E3-12/2 · el cliente ENTRA en una sede con la puerta que traiga: el código
+   * que le dictaron o el enlace único de su QR.
+   *
+   * Tras el 200 se recarga la lista de sedes —la del vínculo propio, `GET
+   * /mi-estado/barberias`— porque la tarjeta que corresponde a la sede nueva
+   * todavía no está pintada. El estado del vínculo (`ACTIVO` o
+   * `PENDIENTE_APROBACION`) lo decide el backend con la regla de D10 y la
+   * pantalla solo lo cuenta.
+   */
+  unirsePorInvitacion(puerta: PuertaDeEntrada): Observable<VinculoDeCliente> {
     this.isLoading.set(true);
-    return this.http.post(`${this.apiUrl}/vincular`, { codigoAcceso }).pipe(
+    this.error.set(null);
+    return this.http.post<VinculoDeCliente>(this.apiUrlUnirse, puerta).pipe(
       tap(() => {
-        // Al vincular exitosamente, recargamos la lista
+        this.isLoading.set(false);
         this.cargarBarberias().subscribe();
       }),
       catchError((err) => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Código inválido o error al vincular');
+        this.error.set(err.error?.mensaje || err.error?.message || 'No se pudo completar la unión');
         throw err;
       }),
     );

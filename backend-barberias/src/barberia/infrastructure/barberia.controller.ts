@@ -136,6 +136,24 @@ export class BarberiaController {
   }
 
   /**
+   * GET /barberias/:id/invitacion · E3-12/2 (regla 1.10)
+   *
+   * La puerta de entrada de la sede, para que quien la administra pueda
+   * COMPARTIRLA: el código de acceso y el enlace único del que cuelga el QR. La
+   * ruta usa `:id` (no `:barberiaId`), así que el `RolesGuard` no resuelve la
+   * sede del parámetro y la pertenencia real la exige el servicio
+   * (`obtenerInvitacion`, 403) — igual que E3-13 y la bandeja de restringidos.
+   */
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Get(':id/invitacion')
+  obtenerInvitacion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.barberiaService.obtenerInvitacion(id, user);
+  }
+
+  /**
    * PATCH /barberias/:id/seleccionar
    * Selecciona una barbería como la activa para el usuario (apaga las demás).
    * Decisión 2 enmendada: los cuatro roles.
