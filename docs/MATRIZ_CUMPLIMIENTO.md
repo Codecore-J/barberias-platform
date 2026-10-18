@@ -2,7 +2,7 @@
 
 **Tarea:** E2-08 · Matriz de cumplimiento reconciliada (`docs/BACKLOG_BARBERIAS_V1.md`).
 **Sustituye a:** [`COMPARACION_DISENO_VS_REAL.md`](../COMPARACION_DISENO_VS_REAL.md), que comparaba el diseño con el sistema de septiembre de 2026 y quedó desactualizado (daba por no global el `RolesGuard`, entre otros puntos).
-**Fecha:** 2026-10-17 (**1.10** pasó a `OK-PROBADO` al cerrarse el punto 2 de E3-12 —el enlace único y su QR—; **1.8** y **1.9** lo hicieron el 2026-10-15 con E3-12 y su desvinculación). **H75**, el límite que 1.10 anotaba (el retorno del login tras abrir un QR sin sesión), quedó resuelto el mismo día en la rama `fix/h75-return-url-login` **sin mover ninguna fila**: era un límite de recorrido del cliente, no un cambio de cumplimiento. **Actualización 2026-10-18 (`chore/h69-cobertura-reglas`):** **H69** cierra las tres filas `OK-SIN-TEST` —1.6, 2.3 y 4.3— con tests que nombran la regla; la matriz ya no tiene ninguna fila en ese estado. **Filas:** 72.
+**Fecha:** 2026-10-17 (**1.10** pasó a `OK-PROBADO` al cerrarse el punto 2 de E3-12 —el enlace único y su QR—; **1.8** y **1.9** lo hicieron el 2026-10-15 con E3-12 y su desvinculación). **H75**, el límite que 1.10 anotaba (el retorno del login tras abrir un QR sin sesión), quedó resuelto el mismo día en la rama `fix/h75-return-url-login` **sin mover ninguna fila**: era un límite de recorrido del cliente, no un cambio de cumplimiento. **Actualización 2026-10-18 (`chore/h69-cobertura-reglas`):** **H69** cierra las tres filas `OK-SIN-TEST` —1.6, 2.3 y 4.3— con tests que nombran la regla; la matriz ya no tiene ninguna fila en ese estado. **Actualización 2026-10-18 (`feat/h68-correccion-pagos`):** **H68** cierra **7.3** —la corrección de un pago— con la anulación auditada (`POST /pagos/:id/anular`), el recibo de la sede (`GET /pagos/historial`) y el camino de vuelta a cobrar; `NO-EXISTE` baja a una fila (E4-05). **Filas:** 72.
 
 > **Qué es este documento.** La fuente de verdad técnica que une cada regla del diseño con el código que la garantiza y con el test que la certifica. No es un resumen de intenciones: cada `archivo:línea` de la columna *Evidencia* se resolvió **leyendo el fichero en el momento de escribir esto**, y cada test citado existe y menciona la regla. Si alguno no cuadraba, la matriz no se generaba.
 >
@@ -140,10 +140,10 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | 7.1 | El pago en persona completa la reserva por la máquina de estados y audita en la misma transacción | OK-PROBADO | `backend-barberias/src/pago/application/pago.service.ts:214` | `backend-barberias/src/pago/application/pago.service.spec.ts:136` | E3-09 |
 | 7.2 | Cobrar es de la sede; el barbero solo cobra lo que tiene asignado | OK-PROBADO | `backend-barberias/src/pago/application/pago.service.ts:41` | `backend-barberias/test/pago-barbero-asignado.e2e-spec.ts:13`<br>`backend-barberias/src/pago/application/pago.service.spec.ts:308` | E3-09 |
-| 7.3 | Un pago puede corregirse después, y cada corrección se audita | NO-EXISTE | `grep -ri "corregir" backend-barberias/src/pago` → 0 coincidencias | — | E3-09 |
+| 7.3 | Un pago puede corregirse después, y cada corrección se audita | OK-PROBADO | `backend-barberias/src/pago/application/pago.service.ts:289` (`anularPago`: `ANULADO` con autor, fecha y motivo, y `PAGO_ANULADO` en la misma transacción) y `:408` (`listarHistorial`, el recibo con el estado vivo); el catálogo del estado y las columnas, en `backend-barberias/prisma/migrations/20261018120000_h68_anulacion_pagos/migration.sql:22`; las rutas, en `backend-barberias/src/pago/infrastructure/pago.controller.ts:55` y `:79` | `backend-barberias/src/pago/application/pago.service.spec.ts:557` (anular: motivo, auditoría, 409 al repetir, 409 si nunca se cobró, 404 de sede ajena y 403 del barbero)<br>`backend-barberias/src/pago/application/pago.service.spec.ts:719` (`listarHistorial`: estado vivo y detalle del recibo)<br>`backend-barberias/src/pago/application/pago.service.spec.ts:321` (anular y volver a cobrar la misma reserva)<br>`frontend-barberias/src/app/core/services/pagos.service.spec.ts:24` | E3-09 · H68 |
 | 7.4 | Un pago pendiente nunca equivale a ingreso | OK-PROBADO | `backend-barberias/src/pago/application/pago.service.ts:162` | `backend-barberias/src/pago/application/pago.service.spec.ts:213` | E3-09 |
 
-**7.3 · NO-EXISTE** — El controlador de pagos solo expone `POST /pagos` (en persona) y `GET /pagos/auditoria`: no hay operación de corrección ni de anulación. La parte que sí se cumple es la de auditoría del alta (7.1).
+**7.3 · OK-PROBADO** (cerrada por H68 el 2026-10-18) — La corrección es una ANULACIÓN, no un borrado: `POST /pagos/:id/anular` con motivo obligatorio pasa la fila a `ANULADO` con autor, fecha y motivo, escribe `PAGO_ANULADO` en la auditoría dentro de la misma transacción y deja la reserva `COMPLETADA` (el servicio se prestó), de modo que el cobro puede volver a registrarse sobre la misma fila. Un pago anulado deja de contar como ingreso (§7.4) y anular dos veces responde 409 `ESTADO_INVALIDO`. La lectura que certifica la regla es `GET /pagos/historial`: sirve el recibo con su estado VIVO, que es lo que se corrige.
 
 ## Sección 8 · Auditoría y notificaciones
 
@@ -198,10 +198,10 @@
 
 | Estado | Filas |
 | :--- | :--- |
-| OK-PROBADO | 68 |
+| OK-PROBADO | 69 |
 | OK-SIN-TEST | 0 |
 | PARCIAL | 1 |
-| NO-EXISTE | 2 |
+| NO-EXISTE | 1 |
 | NO-VERIFICADO | 1 |
 | **Total** | **72** |
 
@@ -210,13 +210,12 @@
 Siguen fuera de `OK-PROBADO` estas reglas, que es lo que la matriz existe para no esconder:
 
 - **6.1 · NO-VERIFICADO · E2-08** — Contenido de la sección 6 del PDF 01 El PDF 01 no está en el repositorio y ninguna cita del código o de los documentos apunta a su sección 6 (`Spec 01 §6` = 0 coincidencias). No se puede afirmar ni negar cumplimiento: hay que conseguir el PDF y rellenar esta fila. Si la sección 6 fuese «antecedentes y privacidad» —la Épica 7 del plan estratégico—, su evidencia sería `backend-barberias/src/antecedente/**`, que hoy existe y tiene tests, pero eso es una hipótesis, no una cita.
-- **7.3 · NO-EXISTE · E3-09** — Un pago puede corregirse después, y cada corrección se audita El controlador de pagos solo expone `POST /pagos` (en persona) y `GET /pagos/auditoria`: no hay operación de corrección ni de anulación. La parte que sí se cumple es la de auditoría del alta (7.1).
 - **T.4 · PARCIAL · E0-02** — Entornos separados: dev, staging y producción (D11) La aplicación exige `APP_ENV` y aborta con un valor no permitido, y los datos viven en bases distintas; queda pendiente que el despliegue aplique las migraciones solo (`render.yaml` no corre `prisma migrate deploy`), que es la causa de que `dev` y `staging` puedan divergir.
 - **T.6 · NO-EXISTE · E4-05** — E4-05 · Módulo `src/cliente/` (ficha y notas del cliente) Decisión de alcance, no un olvido: el módulo existe pero no está registrado (H22), y su E2E comprueba justamente qué rol entra cuando las rutas no están expuestas.
 
 ### Lectura de los hallazgos
 
-- **`NO-EXISTE` no siempre es un defecto.** E4-05 está desactivado a propósito (H22) y su fila lo dice; la corrección de pagos (7.3) sí es trabajo pendiente real. **E3-12 quedó cerrada entera el 2026-10-17:** el callejón sin salida (1.8), la vuelta del rechazo (H71), la salida del cliente (1.9) y la puerta de entrada por enlace único y QR (1.10) están los cuatro en `OK-PROBADO`, y esta matriz lo registra en las filas 1.7 a 1.10.
+- **`NO-EXISTE` no siempre es un defecto.** E4-05 está desactivado a propósito (H22) y su fila lo dice; la corrección de pagos (7.3) **ya no está en ese estado**: H68 la cerró el 2026-10-18 con la anulación auditada y el recibo de la sede. **E3-12 quedó cerrada entera el 2026-10-17:** el callejón sin salida (1.8), la vuelta del rechazo (H71), la salida del cliente (1.9) y la puerta de entrada por enlace único y QR (1.10) están los cuatro en `OK-PROBADO`, y esta matriz lo registra en las filas 1.7 a 1.10.
 - **`PARCIAL` señala una mitad hecha.** Queda UNA fila en ese estado: T.4, donde los entornos están separados y el despliegue no aplica migraciones. 1.7 estuvo `PARCIAL` mientras el vínculo pendiente bloqueaba sin flujo que lo resolviera, y 1.9 mientras el cliente no podía salir de una sede: las dos llegaron a `OK-PROBADO` cuando se ejecutó E3-12.
 - **`OK-SIN-TEST` ya no tiene filas.** H69 cerró las tres que quedaban (1.6 recuperación de contraseña, 2.3 `ESTADO_NO_EDITABLE` y 4.3 prioridad de las excepciones) con tests que nombran la regla; era el mismo patrón que P-SD-5, una decisión tomada sin guarda que la sostuviera. No es un estado que deba volver a crecer: si una fila nueva no tiene test, su sitio es `OK-SIN-TEST` hasta que lo tenga.
 - **`NO-VERIFICADO` (6.1) es una petición, no un veredicto:** hay que conseguir el PDF 01 y rellenar la fila.

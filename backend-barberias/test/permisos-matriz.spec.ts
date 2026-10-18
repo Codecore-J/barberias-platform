@@ -201,6 +201,15 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // `test/pago-barbero-asignado.e2e-spec.ts` (5 casos, rojo→verde) y por el
   // describe E3-09 de `src/pago/application/pago.service.spec.ts`.
   'POST /barberias/:barberiaId/pagos,cobros,pagos/en-persona,': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // H68 (2026-10-18): §7.3 · corregir un cobro. El recibo de la sede es la
+  // lectura del dinero cobrado y la anulación es una decisión administrativa,
+  // así que las dos son de la SEDE: el BARBERO cobra (E3-09) pero no deshace un
+  // ingreso. La ruta de anulación usa `:id` (no `:barberiaId`), así que el guard
+  // NO resuelve la sede del parámetro y la pertenencia la vuelve a exigir
+  // `PagoService.anularPago` con la sede del PAGO (403 `ANULACION_SOLO_ADMIN` si
+  // quien anula es barbero de esa sede, 404 si el cobro es de otra sede).
+  'GET /barberias/:barberiaId/pagos,cobros,pagos/historial': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /barberias/:barberiaId/pagos,cobros,pagos/:id/anular': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
   // E3-03 (2026-10): la única fila de cuatro roles se parte en dos. El alias
   // `/reservas` lo usaban DOS pantallas: el wizard del cliente
@@ -414,10 +423,12 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // (H63, 2026-10-14) no añadió rutas. H64 suma la sonda de vida separada: 76.
   // E3-12 (2026-10-15) suma la bandeja de plataforma de la 6.ª vinculación y sus
   // dos resoluciones (aprobar y rechazar): 79. E3-12/3 suma la salida del
-  // cliente (`POST .../mi-estado/desvincular`): 80.
-  it('descubrir las 83 rutas del servidor y todas tienen decision', () => {
+  // cliente (`POST .../mi-estado/desvincular`): 80. E3-12/2 sumó la invitación de
+  // la sede y la unión del cliente: 83. H68 (2026-10-18) suma el historial de
+  // cobros y la anulación de un pago: 85.
+  it('descubrir las 85 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(83);
+    expect(claves.length).toBe(85);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -519,10 +530,11 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     // seis verbos de E2-07 y retiró cuatro `@Delete`: 75 × 4 = 300. H64 sumó la
     // sonda de vida separada (76 rutas) y con ella la decisión de sus 4 roles:
     // 304. E3-12 sumó las tres rutas de la 6.ª vinculación (79 rutas) y E3-12/3
-    // la desvinculación del cliente: 80 × 4 = 320. H72 sumó la lista de sedes
-    // del cliente (H72): 81 × 4 = 324. E3-12/2 suma la puerta de entrada
-    // (regla 1.10) —la invitación de la sede y la unión del cliente—: 83 × 4 = 332.
-    expect(evaluaciones).toBe(332);
+  // la desvinculación del cliente: 80 × 4 = 320. H72 sumó la lista de sedes
+  // del cliente (H72): 81 × 4 = 324. E3-12/2 suma la puerta de entrada
+  // (regla 1.10) —la invitación de la sede y la unión del cliente—: 83 × 4 = 332.
+  // H68 suma las dos del recibo de cobros (historial y anulación): 85 × 4 = 340.
+  expect(evaluaciones).toBe(340);
     expect(
       desviaciones.length === 0
         ? ''

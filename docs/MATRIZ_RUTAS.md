@@ -138,6 +138,8 @@
 | 69 | GET | `/mi-estado/barberias` | MiEstadoBarberiasController | — no existía | `@Roles('CLIENTE')` | **H72** (hallazgo 5 · cierra la visibilidad de la fila 68) | no — la ruta NO lleva `:barberiaId`, así que el guard solo filtra el rol: el acotado por usuario del TOKEN lo exige el servicio | **sí** — los dos filtros van en la CONSULTA: `estado_vinculacion IN ('ACTIVO','PENDIENTE_APROBACION')` (D10) y `barberias.estado = 'ACTIVO'` (E2-07). Nunca devuelve los vínculos de otro, ni un historial `DESVINCULADO`, ni una sede suspendida; tampoco `codigoAcceso` ni `enlaceUnico` | **sí** — `core/services/tenant.service.ts` (`cargarBarberias`, que la consulta cuando el listado por responsabilidad viene vacío) y la tarjeta `features/barberias/components/sede-card/sede-card.component.ts`, pintada en «Tus Barberías» y en el home del cliente | `test/h72-listado-sedes-cliente.e2e-spec.ts`; `src/barberia/application/cliente-barberias.service.spec.ts`; `test/permisos-matriz.spec.ts` |
 | 70 | GET | `/barberias/:id/invitacion` | BarberiaController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **E3-12/2** (regla 1.10) | **sí** — la ruta usa `:id`, así que el guard NO resuelve la sede del parámetro: la pertenencia la exige `BarberiaService.obtenerInvitacion` (403) con la MISMA regla que entrega `codigoAcceso` en la fila 11 (`veCodigoDe`, E1-05/E1-07) | **sí** — devuelve SOLO `{ barberiaId, nombre, codigoAcceso, enlaceUnico }` (nunca el resto de datos de la sede) y 404 si la sede no existe | **sí** — el bloque «Invitación de la Sede» de `features/barberias/barberias.component.ts` (código, enlace y QR) vía `core/services/tenant.service.ts` (`obtenerInvitacion`) | `test/e3-12-enlace-qr.e2e-spec.ts` (7 casos de invitación); `src/barberia/application/barberia.service.spec.ts` (`obtenerInvitacion`); `test/permisos-matriz.spec.ts` |
 | 71 | POST | `/mi-estado/unirse` | MiEstadoBarberiasController | — no existía | `@Roles('CLIENTE')` | **E3-12/2** (regla 1.10 · D10/D21) | no — la ruta NO lleva `:barberiaId` (la sede se nombra por código o por enlace en el CUERPO), así que el guard solo filtra el rol y el acotado por usuario lo hace el servicio con el usuario del token | **sí** — reutiliza `vincularCliente`: el vínculo nace `ACTIVO` o `PENDIENTE_APROBACION` según el conteo de D10, reabre la fila `DESVINCULADO` (D21 · H71) y audita `VINCULACION_REACTIVADA` cuando toca; 422 `INVITACION_REQUERIDA` sin puerta y `INVITACION_AMBIGUA` con las dos; 404 de sede inexistente o `INACTIVO` (E2-07); idempotente (200 con la MISMA fila) | **sí** — el campo «Unirme a una barbería» del home del cliente y la pantalla `features/barberias/unirse/unirse.component.ts` (destino del QR), vía `TenantService.unirsePorInvitacion`; el modal de vinculación usa la MISMA puerta | `test/e3-12-enlace-qr.e2e-spec.ts` (10 casos de unión); `src/barberia/application/barberia.service.spec.ts`; `src/app/core/utils/invitacion.util.spec.ts`; `test/permisos-matriz.spec.ts` |
+| 72 | GET | `/barberias/:barberiaId/pagos/historial` · `/cobros/historial` · `/pagos/historial` | PagoController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **matriz** (H68 · §7.3) | **sí** — `validateAccess` sobre la barbería del param o del header (400 si no hay y no es ADMINISTRADOR), igual que la auditoría de la fila 37 | **sí** — el `where` filtra por `reserva.barberiaId` en la CONSULTA y devuelve el recibo de cada cobro (cliente, servicios con precio histórico, quién lo registró y quién lo anuló); nunca un pago de otra sede | **sí** — `PagosService.obtenerHistorial` (`core/services/pagos.service.ts`), consumido por la tabla «Historial de Pagos» de `features/admin/tickets` y por las métricas del home | `src/pago/application/pago.service.spec.ts` (`listarHistorial`); `src/app/core/services/pagos.service.spec.ts`; `test/permisos-matriz.spec.ts` |
+| 73 | POST | `/barberias/:barberiaId/pagos/:id/anular` · `/cobros/:id/anular` · `/pagos/:id/anular` | PagoController | — no existía | `@Roles(ADMIN_BARBERIA, ADMINISTRADOR)` | **matriz** (H68 · §7.3) | **sí** — la ruta usa `:id` (no `:barberiaId`), así que el guard NO resuelve la sede del parámetro: `PagoService.anularPago` la resuelve por el PAGO y exige `ADMIN` (403 `ANULACION_SOLO_ADMIN` si quien anula es un BARBERO de esa sede), y responde 404 si el `:barberiaId` del alias no es el del cobro | **sí** — solo anula un pago `PAGADA` (409 `ESTADO_INVALIDO` si ya está `ANULADO` o nunca se cobró), exige motivo (422 `MOTIVO_REQUERIDO`), no borra nada y deja `PAGO_ANULADO` en la auditoría dentro de la transacción del cambio | **sí** — el botón «Anular» con su modal de motivo en `features/admin/tickets/admin-tickets.component.ts`, vía `PagosService.anularPago` | `src/pago/application/pago.service.spec.ts` (`anularPago`); `src/app/core/services/pagos.service.spec.ts`; `test/permisos-matriz.spec.ts` |
 
 > **Filas 65 a 67 (E3-12, 2026-10-15).** La 6.ª vinculación (D10) la resuelve la PLATAFORMA y no la
 > sede, y el motivo es el conteo: `vincularCliente` cuenta las vinculaciones del USUARIO
@@ -176,6 +178,14 @@
 > NAVEGADOR (`core/utils/invitacion.util.ts`): el backend no conoce el dominio del frontend, y lo que se
 > codifica es una puerta de entrada, así que no se manda a ningún servicio externo para dibujarla.
 
+> **Filas 72 y 73 · el recibo de cobros y su corrección (2026-10-18, H68).** §7.3 pedía que un pago pudiera
+> corregirse después con rastro, y la tabla de «Historial de Pagos» no tenía de dónde sacarlo: leía la
+> auditoría —un rastro inmutable y paginado por evento—, que no devuelve el estado del pago ni el id de su
+> fila. La fila 72 sirve el recibo desde la tabla `pagos` (estado VIVO, incluido `ANULADO`) y la 73 lo
+> corrige sin borrar nada, con motivo obligatorio. La anulación es de la SEDE: el barbero cobra lo suyo
+> (fila 38) y no deshace un ingreso. Las dos se numeran al final, como manda el encabezado, para no
+> renumerar las 71 filas anteriores.
+
 > **Fila 69 · el cliente ya tiene su lista de sedes (2026-10-16, H72).** Cierra el **hallazgo 5** de este
 > documento, que E3-12/3 dejó a la vista: `GET /barberias` responde por responsabilidad (`responsableId`,
 > fila 12) y a un cliente puro le devuelve `[]`, así que ni «Tus Barberías» ni el botón de salir de la fila
@@ -206,6 +216,11 @@ E3-03 (`758a70d`), que añade `POST /reservas/walk-in`:
 
 Las 5 rutas que siguen en `@Autenticado` son las que devuelven datos del propio solicitante o no son de
 negocio: `GET /`, `GET /auth/me`, `POST /barberias`, `GET /barberias` y `GET /notificaciones/mis-notificaciones`.
+
+**Estado real tras H68 (2026-10-18):** `test/route-security.spec.ts` cuenta **85 rutas**
+(`@Public` 7 · `@Autenticado` 5 · `@Roles` 73 · ninguna 0) y `test/permisos-matriz.spec.ts` comprueba
+**85 rutas × 4 roles = 340** decisiones. Sobre las 83 de E3-12/2: `+2` por el historial de cobros y la
+anulación de un pago (H68, filas 72 y 73).
 
 **Estado real tras E3-04 (2026-10-09):** `test/route-security.spec.ts` cuenta **58 rutas**
 (`@Public` 6 · `@Autenticado` 5 · `@Roles` 47 · ninguna 0). Sobre las 55 del cuadro de arriba: `+1` por

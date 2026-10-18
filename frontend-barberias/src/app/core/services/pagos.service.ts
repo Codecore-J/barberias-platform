@@ -4,17 +4,28 @@ import { Observable, tap, catchError, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { API_URL } from '../constants/api.constants';
 
-export interface PagoAuditoria {
+/**
+ * H68 · el recibo de un cobro tal como lo sirve `GET /cobros/historial`.
+ *
+ * Es el ESTADO VIVO del pago —incluido `ANULADO`—, no el rastro de auditoría: por
+ * eso trae el `id` de la FILA (lo que permite corregirla) y el detalle de la cita
+ * con los precios HISTÓRICOS de la reserva, que son los que se cobraron.
+ */
+export interface PagoHistorial {
   id: string;
+  reservaId: string;
+  estadoPago: string;
+  estadoReserva: string | null;
   monto: number;
   metodoPago: string;
-  estadoPago: string;
-  creadoAt: string;
-  reservaSnapshot: any; // El snapshot inmutable guardado en JSON
-  realizadoPor: {
-    nombreCompleto: string;
-    email: string;
-  };
+  registradoAt: string | null;
+  registradoPor: { id: string; nombreCompleto: string; correo: string } | null;
+  anuladoAt: string | null;
+  anuladoPor: { id: string; nombreCompleto: string; correo: string } | null;
+  motivoAnulacion: string | null;
+  cita: { fecha: string | null; horaInicio: string | null; horaFin: string | null };
+  cliente: { id: string; nombreCompleto: string } | null;
+  servicios: { nombre: string; precio: number }[];
 }
 
 @Injectable({
@@ -26,27 +37,45 @@ export class PagosService {
 
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
-  readonly pagos = signal<PagoAuditoria[]>([]);
+  readonly pagos = signal<PagoHistorial[]>([]);
 
   /**
-   * Obtiene la auditoría de pagos de una barbería
+   * H68 · el historial de cobros de la sede activa.
+   *
+   * Cambió de fuente a propósito: antes leía `/cobros/auditoria` —el rastro
+   * inmutable—, que no devuelve el estado del pago ni el id de su fila, así que
+   * la tabla no podía mostrar una anulación ni ofrecer corregirla. La barbería
+   * viaja en la cabecera `x-barberia-id` que añade `authInterceptor`.
    */
-  obtenerHistorial(limite = 50, offset = 0): Observable<PagoAuditoria[]> {
+  obtenerHistorial(page = 1, pageSize = 50): Observable<PagoHistorial[]> {
     this.isLoading.set(true);
     this.error.set(null);
-    
-    return this.http.get<any>(`${this.apiUrl}/cobros/auditoria?limite=${limite}&offset=${offset}`).pipe(
-      map(res => res.data || []),
-      tap((data) => {
-        this.pagos.set(data);
-        this.isLoading.set(false);
-      }),
-      catchError(err => {
-        this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al obtener el historial de pagos');
-        return of([]);
-      })
-    );
+
+    return this.http
+      .get<any>(`${this.apiUrl}/cobros/historial?page=${page}&pageSize=${pageSize}`)
+      .pipe(
+        map(res => res.data || []),
+        tap((data) => {
+          this.pagos.set(data);
+          this.isLoading.set(false);
+        }),
+        catchError(err => {
+          this.isLoading.set(false);
+          this.error.set(err.error?.mensaje || err.error?.message || 'Error al obtener el historial de pagos');
+          return of([]);
+        })
+      );
+  }
+
+  /**
+   * H68 · §7.3: corrige un cobro anulándolo.
+   *
+   * El motivo es obligatorio (422 `MOTIVO_REQUERIDO`) y queda en la auditoría: una
+   * operación que deshace un ingreso tiene que poder explicarse después. Solo la
+   * sede puede anular; el backend responde 403 si quien lo intenta es un barbero.
+   */
+  anularPago(pagoId: string, motivo: string): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/cobros/${pagoId}/anular`, { motivo });
   }
 
   /**

@@ -3,10 +3,14 @@ import {
   Post,
   Get,
   Body,
+  HttpCode,
+  HttpStatus,
+  Param,
   Query,
 } from '@nestjs/common';
 import { PagoService } from '../application/pago.service.js';
 import { RegistrarPagoDto } from '../application/dto/registrar-pago.dto.js';
+import { AnularPagoDto } from '../application/dto/anular-pago.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import { CurrentBarberiaId, CurrentBarberiaIdOpcional } from '../../iam/infrastructure/current-barberia.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
@@ -35,6 +39,52 @@ export class PagoController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.pagoService.registrarPagoEnPersona(user.id, barberiaId, dto);
+  }
+
+  /**
+   * GET /pagos/historial (alias /cobros/historial)
+   *
+   * H68 · el recibo de la sede: cada cobro con su estado VIVO (`PAGADA` o
+   * `ANULADO`), su cliente, sus servicios con el precio histórico y quién lo
+   * registró o lo anuló. Mismos roles y mismo criterio de sede que la auditoría
+   * —la barbería sale de la ruta o de la cabecera `x-barberia-id`—, pero de otra
+   * fuente: la tabla `pagos`, porque una anulación tiene que verse en el listado
+   * y la auditoría es el rastro, no la vista.
+   */
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Get('historial')
+  listarHistorial(
+    @CurrentBarberiaIdOpcional() barberiaId: string | null,
+    @CurrentUser() user: UsuarioAutenticado,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.pagoService.listarHistorial(
+      user,
+      barberiaId,
+      page ? parseInt(page, 10) : 1,
+      pageSize ? parseInt(pageSize, 10) : 50,
+    );
+  }
+
+  /**
+   * POST /pagos/:id/anular (alias /cobros/:id/anular)
+   *
+   * H68 · §7.3: corrige un cobro anulándolo con motivo obligatorio. Es una
+   * decisión de la SEDE, no del barbero: el rol que cobra no es el que deshace un
+   * ingreso, y el servicio vuelve a comprobarlo con la sede del pago (el guard
+   * solo ve el rol cuando la ruta no lleva `:barberiaId`).
+   */
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Post(':id/anular')
+  @HttpCode(HttpStatus.OK)
+  anularPago(
+    @Param('id') id: string,
+    @CurrentBarberiaIdOpcional() barberiaId: string | null,
+    @Body() dto: AnularPagoDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.pagoService.anularPago(user.id, barberiaId, id, dto);
   }
 
   /**

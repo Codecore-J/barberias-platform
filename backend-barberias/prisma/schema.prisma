@@ -25,6 +25,8 @@ model Usuario {
   clienteBarberias   ClienteBarberia[]
   reservas           Reserva[]                 @relation("ClienteReserva")
   pagosRegistrados   Pago[]                    @relation("RegistradoPor")
+  // H68: quién anuló un cobro (la corrección de §7.3).
+  pagosAnulados      Pago[]                    @relation("AnuladoPorPago")
   antecedentes       Antecedente[]
   notificaciones     Notificacion[]
   auditoria          Auditoria[]
@@ -382,14 +384,25 @@ model ParticipanteServicio {
 model Pago {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   reservaId     String    @unique @map("reserva_id") @db.Uuid
+  // H68: `ANULADO` es un estado del catálogo, no un borrado. El CHECK vive en la
+  // migración `h68_anulacion_pagos`; Prisma no sabe expresarlo.
   estadoPago    String    @default("PENDIENTE_DE_PAGO") @map("estado_pago") @db.VarChar(20)
   monto         Decimal   @db.Decimal(10, 2)
+  // H68: el método viaja en la fila porque el recibo de la sede lo muestra y la
+  // auditoría no es un listado. `EN_PERSONA` es el valor histórico del cajero.
+  metodoPago    String    @default("EN_PERSONA") @map("metodo_pago") @db.VarChar(30)
   registradoPor String?   @map("registrado_por") @db.Uuid
   registradoAt  DateTime? @default(now()) @map("registrado_at") @db.Timestamptz
   actualizadoAt DateTime? @map("actualizado_at") @db.Timestamptz
+  // H68 · §7.3: rastro de la corrección EN LA FILA —quién, cuándo y por qué—,
+  // además del evento `PAGO_ANULADO` que se escribe en la misma transacción.
+  anuladoAt       DateTime? @map("anulado_at") @db.Timestamptz
+  anuladoPor      String?   @map("anulado_por") @db.Uuid
+  motivoAnulacion String?   @map("motivo_anulacion") @db.Text
 
   reserva     Reserva  @relation(fields: [reservaId], references: [id])
   registrador Usuario? @relation("RegistradoPor", fields: [registradoPor], references: [id])
+  anulador    Usuario? @relation("AnuladoPorPago", fields: [anuladoPor], references: [id])
 
   @@map("pagos")
 }
