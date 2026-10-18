@@ -76,7 +76,7 @@ mutación incompatibles con el esquema de base de datos."}` mientras el resto de
 | Chequeo | Resultado |
 | :--- | :--- |
 | `test/h76-pago-anulacion.e2e-spec.ts` (dirigido) | `Tests 4 passed (4)`, `EXIT=0` |
-| Suite E2E completa (`npm run test:e2e`, config E2E) | `Test Files 3 failed | 31 passed (34)`, `Tests 5 failed | 281 passed (286)`, 872 s. **Los 5 fallos son del entorno** (§4); el spec de H76 pasó dentro de la suite entera |
+| Suite E2E completa (`npm run test:e2e`, config E2E) | `Test Files 2 failed | 32 passed (34)`, `Tests 4 failed | 282 passed (286)`, 923 s, `EXIT=1`. **Los 4 fallos son del entorno** (§4); el spec de H76 (`4 tests`) pasó dentro de la suite entera. Variante intermitente: en una corrida previa del mismo commit fueron 5 rojas —`health` dio 503 esa vez y en esta pasó (3/3)—, el mismo comportamiento que ya documentó E3-12 sobre esta misma base |
 | Unitarios backend (`npm run test`) | `Test Files 51 passed (51)`, `Tests 627 passed (627)`, `EXIT=0` |
 | `npm run lint` | `0 errors` (84 warnings de base, ninguno en los ficheros tocados) |
 | `nest build` | `EXIT=0` |
@@ -85,15 +85,26 @@ mutación incompatibles con el esquema de base de datos."}` mientras el resto de
 
 La suite E2E completa corrió contra el entorno dev del proyecto (Neon + Upstash, `.env` local).
 **La cuota de Redis de Upstash está agotada** (`ERR max requests limit exceeded. Limit: 500000,
-Usage: 500001`), y eso explica los 5 fallos, todos ajenos a H76:
+Usage: 500001`), y eso explica los fallos —todos ajenos a H76— (4 rojos en la corrida
+final, 5 en la inmediatamente anterior):
 
 - `e3-04-aceptar-rechazar` (2 casos) y `e3-05-expiracion-cancelacion` (2 casos): fallan donde
   el test espera que el job de expiración exista en la cola (`getJob` → `undefined`) — es
   H62 en acción: con la cola degradada el alta sigue siendo 201 best-effort.
-- `health`: `/health` responde 503 porque la sonda de preparación incluye Redis y está caído.
+- `health` (intermitente): la sonda de preparación incluye Redis; en la corrida final
+  **pasó 3/3**, en la inmediatamente anterior respondió 503 y sumó el quinto rojo.
 
 Ninguno toca el flujo de pagos. Reproducibles en cualquier entorno con la misma cuota
-agotada; no son regresiones de esta rama.
+agotada; no son regresiones de esta rama. La prueba de que el entorno y no el código es la
+causa: los mismos 4 ficheros dieron rojo sobre esta base en `reporte-e3-12.md` §5 antes de
+tocar pagos, y la salida de este run tiene 45 148 líneas con
+`ERR max requests limit exceeded` de Upstash.
+
+**Build de tipado:** `nest build` ejecutado en el cierre de esta tarea (Fase 1 pedida),
+`EXIT=0`. El error que motivó ese hotfix —`'servicios' does not exist in type
+'ParticipanteReservaSelect'` en `pago.service.ts:450`— ya estaba corregido en este commit
+(22059f2): el campo se llama `participanteServicios` y con el nombre viejo ni compila ni
+consulta. No se repite ningún cambio.
 
 También en el entorno dev: la migración `20261018120000_h68_anulacion_pagos` estaba
 **pendiente** en la base local (la que usa el E2E). Se aplicó con `prisma migrate deploy`
