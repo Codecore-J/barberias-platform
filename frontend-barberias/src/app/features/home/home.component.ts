@@ -578,10 +578,14 @@ export class HomeComponent implements OnInit {
        }
     });
 
-    // 2. Obtener Pagos del Día (Ingresos)
+    // 2. Obtener los cobros del DÍA (ingresos). H68: el historial sale de la tabla
+    //    de pagos, un pago ANULADO no es ingreso (§7.4) y la fecha del cobro es
+    //    `registradoAt`, no la del rastro de auditoría.
     this.pagosService.obtenerHistorial().subscribe((pagos) => {
-       const pagosHoy = pagos.filter((p: any) => p.creadoAt.startsWith(hoy));
-       const suma = pagosHoy.reduce((acc: number, p: any) => acc + Number(p.monto), 0);
+       const cobrosHoy = pagos.filter(
+         (p) => p.estadoPago !== 'ANULADO' && (p.registradoAt ?? '').startsWith(hoy),
+       );
+       const suma = cobrosHoy.reduce((acc, p) => acc + Number(p.monto || 0), 0);
        this.ingresosHoy.set(suma);
     });
   }

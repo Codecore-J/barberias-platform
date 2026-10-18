@@ -1,7 +1,7 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { PagosService } from '../../../core/services/pagos.service';
+import { PagosService, PagoHistorial } from '../../../core/services/pagos.service';
 import { TenantService } from '../../../core/services/tenant.service';
 import { AuthService } from '../../../auth/auth.service';
 
@@ -59,8 +59,11 @@ import { AuthService } from '../../../auth/auth.service';
 
         <div class="glass-panel p-4 rounded-2xl border border-white/5 flex items-center justify-between">
           <div>
-            <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Total Pagos</p>
+            <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Pagos Vivos</p>
             <p class="text-xl sm:text-2xl font-bold text-white mt-1">{{ totalTickets() }}</p>
+            @if (anulados() > 0) {
+              <p class="text-[10px] text-rose-400 mt-0.5">{{ anulados() }} anulado(s)</p>
+            }
           </div>
           <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
             <i class="pi pi-receipt text-lg"></i>
@@ -135,39 +138,75 @@ import { AuthService } from '../../../auth/auth.service';
                   <th class="p-4 font-bold text-amber-400 uppercase tracking-widest whitespace-nowrap">Método</th>
                   <th class="p-4 font-bold text-amber-400 uppercase tracking-widest whitespace-nowrap">Cobrado Por</th>
                   <th class="p-4 font-bold text-amber-400 uppercase tracking-widest text-right whitespace-nowrap">Total</th>
+                  <th class="p-4 font-bold text-amber-400 uppercase tracking-widest text-right whitespace-nowrap">Acción</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-white/5">
                 @for (pago of pagosFiltrados(); track pago.id) {
-                  <tr class="hover:bg-white/5 transition-colors group">
+                  <tr class="hover:bg-white/5 transition-colors group"
+                      [ngClass]="pago.estadoPago === 'ANULADO' ? 'bg-rose-950/20' : ''">
                     <td class="p-4">
-                      <div class="font-bold text-white">{{ pago.creadoAt | date:'dd MMM yyyy' }}</div>
-                      <div class="text-[11px] text-zinc-500 font-mono">{{ pago.creadoAt | date:'HH:mm:ss' }}</div>
+                      <div class="font-bold text-white">{{ pago.registradoAt | date:'dd MMM yyyy' }}</div>
+                      <div class="text-[11px] text-zinc-500 font-mono">{{ pago.registradoAt | date:'HH:mm' }}</div>
+                      @if (pago.cita.fecha) {
+                        <div class="text-[10px] text-zinc-600 mt-0.5">
+                          Cita {{ pago.cita.fecha }} · {{ pago.cita.horaInicio }}
+                        </div>
+                      }
                     </td>
                     <td class="p-4 font-medium text-zinc-200">
-                      {{ pago.reservaSnapshot?.cliente?.nombre || 'Desconocido' }}
+                      {{ pago.cliente?.nombreCompleto || 'Desconocido' }}
+                      @if (pago.estadoPago === 'ANULADO') {
+                        <span class="ml-2 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                          Anulado
+                        </span>
+                      }
                     </td>
                     <td class="p-4">
                       <div class="flex flex-col gap-1">
-                        @for (srv of pago.reservaSnapshot?.detalles || []; track srv.id) {
+                        @for (srv of pago.servicios; track $index) {
                           <span class="text-[11px] text-zinc-400 bg-zinc-800/60 border border-zinc-700/50 px-2 py-0.5 rounded-full inline-block w-max">
-                            {{ srv.nombreServicioHist }} ({{ srv.precioCobradoHist | currency:'USD':'symbol':'1.0-0' }})
+                            {{ srv.nombre }} ({{ srv.precio | currency:'USD':'symbol':'1.0-0' }})
                           </span>
+                        }
+                        @if (pago.servicios.length === 0) {
+                          <span class="text-[11px] text-zinc-600">Sin detalle de servicios</span>
                         }
                       </div>
                     </td>
                     <td class="p-4">
-                      <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 inline-flex items-center gap-1.5">
+                      <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full inline-flex items-center gap-1.5"
+                            [ngClass]="pago.estadoPago === 'ANULADO'
+                              ? 'bg-zinc-700/20 text-zinc-400 border border-zinc-600/30'
+                              : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'">
                         <i [class]="getIconForMethod(pago.metodoPago)"></i> {{ pago.metodoPago }}
                       </span>
                     </td>
                     <td class="p-4 text-zinc-400">
-                      {{ pago.realizadoPor?.nombreCompleto || 'Sistema' }}
+                      {{ pago.registradoPor?.nombreCompleto || 'Sistema' }}
+                      @if (pago.estadoPago === 'ANULADO' && pago.anuladoPor) {
+                        <div class="text-[10px] text-rose-400/80">Anuló: {{ pago.anuladoPor.nombreCompleto }}</div>
+                      }
                     </td>
                     <td class="p-4 text-right">
-                      <span class="text-base font-bold text-emerald-400">
+                      <span class="text-base font-bold"
+                            [ngClass]="pago.estadoPago === 'ANULADO' ? 'text-zinc-500 line-through' : 'text-emerald-400'">
                         {{ pago.monto | currency:'USD':'symbol':'1.0-0' }}
                       </span>
+                      @if (pago.estadoPago === 'ANULADO' && pago.motivoAnulacion) {
+                        <div class="text-[10px] text-zinc-500 italic max-w-[180px] ml-auto">{{ pago.motivoAnulacion }}</div>
+                      }
+                    </td>
+                    <td class="p-4 text-right">
+                      @if (pago.estadoPago === 'ANULADO') {
+                        <span class="text-[10px] text-zinc-600 uppercase tracking-wider">Corregido</span>
+                      } @else {
+                        <button (click)="abrirModalAnular(pago)"
+                                title="Anular este cobro (queda auditado con su motivo)"
+                                class="px-3 py-1.5 rounded-lg text-[11px] font-bold text-rose-400 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition-all inline-flex items-center gap-1.5">
+                          <i class="pi pi-ban"></i> Anular
+                        </button>
+                      }
                     </td>
                   </tr>
                 }
@@ -192,6 +231,68 @@ import { AuthService } from '../../../auth/auth.service';
       @if (pagosService.error()) {
         <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center animate-shake">
           {{ pagosService.error() }}
+        </div>
+      }
+
+      <!-- MODAL ANULAR COBRO (H68 · §7.3) -->
+      @if (modalAnularAbierto() && pagoAAnular(); as pago) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
+          <div class="bg-zinc-900 border border-rose-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div class="p-6 space-y-6">
+              <div class="flex justify-between items-start">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                    <i class="pi pi-ban text-lg"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-lg font-bold text-white">Anular Cobro</h3>
+                    <p class="text-xs text-zinc-400">Corrección de caja con rastro en la auditoría</p>
+                  </div>
+                </div>
+                <button (click)="cerrarModalAnular()" class="text-zinc-500 hover:text-white transition-colors">
+                  <i class="pi pi-times text-xl"></i>
+                </button>
+              </div>
+
+              <div class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 space-y-1">
+                <p class="font-semibold flex items-center gap-1.5">
+                  <i class="pi pi-exclamation-triangle"></i> Esta acción deshace un ingreso
+                </p>
+                <p class="text-zinc-400">
+                  El cobro de <strong class="text-white">{{ pago.cliente?.nombreCompleto || 'este cliente' }}</strong>
+                  por <strong class="text-white">{{ pago.monto | currency:'USD':'symbol':'1.0-2' }}</strong>
+                  quedará marcado como ANULADO y dejará de contar en el total recaudado. No se borra nada y la reserva
+                  sigue completada: si fue un error, vuelve a registrarlo desde la agenda y quedará un cobro nuevo auditado.
+                </p>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo de la anulación (obligatorio)</label>
+                <textarea [(ngModel)]="motivoAnulacion" rows="3" maxlength="500"
+                          placeholder="Ej.: cobré la reserva equivocada / el cliente pagó con otro medio"
+                          class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-rose-500 transition-colors resize-none"></textarea>
+                <p class="text-[10px] text-zinc-500 mt-1">El motivo queda en el registro de auditoría junto con tu usuario y la fecha.</p>
+              </div>
+
+              @if (errorAnulacion()) {
+                <div class="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                  {{ errorAnulacion() }}
+                </div>
+              }
+
+              <div class="flex gap-3 pt-4 border-t border-zinc-800">
+                <button (click)="cerrarModalAnular()" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
+                  Cancelar
+                </button>
+                <button (click)="confirmarAnulacion()"
+                        [disabled]="anulando() || motivoAnulacion.trim().length < 5"
+                        class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-900/30">
+                  <i class="pi" [ngClass]="anulando() ? 'pi-spin pi-spinner' : 'pi-ban'"></i>
+                  <span>{{ anulando() ? 'Anulando...' : 'Anular cobro' }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       }
 
@@ -272,17 +373,37 @@ export class AdminTicketsComponent implements OnInit {
   diasPurga = 365;
   mensajeExito = signal('');
 
+  // H68 · §7.3: anulación de un cobro.
+  modalAnularAbierto = signal(false);
+  pagoAAnular = signal<PagoHistorial | null>(null);
+  motivoAnulacion = '';
+  anulando = signal(false);
+  errorAnulacion = signal<string | null>(null);
+
   isAdministradorGlobal = computed(() => {
     const roles = this.authService.authState().user?.roles || [];
     return roles.includes('ADMINISTRADOR');
   });
 
-  // Métricas agregadas
+  /**
+   * H68 · §7.4: un cobro ANULADO no es ingreso. La caja suma SOLO los pagos vivos:
+   * si el total incluyera lo anulado, el arqueo mentiría justo cuando alguien
+   * corrige un error.
+   */
   totalRecaudado = computed(() => {
-    return this.pagosService.pagos().reduce((acc, p) => acc + (Number(p.monto) || 0), 0);
+    return this.pagosService
+      .pagos()
+      .filter(p => p.estadoPago !== 'ANULADO')
+      .reduce((acc, p) => acc + (Number(p.monto) || 0), 0);
   });
 
-  totalTickets = computed(() => this.pagosService.pagos().length);
+  totalTickets = computed(
+    () => this.pagosService.pagos().filter(p => p.estadoPago !== 'ANULADO').length,
+  );
+
+  anulados = computed(
+    () => this.pagosService.pagos().filter(p => p.estadoPago === 'ANULADO').length,
+  );
 
   ticketPromedio = computed(() => {
     const count = this.totalTickets();
@@ -290,11 +411,15 @@ export class AdminTicketsComponent implements OnInit {
   });
 
   countEfectivo = computed(() => {
-    return this.pagosService.pagos().filter(p => p.metodoPago?.toUpperCase() === 'EFECTIVO').length;
+    return this.pagosService
+      .pagos()
+      .filter(p => p.estadoPago !== 'ANULADO' && p.metodoPago?.toUpperCase() === 'EFECTIVO').length;
   });
 
   countTarjeta = computed(() => {
-    return this.pagosService.pagos().filter(p => p.metodoPago?.toUpperCase() === 'TARJETA').length;
+    return this.pagosService
+      .pagos()
+      .filter(p => p.estadoPago !== 'ANULADO' && p.metodoPago?.toUpperCase() === 'TARJETA').length;
   });
 
   // Lista filtrada
@@ -310,9 +435,9 @@ export class AdminTicketsComponent implements OnInit {
       }
       // Filtro texto
       if (query) {
-        const cliente = p.reservaSnapshot?.cliente?.nombre?.toLowerCase() || '';
-        const realizadoPor = p.realizadoPor?.nombreCompleto?.toLowerCase() || '';
-        const detalles = (p.reservaSnapshot?.detalles || []).map((d: any) => d.nombreServicioHist?.toLowerCase() || '').join(' ');
+        const cliente = p.cliente?.nombreCompleto?.toLowerCase() || '';
+        const realizadoPor = p.registradoPor?.nombreCompleto?.toLowerCase() || '';
+        const detalles = (p.servicios || []).map((s) => s.nombre?.toLowerCase() || '').join(' ');
         if (!cliente.includes(query) && !realizadoPor.includes(query) && !detalles.includes(query)) {
           return false;
         }
@@ -355,6 +480,50 @@ export class AdminTicketsComponent implements OnInit {
       error: () => {
         this.purgando.set(false);
       }
+    });
+  }
+
+  // ── H68 · §7.3: anular un cobro ─────────────────────────────────────────────
+
+  abrirModalAnular(pago: PagoHistorial) {
+    this.pagoAAnular.set(pago);
+    this.motivoAnulacion = '';
+    this.errorAnulacion.set(null);
+    this.modalAnularAbierto.set(true);
+  }
+
+  cerrarModalAnular() {
+    this.modalAnularAbierto.set(false);
+    this.pagoAAnular.set(null);
+    this.errorAnulacion.set(null);
+  }
+
+  confirmarAnulacion() {
+    const pago = this.pagoAAnular();
+    if (!pago) return;
+
+    this.anulando.set(true);
+    this.errorAnulacion.set(null);
+
+    this.pagosService.anularPago(pago.id, this.motivoAnulacion.trim()).subscribe({
+      next: () => {
+        this.anulando.set(false);
+        this.cerrarModalAnular();
+        this.mensajeExito.set('Cobro anulado. El movimiento quedó registrado en la auditoría.');
+        setTimeout(() => this.mensajeExito.set(''), 5000);
+        // La fila vuelve a leerse de la fuente: el estado ANULADO no se inventa en
+        // el cliente, se confirma contra el backend antes de pintarlo.
+        this.cargarTickets();
+      },
+      error: (err) => {
+        this.anulando.set(false);
+        this.errorAnulacion.set(
+          err.error?.mensaje ||
+            (err.status === 409
+              ? 'Este cobro ya fue anulado o no está registrado como pago.'
+              : 'No se pudo anular el cobro.'),
+        );
+      },
     });
   }
 
