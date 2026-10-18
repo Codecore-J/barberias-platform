@@ -106,9 +106,11 @@ EXIT=1
  Frontend ng build              → Application bundle generation complete · EXIT=0
 ```
 
-Los 11 casos nuevos del backend (anular: motivo, auditoría, 409 al repetir, 409 si nunca se cobró, 404 de
-sede ajena, 403 del barbero, 404 inexistente, 422 sin motivo; historial: recibo con estado vivo y 400 sin
-sede) y los 4 del frontend pasan dentro de esas cifras.
+Los **12 casos nuevos** del backend —8 de `anularPago` (anula con autor/motivo/auditoría, 409 al
+repetir, 409 si nunca se cobró, 422 sin motivo, 404 inexistente, 404 de sede ajena, 403 ajeno y 403 del
+BARBERO), 2 de `listarHistorial` (recibo con estado vivo y 400 sin sede) y 2 de `registrarPagoEnPersona`
+(volver a cobrar tras anular y el guard del cobro vivo, que ya pasaba antes)— y los **4 del frontend**
+pasan dentro de esas cifras. Once de los doce estaban en ROJO.
 
 ## 6. CRITERIOS DE ACEPTACIÓN
 
