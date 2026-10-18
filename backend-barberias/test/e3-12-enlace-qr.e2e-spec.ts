@@ -77,7 +77,16 @@ describe('E3-12/2 · enlace único y QR: la puerta de entrada del cliente (regla
   let tokenClienteB: string;
 
   const sufijo = Date.now();
-  const PASSWORD = 'ClaveQr12345';
+  // Clave de USO EXCLUSIVO de esta prueba: se hashea con bcrypt al crear los
+  // usuarios del caso y no existe en ningún entorno, ni se lee de ninguno. No es
+  // un secreto, pero se parece lo bastante a uno como para que el escáner de
+  // secretos del CI (`gitleaks`, paso «Scan for Secrets») lo marque como
+  // `generic-api-key` y detenga el pipeline. El comentario `gitleaks:allow` es la
+  // excepción oficial del escáner para un falso positivo confirmado, y va en la
+  // MISMA línea del hallazgo a propósito: así el perdón viaja con el valor y no
+  // depende de una huella (commit + regla + línea) que deja de valer en cuanto el
+  // archivo se mueve.
+  const PASSWORD = 'ClaveQr12345'; // gitleaks:allow
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
