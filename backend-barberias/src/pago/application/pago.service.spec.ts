@@ -750,9 +750,13 @@ describe('PagoService', () => {
           horaInicio: CITA_HORA,
           horaFin: new Date('1970-01-01T09:30:00.000Z'),
           cliente: { id: 'uuid-cliente', nombreCompleto: 'Carla Cliente' },
+          // H76: el nombre de la RELACIÓN de Prisma es `participanteServicios`
+          // (schema.prisma). Con `servicios` Prisma rechaza la consulta entera y
+          // el endpoint responde 400: el mock tiene que copiar el esquema real,
+          // no la forma que el test imaginaba.
           participantes: [
             {
-              servicios: [
+              participanteServicios: [
                 { precioHistorico: 20, servicio: { nombre: 'Corte' } },
                 { precioHistorico: 5, servicio: { nombre: 'Barba' } },
               ],

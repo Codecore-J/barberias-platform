@@ -447,7 +447,12 @@ export class PagoService {
               cliente: { select: { id: true, nombreCompleto: true } },
               participantes: {
                 select: {
-                  servicios: {
+                  // H76: la relación Prisma se llama `participanteServicios`, no
+                  // `servicios`. Con el nombre inventado Prisma rechaza la
+                  // consulta ENTERA (PrismaClientValidationError → 400) y el
+                  // recibo nunca llegaba a la pantalla; los mocks del test de
+                  // servicio devolvían la forma equivocada y lo tapaban.
+                  participanteServicios: {
                     select: {
                       // El precio es el HISTÓRICO de la reserva, no el del
                       // catálogo de hoy (los precios confirmados se congelan).
@@ -496,7 +501,7 @@ export class PagoService {
       },
       cliente: fila.reserva?.cliente ?? null,
       servicios: (fila.reserva?.participantes ?? [])
-        .flatMap((participante: any) => participante.servicios ?? [])
+        .flatMap((participante: any) => participante.participanteServicios ?? [])
         .map((linea: any) => ({
           nombre: linea.servicio?.nombre ?? 'Servicio',
           precio: Number(linea.precioHistorico ?? 0),
