@@ -166,10 +166,11 @@ personal.
 
 ## 10. GIT
 
-Rama `fix/h75-return-url-login` apilada sobre `4419df7`; `push` sin merge:
+Rama `fix/h75-return-url-login` apilada sobre `4419df7`; `push` sin merge. Los dos commits sobre los que se
+apoya (el hash del commit de esta rama está en el historial y en el PR, no aquí, porque cambia al escribir
+este informe):
 
 ```
-e958371 fix(h75): el enlace abierto sin sesión ya sobrevive al login
 4419df7 chore(e3-12): silenciar el falso positivo de gitleaks en el E2E del enlace único
 41cdb87 feat(e3-12): el staff comparte la invitación de su sede y el cliente entra por ella
 ```
