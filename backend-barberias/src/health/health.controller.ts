@@ -87,7 +87,7 @@ export class HealthController implements OnModuleDestroy {
   async check() {
     return this.health.check([
       // 1. Verificación activa de PostgreSQL (Neon) mediante ping SQL
-      () => this.prismaIndicator.pingCheck('database', this.prisma),
+      () => this.prismaIndicator.pingCheck('database', this.prisma, { timeout: 5000 }),
 
       // 2. Verificación activa de Redis (Upstash) mediante PING
       async () => {

@@ -129,6 +129,7 @@ describe('BarberiaService', () => {
             configuracionBarberia: {
               create: vi.fn(),
             },              clienteBarberia: {
+                findMany: vi.fn(),
                 findUnique: vi.fn(),
                 count: vi.fn(),
                 create: vi.fn(),
@@ -619,8 +620,13 @@ describe('BarberiaService', () => {
     });
 
     it('NO entrega el código al responsable sin fila de ADMIN_BARBERIA', async () => {
+      // Para un CLIENTE puro, ahora busca por clienteBarberia
+      (prisma.clienteBarberia.findMany as any).mockResolvedValue([
+        { barberia: mockSede },
+      ]);
       const result = await service.findAllByResponsable('usuario-z', RESPONSABLE_SIN_ROL);
 
+      expect(prisma.clienteBarberia.findMany).toHaveBeenCalled();
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe(SEDE);
       expect((result[0] as any).codigoAcceso).toBeUndefined();

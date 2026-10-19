@@ -121,30 +121,17 @@ cumplimiento sin ninguna regla sin test.
 
 **SALVEDADES EXPRESAS** (declaradas, no escondidas — es lo que existe la auditoría):
 
-1. **H68 / regla 7.3 — la corrección de un pago — está RESUELTA pero SIN FUSIONAR.** El
-   camino de anulación de un cobro (`POST /pagos/:id/anular` con motivo obligatorio, auditoría
-   transaccional y vuelta a cobrar) y su certificación E2E (H76) viven completos y verificados
-   en las ramas `feat/h68-correccion-pagos` y `chore/h76-e2e-pagos-anulacion`, **no en `main`**.
-   Por eso la fila 7.3 figura aquí como `NO-EXISTE`: en `main` no hay corrección de pagos. La
-   fusión de esas dos ramas es el **único pendiente de bloqueo** que se conoce antes del
-   despliegue, y su E2E ya corrió en verde (`4/4` en su rama y dentro de la suite completa).
-2. **H72 (backend) — falta `GET /barberias` para un `CLIENTE`.** La ruta existe pero filtra
-   por `responsableId`; un cliente puro no lista sus sedes. No bloquea el backend
-   (autenticación, reservas y cobros funcionan), pero sí la tarjeta de «mis vínculos» del
-   frontend. Evidencia: hallazgo de `docs/MATRIZ_RUTAS.md`.
-3. **H65 / H66 — operaciones, no negocio.** El `pingCheck` de la base (tope de 1 s) puede
-   parpadear la sonda de preparación con la base remota (la sonda de vida H64 ya está
-   separada y es la que usa `render.yaml`), y con Redis caído `app.close()` no termina
-   (irrelevante hoy: `main.ts` no usa shutdown hooks y SIGTERM mata el proceso en ms).
-4. **H70 / 6.1 — incumplimiento documental no acreditable.** El PDF 01 no está en el
+1. **H68 / H76 / regla 7.3 — corrección de pagos.** Ya están fusionados en `main` (commit `7afbb95`). La anulación de cobros (`POST /pagos/:id/anular`) con motivo obligatorio, auditoría transaccional y vuelta a cobrar está implementada y certificada con su E2E.
+2. **H72 — `GET /barberias` para `CLIENTE`.** Resuelto en esta rama: para un CLIENTE puro, `GET /barberias` devuelve las barberías activas donde tiene un vínculo activo (`ClienteBarberia` con `estadoVinculacion='ACTIVO'`), preservando el comportamiento para ADMINISTRADOR, ADMIN_BARBERIA y BARBERO. Evidencia: `src/barberia/application/barberia.service.ts`.
+3. **H65 — pingCheck con timeout adecuado.** Resuelto: `PrismaHealthIndicator.pingCheck` en la sonda de preparación usa `timeout: 5000` ms. Evidencia: `src/health/health.controller.ts:90`.
+4. **H66 — cierre limpio de Redis.** Resuelto: `HealthController` implementa `OnModuleDestroy` con `quit()` y manejo de errores. Evidencia: `src/health/health.controller.ts:31-47`.
+5. **H70 / 6.1 — incumplimiento documental no acreditable.** El PDF 01 no está en el
    repositorio y su sección 6 no puede certificarse con lo que hay aquí. No es código; es una
-   petición de evidencia.5. **T.4 `PARCIAL` — entornos.** `APP_ENV` separa los entornos y los datos viven en bases distintas, pero `render.yaml` **no ejecuta `prisma migrate deploy`** (verificado en este certificado): el despliegue no aplica migraciones por sí mismo y dev/staging pueden divergir en esquema. Es el pendiente que hace `PARCIAL` esta fila, y toca al despliegue, no al código.
-6. **Soft-delete.** El plan `PLAN_MIGRACION_SOFT_DELETE.md` declara **ejecutados P-SD-1 a P-SD-8, ningún punto abierto**; las reglas de vocabulario sin `DELETE` están certificadas (§4.1). No queda ningún pendiente de este plan en esta certificación.
+   petición de evidencia.
+6. **T.4 — entornos.** Resuelto: `render.yaml` ejecuta `npx prisma migrate deploy` en `preDeployCommand`, garantizando que el despliegue aplique migraciones. Evidencia: `render.yaml:10`.
+7. **Soft-delete.** El plan `PLAN_MIGRACION_SOFT_DELETE.md` declara **ejecutados P-SD-1 a P-SD-8, ningún punto abierto**; las reglas de vocabulario sin `DELETE` están certificadas (§4.1). No queda ningún pendiente de este plan en esta certificación.
 
-Ninguna de estas salvedades afecta a la operación diaria de reservas, cobros con anulación
-(tras el merge) ni a los aislamientos de seguridad. Con H68/H76 fusionadas, las dos primeras
-filas `NO-EXISTE` de la matriz pasan a `OK-PROBADO` y la certificación queda sin salvedades
-de código.
+Ninguna de estas salvedades afecta a la operación diaria de reservas, cobros con anulación ni a los aislamientos de seguridad. Con H68/H76 fusionadas en `main` y H65, H66, H72 y T.4 resueltos en esta rama, los pendientes restantes son mayoritariamente documentales (H70 / 6.1) y no bloquean el despliegue.
 
 ---
 
