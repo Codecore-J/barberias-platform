@@ -496,7 +496,7 @@ export class PagoService {
       },
       cliente: fila.reserva?.cliente ?? null,
       servicios: (fila.reserva?.participantes ?? [])
-        .flatMap((participante: any) => participante.servicios ?? [])
+        .flatMap((participante: any) => participante.participanteServicios ?? [])
         .map((linea: any) => ({
           nombre: linea.servicio?.nombre ?? 'Servicio',
           precio: Number(linea.precioHistorico ?? 0),
