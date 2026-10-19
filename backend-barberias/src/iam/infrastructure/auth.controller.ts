@@ -26,12 +26,18 @@ export class AuthController {
   /**
    * Registro de un nuevo usuario en la plataforma.
    * Rate Limit (SEC-02): Máximo 5 registros por minuto por IP para evitar spam masivo.
+   *
+   * E3-contrato: devuelve el mismo contrato que `login`
+   * (`{ accessToken, usuario }`) porque el frontend inicia sesión
+   * automáticamente con el token recibido (auto-login tras registro).
    */
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
-  async register(@Body() dto: RegisterDto): Promise<UsuarioResponseDto> {
+  async register(
+    @Body() dto: RegisterDto,
+  ): Promise<{ accessToken: string; usuario: UsuarioResponseDto }> {
     return this.authService.register(dto);
   }
 

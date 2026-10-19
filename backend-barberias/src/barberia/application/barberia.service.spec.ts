@@ -113,6 +113,7 @@ describe('BarberiaService', () => {
             },
             barberia: {
               create: vi.fn(),
+              count: vi.fn(),
               findMany: vi.fn(),
               findUnique: vi.fn(),
               update: vi.fn(),
@@ -159,6 +160,108 @@ describe('BarberiaService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('create · E0-07 y E1-07', () => {
+    const responsableId = 'responsable-1';
+    const dto = {
+      nombre: 'Sede Nueva',
+      descripcion: 'Una sede de prueba',
+      telefono: '8095550000',
+      ubicacion: 'Calle 1',
+    } as any;
+
+    const barberiaCreada = {
+      id: 'sede-nueva',
+      nombre: dto.nombre,
+      descripcion: dto.descripcion,
+      telefono: dto.telefono,
+      ubicacion: dto.ubicacion,
+      logoUrl: null,
+      codigoAcceso: 'ABC12345',
+      enlaceUnico: 'sede-nueva-abc',
+      responsableId,
+      estado: 'ACTIVO',
+    };
+
+    beforeEach(() => {
+      vi.mocked(prisma.usuario.findUnique).mockResolvedValue({ id: responsableId } as any);
+      vi.mocked(prisma.barberia.count).mockResolvedValue(0);
+      vi.mocked(prisma.usuarioRol.findFirst).mockResolvedValue(null);
+      vi.mocked(prisma.rol.findUnique).mockResolvedValue({
+        id: 'rol-admin-barberia',
+        nombre: 'ADMIN_BARBERIA',
+        ambito: 'BARBERIA',
+      } as any);
+      vi.mocked(prisma.barberia.create).mockResolvedValue(barberiaCreada as any);
+      vi.mocked(prisma.configuracionBarberia.create).mockResolvedValue({} as any);
+      vi.mocked(prisma.usuarioRol.upsert).mockResolvedValue({} as any);
+    });
+
+    it('crea la sede y asigna ADMIN_BARBERIA al responsable en ESA sede', async () => {
+      const resultado = await service.create(responsableId, dto);
+
+      expect(resultado.id).toBe('sede-nueva');
+      // E1-07: el cupo cuenta SOLO las sedes ACTIVAS del responsable.
+      expect(prisma.barberia.count).toHaveBeenCalledWith({
+        where: { responsableId, estado: 'ACTIVO' },
+      });
+      expect(prisma.usuarioRol.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            usuarioId: responsableId,
+            rolId: 'rol-admin-barberia',
+            barberiaId: 'sede-nueva',
+          }),
+        }),
+      );
+
+      // E1-07: la auditoría guarda la sede en la columna, no solo en el JSON.
+      expect(auditoria.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accion: 'BARBERIA_CREADA',
+          entidad: 'barberias',
+          entidadId: 'sede-nueva',
+          barberiaId: 'sede-nueva',
+        }),
+        prisma,
+      );
+    });
+
+    it('permite crear la segunda sede ACTIVA (borde del límite)', async () => {
+      vi.mocked(prisma.barberia.count).mockResolvedValue(1);
+
+      await service.create(responsableId, dto);
+
+      expect(prisma.barberia.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('rechaza la tercera sede ACTIVA con 422 LIMITE_BARBERIAS', async () => {
+      vi.mocked(prisma.barberia.count).mockResolvedValue(2);
+
+      const error = await capturarError(service.create(responsableId, dto));
+
+      expect(error.status).toBe(422);
+      expect(error.codigo).toBe('LIMITE_BARBERIAS');
+      expect(prisma.barberia.create).not.toHaveBeenCalled();
+    });
+
+    it('no crea la sede si falta el rol ADMIN_BARBERIA (E0-07, sin silencio)', async () => {
+      vi.mocked(prisma.rol.findUnique).mockResolvedValue(null);
+
+      const error = await capturarError(service.create(responsableId, dto));
+
+      expect(error.status).toBe(500);
+      expect(prisma.barberia.create).not.toHaveBeenCalled();
+    });
+
+    it('un ADMINISTRADOR global no necesita la fila de ADMIN_BARBERIA', async () => {
+      vi.mocked(prisma.usuarioRol.findFirst).mockResolvedValue({ id: 'rol-global' } as any);
+
+      await service.create(responsableId, dto);
+
+      expect(prisma.usuarioRol.upsert).not.toHaveBeenCalled();
+    });
   });
 
   describe('findOne', () => {

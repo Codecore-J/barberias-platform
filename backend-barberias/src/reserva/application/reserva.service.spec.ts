@@ -118,15 +118,21 @@ describe('ReservaService', () => {
         precioTotalEsperado: 15,
       });
 
+      // D42 (§5.4, revisada 2026-10-02): el margen del bloque INDIVIDUAL tampoco es
+      // 0 ni la suma de márgenes de los servicios; es `configuracion_barberia`
+      // `.margen_grupal_minutos` (default 10), snapshotteado en
+      // `reservas.margen_grupal_historico`.
       expect(mockPrismaService.reserva.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             totalPagar: 15,
-            margenGrupalHistorico: 0,
+            margenGrupalHistorico: 10,
           }),
         }),
       );
 
+      // Los márgenes de cada servicio siguen congelándose por servicio en
+      // `margen_historico` (D01 como snapshot). Solo la regla de BLOQUE cambió.
       expect(mockPrismaService.participanteServicio.createMany).toHaveBeenCalledWith({
         data: [
           {
@@ -140,7 +146,12 @@ describe('ReservaService', () => {
       });
     });
 
-    it('Sprint de estabilización: el INDIVIDUAL NO suma el margen de la sede (antes lo hacía: D42 mal aplicado)', async () => {
+    it('D42 (§5.4, revisada 2026-10-02): el INDIVIDUAL aplica el margen de la sede al bloque, no la suma de servicios', async () => {
+      // H57 (sprint de estabilización, 2026-10-12) había introducido el margenFinal=0
+      // y el `margenTotal = Σ margenOperativo` en la cotización, que contradecían la
+      // D42 cerrada el 2026-10-02. Este test fija el comportamiento CORREGIDO por
+      // `fix/e2-05-margin-conflict`: el INDIVIDUAL ocupa `Σ duraciones + margen de la
+      // sede`.
       mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         modoReserva: 'MANUAL',
@@ -155,6 +166,10 @@ describe('ReservaService', () => {
 
       // E2-04: instantes en la zona de la SEDE (mismo armado que el servicio).
       const inicioSlot = enSede('2026-10-10', 9);
+      // El hueco debe cubrir 30 (Σ servicios) + 12 (margen de la sede) = 42 min.
+      // La ventana pedida es 09:00-09:40 (40 min), insuficiente para el bloque real
+      // (42 min), de modo que la disponibilidad del juego de mocks (slot 09:00-10:00)
+      // SÍ cubre el bloque real (09:00 + 42 min = 09:42 ≤ 10:00).
       const finSlot = enSede('2026-10-10', 10);
 
       mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
@@ -171,16 +186,18 @@ describe('ReservaService', () => {
         precioTotalEsperado: 25,
       });
 
+      // D42: el margen del bloque individual es el de la sede (12), snapshotteado.
       expect(mockPrismaService.reserva.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            margenGrupalHistorico: 0,
+            margenGrupalHistorico: 12,
           }),
         }),
       );
 
+      // El bloque que revalida disponibilidad = Σ duraciones (30) + margen (12) = 42.
       expect(mockDisponibilidadService.calcularDisponibilidad).toHaveBeenCalledWith(
-        expect.objectContaining({ margenRequerido: 0 }),
+        expect.objectContaining({ margenRequerido: 12 }),
         expect.anything(),
       );
     });
@@ -298,8 +315,9 @@ describe('ReservaService', () => {
       mockPrismaService.servicio.findMany.mockResolvedValue([
         { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 5 },
       ]);
+      // El bloque individual = ventana pedida (30) + margen de la sede (10) = 40 min.
       mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
-        { inicio: enSede('2026-10-10', 9), fin: enSede('2026-10-10', 9, 30) },
+        { inicio: enSede('2026-10-10', 9), fin: enSede('2026-10-10', 9, 40) },
       ]);
       mockPrismaService.reserva.create.mockResolvedValue({ id: 'uuid-reserva' });
       mockPrismaService.participanteReserva.create.mockResolvedValue({ id: 'uuid-part' });
@@ -321,6 +339,7 @@ describe('ReservaService', () => {
         modoReserva: 'MANUAL',
         nuevasReservasActivas: true,
         aceptaIndividual: true,
+        margenGrupalMinutos: 10,
       });
       mockPrismaService.servicio.findMany.mockResolvedValue([
         { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 5 },
@@ -330,10 +349,9 @@ describe('ReservaService', () => {
       const inicioSlot = enSede('2026-10-10', 11);
       const finSlot = enSede('2026-10-10', 12);
 
-      // El bloque solicitado (09:00-09:30) no está dentro del slot de
-      // disponibilidad (11:00-12:00): la regla de negocio no puede reservar ese
-      // hueco y lanza ConflictException (409). Es la prueba del bloqueo de
-      // concurrencia: FOR UPDATE + SERIALIZABLE + disponibilidad.
+      // El bloque individual = ventana pedida (30) + margen de la sede (10) = 40 min.
+      // La ventana pedida 09:00-09:30 ocupa 09:00-09:40 en la agenda: no cabe dentro del
+      // slot 11:00-12:00, y la revalidación de disponibilidad falla con 409.
       mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
         { inicio: inicioSlot, fin: finSlot },
       ]);
@@ -350,14 +368,14 @@ describe('ReservaService', () => {
     });
   });
 
-  describe('E2-05 · margen del bloque individual (sprint de estabilización, 2026-10-12)', () => {
-    // Decisión del dueño: `margen_grupal_minutos` (D42) pertenece al flujo GRUPAL.
-    // En el INDIVIDUAL el bloque es la ventana pedida y sus márgenes son los de SUS
-    // servicios (D01/E2-05). Antes se sumaba SIEMPRE el margen de la sede, así que
-    // cada reserva individual arrastraba 10 minutos fantasma en la agenda y en la
-    // cotización previa a reservar.
+  describe('E2-05 · margen del bloque individual (D42 §5.4; corrección de H57)', () => {
+    // H57 (sprint de estabilización, 2026-10-12) introdujo `margenTotal = Σ
+    // margenOperativo` en la cotización individual y `margenFinal = 0` en el alta,
+    // contradiciendo la D42 cerrada el 2026-10-02: el margen del bloque individual
+    // es también el de la sede. Este describe fija la regla CORREGIDA por
+    // `fix/e2-05-margin-conflict`.
 
-    it('cotizar un INDIVIDUAL devuelve Σ márgenes de los servicios, nunca el de la sede', async () => {
+    it('cotizar un INDIVIDUAL devuelve el margen de la sede, no la suma de servicios', async () => {
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
         aceptaIndividual: true,
         margenGrupalMinutos: 12,
@@ -375,7 +393,10 @@ describe('ReservaService', () => {
         precioTotalEsperado: 25,
       });
 
-      expect(cotizacion.bloqueTotal.margenTotal).toBe(8);
+      // D42 (§5.4, revisada 2026-10-02): el margen del bloque INDIVIDUAL es el de la
+      // sede (`margen_grupal_minutos = 12`), no la suma de los `margenOperativo` de
+      // los servicios (8). La suma solo sobrevive como snapshot por servicio.
+      expect(cotizacion.bloqueTotal.margenTotal).toBe(12);
       expect(cotizacion.bloqueTotal.duracionTotal).toBe(40);
       expect(cotizacion.bloqueTotal.precioTotal).toBe(25);
     });
@@ -404,6 +425,9 @@ describe('ReservaService', () => {
         precioTotalEsperado: 25,
       });
 
+      // D42 (§5.4/D42): el grupo suma Σ duraciones (20+10=30) + UN margen de la sede
+      // (12). El margen total por participante SIEMPRE es 0 y el margen real vive en
+      // `bloqueTotal.margenTotal` (luego `reservas.margen_grupal_historico`).
       expect(cotizacion.bloqueTotal.margenTotal).toBe(12);
       expect(cotizacion.bloqueTotal.duracionTotal).toBe(42);
       expect(cotizacion.bloqueTotal.precioTotal).toBe(25);
@@ -587,14 +611,15 @@ describe('ReservaService', () => {
         modoReserva: 'MANUAL',
         nuevasReservasActivas: true,
         aceptaIndividual: true,
-        margenGrupalMinutos: 10,
+        margenGrupalMinutos: 0,
       });
       mockPrismaService.servicio.findMany.mockResolvedValue([
         { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 0 },
       ]);
-      // E2-04: instantes en la zona de la SEDE.
+      // E2-04: instantes en la zona de la SEDE. Con margen = 0 el bloque coincide con
+      // la ventana pedida: 30 min (09:00-09:30).
       const inicioSlot = enSede('2026-10-10', 9);
-      const finSlot = enSede('2026-10-10', 10, 30);
+      const finSlot = enSede('2026-10-10', 9, 30);
       mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
         { inicio: inicioSlot, fin: finSlot },
       ]);
@@ -639,13 +664,15 @@ describe('ReservaService', () => {
         modoReserva: 'MANUAL',
         nuevasReservasActivas: true,
         aceptaIndividual: true,
-        margenGrupalMinutos: 10,
+        margenGrupalMinutos: 0,
       });
       mockPrismaService.servicio.findMany.mockResolvedValue([
         { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 0 },
       ]);
+      // Con margen = 0 el bloque individual coincide con la ventana pedida: 30 min
+      // (09:00-09:30).
       mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
-        { inicio: enSede('2026-10-10', 9), fin: enSede('2026-10-10', 10, 30) },
+        { inicio: enSede('2026-10-10', 9), fin: enSede('2026-10-10', 9, 30) },
       ]);
       mockPrismaService.reserva.create.mockResolvedValue({ id: 'uuid-reserva' });
       mockPrismaService.participanteReserva.create.mockResolvedValue({ id: 'uuid-part' });
@@ -1501,7 +1528,7 @@ describe('ReservaService', () => {
       expect(mockDisponibilidadService.buscarAlternativas).toHaveBeenCalledWith({
         barberiaId: 'uuid-barberia',
         fecha: '2026-10-12',
-        duracionRequeridaMinutos: 30,
+        duracionRequeridaMinutos: 40,
         horaObjetivo: '10:00',
       });
       expect(mockPrismaService.reserva.create).not.toHaveBeenCalled();

@@ -88,6 +88,7 @@ describe('AuditoriaService & Processor (T8.2)', () => {
       expect(mockPrismaService.auditoria.create).toHaveBeenCalledWith({
         data: {
           usuarioId: dto.usuarioId,
+          barberiaId: null,
           accion: dto.accion,
           entidad: dto.entidad,
           entidadId: dto.entidadId,
@@ -139,7 +140,13 @@ describe('AuditoriaService & Processor (T8.2)', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             entidad: 'PAGO',
-            contexto: { path: ['barberiaId'], equals: 'barberia-1' },
+            OR: [
+              { barberiaId: 'barberia-1' },
+              {
+                barberiaId: null,
+                contexto: { path: ['barberiaId'], equals: 'barberia-1' },
+              },
+            ],
           }),
           take: 10,
           skip: 0,
@@ -165,14 +172,20 @@ describe('AuditoriaService & Processor (T8.2)', () => {
         expect(mockPrismaService.auditoria.findMany).not.toHaveBeenCalled();
       });
 
-      it('un ADMIN_BARBERIA con su barberia filtra por el JSON contexto.barberiaId', async () => {
+      it('un ADMIN_BARBERIA con su barberia filtra por la columna barberia_id (y deja el JSON como legado)', async () => {
         mockPrismaService.auditoria.count.mockResolvedValue(0);
         mockPrismaService.auditoria.findMany.mockResolvedValue([]);
 
         await service.consultarAuditorias({ barberiaId: 'barberia-A' }, adminDe('barberia-A'));
 
         const where = mockPrismaService.auditoria.findMany.mock.calls[0][0].where;
-        expect(where.contexto).toEqual({ path: ['barberiaId'], equals: 'barberia-A' });
+        expect(where.OR).toEqual([
+          { barberiaId: 'barberia-A' },
+          {
+            barberiaId: null,
+            contexto: { path: ['barberiaId'], equals: 'barberia-A' },
+          },
+        ]);
       });
 
       it('un ADMINISTRADOR sin barberiaId consulta la vista global sin filtro de barberia', async () => {

@@ -76,9 +76,14 @@ describe('AuthService', () => {
         password: 'Password123',
       });
 
-      expect(result.id).toBe('new-user-id');
-      expect(result.correo).toBe('juan@example.com');
-      expect(result.roles).toContain('CLIENTE');
+      // E3-contrato: el registro autologuea con el MISMO contrato que login.
+      expect(result.accessToken).toBe('signed-jwt-token');
+      expect(result.usuario.id).toBe('new-user-id');
+      expect(result.usuario.correo).toBe('juan@example.com');
+      expect(result.usuario.roles).toContain('CLIENTE');
+      expect(mockJwtService.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ sub: 'new-user-id', correo: 'juan@example.com', roles: ['CLIENTE'] }),
+      );
       expect(mockPrisma.$transaction).toHaveBeenCalled();
     });
 
@@ -144,7 +149,8 @@ describe('AuthService', () => {
         password: 'Password123',
       });
 
-      expect(result.id).toBe('new-user-id');
+      expect(result.accessToken).toBe('signed-jwt-token');
+      expect(result.usuario.id).toBe('new-user-id');
       expect(mockPrisma.usuarioRol.create).toHaveBeenCalledWith({
         data: { usuarioId: 'new-user-id', rolId: 'rol-cliente-id', barberiaId: null },
       });

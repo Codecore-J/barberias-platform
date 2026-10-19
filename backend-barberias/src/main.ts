@@ -4,6 +4,8 @@ process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '16';
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import express from 'express';
+import helmet from 'helmet';
 import { AppModule } from './app.module.js';
 import { PrismaExceptionFilter } from './shared/filters/prisma-exception.filter.js';
 
@@ -17,6 +19,17 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // E1-10 · endurecimiento HTTP (punto 4 del backlog):
+  // - `helmet()` añade las cabeceras de seguridad (X-Content-Type-Options,
+  //   X-Frame-Options, Strict-Transport-Security, Referrer-Policy, CSP, ...).
+  // - Límite de cuerpo de 100 kB en JSON y urlencoded para mitigar payloads
+  //   excesivos. Estos middlewares se registran ANTES de `init()`, así que
+  //   corren primero y el parser por defecto de Nest (que se registra en
+  //   `listen()`) solo ve un cuerpo ya parseado (`req._body`) y lo salta.
+  app.use(helmet());
+  app.use(express.json({ limit: '100kb' }));
+  app.use(express.urlencoded({ limit: '100kb', extended: true }));
 
   // Confianza en proxy inverso (Render / Cloudflare) para resolución de IP real (SEC-02)
   app.set('trust proxy', 1);

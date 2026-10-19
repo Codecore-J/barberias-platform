@@ -39,8 +39,14 @@ export class AuthService {
    * - Contraseña → bcrypt (12 rondas). NUNCA texto plano.
    * - Cédula OPCIONAL. Si existe, debe ser única.
    * - Se asigna rol CLIENTE en la misma transacción.
+   *
+   * E3-contrato: el registro AUTOLOGUEA. Devuelve el MISMO contrato que
+   * `login` (`{ accessToken, usuario }`) porque el frontend
+   * (`auth.service.ts` de Angular) guarda `response.accessToken` y navega
+   * asumiendo sesión viva: sin token, el registro dejaba al usuario en un
+   * estado inconsistente (flujo roto, auditoría contract-alignment).
    */
-  async register(dto: RegisterDto): Promise<UsuarioResponseDto> {
+  async register(dto: RegisterDto): Promise<{ accessToken: string; usuario: UsuarioResponseDto }> {
     if (dto.cedula) {
       const cedulaExistente = await this.prisma.usuario.findUnique({
         where: { cedula: dto.cedula },
@@ -91,10 +97,24 @@ export class AuthService {
         return nuevoUsuario;
       });
 
-      return plainToInstance(UsuarioResponseDto, {
-        ...usuario,
-        roles: ['CLIENTE'],
-      });
+      // Mismo payload que firma `login` (sub, correo, roles, tv) para que el
+      // token emitido aquí sea indistinguible de uno emitido por login.
+      const roles = ['CLIENTE'];
+      const payload: JwtPayload = {
+        sub: usuario.id,
+        correo: usuario.correo,
+        roles,
+        tv: usuario.tokenVersion ?? 0,
+      };
+      const accessToken = await this.jwtService.signAsync(payload);
+
+      return {
+        accessToken,
+        usuario: plainToInstance(UsuarioResponseDto, {
+          ...usuario,
+          roles,
+        }),
+      };
     } catch (error: any) {
       if (error?.code === 'P2002') {
         const campo = error?.meta?.target as string[] | undefined;

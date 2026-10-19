@@ -32,7 +32,7 @@ describe('AuthController', () => {
   });
 
   describe('register', () => {
-    it('debe invocar a authService.register y retornar el usuario creado', async () => {
+    it('debe invocar a authService.register y retornar token + usuario (auto-login E3)', async () => {
       const dto: RegisterDto = {
         nombreCompleto: 'Carlos Barbero',
         correo: 'carlos@example.com',
@@ -41,12 +41,18 @@ describe('AuthController', () => {
         password: 'Password123',
       };
 
-      vi.spyOn(authService, 'register').mockResolvedValue(mockUsuarioResponse);
+      const mockRegisterResponse = {
+        accessToken: 'mock-jwt-token',
+        usuario: mockUsuarioResponse,
+      };
+
+      vi.spyOn(authService, 'register').mockResolvedValue(mockRegisterResponse);
 
       const result = await controller.register(dto);
 
       expect(authService.register).toHaveBeenCalledWith(dto);
-      expect(result).toEqual(mockUsuarioResponse);
+      expect(result).toEqual(mockRegisterResponse);
+      expect(result.accessToken).toBe('mock-jwt-token');
     });
   });
 

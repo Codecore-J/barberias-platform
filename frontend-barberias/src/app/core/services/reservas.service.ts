@@ -8,6 +8,14 @@ export interface DisponibilidadSlot {
   fin: string;
 }
 
+/**
+ * E3-contrato: el backend exige `tipo` en `CreateReservaDto`
+ * (@IsIn(['INDIVIDUAL','GRUPAL','AUTOMATICO','MANUAL'])) y su ValidationPipe
+ * global responde 400 si falta. El servicio lo inyecta por defecto para que
+ * ninguna pantalla dependa de recordarlo.
+ */
+export type TipoReserva = 'INDIVIDUAL' | 'GRUPAL' | 'AUTOMATICO' | 'MANUAL';
+
 export interface CrearReservaDto {
   fecha: string;
   horaInicio: string;
@@ -16,6 +24,7 @@ export interface CrearReservaDto {
   precioTotalEsperado: number;
   barberoId?: string | null;
   nombreInvitado?: string;
+  tipo?: TipoReserva;
 }
 
 @Injectable({
@@ -57,7 +66,11 @@ export class ReservasService {
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.post(`${this.apiUrl}/reservas`, dto).pipe(
+    // E3-contrato: el campo `tipo` es obligatorio en el backend; el wizard
+    // del cliente siempre crea reservas INDIVIDUAL.
+    const payload: CrearReservaDto = { ...dto, tipo: dto.tipo ?? 'INDIVIDUAL' };
+
+    return this.http.post(`${this.apiUrl}/reservas`, payload).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
@@ -76,7 +89,11 @@ export class ReservasService {
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.post(`${this.apiUrl}/reservas/walk-in`, dto).pipe(
+    // E3-contrato: igual que en `crearReserva`, el backend exige `tipo`.
+    // El turno walk-in lo teclea el staff sobre un solo cliente: INDIVIDUAL.
+    const payload: CrearReservaDto = { ...dto, tipo: dto.tipo ?? 'INDIVIDUAL' };
+
+    return this.http.post(`${this.apiUrl}/reservas/walk-in`, payload).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
