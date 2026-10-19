@@ -33,9 +33,9 @@ export class BarberiaController {
    * POST /barberias
    * Cualquier usuario autenticado puede crear una barbería (decisión 1).
    * El responsable se extrae automáticamente del JWT.
-   * El límite de 2 barberías por usuario es E1-07.
+   * E1-07 · D04: el servicio aplica el límite de 2 sedes ACTIVAS por
+   * responsable y asigna ADMIN_BARBERIA al creador en la sede nueva (E0-07).
    */
-  // TODO(E1-07): aplicar el límite de 2 barberías por usuario en el servicio.
   @Autenticado()
   @Post()
   @HttpCode(HttpStatus.CREATED)

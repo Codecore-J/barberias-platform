@@ -1,9 +1,8 @@
 /**
  * SEED INICIAL — Roles y Permisos de la Plataforma
  *
- * Inserta los 3 roles del sistema y sus permisos base.
- * Ejecutar con: npx ts-node prisma/seed.ts
- * O: npm run seed (si está configurado en package.json)
+ * Inserta los 4 roles del sistema y sus permisos base.
+ * Ejecutar con: npm run seed (usa `tsx`, el runner del proyecto).
  *
  * Regla de negocio (Sección 3.1):
  * Autorización jerárquica: Permisos → Roles → Usuario.
@@ -54,6 +53,7 @@ async function main() {
   // ── ROLES ────────────────────────────────────────────────────────────────────
   const roles = [
     { nombre: 'CLIENTE', ambito: 'GLOBAL' },
+    { nombre: 'ADMIN_BARBERIA', ambito: 'BARBERIA' },
     { nombre: 'BARBERO', ambito: 'BARBERIA' },
     { nombre: 'ADMINISTRADOR', ambito: 'GLOBAL' },
   ];
@@ -69,11 +69,26 @@ async function main() {
 
   // ── ASIGNACIÓN DE PERMISOS A ROLES ───────────────────────────────────────────
   const rolCliente = await prisma.rol.findUniqueOrThrow({ where: { nombre: 'CLIENTE' } });
+  const rolAdminBarberia = await prisma.rol.findUniqueOrThrow({ where: { nombre: 'ADMIN_BARBERIA' } });
   const rolBarbero = await prisma.rol.findUniqueOrThrow({ where: { nombre: 'BARBERO' } });
   const rolAdmin   = await prisma.rol.findUniqueOrThrow({ where: { nombre: 'ADMINISTRADOR' } });
 
   const permisosCliente = ['reserva:crear', 'reserva:cancelar_propia', 'historial:ver_propio', 'barberia:vincularse', 'antecedente:declarar'];
   const permisosBarbero = ['reserva:confirmar', 'reserva:proponer_horario', 'catalogo:gestionar', 'horario:gestionar', 'pago:registrar', 'antecedente:crear', 'historial:ver_barberia'];
+  // E0-07: el responsable de una sede no es un barbero ni un administrador de
+  // plataforma. Sus permisos son los de gestión de SU sede; el aislamiento real
+  // lo impone `RolesGuard` con el `barberia_id` de `usuario_roles`.
+  const permisosAdminBarberia = [
+    'reserva:confirmar',
+    'reserva:proponer_horario',
+    'catalogo:gestionar',
+    'horario:gestionar',
+    'pago:registrar',
+    'antecedente:crear',
+    'admin:ver_auditoria',
+    'admin:aprobar_antecedentes',
+    'historial:ver_barberia',
+  ];
   const permisosAdmin   = permisos.map(p => p.codigo); // El admin tiene todos los permisos
 
   async function asignarPermisos(rolId: string, codigos: string[]) {
@@ -88,6 +103,7 @@ async function main() {
   }
 
   await asignarPermisos(rolCliente.id, permisosCliente);
+  await asignarPermisos(rolAdminBarberia.id, permisosAdminBarberia);
   await asignarPermisos(rolBarbero.id, permisosBarbero);
   await asignarPermisos(rolAdmin.id, permisosAdmin);
 

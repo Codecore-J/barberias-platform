@@ -28,6 +28,8 @@ export const REGISTRO_CRON_TIMEOUT_MS = 3000;
 
 export interface RegistrarAuditoriaDto {
   usuarioId?: string | null;
+  /** E3-01 · A-15: sede del evento, en su propia columna. */
+  barberiaId?: string | null;
   accion: string;
   entidad: string;
   entidadId?: string | null;
@@ -112,9 +114,17 @@ export class AuditoriaService implements OnModuleInit {
     tx?: PrismaService | Prisma.TransactionClient,
   ) {
     const client = (tx as PrismaService) ?? this.prisma;
+
+    // Compatibilidad: los llamadores antiguos ponían la sede en
+    // `contexto.barberiaId`. Se promueve a la columna para que el filtro por
+    // sede no dependa de que cada uno se acuerde de la clave.
+    const barberiaId =
+      dto.barberiaId ?? dto.contexto?.barberiaId ?? null;
+
     const auditoria = await client.auditoria.create({
       data: {
         usuarioId: dto.usuarioId ?? null,
+        barberiaId,
         accion: dto.accion,
         entidad: dto.entidad,
         entidadId: dto.entidadId ?? null,
@@ -176,8 +186,9 @@ export class AuditoriaService implements OnModuleInit {
    * Consulta el registro de auditoría filtrado por entidad, acción, usuario o
    * barbería, con paginación `{ data, total, page, pageSize }` (D32).
    *
-   * El filtro por barbería se hace sobre el JSON `contexto->>'barberiaId'`
-   * porque la tabla `auditoria` todavía no tiene columna propia (E3-01).
+   * El filtro principal es la columna `auditoria.barberia_id` (E3-01 · A-15).
+   * Se conserva un fallback por `contexto->>'barberiaId'` solo para filas
+   * históricas anteriores a la migración; las nuevas se escriben en columna.
    */
   async consultarAuditorias(
     filtros: FiltrosAuditoriaDto = {},
@@ -192,10 +203,13 @@ export class AuditoriaService implements OnModuleInit {
     if (accion) where.accion = accion;
     if (usuarioId) where.usuarioId = usuarioId;
     if (barberiaId) {
-      where.contexto = {
-        path: ['barberiaId'],
-        equals: barberiaId,
-      };
+      where.OR = [
+        { barberiaId },
+        {
+          barberiaId: null,
+          contexto: { path: ['barberiaId'], equals: barberiaId },
+        },
+      ];
     }
 
     const pageSize = Math.min(Math.max(filtros.pageSize ?? 50, 1), 100);

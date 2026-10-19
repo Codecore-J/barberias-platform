@@ -121,6 +121,7 @@ model Barberia {
   responsable Usuario @relation("Responsable", fields: [responsableId], references: [id])
 
   usuarioRoles          UsuarioRol[]
+  auditorias            Auditoria[]
   clienteBarberias      ClienteBarberia[]
   servicios             Servicio[]
   combos                Combo[]
@@ -440,16 +441,22 @@ model Notificacion {
 }
 
 model Auditoria {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  usuarioId String?   @map("usuario_id") @db.Uuid
-  accion    String    @db.VarChar(100)
-  entidad   String    @db.VarChar(50)
-  entidadId String?   @map("entidad_id") @db.Uuid
-  contexto  Json?
-  creadoAt  DateTime? @default(now()) @map("creado_at") @db.Timestamptz
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId  String?   @map("usuario_id") @db.Uuid
+  // E3-01 · A-15: la sede se guarda en COLUMNA, no solo en el JSON. La
+  // migración `20261019120000_e0e1_auditoria_barberia_id` la añade y rellena
+  // desde `contexto->>'barberiaId'` para no perder el histórico.
+  barberiaId String?   @map("barberia_id") @db.Uuid
+  accion     String    @db.VarChar(100)
+  entidad    String    @db.VarChar(50)
+  entidadId  String?   @map("entidad_id") @db.Uuid
+  contexto   Json?
+  creadoAt   DateTime? @default(now()) @map("creado_at") @db.Timestamptz
 
-  usuario Usuario? @relation(fields: [usuarioId], references: [id])
+  usuario  Usuario?  @relation(fields: [usuarioId], references: [id])
+  barberia Barberia? @relation(fields: [barberiaId], references: [id], onDelete: SetNull)
 
+  @@index([barberiaId, creadoAt])
   @@map("auditoria")
 }
 

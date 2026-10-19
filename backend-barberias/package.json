@@ -25,6 +25,7 @@
     "check:integridad": "node scripts/check-integridad.cjs",
     "test:smoke": "npx tsx test/manual/smoke-test-live.ts",
     "seed": "npx tsx prisma/seed.ts",
+    "admin:create": "tsx src/cli/create-admin.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "postinstall": "prisma skills sync || exit 0"

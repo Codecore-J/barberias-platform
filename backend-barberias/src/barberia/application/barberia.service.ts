@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
   Optional,
@@ -24,6 +25,7 @@ import { AuditoriaService } from '../../auditoria/application/auditoria.service.
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import {
   ROL_ADMINISTRADOR,
+  ROL_ADMIN_BARBERIA,
   alcanceCumple,
   esAdministradorGlobal,
   esAdministradorGlobalPorId,
@@ -55,6 +57,12 @@ function generateCodigoAcceso(): string {
     chars.charAt(Math.floor(Math.random() * chars.length)),
   ).join('');
 }
+
+/**
+ * E1-07 · D04: un responsable puede tener como máximo dos sedes ACTIVAS. Las
+ * inactivas no cuentan: suspender una sede devuelve el cupo sin borrar nada.
+ */
+export const MAX_BARBERIAS_POR_RESPONSABLE = 2;
 
 /**
  * E3-12/2 · la invitación tal y como llega por el cuerpo: las dos puertas son
@@ -121,7 +129,8 @@ export class BarberiaService {
    *
    * Invariantes:
    *  - El slug y el código de acceso se generan en el servidor.
-   *  - Se asigna automáticamente rol ADMIN_BARBERIA en usuario_roles.
+   *  - Se asigna automáticamente rol ADMIN_BARBERIA en usuario_roles (salvo
+   *    para el ADMINISTRADOR global, que ya es transversal).
    *  - Se crea la ConfiguracionBarberia por defecto.
    */
   async create(
@@ -129,13 +138,7 @@ export class BarberiaService {
     dto: CreateBarberiaDto,
   ): Promise<BarberiaResponseDto> {
     return withSerializableTransaction(this.prisma, async (tx) => {
-      // Generar identificadores únicos con colisión mínima
-      const baseSlug = generateSlug(dto.nombre);
-      const suffix = Date.now().toString(36).slice(-4);
-      const enlaceUnico = `${baseSlug}-${suffix}`;
-      const codigoAcceso = generateCodigoAcceso();
-
-      // Verificar que el responsable existe
+      // 1. El responsable tiene que existir antes de contar o escribir nada.
       const responsable = await tx.usuario.findUnique({
         where: { id: responsableId },
         select: { id: true },
@@ -144,7 +147,56 @@ export class BarberiaService {
         throw new NotFoundException(`Usuario ${responsableId} no encontrado.`);
       }
 
-      // Crear la barbería
+      // 2. E1-07 · D04: límite de DOS sedes ACTIVAS por responsable. El conteo
+      //    vive dentro de la transacción SERIALIZABLE: dos altas simultáneas
+      //    del mismo usuario no pueden saltarse el cupo. Las sedes INACTIVAS no
+      //    cuentan, de modo que suspender una devuelve el cupo (D04).
+      const barberiasActivas = await tx.barberia.count({
+        where: { responsableId, estado: 'ACTIVO' },
+      });
+
+      if (barberiasActivas >= MAX_BARBERIAS_POR_RESPONSABLE) {
+        throw reglaDeNegocio(
+          'LIMITE_BARBERIAS',
+          `Alcanzaste el límite máximo de ${MAX_BARBERIAS_POR_RESPONSABLE} sedes activas por responsable.`,
+          { limite: MAX_BARBERIAS_POR_RESPONSABLE, activas: barberiasActivas },
+        );
+      }
+
+      // 3. E0-07: el rol ADMIN_BARBERIA es requisito de la operación, no un
+      //    adorno. Antes se buscaba después de crear la sede y, si faltaba, el
+      //    `if (rolAdmin)` la dejaba creada SIN responsable operativo. Ahora se
+      //    comprueba antes de escribir y se falla con un error explícito.
+      //    El ADMINISTRADOR global está exento: es transversal (D05).
+      const esAdministradorDePlataforma = await tx.usuarioRol.findFirst({
+        where: {
+          usuarioId: responsableId,
+          rol: { nombre: ROL_ADMINISTRADOR },
+        },
+        select: { id: true },
+      });
+
+      let rolAdminBarberia: { id: string; nombre: string; ambito: string } | null = null;
+
+      if (!esAdministradorDePlataforma) {
+        rolAdminBarberia = await tx.rol.findUnique({
+          where: { nombre: ROL_ADMIN_BARBERIA },
+          select: { id: true, nombre: true, ambito: true },
+        });
+
+        if (!rolAdminBarberia) {
+          throw new InternalServerErrorException(
+            'Configuración incompleta: el rol ADMIN_BARBERIA no existe. Ejecuta el seed antes de crear sedes.',
+          );
+        }
+      }
+
+      // 4. Identificadores generados en el servidor.
+      const baseSlug = generateSlug(dto.nombre);
+      const suffix = Date.now().toString(36).slice(-4);
+      const enlaceUnico = `${baseSlug}-${suffix}`;
+      const codigoAcceso = generateCodigoAcceso();
+
       const barberia = await tx.barberia.create({
         data: {
           nombre: dto.nombre,
@@ -158,36 +210,50 @@ export class BarberiaService {
         },
       });
 
-      // Asignar rol ADMIN_BARBERIA al responsable en este tenant
-      const rolAdmin = await tx.rol.findUnique({
-        where: { nombre: 'ADMIN_BARBERIA' },
-        select: { id: true, nombre: true, ambito: true },
-      });
-
-      if (rolAdmin) {
-        // E1-04: un rol de ámbito BARBERIA exige barbería.
-        validarAsignacionRol(rolAdmin, barberia.id);
+      // 5. E0-07: el responsable recibe su rol EN ESTA sede. Un rol de ámbito
+      //    BARBERIA siempre lleva `barberiaId` (E1-04). El ADMINISTRADOR global
+      //    no necesita la fila: `RolesGuard` ya lo deja pasar (D05).
+      if (!esAdministradorDePlataforma && rolAdminBarberia) {
+        validarAsignacionRol(rolAdminBarberia, barberia.id);
         await tx.usuarioRol.upsert({
           where: {
             uk_usuario_rol_barberia: {
               usuarioId: responsableId,
-              rolId: rolAdmin.id,
+              rolId: rolAdminBarberia.id,
               barberiaId: barberia.id,
             },
           },
           create: {
             usuarioId: responsableId,
-            rolId: rolAdmin.id,
+            rolId: rolAdminBarberia.id,
             barberiaId: barberia.id,
           },
           update: {},
         });
       }
 
-      // Crear configuración por defecto
+      // 6. Configuración por defecto.
       await tx.configuracionBarberia.create({
         data: { barberiaId: barberia.id },
       });
+
+      // 7. E1-07: auditoría en la MISMA transacción. `barberiaId` va en la
+      //    columna propia (no solo en el JSON) para que la consulta por sede
+      //    use el índice y no dependa de que cada llamador recuerde la clave.
+      await this.auditoria.registrarEvento(
+        {
+          usuarioId: responsableId,
+          accion: 'BARBERIA_CREADA',
+          entidad: 'barberias',
+          entidadId: barberia.id,
+          barberiaId: barberia.id,
+          contexto: {
+            nombre: barberia.nombre,
+            estado: barberia.estado,
+          },
+        },
+        tx,
+      );
 
       this.logger.log(`Barbería creada: ${barberia.id} por usuario ${responsableId}`);
       return this.toResponse(barberia);

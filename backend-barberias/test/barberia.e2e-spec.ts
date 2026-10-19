@@ -151,18 +151,23 @@ describe('Barberias Endpoints (e2e)', () => {
     });
 
     it('debe generar PENDIENTE_APROBACION a partir de la 6ta vinculación', async () => {
-      // Creamos 5 barberías más (ya tenemos 1 vinculada)
+      // E1-07 · D04: una API ya no permite más de DOS sedes activas por
+      // responsable. Estas cinco sedes son FIXTURES del límite de vinculaciones
+      // (D10), no del alta de sedes, así que se siembran directamente.
       const barberiasExtra = [];
       for (let i = 1; i <= 5; i++) {
-        const res = await request(app.getHttpServer())
-          .post('/api/v1/barberias')
-          .set('Authorization', `Bearer ${ownerToken}`)
-          .send({
+        const sufijo = `${Date.now().toString(36)}${i}`;
+        const barberia = await prisma.barberia.create({
+          data: {
             nombre: `Barberia Extra ${i}`,
             telefono: `00000${i}`,
             ubicacion: 'Sur',
-          });
-        barberiasExtra.push(res.body);
+            enlaceUnico: `barberia-extra-${sufijo}`,
+            codigoAcceso: `EXTRA${sufijo}`.toUpperCase(),
+            responsableId: ownerId,
+          },
+        });
+        barberiasExtra.push(barberia);
       }
 
       // Nos vinculamos a 4 barberías más para llegar a 5 vinculaciones totales
