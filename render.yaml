@@ -6,6 +6,7 @@ services:
     plan: free
     rootDir: backend-barberias
     buildCommand: rm -f ../package.json && npm install --include=dev && npm run build
+    preDeployCommand: npx prisma migrate deploy
     startCommand: npm run start:prod
     # H64: sonda de VIDA, no de preparación. `/health` comprueba Base de Datos Y
     # Redis, así que con la cola caída devolvía 503 y Render podía reiniciar en

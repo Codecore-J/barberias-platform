@@ -317,6 +317,31 @@ export class BarberiaService {
     responsableId: string,
     usuario: UsuarioAutenticado,
   ): Promise<(BarberiaResponseDto | BarberiaLecturaDto)[]> {
+    const tieneRol = (nombre: string) =>
+      usuario.rolesDetallados?.some((r) => r.nombre === nombre) ||
+      usuario.roles?.includes(nombre);
+
+    const esStaff = tieneRol('ADMINISTRADOR') || tieneRol('ADMIN_BARBERIA') || tieneRol('BARBERO');
+
+    if (!esStaff && tieneRol('CLIENTE')) {
+      const vinculaciones = await this.prisma.clienteBarberia.findMany({
+        where: {
+          usuarioId: usuario.id,
+          estadoVinculacion: 'ACTIVO',
+          barberia: { estado: 'ACTIVO' },
+        },
+        include: {
+          barberia: true,
+        },
+        orderBy: { barberia: { nombre: 'asc' } },
+      });
+      const results = vinculaciones
+        .map((v) => v.barberia)
+        .filter((b) => !!b)
+        .map((b) => this.veCodigoDe(b.id, usuario) ? this.toResponse(b) : this.toLectura(b));
+      return results;
+    }
+
     const barberias = await this.prisma.barberia.findMany({
       where: { responsableId },
       orderBy: { nombre: 'asc' },

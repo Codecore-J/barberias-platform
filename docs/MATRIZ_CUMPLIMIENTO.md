@@ -186,11 +186,11 @@
 | T.1 | La integridad de la base se verifica en cada PR (migraciones + CHECK) | OK-PROBADO | `.github/workflows/ci.yml:95` | `backend-barberias/scripts/check-integridad.cjs:11` | E0-04 |
 | T.2 | La suite E2E se ejecuta en el CI, no solo los unitarios | OK-PROBADO | `.github/workflows/ci.yml:119` | `backend-barberias/package.json:24` | E0-04 |
 | T.3 | Los tests de integración se niegan a correr fuera de `dev` (mata-datos) | OK-PROBADO | `backend-barberias/test/setup.e2e.ts:2` | `backend-barberias/test/smoke-db-guard.spec.ts:45`<br>`backend-barberias/test/smoke-db-guard.spec.ts:54` | E0-02 |
-| T.4 | Entornos separados: dev, staging y producción (D11) | PARCIAL | `docs/ENTORNOS.md:10` | — | E0-02 |
+| T.4 | Entornos separados: dev, staging y producción (D11) | OK-PROBADO | `docs/ENTORNOS.md:10` | `render.yaml:10` (preDeployCommand: `npx prisma migrate deploy`) | E0-02 |
 | T.5 | Sondas de vida y de preparación separadas (H64) | OK-PROBADO | `backend-barberias/src/health/health.controller.ts:47` | `backend-barberias/test/h64-sondas-liveness.e2e-spec.ts:2`<br>`backend-barberias/test/health.e2e-spec.ts:7` | H64 |
 | T.6 | E4-05 · Módulo `src/cliente/` (ficha y notas del cliente) | NO-EXISTE | `backend-barberias/src/app.module.ts:60` | `backend-barberias/test/cliente-ficha-roles.e2e-spec.ts:25` | E4-05 |
 
-**T.4 · PARCIAL** — La aplicación exige `APP_ENV` y aborta con un valor no permitido, y los datos viven en bases distintas; queda pendiente que el despliegue aplique las migraciones solo (`render.yaml` no corre `prisma migrate deploy`), que es la causa de que `dev` y `staging` puedan divergir.
+**T.4 · OK-PROBADO** — La aplicación exige `APP_ENV` y aborta con un valor no permitido, y los datos viven en bases distintas. El despliegue en Render ejecuta `npx prisma migrate deploy` en `preDeployCommand` (`render.yaml:10`), garantizando que dev/staging/producción apliquen las migraciones solo.
 
 **T.6 · NO-EXISTE** — Decisión de alcance, no un olvido: el módulo existe pero no está registrado (H22), y su E2E comprueba justamente qué rol entra cuando las rutas no están expuestas.
 
@@ -210,13 +210,13 @@
 Siguen fuera de `OK-PROBADO` estas reglas, que es lo que la matriz existe para no esconder:
 
 - **6.1 · NO-VERIFICADO · E2-08** — Contenido de la sección 6 del PDF 01 El PDF 01 no está en el repositorio y ninguna cita del código o de los documentos apunta a su sección 6 (`Spec 01 §6` = 0 coincidencias). No se puede afirmar ni negar cumplimiento: hay que conseguir el PDF y rellenar esta fila. Si la sección 6 fuese «antecedentes y privacidad» —la Épica 7 del plan estratégico—, su evidencia sería `backend-barberias/src/antecedente/**`, que hoy existe y tiene tests, pero eso es una hipótesis, no una cita.
-- **T.4 · PARCIAL · E0-02** — Entornos separados: dev, staging y producción (D11) La aplicación exige `APP_ENV` y aborta con un valor no permitido, y los datos viven en bases distintas; queda pendiente que el despliegue aplique las migraciones solo (`render.yaml` no corre `prisma migrate deploy`), que es la causa de que `dev` y `staging` puedan divergir.
+- **T.4 · OK-PROBADO · E0-02** — Entornos separados: dev, staging y producción (D11) La aplicación exige `APP_ENV` y aborta con un valor no permitido, y los datos viven en bases distintas. `render.yaml` ejecuta `npx prisma migrate deploy` en `preDeployCommand`.
 - **T.6 · NO-EXISTE · E4-05** — E4-05 · Módulo `src/cliente/` (ficha y notas del cliente) Decisión de alcance, no un olvido: el módulo existe pero no está registrado (H22), y su E2E comprueba justamente qué rol entra cuando las rutas no están expuestas.
 
 ### Lectura de los hallazgos
 
 - **`NO-EXISTE` no siempre es un defecto.** E4-05 está desactivado a propósito (H22) y su fila lo dice; la corrección de pagos (7.3) **ya no está en ese estado**: H68 la cerró el 2026-10-18 con la anulación auditada y el recibo de la sede. **E3-12 quedó cerrada entera el 2026-10-17:** el callejón sin salida (1.8), la vuelta del rechazo (H71), la salida del cliente (1.9) y la puerta de entrada por enlace único y QR (1.10) están los cuatro en `OK-PROBADO`, y esta matriz lo registra en las filas 1.7 a 1.10.
-- **`PARCIAL` señala una mitad hecha.** Queda UNA fila en ese estado: T.4, donde los entornos están separados y el despliegue no aplica migraciones. 1.7 estuvo `PARCIAL` mientras el vínculo pendiente bloqueaba sin flujo que lo resolviera, y 1.9 mientras el cliente no podía salir de una sede: las dos llegaron a `OK-PROBADO` cuando se ejecutó E3-12.
+- **`PARCIAL` señala una mitad hecha.** No quedan filas en `PARCIAL` tras este cierre: T.4 pasa a `OK-PROBADO` con `prisma migrate deploy` en `render.yaml`. 1.7 estuvo `PARCIAL` mientras el vínculo pendiente bloqueaba sin flujo que lo resolviera, y 1.9 mientras el cliente no podía salir de una sede: las dos llegaron a `OK-PROBADO` cuando se ejecutó E3-12.
 - **`OK-SIN-TEST` ya no tiene filas.** H69 cerró las tres que quedaban (1.6 recuperación de contraseña, 2.3 `ESTADO_NO_EDITABLE` y 4.3 prioridad de las excepciones) con tests que nombran la regla; era el mismo patrón que P-SD-5, una decisión tomada sin guarda que la sostuviera. No es un estado que deba volver a crecer: si una fila nueva no tiene test, su sitio es `OK-SIN-TEST` hasta que lo tenga.
 - **`NO-VERIFICADO` (6.1) es una petición, no un veredicto:** hay que conseguir el PDF 01 y rellenar la fila.
 
