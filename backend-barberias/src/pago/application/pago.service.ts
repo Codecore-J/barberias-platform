@@ -447,14 +447,6 @@ export class PagoService {
               cliente: { select: { id: true, nombreCompleto: true } },
               participantes: {
                 select: {
- chore/h76-e2e-pagos-anulacion
-                  // H76: la relación Prisma se llama `participanteServicios`, no
-                  // `servicios`. Con el nombre inventado Prisma rechaza la
-                  // consulta ENTERA (PrismaClientValidationError → 400) y el
-                  // recibo nunca llegaba a la pantalla; los mocks del test de
-                  // servicio devolvían la forma equivocada y lo tapaban.
-
-> main
                   participanteServicios: {
                     select: {
                       // El precio es el HISTÓRICO de la reserva, no el del
