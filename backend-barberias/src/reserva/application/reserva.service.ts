@@ -195,18 +195,25 @@ export class ReservaService {
    * Cálculo PURO del bloque y su cotización (E2-05/D44). Devuelve el bloque total,
    * la hora de fin, el margen y el desglose de servicios SIN tocar la BD.
    * Lo usa `cotizar` para el flujo INDIVIDUAL; la creación individual comparte la
-   * ventana del cliente y el margen de sus servicios por la vía de
+   * ventana del cliente y el margen de SUS servicios por la vía de
    * `crearReserva`/`bloqueRequeridoParaAlternativas`.
+   *
+   * D42 (revisada 2026-10-02, §5.4): el margen que se añade al bloque —individual
+   * o grupal— sale SIEMPRE de `configuracion_barberia.margen_grupal_minutos`
+   * (default 10, rango 0-60). La suma de márgenes individuales (D01, derogada como
+   * regla de bloque) solo sobrevive como snapshot por servicio en
+   * `participante_servicios.margen_historico`. Por eso:
+   *  - `margenTotal` del INDIVIDUAL = `config.margenGrupalMinutos` (NO Σ de
+   *    `margenOperativo`).
+   *  - `margenOperativo` de cada servicio sigue viajando en el desglose como dato
+   *    informativo del snapshot, nunca como parte del bloque.
    */
-  private calcularBloque(dto: CreateReservaDto, config: { serviciosCatalogo: any[] }): BloqueCalculado {
+  private calcularBloque(dto: CreateReservaDto, config: { serviciosCatalogo: any[]; margenGrupalMinutos: number }): BloqueCalculado {
     const duracionTotal = (parseInt(dto.horaFin.slice(0, 2), 10) - parseInt(dto.horaInicio.slice(0, 2), 10)) * 60
       + (parseInt(dto.horaFin.slice(3, 5), 10) - parseInt(dto.horaInicio.slice(3, 5), 10));
-    // Sprint de estabilización (2026-10-12): el bloque INDIVIDUAL suma SOLO los
-    // márgenes de SUS servicios (D01/E2-05). El `margen_grupal_minutos` de la sede
-    // es de D42 y pertenece al flujo GRUPAL: sumarlo aquí inflaba cada reserva
-    // individual con minutos fantasma (10 por defecto) en la agenda y en la
-    // cotización que el cliente ve antes de reservar.
-    const margenTotal = config.serviciosCatalogo.reduce((acc, s) => acc + (s.margenOperativo ?? 0), 0);
+    // §5.4 / D42: el margen del bloque es el de configuración de la barbería, no
+    // la suma de márgenes operativos de cada servicio (esa suma ya solo es snapshot).
+    const margenTotal = config.margenGrupalMinutos;
     const precioTotal = config.serviciosCatalogo.reduce((acc, s) => acc + Number(s.precio), 0);
     return { duracionTotal, margenTotal, precioTotal };
   }
@@ -327,6 +334,7 @@ export class ReservaService {
 
     const { duracionTotal, margenTotal, precioTotal } = this.calcularBloque(dto, {
       serviciosCatalogo,
+      margenGrupalMinutos: config.margenGrupalMinutos ?? 10,
     });
 
     // La hora de fin del bloque se devuelve tal cual la pidió el cliente: el DTO
@@ -431,6 +439,13 @@ export class ReservaService {
    * Duración y margen del bloque que no cabió, para medir alternativas reales
    * (§5.4): en grupales manda Σ duraciones de los servicios del grupo; en los
    * demás, la ventana pedida.
+   *
+   * D42 (revisada 2026-10-02): el margen de la sede (`margen_grupal_minutos`)
+   * se aplica al bloque en toda modalidad, individual o grupal, porque es el
+   * margen que la reserva va a ocupar en la agenda (`Σ duraciones + margen`).
+   * El sprint de estabilización (H57, 2026-10-12) lo había anulado para el
+   * individual (margen = 0), que es la contradicción que se corrige aquí: las
+   * alternativas se miden para el mismo bloque que la reserva ocuparía.
    */
   private async bloqueRequeridoParaAlternativas(
     barberiaId: string,
@@ -443,11 +458,8 @@ export class ReservaService {
     },
     config: { margenGrupalMinutos: number },
   ): Promise<{ duracionServicios: number; margen: number }> {
-    // El margen de la sede es del GRUPAL (D42). En INDIVIDUAL el bloque que hay
-    // que cubrir es la ventana pedida, sin minutos extra (sprint de
-    // estabilización, 2026-10-12): si no, las alternativas se buscaban para un
-    // bloque más largo del que realmente se podía reservar.
-    let margen = contexto.tipo === 'GRUPAL' ? (config.margenGrupalMinutos ?? 10) : 0;
+    // §5.4 / D42: el margen de la sede se aplica al bloque en cualquier modalidad.
+    let margen = config.margenGrupalMinutos ?? 10;
 
     if (contexto.reservaId) {
       // Reprogramar: el bloque pactado sigue siendo el que hay que cubrir.
@@ -692,13 +704,13 @@ export class ReservaService {
         );
       }
 
-      // D42 (2026-10-02): el margen de la sede es un campo propio de la barbería
-      // (configuracion_barberia.margen_grupal_minutos, default 10, rango 0-60) y
-      // pertenece al flujo GRUPAL. Se ignora cualquier valor que mande el cliente
-      // en el DTO (D44: todo se calcula en el backend) y, desde el sprint de
-      // estabilización (2026-10-12), TAMPOCO se suma al INDIVIDUAL: ese bloque es
-      // la ventana pedida y sus márgenes son los de SUS servicios (D01/E2-05).
-      const margenFinal = esGrupal ? (config.margenGrupalMinutos ?? 10) : 0;
+      // D42 (revisada 2026-10-02, §5.4): el margen de la sede es un campo propio de
+      // la barbería (`configuracion_barberia.margen_grupal_minutos`, default 10,
+      // rango 0-60) y se aplica AL BLOQUE —individual o grupal—, snapshotteado en
+      // `reservas.margen_grupal_historico` al crear la reserva. Nunca la suma de
+      // márgenes operativos de cada servicio (D01 como regla de bloque, derogada) y
+      // nunca provisto por el cliente (D44).
+      const margenFinal = config.margenGrupalMinutos ?? 10;
 
       // 2. Verificamos disponibilidad en tiempo real delegando a Agenda/Disponibilidad
       //    E4-01: en grupales se mide contra el bloque CALCULADO (Σ duraciones),
