@@ -69,6 +69,16 @@ import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
             </div>
 
             <div class="space-y-2">
+              <label for="cedula" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Cédula <span class="text-zinc-600 font-normal lowercase">(opcional)</span></label>
+              <div class="relative group">
+                <i class="pi pi-id-card absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
+                <input id="cedula" name="cedula" type="text" formControlName="cedula" placeholder="Solo dígitos (opcional)"
+                       class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner"
+                       [ngClass]="{'border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50': registerForm.get('cedula')?.invalid && registerForm.get('cedula')?.touched}">
+              </div>
+            </div>
+
+            <div class="space-y-2">
               <label for="password" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Contraseña</label>
               <div class="relative group">
                 <i class="pi pi-lock absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
@@ -79,7 +89,7 @@ import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
                   <i class="pi" [ngClass]="showPassword() ? 'pi-eye-slash' : 'pi-eye'"></i>
                 </button>
               </div>
-              <p class="text-[10px] text-zinc-500 pl-1">Min. 8 caracteres, 1 mayúscula y 1 número o símbolo.</p>
+              <p class="text-[10px] text-zinc-500 pl-1">Mín. 8 caracteres, al menos 1 letra y 1 número.</p>
             </div>
 
             @if (authService.authState().error) {
@@ -148,13 +158,15 @@ export class RegisterComponent {
   showPassword = signal(false);
 
   registerForm = this.fb.group({
-    nombreCompleto: ['', [Validators.required, Validators.minLength(3)]],
-    correo: ['', [Validators.required, Validators.email]],
-    telefono: ['', [Validators.required]],
+    nombreCompleto: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(150)]],
+    correo: ['', [Validators.required, Validators.email, Validators.maxLength(150)]],
+    telefono: ['', [Validators.required, Validators.maxLength(30)]],
+    cedula: ['', [Validators.pattern(/^\d*$/), Validators.maxLength(30)]],
     password: ['', [
       Validators.required, 
       Validators.minLength(8), 
-      Validators.pattern(/((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/)
+      Validators.maxLength(72),
+      Validators.pattern(/^(?=.*[A-Za-z])(?=.*\d).+$/)
     ]],
   });
 
@@ -164,9 +176,14 @@ export class RegisterComponent {
 
   onSubmit() {
     if (this.registerForm.valid) {
+      const formVal = this.registerForm.value;
       const data: RegisterDto = {
-        ...this.registerForm.value
-      } as RegisterDto;
+        nombreCompleto: formVal.nombreCompleto!,
+        correo: formVal.correo!,
+        telefono: formVal.telefono!,
+        password: formVal.password!,
+        cedula: formVal.cedula?.trim() ? formVal.cedula.trim() : null,
+      };
 
       this.authService.register(data, this.returnUrl).subscribe({
         next: () => {},

@@ -20,6 +20,10 @@ export const QUEUES = {
   NOTIFICACIONES: 'notificaciones', // NotificacionModule / NotificacionProcessor
   AUDITORIA: 'auditoria-purga', // AuditoriaModule / AuditoriaProcessor
   BLOQUEOS: 'agenda-bloqueos', // AgendaModule / BloqueosProcessor
+  // E4-02/8 · D22: Carril B. El productor es `ReservaService` (una
+  // cancelación o reprogramación libera un bloque) y el consumidor
+  // `ListaEsperaProcessor`, que corre el matcher de suscripciones.
+  LISTA_ESPERA: 'lista-espera', // ListaEsperaModule / ListaEsperaProcessor
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -43,6 +47,10 @@ export const JOBS = {
 
   // Épica 8: Cron diario de purga de auditoría (03:00)
   PURGA_AUDITORIA_DIARIA: 'purga-auditoria-diaria',
+
+  // E4-02/8 · D22: un bloque de agenda quedó libre y hay que buscar en la lista
+  // de espera de esa sede y fecha al cliente al que le cabe.
+  HUECO_LIBERADO: 'hueco-liberado',
 } as const;
 
 export type JobName = (typeof JOBS)[keyof typeof JOBS];
@@ -92,4 +100,24 @@ export interface NotificacionReservaPayload {
 
 export interface PurgaAuditoriaJobPayload {
   diasRetencion: number; // Por defecto: 365 días
+}
+
+/**
+ * E4-02 · D22 · Carril B: un bloque de agenda quedó libre.
+ *
+ * Lo emite `ReservaService` DESPUÉS del commit de la cancelación (o de la
+ * reprogramación, por el bloque viejo). `fecha` es la etiqueta de calendario de
+ * la sede y `inicio`/`fin` son instantes ISO: el matcher necesita la DURACIÓN
+ * física del hueco, no la hora escrita en la fila.
+ */
+export interface HuecoLiberadoJobPayload {
+  barberiaId: string;
+  /** Etiqueta `YYYY-MM-DD` de la sede (la misma de `reservas.fecha_cita`). */
+  fecha: string;
+  /** Instante ISO del inicio del bloque liberado. */
+  inicio: string;
+  /** Instante ISO del fin del bloque liberado. */
+  fin: string;
+  /** Trazabilidad: la reserva que dejó de ocupar el bloque. */
+  reservaId?: string;
 }

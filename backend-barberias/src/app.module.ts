@@ -18,6 +18,7 @@ import { AntecedenteModule } from './antecedente/infrastructure/antecedente.modu
 import { NotificacionModule } from './notificacion/infrastructure/notificacion.module.js';
 import { AuditoriaModule } from './auditoria/infrastructure/auditoria.module.js';
 import { PlataformaUsuariosModule } from './iam/infrastructure/plataforma-usuarios.module.js';
+import { ListaEsperaModule } from './lista-espera/lista-espera.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import Redis from 'ioredis';
@@ -54,6 +55,11 @@ import Redis from 'ioredis';
     AntecedenteModule,
     NotificacionModule,
     AuditoriaModule,
+    // E4-02 · D22: Carril B. Este módulo expone el alta de la suscripción y,
+    // además, es el consumidor de `HUECO_LIBERADO`: cuando `ReservaService`
+    // libera un bloque, aquí corre el matcher FIFO que avisa al cliente al que
+    // le cabe.
+    ListaEsperaModule,
     // E4-03/5: la suspensión de cuentas desde plataforma (audita con
     // `AuditoriaModule`, por eso no cuelga de `IamModule`).
     PlataformaUsuariosModule,
