@@ -74,6 +74,7 @@ import {
   QUEUES,
   jobIdExpiracionReserva,
   type ExpirarReservaJobPayload,
+  type HuecoLiberadoJobPayload,
 } from '../../shared/queues/queue.constants.js';
 // H62: el encolado del job de expiración no puede tumbar el alta de la reserva.
 import { encolarConLimite } from '../../shared/queues/encolado-seguro.js';
@@ -148,6 +149,12 @@ export class ReservaService {
     // que no montan el módulo compartido; en producción lo inyecta Nest.
     @Optional() private readonly tiempo: TiempoService = new TiempoService(),
     @Optional() private readonly notificacionService?: NotificacionService,
+    // E4-02/8 · D22 · Carril B: cola de avisos de hueco liberado. Es opcional
+    // para que las pruebas que construyen el servicio sin el módulo sigan
+    // funcionando; sin cola, la cancelación no cambia de comportamiento.
+    @Optional()
+    @InjectQueue(QUEUES.LISTA_ESPERA)
+    private readonly listaEsperaQueue?: Queue,
   ) {}
 
   /**
@@ -1434,6 +1441,11 @@ export class ReservaService {
   ) {
     const motivo = this.validarMotivoRechazo(dto);
 
+    // E4-02/8 · D22 · Carril B: rechazar saca la cita de la agenda (`RECHAZADA`
+    // no ocupa hueco, §5.3), así que el bloque debe avisarse igual que en una
+    // cancelación. Se captura ANTES del cambio de estado.
+    let bloqueLiberado: { fechaCita: Date; horaInicio: Date; horaFin: Date } | null = null;
+
     const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
       await this.bloquearSedeParaEscritura(tx, barberiaId);
 
@@ -1442,6 +1454,12 @@ export class ReservaService {
       if (!actual) {
         throw new NotFoundException('Reserva no encontrada');
       }
+
+      bloqueLiberado = {
+        fechaCita: actual.fechaCita,
+        horaInicio: actual.horaInicio,
+        horaFin: actual.horaFin,
+      };
 
       // E2-02 §5.2: PENDIENTE → RECHAZADA con el actor STAFF.
       const actualizada = await this.cambiarEstado(tx, actual, ESTADOS.RECHAZADA, ACTORES.STAFF, {
@@ -1470,6 +1488,12 @@ export class ReservaService {
     });
 
     await this.aplicarEfectosPostCommit(reservaId, ESTADOS.RECHAZADA);
+
+    // E4-02/8 · D22 · Carril B: el rechazo ya está confirmado; el aviso es
+    // best-effort y con techo, nunca puede romper la respuesta al staff.
+    if (bloqueLiberado) {
+      await this.avisarHuecoLiberado(barberiaId, bloqueLiberado, reservaId);
+    }
 
     if (this.notificacionService) {
       const razon = motivo.codigo === 'OTRO' ? motivo.detalle : TEXTO_MOTIVO_RECHAZO[motivo.codigo];
@@ -1794,7 +1818,14 @@ export class ReservaService {
     const { inicio, fin } = validateTimeRange(dto.horaInicio, dto.horaFin);
     // E2-04: la fecha es una etiqueta `DATE`; se normaliza con el servicio central.
     const fecha = this.tiempo.fechaDeCalendario(dto.fecha);
-    const duracionSolicitada = (fin.getTime() - inicio.getTime()) / 60000;    const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
+    const duracionSolicitada = (fin.getTime() - inicio.getTime()) / 60000;
+
+    // E4-02/8 · D22 · Carril B: el bloque que la reprogramación deja libre. Se
+    // captura DENTRO de la transacción (es el `actual` de antes del `update`) y
+    // se avisa después del commit, por el MISMO camino que una cancelación.
+    let bloqueAnterior: { fechaCita: Date; horaInicio: Date; horaFin: Date } | null = null;
+
+    const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
       await this.bloquearSedeParaEscritura(tx, barberiaId);
 
       const actual = await tx.reserva.findFirst({ where: { id: reservaId, barberiaId } });
@@ -1802,6 +1833,12 @@ export class ReservaService {
       if (!actual) {
         throw new NotFoundException('Reserva no encontrada');
       }
+
+      bloqueAnterior = {
+        fechaCita: actual.fechaCita,
+        horaInicio: actual.horaInicio,
+        horaFin: actual.horaFin,
+      };
 
       if (
         !ESTADOS_REPROGRAMABLES.includes(
@@ -1917,6 +1954,11 @@ export class ReservaService {
       }),
     );
 
+    // E4-02/8 · D22 · Carril B: el bloque viejo quedó libre con el commit.
+    if (bloqueAnterior) {
+      await this.avisarHuecoLiberado(barberiaId, bloqueAnterior, reservaId);
+    }
+
     if (this.notificacionService) {
       this.notificacionService
         .enviarNotificacion({
@@ -1961,6 +2003,10 @@ export class ReservaService {
       [ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA].includes(rol.nombre),
     );
 
+    // E4-02/8 · D22 · Carril B: el bloque que se libera se toma de la fila
+    // ANTERIOR al cambio de estado, no del resultado del `update`.
+    let bloqueLiberado: { fechaCita: Date; horaInicio: Date; horaFin: Date } | null = null;
+
     const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
       await this.bloquearSedeParaEscritura(tx, barberiaId);
 
@@ -1969,6 +2015,12 @@ export class ReservaService {
       if (!actual) {
         throw new NotFoundException('Reserva no encontrada');
       }
+
+      bloqueLiberado = {
+        fechaCita: actual.fechaCita,
+        horaInicio: actual.horaInicio,
+        horaFin: actual.horaFin,
+      };
 
       const tz = await this.zonaDeSede(barberiaId, tx);
 
@@ -2025,6 +2077,13 @@ export class ReservaService {
     // reserva ya no está en `ESTADOS_EXPIRABLES`.
     await this.aplicarEfectosPostCommit(reservaId, ESTADOS.CANCELADA);
 
+    // E4-02/8 · D22 · Carril B: el bloque quedó libre de verdad (el commit ya
+    // ocurrió). Se avisa después del commit y best-effort, igual que el job de
+    // expiración: una cola caída no puede deshacer una cancelación.
+    if (bloqueLiberado) {
+      await this.avisarHuecoLiberado(barberiaId, bloqueLiberado, reservaId);
+    }
+
     if (this.notificacionService) {
       const destinatario = esStaff ? reserva.clienteId : user.id;
       const contenido = esStaff
@@ -2067,6 +2126,9 @@ export class ReservaService {
   ) {
     const motivo = this.validarMotivoCancelacionEspecial(dto);
 
+    // E4-02/8 · D22 · Carril B: bloque anterior al cambio de estado.
+    let bloqueLiberado: { fechaCita: Date; horaInicio: Date; horaFin: Date } | null = null;
+
     const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
       await this.bloquearSedeParaEscritura(tx, barberiaId);
 
@@ -2075,6 +2137,12 @@ export class ReservaService {
       if (!actual) {
         throw new NotFoundException('Reserva no encontrada');
       }
+
+      bloqueLiberado = {
+        fechaCita: actual.fechaCita,
+        horaInicio: actual.horaInicio,
+        horaFin: actual.horaFin,
+      };
 
       const config = await tx.configuracionBarberia.findUnique({ where: { barberiaId } });
 
@@ -2124,6 +2192,12 @@ export class ReservaService {
     });
 
     await this.aplicarEfectosPostCommit(reservaId, ESTADOS.CANCELADA);
+
+    // E4-02/8 · D22 · Carril B: misma liberación de agenda que la cancelación
+    // manual, así que el aviso a la lista de espera es el mismo.
+    if (bloqueLiberado) {
+      await this.avisarHuecoLiberado(barberiaId, bloqueLiberado, reservaId);
+    }
 
     if (this.notificacionService) {
       const razon =
@@ -2260,6 +2334,10 @@ export class ReservaService {
     reservaId: string,
     user: UsuarioAutenticado,
   ) {
+    // E4-02/8 · D22 · Carril B: aceptar la propuesta mueve la cita, así que el
+    // bloque anterior también queda libre.
+    let bloqueAnterior: { fechaCita: Date; horaInicio: Date; horaFin: Date } | null = null;
+
     const reserva = await withSerializableTransaction(this.prisma, async (tx) => {
       await this.bloquearSedeParaEscritura(tx, barberiaId);
 
@@ -2268,6 +2346,12 @@ export class ReservaService {
       if (!actual) {
         throw new NotFoundException('Reserva no encontrada');
       }
+
+      bloqueAnterior = {
+        fechaCita: actual.fechaCita,
+        horaInicio: actual.horaInicio,
+        horaFin: actual.horaFin,
+      };
 
       if (
         !ESTADOS_REPROGRAMABLES.includes(
@@ -2347,6 +2431,10 @@ export class ReservaService {
 
       return actualizada;
     });
+
+    if (bloqueAnterior) {
+      await this.avisarHuecoLiberado(barberiaId, bloqueAnterior, reservaId);
+    }
 
     if (this.notificacionService) {
       this.notificacionService
@@ -2485,6 +2573,55 @@ export class ReservaService {
       reservaId,
       ejecutores: this.ejecutoresDeEfectos(),
     });
+  }
+
+  /**
+   * E4-02/8 · D22 · Carril B: avisa de que `[horaInicio, horaFin]` de esa fecha
+   * quedó libre en la sede, para que el matcher busque en la lista de espera.
+   *
+   * Se llama SIEMPRE después del commit y nunca dentro de la transacción: si
+   * apareciera un job de un hueco que el rollback devolvió a ocupado, el matcher
+   * avisaría de una oportunidad que no existe. El encolado es best-effort con
+   * techo de tiempo (`encolarConLimite`, H62): una cola caída no puede convertir
+   * una cancelación ya confirmada en un 500.
+   */
+  private async avisarHuecoLiberado(
+    barberiaId: string,
+    bloque: { fechaCita: Date; horaInicio: Date; horaFin: Date },
+    reservaId: string,
+  ): Promise<void> {
+    if (!this.listaEsperaQueue) return;
+
+    const tz = await this.zonaDeSede(barberiaId);
+    const fecha = this.fechaISO(bloque.fechaCita);
+
+    const payload: HuecoLiberadoJobPayload = {
+      barberiaId,
+      fecha,
+      // `fecha_cita` y `hora_*` son etiquetas: el instante real se compone con
+      // la zona de la SEDE (E2-04/H36), no con la del servidor.
+      inicio: this.tiempo.aInstante(fecha, this.horaHHMM(bloque.horaInicio), tz).toISOString(),
+      fin: this.tiempo.aInstante(fecha, this.horaHHMM(bloque.horaFin), tz).toISOString(),
+      reservaId,
+    };
+
+    const encolado = await encolarConLimite(() =>
+      this.listaEsperaQueue!.add(JOBS.HUECO_LIBERADO, payload, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+      }),
+    );
+
+    if (!encolado.ok) {
+      this.logger.warn(
+        `No se pudo avisar del hueco liberado de ${fecha} en ${barberiaId}: ${encolado.motivo}`,
+      );
+      return;
+    }
+
+    this.logger.log(
+      `Hueco liberado encolado para ${barberiaId} el ${fecha} (${payload.inicio} → ${payload.fin}).`,
+    );
   }
 
   /** Implementación de los efectos declarados por la máquina (E2-02). */

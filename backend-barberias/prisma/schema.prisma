@@ -43,6 +43,8 @@ model Usuario {
   // E3-13/D26: quién solicitó y quién resolvió un cambio de la sede.
   solicitudesSolicitadas SolicitudCambioBarberia[] @relation("SolicitudSolicitadaPor")
   solicitudesResueltas   SolicitudCambioBarberia[] @relation("SolicitudResueltaPor")
+  // E4-02/D22: suscripciones del cliente a huecos que se liberen (Carril B).
+  listaEsperas           ListaEspera[]
 
   @@map("usuarios")
 }
@@ -135,6 +137,8 @@ model Barberia {
   horariosBarbero       HorarioBarbero[]
   excepcionesBarbero    ExcepcionHorarioBarbero[]
   solicitudesCambio     SolicitudCambioBarberia[]
+  // E4-02/D22: clientes esperando un hueco liberado en esta sede y fecha.
+  listaEsperas          ListaEspera[]
 
   @@map("barberias")
 }
@@ -170,6 +174,8 @@ model Servicio {
   barberia              Barberia               @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
   comboItems            ComboItem[]
   participanteServicios ParticipanteServicio[]
+  // E4-02/D22: suscripciones de lista de espera que piden este servicio.
+  listaEsperas          ListaEspera[]
 
   @@map("servicios")
 }
@@ -543,4 +549,38 @@ model TokenRecuperacion {
 
   @@index([tokenHash], name: "idx_tokens_recuperacion_hash")
   @@map("tokens_recuperacion")
+}
+
+/// E4-02 · D22: `lista_esperas` (Carril B).
+///
+/// Suscripción reactiva de un cliente a un hueco que se libere en ESA barbería
+/// y fecha, para uno o varios servicios. Es el inverso de la reserva: el
+/// cliente no toma agenda, deja dicho qué aceptaría.
+///
+/// `estado` es un catálogo cerrado —PENDIENTE → NOTIFICADO → CERRADO— y su
+/// CHECK vive en la migración, igual que los de `reservas` y `pagos`: Prisma no
+/// sabe expresar constraints de catálogo. Una suscripción nunca se BORRA, se
+/// cierra (D29), así que no hay borrado que modelar aquí.
+model ListaEspera {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId     String    @map("usuario_id") @db.Uuid
+  barberiaId    String    @map("barberia_id") @db.Uuid
+  // Fecha deseada como ETIQUETA local de la sede (igual que `Reserva.fechaCita`),
+  // no como instante UTC: el mismo día para cliente y sede.
+  fechaObjetivo DateTime  @map("fecha_objetivo") @db.Date
+  estado        String    @default("PENDIENTE") @db.VarChar(20)
+  creadoAt      DateTime? @default(now()) @map("creado_at") @db.Timestamptz
+  actualizadoAt DateTime? @default(now()) @map("actualizado_at") @db.Timestamptz
+
+  usuario  Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
+  /// Servicios que el cliente aceptaría para esa fecha. Relación implícita de
+  /// Prisma: la tabla de unión la crea `prisma migrate` y conserva la FK a
+  /// `servicios`, así que un servicio eliminado no deja suscripciones huérfanas.
+  servicios Servicio[]
+
+  // Búsqueda del matcher del Carril B: cliente + sede + fecha con estado vivo.
+  @@index([usuarioId, barberiaId, fechaObjetivo, estado], name: "idx_lista_espera_usuario_fecha")
+  @@index([barberiaId, fechaObjetivo, estado], name: "idx_lista_espera_barberia_fecha")
+  @@map("lista_esperas")
 }

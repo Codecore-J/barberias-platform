@@ -278,6 +278,12 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'PATCH /catalogo/combos/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'PATCH /catalogo/combos/:id/desactivar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'PATCH /catalogo/combos/:id/reactivar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+
+  // E4-02 · D22 (2026-10-20): el alta de la lista de espera es del CLIENTE: el
+  // `usuarioId` sale del token, así que la ruta no lleva `:barberiaId` y el
+  // guard solo filtra el rol. El ADMINISTRADOR global entra por jerarquía
+  // (E1-04), que MATRIZ_ESPERADA añade solo.
+  'POST /lista-espera/': [ROL_CLIENTE],
 };
 
 /**
@@ -425,10 +431,11 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // dos resoluciones (aprobar y rechazar): 79. E3-12/3 suma la salida del
   // cliente (`POST .../mi-estado/desvincular`): 80. E3-12/2 sumó la invitación de
   // la sede y la unión del cliente: 83. H68 (2026-10-18) suma el historial de
-  // cobros y la anulación de un pago: 85.
-  it('descubrir las 85 rutas del servidor y todas tienen decision', () => {
+  // cobros y la anulación de un pago: 85. E4-02 (2026-10-20) suma el alta de la
+  // lista de espera (Carril B): 86.
+  it('descubrir las 86 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(85);
+    expect(claves.length).toBe(86);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -534,7 +541,8 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // del cliente (H72): 81 × 4 = 324. E3-12/2 suma la puerta de entrada
   // (regla 1.10) —la invitación de la sede y la unión del cliente—: 83 × 4 = 332.
   // H68 suma las dos del recibo de cobros (historial y anulación): 85 × 4 = 340.
-  expect(evaluaciones).toBe(340);
+  // E4-02 suma el alta de la lista de espera: 86 × 4 = 344.
+  expect(evaluaciones).toBe(344);
     expect(
       desviaciones.length === 0
         ? ''

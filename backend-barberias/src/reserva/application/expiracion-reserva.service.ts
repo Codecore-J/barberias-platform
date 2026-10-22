@@ -8,6 +8,7 @@ import {
   JOBS,
   QUEUES,
   jobIdExpiracionReserva,
+  type HuecoLiberadoJobPayload,
 } from '../../shared/queues/queue.constants.js';
 // H62: el reencolado de una reserva no puede abortar el de las demás.
 import { encolarConLimite } from '../../shared/queues/encolado-seguro.js';
@@ -18,6 +19,8 @@ import {
 } from '../../shared/domain/estados.js';
 import { ReservaStateMachine } from '../../shared/domain/reserva-state-machine.js';
 import {
+  TiempoService,
+  ZONA_POR_DEFECTO,
   fechaCalendarioISO,
   horaRelojHHMM,
 } from '../../shared/time/tiempo.service.js';
@@ -71,6 +74,13 @@ export class ExpiracionReservaService implements OnApplicationBootstrap {
     private readonly auditoriaService: AuditoriaService,
     @InjectQueue(QUEUES.RESERVAS) private readonly reservasQueue: Queue,
     @Optional() private readonly notificacionService?: NotificacionService,
+    // E4-02/8 · D22 · Carril B: una expiración también devuelve el bloque a la
+    // agenda, así que avisa a la lista de espera. Opcional para las pruebas que
+    // montan el servicio sin la cola.
+    @Optional()
+    @InjectQueue(QUEUES.LISTA_ESPERA)
+    private readonly listaEsperaQueue?: Queue,
+    @Optional() private readonly tiempo: TiempoService = new TiempoService(),
   ) {}
 
   /**
@@ -210,6 +220,9 @@ export class ExpiracionReservaService implements OnApplicationBootstrap {
 
     await this.notificarExpiracion(reservaId);
 
+    // E4-02/8 · D22 · Carril B: el bloque vuelve a estar libre con el commit.
+    await this.avisarHuecoLiberado(reservaId);
+
     return 'EXPIRADA';
   }
 
@@ -288,6 +301,72 @@ export class ExpiracionReservaService implements OnApplicationBootstrap {
    * Redis inalcanzable `add` ni resuelve ni rechaza, y esta llamada está en el
    * camino de la reconciliación de arranque y del processor de expiración.
    */
+  /**
+   * E4-02/8 · D22 · Carril B: avisa de que el bloque de la reserva expirada
+   * volvió a quedar libre. La expiración ya está commiteada, así que esto es
+   * best-effort de punta a punta: una base lenta al leer la fila o una cola
+   * caída se registran y NO convierten la expiración en un error (el job de
+   * expiración se reintentaría por algo que ya está hecho).
+   *
+   * Se relee la reserva en vez de reutilizar la del inicio: entre el primer
+   * `findUnique` y el `updateMany` condicionado puede haber pasado tiempo, y el
+   * aviso debe llevar el bloque que realmente se liberó.
+   */
+  private async avisarHuecoLiberado(reservaId: string): Promise<void> {
+    if (!this.listaEsperaQueue) {
+      return;
+    }
+
+    try {
+      const reserva = await this.prisma.reserva.findUnique({
+        where: { id: reservaId },
+        select: { barberiaId: true, fechaCita: true, horaInicio: true, horaFin: true },
+      });
+
+      if (!reserva) {
+        return;
+      }
+
+      const barberia = await this.prisma.barberia.findUnique({
+        where: { id: reserva.barberiaId },
+        select: { zonaHoraria: true },
+      });
+      const tz = barberia?.zonaHoraria || ZONA_POR_DEFECTO;
+
+      const fecha = fechaCalendarioISO(reserva.fechaCita);
+      const payload: HuecoLiberadoJobPayload = {
+        barberiaId: reserva.barberiaId,
+        fecha,
+        // E2-04: etiquetas DATE/TIME + zona de la SEDE → instantes reales.
+        inicio: this.tiempo.aInstante(fecha, horaRelojHHMM(reserva.horaInicio), tz).toISOString(),
+        fin: this.tiempo.aInstante(fecha, horaRelojHHMM(reserva.horaFin), tz).toISOString(),
+        reservaId,
+      };
+
+      const encolado = await encolarConLimite(() =>
+        this.listaEsperaQueue!.add(JOBS.HUECO_LIBERADO, payload, {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 2000 },
+        }),
+      );
+
+      if (!encolado.ok) {
+        this.logger.warn(
+          `No se pudo avisar del hueco liberado por la expiración de ${reservaId} (${encolado.motivo}).`,
+        );
+        return;
+      }
+
+      this.logger.log(
+        `Hueco liberado encolado por la expiración de ${reservaId} (${payload.inicio} → ${payload.fin}).`,
+      );
+    } catch (err: any) {
+      this.logger.warn(
+        `No se pudo encolar el aviso de hueco liberado de ${reservaId}: ${err?.message ?? err}`,
+      );
+    }
+  }
+
   private async notificarExpiracion(reservaId: string): Promise<void> {
     if (!this.notificacionService) {
       return;

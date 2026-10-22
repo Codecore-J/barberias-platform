@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { describe, expect, it } from 'vitest';
 import { JOBS, QUEUES, jobIdExpiracionReserva } from './queue.constants.js';
 import { ReservaProcessor } from '../../reserva/application/reserva.processor.js';
+import { ListaEsperaProcessor } from '../../lista-espera/application/lista-espera.processor.js';
 
 /**
  * E3-05 · Contrato con BullMQ (HALLAZGO-E305-01).
@@ -35,6 +36,9 @@ describe('E3-05 · constantes de colas y jobs', () => {
     expect(QUEUES.AUDITORIA).toBe('auditoria-purga');
     expect(QUEUES.BLOQUEOS).toBe('agenda-bloqueos');
     expect(JOBS.EXPIRAR_RESERVA).toBe('expirar-reserva');
+    // E4-02/8 · D22: Carril B.
+    expect(QUEUES.LISTA_ESPERA).toBe('lista-espera');
+    expect(JOBS.HUECO_LIBERADO).toBe('hueco-liberado');
   });
 
   it('el consumidor declara exactamente la misma cola que la constante', () => {
@@ -42,6 +46,12 @@ describe('E3-05 · constantes de colas y jobs', () => {
     const metadata = Reflect.getMetadata(PROCESSOR_METADATA, ReservaProcessor);
 
     expect(metadata?.name).toBe(QUEUES.RESERVAS);
+  });
+
+  it('el consumidor del Carril B declara exactamente la misma cola que la constante', () => {
+    const metadata = Reflect.getMetadata(PROCESSOR_METADATA, ListaEsperaProcessor);
+
+    expect(metadata?.name).toBe(QUEUES.LISTA_ESPERA);
   });
 
   it('el jobId de expiración es determinista, estable y derivado del nombre real del job', () => {
