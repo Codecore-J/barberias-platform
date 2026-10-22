@@ -14,3 +14,6 @@ ee7c4ab696cc7833c80a020e371671e3b89580fc:backend-barberias/README.md:generic-api
 f9dacad3a6a714b709624e43d3e0b86526cec809:backend-barberias/test/e3-13-solicitudes-cambio.e2e-spec.ts:generic-api-key:277
 # E3-12/2: falso positivo confirmado (clave de prueba del E2E)
 41cdb87a7570cd05aa1deaa0ee4a457d770fdd68:backend-barberias/test/e3-12-enlace-qr.e2e-spec.ts:generic-api-key:80
+# E4-02: secreto redactado en la auditoría; la huella cubre el commit histórico que lo introdujo
+# (el valor ya no existe en HEAD y debe rotarse si estuvo en uso)
+e4140f8b2fa13ec66a804af4ac7de40f55e54a09:AUDITORIA_BACKEND_2026-10-19-v2.md:generic-api-key:117
