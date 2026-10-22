@@ -44,6 +44,24 @@ export const ESTADOS_CATALOGO = {
 
 export type EstadoCatalogo = (typeof ESTADOS_CATALOGO)[keyof typeof ESTADOS_CATALOGO];
 
+/**
+ * E4-02 · D22 · catálogo de la LISTA DE ESPERA (Carril B).
+ *
+ * No son estados de reserva aunque `PENDIENTE` se llame igual: una suscripción
+ * no ocupa agenda. `PENDIENTE` espera un hueco, `NOTIFICADO` ya recibió el aviso
+ * de uno concreto (una sola vez por hueco) y `CERRADO` es el terminal — se
+ * cierra cuando vence o cuando el cliente consigue su cita. El CHECK de la
+ * columna vive en la migración `20261020120000_e402_lista_espera`.
+ */
+export const ESTADOS_LISTA_ESPERA = {
+  PENDIENTE: 'PENDIENTE',
+  NOTIFICADO: 'NOTIFICADO',
+  CERRADO: 'CERRADO',
+} as const;
+
+export type EstadoListaEspera =
+  (typeof ESTADOS_LISTA_ESPERA)[keyof typeof ESTADOS_LISTA_ESPERA];
+
 /** Los dos valores en el orden del catálogo, para validar y recorrer. */
 export const ESTADOS_CATALOGO_VALORES: readonly EstadoCatalogo[] = Object.values(ESTADOS_CATALOGO);
 

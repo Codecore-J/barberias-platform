@@ -26,6 +26,7 @@ function reserva(extra: Record<string, unknown> = {}) {
     estado: 'PENDIENTE',
     fechaCita: new Date('2026-10-11'),
     horaInicio: new Date('1970-01-01T10:00:00.000Z'),
+    horaFin: new Date('1970-01-01T10:30:00.000Z'),
     expiraAt: new Date('2026-10-10T11:59:00.000Z'), // un minuto antes de AHORA
     ...extra,
   };
@@ -53,11 +54,14 @@ describe('ExpiracionReservaService (E3-05)', () => {
       findMany: vi.fn(),
       updateMany: vi.fn(),
     },
+    // E4-02/8: el aviso del Carril B compone los instantes con la zona de la sede.
+    barberia: { findUnique: vi.fn() },
     $transaction: vi.fn(async (cb: any) => cb(mockPrisma)),
   };
 
   const mockAuditoria = { registrarEvento: vi.fn() };
   const mockQueue = { getJob: vi.fn(), add: vi.fn() };
+  const mockListaEsperaQueue = { add: vi.fn() };
   const mockNotificacion = { enviarNotificacion: vi.fn() };
 
   beforeEach(async () => {
@@ -66,6 +70,10 @@ describe('ExpiracionReservaService (E3-05)', () => {
     mockPrisma.reserva.updateMany.mockResolvedValue({ count: 1 });
     mockAuditoria.registrarEvento.mockResolvedValue({ id: 'uuid-auditoria' });
     mockQueue.getJob.mockResolvedValue(null);
+    mockListaEsperaQueue.add.mockResolvedValue({ id: 'job-hueco' });
+    mockPrisma.barberia.findUnique.mockResolvedValue({
+      zonaHoraria: 'America/Santo_Domingo',
+    });
     mockNotificacion.enviarNotificacion.mockResolvedValue({ id: 'uuid-notif' });
 
     const module: TestingModule = await Test.createTestingModule({
@@ -74,6 +82,7 @@ describe('ExpiracionReservaService (E3-05)', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AuditoriaService, useValue: mockAuditoria },
         { provide: getQueueToken(QUEUES.RESERVAS), useValue: mockQueue },
+        { provide: getQueueToken(QUEUES.LISTA_ESPERA), useValue: mockListaEsperaQueue },
         { provide: NotificacionService, useValue: mockNotificacion },
       ],
     }).compile();
@@ -144,6 +153,35 @@ describe('ExpiracionReservaService (E3-05)', () => {
 
     expect(await service.expirarSiCorresponde(UUID_RESERVA, AHORA)).toBe('EXPIRADA');
     expect(ESTADOS_EXPIRABLES).toContain('PROPUESTA_PENDIENTE');
+  });
+
+  it('E4-02 · D22: la expiración avisa al Carril B del bloque que quedó libre', async () => {
+    mockPrisma.reserva.findUnique.mockResolvedValue(reserva());
+
+    expect(await service.expirarSiCorresponde(UUID_RESERVA, AHORA)).toBe('EXPIRADA');
+
+    // 10:00–10:30 en America/Santo_Domingo (UTC-4) → 14:00Z–14:30Z del 11/10.
+    expect(mockListaEsperaQueue.add).toHaveBeenCalledWith(
+      'hueco-liberado',
+      {
+        barberiaId: UUID_BARBERIA,
+        fecha: '2026-10-11',
+        inicio: '2026-10-11T14:00:00.000Z',
+        fin: '2026-10-11T14:30:00.000Z',
+        reservaId: UUID_RESERVA,
+      },
+      expect.objectContaining({ attempts: 3 }),
+    );
+  });
+
+  it('E4-02 · D22: si la cola del Carril B falla, la expiración NO se rompe', async () => {
+    mockPrisma.reserva.findUnique.mockResolvedValue(reserva());
+    mockListaEsperaQueue.add.mockRejectedValue(new Error('Redis caído'));
+
+    expect(await service.expirarSiCorresponde(UUID_RESERVA, AHORA)).toBe('EXPIRADA');
+    expect(warnEspia).toHaveBeenCalledWith(
+      expect.stringContaining('No se pudo avisar del hueco liberado'),
+    );
   });
 
   it('ROJO: una reserva inexistente no rompe el job', async () => {

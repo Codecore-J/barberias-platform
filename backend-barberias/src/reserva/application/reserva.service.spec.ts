@@ -62,6 +62,11 @@ describe('ReservaService', () => {
     getJob: vi.fn(),
   };
 
+  // E4-02/8 · D22 · Carril B: el aviso de hueco liberado va por su propia cola.
+  const mockListaEsperaQueue = {
+    add: vi.fn(),
+  };
+
   const mockAuditoriaService = {
     registrarEvento: vi.fn(),
   };
@@ -75,6 +80,7 @@ describe('ReservaService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: DisponibilidadService, useValue: mockDisponibilidadService },
         { provide: getQueueToken('reservas-pendientes'), useValue: mockQueue },
+        { provide: getQueueToken('lista-espera'), useValue: mockListaEsperaQueue },
         { provide: AuditoriaService, useValue: mockAuditoriaService },
       ],
     }).compile();
@@ -586,6 +592,58 @@ describe('ReservaService', () => {
       );
     });
 
+    it('E4-02 · D22: al rechazar avisa al Carril B del bloque que quedó libre', async () => {
+      mockListaEsperaQueue.add.mockResolvedValue({ id: 'job-hueco' });
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reservaPendiente());
+      mockPrismaService.reserva.update.mockResolvedValue({
+        id: 'uuid-reserva',
+        estado: 'RECHAZADA',
+        clienteId: 'uuid-cliente',
+      });
+      mockAuditoriaService.registrarEvento.mockResolvedValue({ id: 'uuid-auditoria' });
+      mockQueue.getJob.mockResolvedValue(null);
+
+      await service.rechazarReserva(
+        'uuid-barberia',
+        'uuid-reserva',
+        { motivoCodigo: 'HORARIO_NO_DISPONIBLE' } as any,
+        usuarioAdmin as any,
+      );
+
+      // 10:00–10:30 en la zona de la sede (UTC-4) → 14:00Z–14:30Z.
+      expect(mockListaEsperaQueue.add).toHaveBeenCalledWith(
+        'hueco-liberado',
+        {
+          barberiaId: 'uuid-barberia',
+          fecha: '2026-10-10',
+          inicio: '2026-10-10T14:00:00.000Z',
+          fin: '2026-10-10T14:30:00.000Z',
+          reservaId: 'uuid-reserva',
+        },
+        expect.objectContaining({ attempts: 3 }),
+      );
+    });
+
+    it('E4-02 · D22: si la cola del Carril B falla, el rechazo NO se rompe', async () => {
+      mockListaEsperaQueue.add.mockRejectedValue(new Error('Redis caído'));
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reservaPendiente());
+      mockPrismaService.reserva.update.mockResolvedValue({
+        id: 'uuid-reserva',
+        estado: 'RECHAZADA',
+      });
+      mockAuditoriaService.registrarEvento.mockResolvedValue({ id: 'uuid-auditoria' });
+      mockQueue.getJob.mockResolvedValue(null);
+
+      const res = await service.rechazarReserva(
+        'uuid-barberia',
+        'uuid-reserva',
+        { motivoCodigo: 'HORARIO_NO_DISPONIBLE' } as any,
+        usuarioAdmin as any,
+      );
+
+      expect(res.estado).toBe('RECHAZADA');
+    });
+
     it('VERDE: rechazar con un código válido distinto de OTRO guarda el detalle en nulo', async () => {
       mockPrismaService.reserva.findFirst.mockResolvedValue(reservaPendiente());
       mockPrismaService.reserva.update.mockResolvedValue({ id: 'uuid-reserva', estado: 'RECHAZADA' });
@@ -940,6 +998,57 @@ describe('ReservaService', () => {
       ).rejects.toThrowError(ForbiddenException);
 
       expect(mockPrismaService.reserva.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('E4-02 · D22: al cancelar avisa al Carril B del bloque que quedó libre', async () => {
+      mockListaEsperaQueue.add.mockResolvedValue({ id: 'job-hueco' });
+      mockPrismaService.reserva.findFirst.mockResolvedValue(reservaVigente());
+      mockPrismaService.reserva.update.mockResolvedValue({
+        id: 'uuid-reserva',
+        estado: 'CANCELADA',
+        fechaCita: new Date('2026-10-10'),
+        horaInicio: hora(10, 0),
+        horaFin: hora(10, 30),
+      });
+      mockQueue.getJob.mockResolvedValue(null);
+
+      await service.cancelarReserva('uuid-barberia', 'uuid-reserva', usuarioCliente as any);
+
+      // El bloque se compone con la zona de la SEDE (UTC-4): 10:00 → 14:00Z.
+      expect(mockListaEsperaQueue.add).toHaveBeenCalledWith(
+        'hueco-liberado',
+        {
+          barberiaId: 'uuid-barberia',
+          fecha: '2026-10-10',
+          inicio: '2026-10-10T14:00:00.000Z',
+          fin: '2026-10-10T14:30:00.000Z',
+          reservaId: 'uuid-reserva',
+        },
+        expect.objectContaining({ attempts: 3 }),
+      );
+    });
+
+    it('E4-02 · D22: si la cola del Carril B falla, la cancelación NO se rompe', async () => {
+      mockListaEsperaQueue.add.mockRejectedValue(new Error('Redis caído'));
+      mockPrismaService.reserva.findFirst.mockResolvedValue(
+        reservaVigente({ estado: 'CONFIRMADA' }),
+      );
+      mockPrismaService.reserva.update.mockResolvedValue({
+        id: 'uuid-reserva',
+        estado: 'CANCELADA',
+        fechaCita: new Date('2026-10-10'),
+        horaInicio: hora(10, 0),
+        horaFin: hora(10, 30),
+      });
+      mockQueue.getJob.mockResolvedValue(null);
+
+      const res = await service.cancelarReserva(
+        'uuid-barberia',
+        'uuid-reserva',
+        usuarioAdmin as any,
+      );
+
+      expect(res.estado).toBe('CANCELADA');
     });
 
     it('VERDE: el staff de la sede cancela una CONFIRMADA y la auditoría lo marca como STAFF', async () => {

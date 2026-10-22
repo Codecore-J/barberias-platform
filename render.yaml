@@ -16,6 +16,10 @@ services:
     healthCheckPath: /api/v1/health/liveness
     autoDeploy: true
     envVars:
+      # APP_ENV es obligatorio: `main.ts` aborta el arranque si falta o no es
+      # dev/staging/production.
+      - key: APP_ENV
+        value: production
       - key: NODE_ENV
         value: production
       - key: PORT
@@ -26,5 +30,7 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
-      - key: CORS_ORIGINS
+      # El código lee FRONTEND_URL (lista separada por comas) para CORS;
+      # `CORS_ORIGINS` no la consume nadie y se elimina del blueprint.
+      - key: FRONTEND_URL
         value: https://barberias-platform-git-main-developerstem.vercel.app,https://barberias-platform.vercel.app

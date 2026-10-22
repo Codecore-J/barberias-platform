@@ -3,8 +3,9 @@ export interface UsuarioResponseDto {
   correo: string;
   nombreCompleto: string;
   telefono: string;
-  cedula?: string;
+  cedula?: string | null;
   estadoCuenta: string;
+  creadoAt?: string | Date | null;
   roles: string[];
 }
 
@@ -16,7 +17,7 @@ export interface RegisterDto {
   password: string;
   nombreCompleto: string;
   telefono: string;
-  cedula?: string;
+  cedula?: string | null;
 }
 
 export interface LoginDto {

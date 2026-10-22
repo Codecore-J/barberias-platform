@@ -22,6 +22,12 @@ import { QUEUES } from '../../shared/queues/queue.constants.js';
     BullModule.registerQueue({
       name: QUEUES.RESERVAS,
     }),
+    // E4-02 · D22 · Carril B: la cola donde `ReservaService` avisa de un bloque
+    // que quedó libre. El consumidor vive en `ListaEsperaModule`; aquí solo se
+    // registra para poder inyectarla en el productor.
+    BullModule.registerQueue({
+      name: QUEUES.LISTA_ESPERA,
+    }),
   ],
   controllers: [ReservaController],
   providers: [ReservaService, ReservaProcessor, ExpiracionReservaService],
