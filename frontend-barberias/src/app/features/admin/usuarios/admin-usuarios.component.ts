@@ -92,7 +92,9 @@ type FiltroRol = 'TODOS' | RolPlataforma;
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="glass-panel p-4 rounded-2xl border border-white/5">
           <div class="flex items-center justify-between">
-            <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Total</p>
+            <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">
+              Total de usuarios
+            </p>
             <div
               class="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300"
             >
@@ -105,7 +107,9 @@ type FiltroRol = 'TODOS' | RolPlataforma;
 
         <div class="glass-panel p-4 rounded-2xl border border-white/5">
           <div class="flex items-center justify-between">
-            <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Activas</p>
+            <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">
+              Cuentas activas
+            </p>
             <div
               class="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400"
             >
@@ -121,7 +125,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
         <div class="glass-panel p-4 rounded-2xl border border-white/5">
           <div class="flex items-center justify-between">
             <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">
-              Suspendidas
+              Cuentas suspendidas
             </p>
             <div
               class="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/25 flex items-center justify-center text-rose-400"
