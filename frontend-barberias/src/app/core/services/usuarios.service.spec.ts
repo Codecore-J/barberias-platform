@@ -136,4 +136,115 @@ describe('UsuariosService · listado de plataforma', () => {
     // El error es del modal: la lista cargada no se toca.
     expect(service.error()).toBeNull();
   });
+
+  it('crea una cuenta con POST y manda el rol y la sede', () => {
+    let resultado: unknown;
+
+    service
+      .crearUsuario({
+        nombreCompleto: 'Ana Pérez',
+        correo: 'ana@test.com',
+        telefono: '8090000000',
+        password: 'Secreta123',
+        rolNombre: 'ADMIN_BARBERIA',
+        barberiaId: 'b1',
+      })
+      .subscribe((usuario) => (resultado = usuario));
+
+    const peticion = http.expectOne(USUARIOS_URL);
+    expect(peticion.request.method).toBe('POST');
+    expect(peticion.request.body).toEqual({
+      nombreCompleto: 'Ana Pérez',
+      correo: 'ana@test.com',
+      telefono: '8090000000',
+      password: 'Secreta123',
+      rolNombre: 'ADMIN_BARBERIA',
+      barberiaId: 'b1',
+    });
+    peticion.flush(ana);
+
+    expect(resultado).toEqual(ana);
+  });
+
+  it('un rol GLOBAL viaja sin barberiaId', () => {
+    service
+      .crearUsuario({
+        nombreCompleto: 'Luis Gómez',
+        correo: 'luis@test.com',
+        telefono: '8091111111',
+        password: 'Secreta123',
+        rolNombre: 'CLIENTE',
+      })
+      .subscribe();
+
+    const peticion = http.expectOne(USUARIOS_URL);
+    expect(peticion.request.body).not.toHaveProperty('barberiaId');
+    expect(peticion.request.body).not.toHaveProperty('cedula');
+    peticion.flush(luis);
+  });
+
+  it('un 409 de duplicado llega con su mensaje para pintarlo en el modal', () => {
+    const mensaje = 'El correo ya está registrado.';
+    let recibido: any;
+
+    service
+      .crearUsuario({
+        nombreCompleto: 'Ana Pérez',
+        correo: 'ana@test.com',
+        telefono: '8090000000',
+        password: 'Secreta123',
+        rolNombre: 'CLIENTE',
+      })
+      .subscribe({ error: (err) => (recibido = err) });
+
+    http
+      .expectOne(USUARIOS_URL)
+      .flush(
+        { codigo: 'CORREO_YA_REGISTRADO', mensaje },
+        { status: 409, statusText: 'Conflict' },
+      );
+
+    expect(recibido.error.mensaje).toBe(mensaje);
+    // El error del alta no ensucia el listado.
+    expect(service.error()).toBeNull();
+    expect(service.usuarios()).toEqual([]);
+  });
+
+  it('consulta el historial de la cuenta y tolera un cuerpo vacío', () => {
+    let primero: unknown = 'sin asignar';
+
+    service.obtenerAuditoriaUsuario('u1').subscribe((eventos) => (primero = eventos));
+    http.expectOne(`${USUARIOS_URL}/u1/auditoria`).flush([
+      {
+        id: 'aud-1',
+        accion: 'CUENTA_SUSPENDIDA',
+        entidad: 'usuarios',
+        entidadId: 'u1',
+        barberiaId: null,
+        motivo: 'Abuso reiterado',
+        contexto: { sesionesCerradas: true },
+        actor: { id: 'a1', nombreCompleto: 'Global', correo: 'global@test.com' },
+        creadoAt: '2026-10-20T10:00:00.000Z',
+      },
+    ]);
+
+    expect((primero as unknown[]).length).toBe(1);
+
+    service.obtenerAuditoriaUsuario('u1').subscribe((eventos) => (primero = eventos));
+    http.expectOne(`${USUARIOS_URL}/u1/auditoria`).flush(null);
+
+    expect(primero).toEqual([]);
+  });
+
+  it('trae todas las sedes para el selector de rol de sede', () => {
+    let sedes: unknown = 'sin asignar';
+
+    service.listarBarberias().subscribe((valor) => (sedes = valor));
+    http.expectOne(`${API_URL}/barberias/all`).flush([
+      { id: 'b1', nombre: 'Sede Uno' },
+      { id: 'b2', nombre: 'Sede Dos' },
+    ]);
+
+    expect((sedes as unknown[]).length).toBe(2);
+  });
 });
