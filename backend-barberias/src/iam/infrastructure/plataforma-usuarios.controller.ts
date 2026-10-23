@@ -7,16 +7,19 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   UseGuards,
 } from '@nestjs/common';
 import { UsuariosPlataformaService } from '../application/usuarios-plataforma.service.js';
 import { CambiarEstadoCuentaDto } from '../application/dto/cambiar-estado-cuenta.dto.js';
+import { CrearUsuarioPlataformaDto } from '../application/dto/crear-usuario-plataforma.dto.js';
 import { CurrentUser } from './current-user.decorator.js';
 import { Roles } from './roles.decorator.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { RolesGuard } from './roles.guard.js';
 import type { UsuarioAutenticado } from '../domain/jwt.interface.js';
 import type { UsuarioListResponseDto } from '../application/dto/usuario-list-response.dto.js';
+import type { UsuarioAuditoriaResponseDto } from '../application/dto/usuario-auditoria-response.dto.js';
 
 /**
  * E4-03/5 · D09/D24 · bandeja de plataforma para el estado de una cuenta.
@@ -67,5 +70,43 @@ export class PlataformaUsuariosController {
   @HttpCode(HttpStatus.OK)
   obtenerTodosLosUsuarios(): Promise<UsuarioListResponseDto[]> {
     return this.usuariosPlataformaService.obtenerTodosLosUsuarios();
+  }
+
+  /**
+   * POST /plataforma/usuarios
+   *
+   * Alta administrativa de una cuenta con rol elegido por el ADMINISTRADOR.
+   * Responde 201 con el usuario creado en el formato de la bandeja, sin datos
+   * sensibles (`passwordHash` no se selecciona nunca).
+   *
+   * Errores: 409 `CORREO_YA_REGISTRADO` / `CEDULA_YA_REGISTRADA` /
+   * `TELEFONO_YA_REGISTRADO`, 422 `BARBERIA_REQUERIDA` / `BARBERIA_NO_APLICA`,
+   * 404 si la barbería no existe.
+   */
+  @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMINISTRADOR')
+  crearUsuario(
+    @Body() dto: CrearUsuarioPlataformaDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ): Promise<UsuarioListResponseDto> {
+    return this.usuariosPlataformaService.crearUsuario(dto, user);
+  }
+
+  /**
+   * GET /plataforma/usuarios/:id/auditoria
+   *
+   * Historial de la cuenta: altas, suspensiones, reactivaciones, motivos,
+   * fechas y el detalle de cada evento (`contexto`), del más reciente al más
+   * antiguo. Solo `ADMINISTRADOR` (D05).
+   */
+  @Get(':id/auditoria')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMINISTRADOR')
+  @HttpCode(HttpStatus.OK)
+  obtenerAuditoriaUsuario(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<UsuarioAuditoriaResponseDto[]> {
+    return this.usuariosPlataformaService.obtenerAuditoriaUsuario(id);
   }
 }

@@ -164,6 +164,12 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // Bandeja de usuarios de la plataforma: la lista completa de cuentas es del
   // ADMINISTRADOR global, igual que cambiarles el estado. La sede no la ve.
   'GET /plataforma/usuarios/': [ROL_ADMINISTRADOR],
+  // Alta administrativa de una cuenta: el ADMINISTRADOR elige el rol y, para los
+  // roles de sede, la barbería. La sede no crea cuentas (eso es `personal`).
+  'POST /plataforma/usuarios/': [ROL_ADMINISTRADOR],
+  // Historial de auditoría de UNA cuenta (suspensiones, reactivaciones, motivos).
+  // Es la vista global del comportamiento de una cuenta: solo plataforma.
+  'GET /plataforma/usuarios/:id/auditoria': [ROL_ADMINISTRADOR],
 
   'GET /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
   'POST /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -436,10 +442,12 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // la sede y la unión del cliente: 83. H68 (2026-10-18) suma el historial de
   // cobros y la anulación de un pago: 85. E4-02 (2026-10-20) suma el alta de la
   // lista de espera (Carril B): 86. El listado de usuarios de plataforma suma
-  // `GET /plataforma/usuarios`: 87.
-  it('descubrir las 87 rutas del servidor y todas tienen decision', () => {
+  // `GET /plataforma/usuarios`: 87. La bandeja de administración suma el alta
+  // (`POST /plataforma/usuarios`) y el historial de una cuenta
+  // (`GET /plataforma/usuarios/:id/auditoria`): 89.
+  it('descubrir las 89 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(87);
+    expect(claves.length).toBe(89);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -546,8 +554,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // (regla 1.10) —la invitación de la sede y la unión del cliente—: 83 × 4 = 332.
   // H68 suma las dos del recibo de cobros (historial y anulación): 85 × 4 = 340.
   // E4-02 suma el alta de la lista de espera: 86 × 4 = 344. El listado de
-  // usuarios de plataforma suma la 87: 348.
-  expect(evaluaciones).toBe(348);
+  // usuarios de plataforma suma la 87: 348. El alta de cuenta y su historial de
+  // auditoría suman las 88 y 89: 356.
+  expect(evaluaciones).toBe(356);
     expect(
       desviaciones.length === 0
         ? ''

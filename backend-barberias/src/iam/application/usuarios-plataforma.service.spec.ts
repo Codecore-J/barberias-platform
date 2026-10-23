@@ -20,9 +20,23 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
   };
 
   const mockPrisma = {
-    usuario: { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    usuario: {
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
+    },
+    usuarioRol: { create: vi.fn() },
+    rol: { findUnique: vi.fn() },
+    barberia: { findUnique: vi.fn() },
+    auditoria: { findMany: vi.fn() },
     $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(mockPrisma)),
   };
+
+  const adminSede = { id: 'rol-admin-sede', nombre: 'ADMIN_BARBERIA', ambito: 'BARBERIA' };
+  const rolCliente = { id: 'rol-cliente', nombre: 'CLIENTE', ambito: 'GLOBAL' };
+  const rolBarbero = { id: 'rol-barbero', nombre: 'BARBERO', ambito: 'BARBERIA' };
 
   const mockAuditoria = { registrarEvento: vi.fn() };
 
@@ -233,6 +247,251 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
           'roles',
         ].sort(),
       );
+    });
+  });
+
+  describe('crearUsuario', () => {
+    const dtoBase = {
+      nombreCompleto: 'Ana Pérez',
+      correo: 'ana@test.com',
+      password: 'Secreta123',
+      telefono: '8090000000',
+      rolNombre: 'CLIENTE' as const,
+    };
+
+    const usuarioCreado = {
+      id: 'uuid-nuevo',
+      nombreCompleto: 'Ana Pérez',
+      correo: 'ana@test.com',
+      telefono: '8090000000',
+      estadoCuenta: 'ACTIVO',
+      creadoAt: new Date('2026-10-23T10:00:00.000Z'),
+    };
+
+    it('ROJO: correo ya registrado → 409 CORREO_YA_REGISTRADO y no crea nada', async () => {
+      mockPrisma.usuario.findFirst.mockResolvedValue({
+        correo: dtoBase.correo,
+        telefono: '8091111111',
+        cedula: null,
+      });
+
+      await expect(service.crearUsuario(dtoBase, global)).rejects.toMatchObject({
+        response: { codigo: 'CORREO_YA_REGISTRADO', statusCode: 409 },
+      });
+
+      expect(mockPrisma.usuario.create).not.toHaveBeenCalled();
+      expect(mockPrisma.usuarioRol.create).not.toHaveBeenCalled();
+    });
+
+    it('ROJO: cédula ya registrada → 409 CEDULA_YA_REGISTRADA', async () => {
+      mockPrisma.usuario.findFirst.mockResolvedValue({
+        correo: 'otra@test.com',
+        telefono: '8091111111',
+        cedula: '00112345678',
+      });
+
+      await expect(
+        service.crearUsuario({ ...dtoBase, cedula: '00112345678' }, global),
+      ).rejects.toMatchObject({
+        response: { codigo: 'CEDULA_YA_REGISTRADA', statusCode: 409 },
+      });
+    });
+
+    it('ROJO: teléfono ya registrado → 409 TELEFONO_YA_REGISTRADO', async () => {
+      mockPrisma.usuario.findFirst.mockResolvedValue({
+        correo: 'otra@test.com',
+        telefono: dtoBase.telefono,
+        cedula: null,
+      });
+
+      await expect(service.crearUsuario(dtoBase, global)).rejects.toMatchObject({
+        response: { codigo: 'TELEFONO_YA_REGISTRADO', statusCode: 409 },
+      });
+    });
+
+    it('ROJO: un rol de sede sin barbería → 422 BARBERIA_REQUERIDA', async () => {
+      mockPrisma.usuario.findFirst.mockResolvedValue(null);
+      mockPrisma.rol.findUnique.mockResolvedValue(rolBarbero);
+
+      await expect(
+        service.crearUsuario({ ...dtoBase, rolNombre: 'BARBERO' }, global),
+      ).rejects.toMatchObject({
+        response: { codigo: 'BARBERIA_REQUERIDA', statusCode: 422 },
+      });
+
+      expect(mockPrisma.usuario.create).not.toHaveBeenCalled();
+    });
+
+    it('ROJO: un rol GLOBAL con barbería → 422 BARBERIA_NO_APLICA', async () => {
+      mockPrisma.usuario.findFirst.mockResolvedValue(null);
+      mockPrisma.rol.findUnique.mockResolvedValue(rolCliente);
+
+      await expect(
+        service.crearUsuario({ ...dtoBase, barberiaId: 'uuid-barberia' }, global),
+      ).rejects.toMatchObject({
+        response: { codigo: 'BARBERIA_NO_APLICA', statusCode: 422 },
+      });
+    });
+
+    it('ROJO: barbería inexistente → 404', async () => {
+      mockPrisma.usuario.findFirst.mockResolvedValue(null);
+      mockPrisma.rol.findUnique.mockResolvedValue(adminSede);
+      mockPrisma.barberia.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.crearUsuario(
+          { ...dtoBase, rolNombre: 'ADMIN_BARBERIA', barberiaId: 'uuid-barberia' },
+          global,
+        ),
+      ).rejects.toThrowError(/Barbería no encontrada/);
+    });
+
+    it('VERDE: crea la cuenta ACTIVA, hashea, vincula el rol de sede y audita', async () => {
+      mockPrisma.usuario.findFirst.mockResolvedValue(null);
+      mockPrisma.rol.findUnique.mockResolvedValue(adminSede);
+      mockPrisma.barberia.findUnique.mockResolvedValue({ id: 'uuid-barberia' });
+      mockPrisma.usuario.create.mockResolvedValue(usuarioCreado);
+      mockPrisma.usuarioRol.create.mockResolvedValue({ id: 'uuid-usuario-rol' });
+
+      const resultado = await service.crearUsuario(
+        { ...dtoBase, rolNombre: 'ADMIN_BARBERIA', barberiaId: 'uuid-barberia' },
+        global,
+      );
+
+      const [argumento] = mockPrisma.usuario.create.mock.calls[0];
+      expect(argumento.data).toMatchObject({
+        nombreCompleto: 'Ana Pérez',
+        correo: 'ana@test.com',
+        telefono: '8090000000',
+        cedula: null,
+        estadoCuenta: 'ACTIVO',
+      });
+      // Mismo algoritmo y coste que /auth/register: bcrypt, 10 rondas.
+      expect(argumento.data.passwordHash).toMatch(/^\$2[aby]\$10\$/);
+      expect(argumento.data.passwordHash).not.toBe('Secreta123');
+
+      expect(mockPrisma.usuarioRol.create).toHaveBeenCalledWith({
+        data: { usuarioId: 'uuid-nuevo', rolId: 'rol-admin-sede', barberiaId: 'uuid-barberia' },
+      });
+
+      const [evento, tx] = mockAuditoria.registrarEvento.mock.calls[0];
+      expect(evento).toMatchObject({
+        usuarioId: 'uuid-global',
+        accion: 'USUARIO_CREADO',
+        entidad: 'usuarios',
+        entidadId: 'uuid-nuevo',
+        contexto: { rol: 'ADMIN_BARBERIA', barberiaId: 'uuid-barberia' },
+      });
+      // D28: el rastro viaja en la MISMA transacción que el alta.
+      expect(tx).toBeDefined();
+
+      expect(resultado).toEqual({
+        id: 'uuid-nuevo',
+        nombreCompleto: 'Ana Pérez',
+        correo: 'ana@test.com',
+        telefono: '8090000000',
+        estadoCuenta: 'ACTIVO',
+        fechaRegistro: usuarioCreado.creadoAt,
+        roles: ['ADMIN_BARBERIA'],
+      });
+      expect(resultado).not.toHaveProperty('passwordHash');
+    });
+
+    it('VERDE: un CLIENTE se crea sin barbería (rol GLOBAL)', async () => {
+      mockPrisma.usuario.findFirst.mockResolvedValue(null);
+      mockPrisma.rol.findUnique.mockResolvedValue(rolCliente);
+      mockPrisma.usuario.create.mockResolvedValue(usuarioCreado);
+      mockPrisma.usuarioRol.create.mockResolvedValue({ id: 'uuid-usuario-rol' });
+
+      await service.crearUsuario(dtoBase, global);
+
+      expect(mockPrisma.usuarioRol.create).toHaveBeenCalledWith({
+        data: { usuarioId: 'uuid-nuevo', rolId: 'rol-cliente', barberiaId: null },
+      });
+      const [evento] = mockAuditoria.registrarEvento.mock.calls[0];
+      expect(evento.contexto).toMatchObject({ rol: 'CLIENTE', barberiaId: null });
+    });
+
+    it('ROJO: la carrera con otro alta (P2002) también sale como 409', async () => {
+      mockPrisma.usuario.findFirst.mockResolvedValue(null);
+      mockPrisma.rol.findUnique.mockResolvedValue(rolCliente);
+      mockPrisma.usuario.create.mockRejectedValue({
+        code: 'P2002',
+        meta: { target: ['correo'] },
+      });
+
+      await expect(service.crearUsuario(dtoBase, global)).rejects.toMatchObject({
+        response: { codigo: 'CORREO_YA_REGISTRADO', statusCode: 409 },
+      });
+    });
+  });
+
+  describe('obtenerAuditoriaUsuario', () => {
+    it('ROJO: cuenta inexistente → 404', async () => {
+      mockPrisma.usuario.findUnique.mockResolvedValue(null);
+
+      await expect(service.obtenerAuditoriaUsuario('uuid-fantasma')).rejects.toThrowError(
+        /Usuario no encontrado/,
+      );
+      expect(mockPrisma.auditoria.findMany).not.toHaveBeenCalled();
+    });
+
+    it('VERDE: lee el historial de la cuenta en DESC y extrae motivo y actor', async () => {
+      mockPrisma.usuario.findUnique.mockResolvedValue({ id: 'uuid-objetivo' });
+      mockPrisma.auditoria.findMany.mockResolvedValue([
+        {
+          id: 'aud-2',
+          accion: 'CUENTA_SUSPENDIDA',
+          entidad: 'usuarios',
+          entidadId: 'uuid-objetivo',
+          barberiaId: null,
+          contexto: {
+            motivo: 'Abuso reiterado',
+            anterior: { estadoCuenta: 'ACTIVO', tokenVersion: 0 },
+            nuevo: { estadoCuenta: 'SUSPENDIDO', tokenVersion: 1 },
+            sesionesCerradas: true,
+          },
+          creadoAt: new Date('2026-10-20T10:00:00.000Z'),
+          usuario: {
+            id: 'uuid-global',
+            nombreCompleto: 'Global',
+            correo: 'global@plataforma.test',
+          },
+        },
+        {
+          id: 'aud-1',
+          accion: 'USUARIO_CREADO',
+          entidad: 'usuarios',
+          entidadId: 'uuid-objetivo',
+          barberiaId: null,
+          contexto: { rol: 'CLIENTE' },
+          creadoAt: new Date('2026-10-01T10:00:00.000Z'),
+          usuario: null,
+        },
+      ]);
+
+      const eventos = await service.obtenerAuditoriaUsuario('uuid-objetivo');
+
+      expect(mockPrisma.auditoria.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            entidadId: 'uuid-objetivo',
+            entidad: { in: ['usuarios', 'Usuario'] },
+          },
+          orderBy: { creadoAt: 'desc' },
+        }),
+      );
+
+      expect(eventos[0]).toMatchObject({
+        accion: 'CUENTA_SUSPENDIDA',
+        motivo: 'Abuso reiterado',
+        actor: { correo: 'global@plataforma.test' },
+      });
+      expect(eventos[0].contexto).toMatchObject({ sesionesCerradas: true });
+
+      // Un evento sin motivo ni actor no inventa datos.
+      expect(eventos[1].motivo).toBeNull();
+      expect(eventos[1].actor).toBeNull();
     });
   });
 });
