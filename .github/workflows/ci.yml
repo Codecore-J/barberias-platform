@@ -11,29 +11,19 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
-    # Las imagenes de servicio salen del Docker Hub oficial, NO del espejo
-    # publico de AWS ECR (`public.ecr.aws/docker/library/...`): ese registro
-    # limita las descargas anonimas y el pipeline moria en el arranque con
-    # "toomanyrequests: Data limit exceeded" antes de ejecutar una sola prueba.
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: barberias_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
+    # Variables de prueba compartidas por backend, clientes de Prisma y la API
+    # que consume Playwright. Son credenciales DUMMY del contenedor local de
+    # `docker-compose.yml`, nunca valores de staging o producción.
+    env:
+      APP_ENV: dev
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:password@localhost:5432/barberias_test
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: test_secret_key_for_ci_pipeline
+      FRONTEND_URL: http://localhost:4200
+      E2E_ADMIN_EMAIL: admin.playwright@barberias.test
 
     steps:
       - name: Checkout repository
@@ -41,11 +31,33 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Angular 22 pide Node >= 20.19; el proyecto ya fijaba 22 en CI.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
+
+      # Los servicios salen de `docker-compose.yml`, la misma definición que usa
+      # el equipo en local (postgres:15 + redis:7-alpine, con healthcheck de
+      # Postgres). `--wait` no devuelve el control hasta que están listos.
+      - name: Start PostgreSQL and Redis (docker compose)
+        run: |
+          docker compose up -d --wait
+
+          for intento in $(seq 1 30); do
+            if docker compose exec -T postgres pg_isready -U postgres -d barberias_test > /dev/null 2>&1 \
+              && docker compose exec -T redis redis-cli ping 2>/dev/null | grep -q PONG; then
+              echo "PostgreSQL y Redis listos."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Los servicios no quedaron listos a tiempo."
+          docker compose ps
+          docker compose logs
+          exit 1
 
       # Un unico `npm ci` en la raiz: el package.json raiz declara
       # "workspaces": ["backend-barberias", "frontend-barberias"], asi que
@@ -84,8 +96,6 @@ jobs:
 
       - name: Apply Prisma Migrations (Test DB)
         working-directory: ./backend-barberias
-        env:
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/barberias_test
         run: npx prisma migrate deploy
 
       # H37/H49/H50: `migrate diff` NO modela los CHECK, y el ledger podía tener
@@ -94,34 +104,92 @@ jobs:
       # migrada y falla si divergen. Solo lee.
       - name: Check DB Integrity (migrations + CHECK constraints)
         working-directory: ./backend-barberias
-        env:
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/barberias_test
         run: npm run check:integridad
 
       - name: Run Unit/Integration Tests (Backend)
         working-directory: ./backend-barberias
-        env:
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/barberias_test
-          REDIS_URL: redis://localhost:6379
-          JWT_SECRET: test_secret_key_for_ci_pipeline
         run: npm run test
 
       # El paso anterior invoca `npm run test` = `vitest run`, que carga
       # vitest.config.ts con include: ['**/*.spec.ts']. Ese glob exige terminar
       # en `.spec.ts`, asi que NO casa con los `*.e2e-spec.ts` (terminan en
-      # `-spec.ts`): los 11 ficheros / 67 tests e2e nunca se ejecutaban.
+      # `-spec.ts`): los e2e se ejecutan aquí, con su propio config.
       #
       # APP_ENV=dev no es opcional: test/setup.e2e.ts aborta con exit 1
       # si process.env.APP_ENV !== 'dev', por seguridad anti datos reales.
       - name: Run E2E Tests (Backend)
         working-directory: ./backend-barberias
-        env:
-          APP_ENV: dev
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/barberias_test
-          REDIS_URL: redis://localhost:6379
-          JWT_SECRET: test_secret_key_for_ci_pipeline
         run: npm run test:e2e
 
-      - name: Run Tests (Frontend)
+      # `seed` es idempotente (upserts) y deja el catálogo de roles/permisos que
+      # exige `admin:create` para poder crear el ADMINISTRADOR de Playwright.
+      - name: Seed Roles and Permissions
+        working-directory: ./backend-barberias
+        run: npm run seed
+
+      - name: Run Unit Tests (Frontend)
         working-directory: ./frontend-barberias
         run: npm run test -- --watch=false
+
+      - name: Install Playwright Browsers
+        working-directory: ./frontend-barberias
+        run: npx playwright install --with-deps chromium
+
+      # Se arranca con `setsid` para poder detener después todo el grupo de
+      # procesos (npm -> nest -> node) y no dejar el puerto 3000 ocupado.
+      # El job exporta DATABASE_URL, REDIS_URL, JWT_SECRET y APP_ENV.
+      - name: Start Backend API
+        working-directory: ./backend-barberias
+        run: |
+          setsid npm run start > backend-ci.log 2>&1 < /dev/null &
+          echo $! > /tmp/backend.pid
+
+          for intento in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/api/v1/health > /dev/null; then
+              echo "API lista en http://localhost:3000/api/v1"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "La API no respondió a tiempo."
+          cat backend-ci.log
+          exit 1
+
+      # La contraseña se genera en el runner y se enmascara: no vive en el YAML
+      # ni en el repositorio. `admin:create` solo la usa para calcular el hash.
+      - name: Create E2E Administrator
+        working-directory: ./backend-barberias
+        run: |
+          ADMIN_PASSWORD="$(openssl rand -hex 16)"
+          echo "::add-mask::$ADMIN_PASSWORD"
+          echo "E2E_ADMIN_PASSWORD=$ADMIN_PASSWORD" >> "$GITHUB_ENV"
+          ADMIN_EMAIL="$E2E_ADMIN_EMAIL" \
+          ADMIN_PHONE="8095550101" \
+          ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+          npm run admin:create
+
+      # `playwright.config.ts` levanta `ng serve` en 4200 (webServer) y espera a
+      # que responda antes de ejecutar. En CI no reutiliza servidores previos.
+      - name: Run Playwright UI E2E
+        working-directory: ./frontend-barberias
+        run: npx playwright test
+
+      - name: Upload Playwright Artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            frontend-barberias/test-results
+            backend-barberias/backend-ci.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop Backend API
+        if: always()
+        run: |
+          if [ -f /tmp/backend.pid ]; then
+            kill -- -"$(cat /tmp/backend.pid)" 2>/dev/null || true
+            rm -f /tmp/backend.pid
+          fi
