@@ -161,6 +161,9 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // ADMINISTRADOR de la plataforma (D05/D09/D48). La sede no entra por aquí: su
   // penalización es local y su vía es `clientes/:clienteId/reactivar`.
   'PATCH /plataforma/usuarios/:id/estado': [ROL_ADMINISTRADOR],
+  // Bandeja de usuarios de la plataforma: la lista completa de cuentas es del
+  // ADMINISTRADOR global, igual que cambiarles el estado. La sede no la ve.
+  'GET /plataforma/usuarios/': [ROL_ADMINISTRADOR],
 
   'GET /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
   'POST /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -432,10 +435,11 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // cliente (`POST .../mi-estado/desvincular`): 80. E3-12/2 sumó la invitación de
   // la sede y la unión del cliente: 83. H68 (2026-10-18) suma el historial de
   // cobros y la anulación de un pago: 85. E4-02 (2026-10-20) suma el alta de la
-  // lista de espera (Carril B): 86.
-  it('descubrir las 86 rutas del servidor y todas tienen decision', () => {
+  // lista de espera (Carril B): 86. El listado de usuarios de plataforma suma
+  // `GET /plataforma/usuarios`: 87.
+  it('descubrir las 87 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(86);
+    expect(claves.length).toBe(87);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -541,8 +545,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // del cliente (H72): 81 × 4 = 324. E3-12/2 suma la puerta de entrada
   // (regla 1.10) —la invitación de la sede y la unión del cliente—: 83 × 4 = 332.
   // H68 suma las dos del recibo de cobros (historial y anulación): 85 × 4 = 340.
-  // E4-02 suma el alta de la lista de espera: 86 × 4 = 344.
-  expect(evaluaciones).toBe(344);
+  // E4-02 suma el alta de la lista de espera: 86 × 4 = 344. El listado de
+  // usuarios de plataforma suma la 87: 348.
+  expect(evaluaciones).toBe(348);
     expect(
       desviaciones.length === 0
         ? ''

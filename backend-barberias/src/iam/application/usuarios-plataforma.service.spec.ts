@@ -20,7 +20,7 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
   };
 
   const mockPrisma = {
-    usuario: { findUnique: vi.fn(), update: vi.fn() },
+    usuario: { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
     $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(mockPrisma)),
   };
 
@@ -158,6 +158,81 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
         anterior: { estadoCuenta: 'SUSPENDIDO', tokenVersion: 1 },
         nuevo: { estadoCuenta: 'ACTIVO', tokenVersion: 1 },
       },
+    });
+  });
+
+  describe('obtenerTodosLosUsuarios', () => {
+    const fila = (extra: Record<string, unknown> = {}) => ({
+      id: 'uuid-1',
+      nombreCompleto: 'Ana Pérez',
+      correo: 'ana@test.com',
+      telefono: '8090000000',
+      estadoCuenta: 'ACTIVO',
+      creadoAt: new Date('2026-10-02T10:00:00.000Z'),
+      usuarioRoles: [{ rol: { nombre: 'ADMIN_BARBERIA' } }, { rol: { nombre: 'CLIENTE' } }],
+      ...extra,
+    });
+
+    it('VERDE: ordena por fecha de registro DESC y pide solo los campos del DTO', async () => {
+      mockPrisma.usuario.findMany.mockResolvedValue([fila()]);
+
+      await service.obtenerTodosLosUsuarios();
+
+      expect(mockPrisma.usuario.findMany).toHaveBeenCalledWith({
+        orderBy: { creadoAt: 'desc' },
+        select: {
+          id: true,
+          nombreCompleto: true,
+          correo: true,
+          telefono: true,
+          estadoCuenta: true,
+          creadoAt: true,
+          usuarioRoles: { select: { rol: { select: { nombre: true } } } },
+        },
+      });
+    });
+
+    it('VERDE: aplana usuario_roles a los nombres de rol, sin repetir', async () => {
+      mockPrisma.usuario.findMany.mockResolvedValue([
+        fila({
+          usuarioRoles: [
+            { rol: { nombre: 'ADMIN_BARBERIA' } },
+            { rol: { nombre: 'ADMIN_BARBERIA' } },
+            { rol: { nombre: 'CLIENTE' } },
+          ],
+        }),
+      ]);
+
+      const [usuario] = await service.obtenerTodosLosUsuarios();
+
+      expect(usuario.roles).toEqual(['ADMIN_BARBERIA', 'CLIENTE']);
+    });
+
+    it('VERDE: mapea creado_at a fechaRegistro y no cuela datos sensibles', async () => {
+      mockPrisma.usuario.findMany.mockResolvedValue([fila()]);
+
+      const [usuario] = await service.obtenerTodosLosUsuarios();
+
+      expect(usuario).toEqual({
+        id: 'uuid-1',
+        nombreCompleto: 'Ana Pérez',
+        correo: 'ana@test.com',
+        telefono: '8090000000',
+        estadoCuenta: 'ACTIVO',
+        fechaRegistro: new Date('2026-10-02T10:00:00.000Z'),
+        roles: ['ADMIN_BARBERIA', 'CLIENTE'],
+      });
+      expect(Object.keys(usuario).sort()).toEqual(
+        [
+          'id',
+          'nombreCompleto',
+          'correo',
+          'telefono',
+          'estadoCuenta',
+          'fechaRegistro',
+          'roles',
+        ].sort(),
+      );
     });
   });
 });

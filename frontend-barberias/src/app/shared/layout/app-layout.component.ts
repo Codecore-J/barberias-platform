@@ -167,6 +167,11 @@ import { NotificationService } from '../../core/services/notification.service';
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-user-plus mr-1.5 text-xs text-amber-400/80"></i>Vinculaciones
               </a>
+              <!-- Bandeja de cuentas de la plataforma (GET /plataforma/usuarios) -->
+              <a routerLink="/admin/usuarios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-id-card mr-1.5 text-xs text-amber-400/80"></i>Usuarios
+              </a>
               <!-- Dropdown Configuración -->
               <div class="relative" (mouseenter)="configDropdownOpen.set(true)" (mouseleave)="configDropdownOpen.set(false)">
                 <button class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all flex items-center gap-1">
@@ -357,6 +362,9 @@ import { NotificationService } from '../../core/services/notification.service';
                 </a>
                 <a routerLink="/admin/vinculaciones" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-user-plus text-amber-400"></i>Vinculaciones
+                </a>
+                <a routerLink="/admin/usuarios" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-id-card text-amber-400"></i>Usuarios
                 </a>
                 <div class="border-t border-zinc-800 my-1 mx-2"></div>
                 <p class="px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Configuración</p>

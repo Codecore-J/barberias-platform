@@ -5,6 +5,7 @@ import { errorDeConflicto, reglaDeNegocio } from '../../shared/errors/d40.errors
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import type { UsuarioAutenticado } from '../domain/jwt.interface.js';
 import type { CambiarEstadoCuentaDto } from './dto/cambiar-estado-cuenta.dto.js';
+import { UsuarioListResponseDto } from './dto/usuario-list-response.dto.js';
 
 /** Lo que devuelve el cambio de estado de una cuenta. */
 export interface CambioEstadoCuentaResultado {
@@ -121,5 +122,49 @@ export class UsuariosPlataformaService {
     });
 
     return resultado;
+  }
+
+  /**
+   * Lista todos los usuarios de la plataforma.
+   *
+   * Contrato:
+   * - `GET /plataforma/usuarios` → `200` con `UsuarioListResponseDto[]`.
+   * - Solo `ADMINISTRADOR` (D05), aprobado por `RolesGuard` + `@Roles`.
+   * - Orden: `fecha_registro DESC` (la columna se llama `creado_at`).
+   * - `roles` sale como un array de strings con los nombres, sin repetir: un
+   *   `ADMIN_BARBERIA` con tres sedes aparece una sola vez.
+   *
+   * El `select` es explícito a propósito: `password_hash`, `token_version` y
+   * `cedula` no se leen, así que no hay forma de que se cuelen en la respuesta.
+   */
+  async obtenerTodosLosUsuarios(): Promise<UsuarioListResponseDto[]> {
+    const usuarios = await this.prisma.usuario.findMany({
+      orderBy: { creadoAt: 'desc' },
+      select: {
+        id: true,
+        nombreCompleto: true,
+        correo: true,
+        telefono: true,
+        estadoCuenta: true,
+        creadoAt: true,
+        usuarioRoles: {
+          select: {
+            rol: {
+              select: { nombre: true },
+            },
+          },
+        },
+      },
+    });
+
+    return usuarios.map((usuario) => ({
+      id: usuario.id,
+      nombreCompleto: usuario.nombreCompleto,
+      correo: usuario.correo,
+      telefono: usuario.telefono,
+      estadoCuenta: usuario.estadoCuenta,
+      fechaRegistro: usuario.creadoAt,
+      roles: [...new Set(usuario.usuarioRoles.map(({ rol }) => rol.nombre))],
+    }));
   }
 }

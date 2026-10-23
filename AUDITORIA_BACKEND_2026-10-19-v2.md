@@ -113,9 +113,8 @@ El log de notificaciones existe: `NotificacionService` tiene `programarRecordato
 
 ### 3.1 JWT_SECRET — rotación en este entorno
 
-- `.env` en este entorno contiene:
-  - `JWT_SECRET="70cbc3db1097c09a39c5888a4f5bcd4b10524944834d6f82bd6bddebdcdc053643841db5b630437f2f2dec0d3159e07c"` (64 caracteres hex = 256 bits).
-- `src/iam/iam.config.ts` define `DEFAULT_DEV_JWT_SECRET` como el mismo valor de 64 hex y `getJwtSecret()` devuelve `secret || DEFAULT_DEV_JWT_SECRET` con fail-fast en producción contra valores triviales o cortos.
+- La variable `JWT_SECRET` del `.env` de este entorno es un valor de 64 caracteres hexadecimales (256 bits). Su contenido se **redacta** en este documento para no reintroducir el secreto en el repositorio.
+- `src/iam/iam.config.ts` define `DEFAULT_DEV_JWT_SECRET` con un fallback de 64 hex (distinto del valor del entorno) y `getJwtSecret()` devuelve `secret || DEFAULT_DEV_JWT_SECRET` con fail-fast en producción contra valores triviales o cortos.
 - `test/conf01-security.spec.ts` (11 tests) pasa: valida que en producción falle si falta o es trivial, y que en desarrollo/test use el fallback de 256 bits.
 - **Conclusión:** en este entorno el JWT_SECRET fue rotado a un valor fuerte de 256 bits. La brecha documentada como “JWT_SECRET expuesto y débil” **está cerrada en este entorno**. Queda pendiente confirmar que la misma rotación se aplicó en staging/producción (acción del dueño).
 
