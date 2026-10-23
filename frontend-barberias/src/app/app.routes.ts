@@ -121,6 +121,20 @@ export const routes: Routes = [
           ),
       },
       {
+        //
+        // Bandeja de usuarios de la plataforma (`GET /plataforma/usuarios`).
+        // Como la de vinculaciones, es TRANSVERSAL: el ADMINISTRADOR no
+        // necesita sede activa para ver las cuentas, así que no lleva
+        // `tenantGuard`. El backend la declara `@Roles('ADMINISTRADOR')`.
+        //
+        path: 'admin/usuarios',
+        canActivate: [authGuard, roleGuard(['ADMINISTRADOR'])],
+        loadComponent: () =>
+          import('./features/admin/usuarios/admin-usuarios.component').then(
+            (m) => m.AdminUsuariosComponent,
+          ),
+      },
+      {
         path: 'barbero/horarios',
         canActivate: [tenantGuard, roleGuard(['BARBERO'])],
         loadComponent: () =>
