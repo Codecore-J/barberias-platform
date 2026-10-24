@@ -53,6 +53,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
       .post(`${api}/auth/register`)
       .send({ nombreCompleto: correo, correo, telefono, password: 'Password1!' });
     expect([200, 201, 409]).toContain(r.status);
+    if (r.status === 500) console.error('ERROR 500 EN REGISTRO:', r.body);
 
     const l = await request(app.getHttpServer())
       .post(`${api}/auth/login`)
