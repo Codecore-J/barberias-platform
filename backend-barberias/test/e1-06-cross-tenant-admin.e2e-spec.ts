@@ -29,8 +29,8 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
     'admin.b.cta@test.com',
     'suelto.cta@test.com',
     'vinculado.cta@test.com',
-    // D16 corregido: el catálogo de A lo escribe su BARBERO, así que el control
-    // positivo de "editar SU servicio" necesita una sesión de barbero.
+    // D16: el catálogo de A lo opera su personal (BARBERO o ADMIN_BARBERIA), así
+    // que el control positivo de "editar SU servicio" usa una sesión de barbero.
     'barbero.a.cta@test.com',
   ];
 
@@ -252,9 +252,9 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       .set('Authorization', jwt(tokenAdminA))
       .set('x-barberia-id', barberiaA));
 
-    // D16 corregido: las escrituras del catálogo son del BARBERO, así que el
-    // intento de tocar B se hace con el barbero de A. El admin de A recibiría 403
-    // por rol y el caso no probaría aislamiento de tenant, que es su objetivo.
+    // D16: las escrituras del catálogo son del BARBERO y del ADMIN_BARBERIA de la
+    // sede, así que el intento de tocar B se hace con el barbero de A. El rol
+    // pasa; lo que debe frenarlo es el aislamiento de tenant, que es el objetivo.
     await registrar('PATCH /catalogo/servicios/:id', 'editar servicio de B', request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${servicioB}`)
       .set('Authorization', jwt(tokenBarberoA))
@@ -367,8 +367,8 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       .set('x-barberia-id', barberiaA));
 
 
-    // --- Control positivo: el BARBERO de A SÍ puede con lo suyo ---
-    // D16 corregido: el catálogo lo escribe el barbero, no el admin de la sede.
+    // --- Control positivo: el operador de A SÍ puede con lo suyo ---
+    // D16: el catálogo lo escribe el personal de la sede (aquí, su barbero).
     const controlPropio = await request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${servicioA}`)
       .set('Authorization', jwt(tokenBarberoA))

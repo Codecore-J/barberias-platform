@@ -21,7 +21,7 @@ import { AuthService } from '../../auth/auth.service';
             @if (puedeGestionar()) {
               Gestiona los servicios y combos de {{ tenantService.nombreBarberiaActiva() }}
             } @else {
-              Catálogo de {{ tenantService.nombreBarberiaActiva() }} · modo lectura (lo gestiona el barbero)
+              Catálogo de {{ tenantService.nombreBarberiaActiva() }} · modo lectura (lo gestiona el personal de la sede)
             }
           </p>
         </div>
@@ -273,12 +273,15 @@ export class AdminServiciosComponent implements OnInit {
   }
 
   /**
-   * D16 corregido: el catálogo lo escribe el BARBERO. El ADMIN_BARBERIA y el
-   * ADMINISTRADOR solo supervisan, así que no ven botones de alta, edición ni
-   * cambio de estado. Es una restricción de interfaz; la de verdad es la del
-   * backend (403 en POST/PATCH).
+   * D16 (Especificación §2/§3.1): el catálogo lo opera el personal de la sede,
+   * BARBERO o ADMIN_BARBERIA. El ADMINISTRADOR global solo supervisa, así que no
+   * ve botones de alta, edición ni cambio de estado. Es una restricción de
+   * interfaz; la de verdad es la del backend (403 en POST/PATCH).
    */
-  readonly puedeGestionar = computed(() => this.userRole() === 'BARBERO');
+  readonly puedeGestionar = computed(() => {
+    const rol = this.userRole();
+    return rol === 'BARBERO' || rol === 'ADMIN_BARBERIA';
+  });
 
   showForm = signal(false);
   isEditing = signal(false);

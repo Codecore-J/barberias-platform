@@ -58,7 +58,7 @@ import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
               </div>
 
               <div class="space-y-2">
-                <label for="telefono" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Teléfono</label>
+                <label for="telefono" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Teléfono <span class="text-zinc-600 font-normal lowercase">(obligatorio · 10 dígitos)</span></label>
                 <div class="relative group">
                   <i class="pi pi-phone absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
                   <input id="telefono" name="telefono" type="tel" inputmode="numeric" autocomplete="tel-national" formControlName="telefono" placeholder="8095550199"
@@ -70,10 +70,10 @@ import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
             </div>
 
             <div class="space-y-2">
-              <label for="cedula" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Cédula <span class="text-zinc-600 font-normal lowercase">(opcional)</span></label>
+              <label for="cedula" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Cédula <span class="text-zinc-600 font-normal lowercase">(opcional · 11 dígitos si la tienes)</span></label>
               <div class="relative group">
                 <i class="pi pi-id-card absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
-                <input id="cedula" name="cedula" type="text" inputmode="numeric" formControlName="cedula" placeholder="00112345678 (opcional)"
+                <input id="cedula" name="cedula" type="text" inputmode="numeric" formControlName="cedula" placeholder="Opcional: 11 dígitos"
                        maxlength="11" (input)="onCedulaInput($event)"
                        class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner"
                        [ngClass]="{'border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50': registerForm.get('cedula')?.invalid && registerForm.get('cedula')?.touched}">

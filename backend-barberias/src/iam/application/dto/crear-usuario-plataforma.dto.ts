@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsIn,
@@ -65,9 +66,16 @@ export class CrearUsuarioPlataformaDto {
   })
   telefono!: string;
 
-  /** Mismo formato que `/auth/register`: 11 dígitos, sin guiones. */
+  /**
+   * Mismo contrato que `/auth/register`: opcional, y 11 dígitos si se indica.
+   * El `@Transform` convierte `""` en `undefined` para no chocar con el índice
+   * único parcial de `cedula` ni fallar la validación de formato.
+   */
   @IsOptional()
   @IsString()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() || undefined : value,
+  )
   @Matches(/^\d{11}$/, {
     message: 'La cédula debe tener exactamente 11 dígitos numéricos.',
   })

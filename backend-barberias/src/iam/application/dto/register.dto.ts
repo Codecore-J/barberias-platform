@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsNotEmpty,
@@ -31,12 +32,20 @@ export class RegisterDto {
   telefono: string;
 
   /**
-   * La cédula es OPCIONAL. Cuando existe, debe ser única en la base de datos.
-   * La unicidad se garantiza a nivel de BD (índice parcial) y en el servicio.
-   * Regla: exactamente 11 dígitos numéricos, sin guiones.
+   * La cédula es OPCIONAL (esquema: `usuarios.cedula` NULLABLE con índice único
+   * parcial `WHERE cedula IS NOT NULL`). Un turista o residente extranjero sin
+   * cédula dominicana debe poder registrarse; si la escribe, son exactamente 11
+   * dígitos numéricos.
+   *
+   * El `@Transform` es imprescindible: el formulario manda `""` cuando el campo
+   * queda vacío, y sin normalizarlo a `undefined` fallaría `@Matches` y, peor,
+   * dos usuarios sin cédula colisionarían en el índice único al guardar `""`.
    */
   @IsOptional()
   @IsString()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() || undefined : value,
+  )
   @Matches(/^\d{11}$/, {
     message: 'La cédula debe tener exactamente 11 dígitos numéricos.',
   })

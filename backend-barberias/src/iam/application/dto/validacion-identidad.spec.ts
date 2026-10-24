@@ -3,6 +3,8 @@ import { validate } from 'class-validator';
 import { describe, expect, it } from 'vitest';
 import { RegisterDto } from './register.dto.js';
 import { CrearUsuarioPlataformaDto } from './crear-usuario-plataforma.dto.js';
+import { CreateBarberiaDto } from '../../../barberia/application/dto/create-barberia.dto.js';
+import { UpdateBarberiaDto } from '../../../barberia/application/dto/update-barberia.dto.js';
 
 /**
  * Formato de identidad: teléfono con 10 dígitos exactos y cédula con 11.
@@ -44,6 +46,24 @@ describe('validación de teléfono y cédula', () => {
       expect(errores).toHaveLength(0);
     });
 
+    // El formulario manda "" cuando el campo queda vacío. Sin el `@Transform`
+    // fallaría `@Matches` y, además, `""` chocaría contra el índice único parcial
+    // de `usuarios.cedula` al haber dos cuentas sin cédula.
+    it.each([
+      ['undefined', undefined],
+      ['null', null],
+      ['cadena vacía', ''],
+      ['solo espacios', '   '],
+    ])('acepta la cédula como %s', async (_caso, cedula) => {
+      const errores = await erroresDe(RegisterDto, { ...baseRegistro, cedula });
+      expect(errores).toHaveLength(0);
+    });
+
+    it('normaliza la cédula vacía a undefined (no guarda "")', () => {
+      const dto = plainToInstance(RegisterDto, { ...baseRegistro, cedula: '   ' });
+      expect(dto.cedula).toBeUndefined();
+    });
+
     it.each([
       ['809555019', '9 dígitos'],
       ['80955501990', '11 dígitos'],
@@ -60,9 +80,16 @@ describe('validación de teléfono y cédula', () => {
       ['0011234567', '10 dígitos'],
       ['001123456789', '12 dígitos'],
       ['001-12345678', 'guiones'],
+      ['ABC12345678', 'letras'],
     ])('rechaza la cédula %s (%s)', async (cedula) => {
       const errores = await erroresDe(RegisterDto, { ...baseRegistro, cedula });
       expect(erroresEn(errores, 'cedula').matches).toContain('11 dígitos');
+    });
+
+    it('rechaza el teléfono vacío aunque se mande como cadena', async () => {
+      const errores = await erroresDe(RegisterDto, { ...baseRegistro, telefono: '' });
+      const fallos = erroresEn(errores, 'telefono');
+      expect(fallos.matches ?? fallos.isNotEmpty).toBeDefined();
     });
   });
 
@@ -94,6 +121,51 @@ describe('validación de teléfono y cédula', () => {
         cedula: '12345678',
       });
       expect(erroresEn(errores, 'cedula').matches).toContain('11 dígitos');
+    });
+
+    it.each([undefined, null, '', '  '])(
+      'acepta la cédula opcional (%s) sin mandarla al índice único',
+      async (cedula) => {
+        const errores = await erroresDe(CrearUsuarioPlataformaDto, { ...baseAlta, cedula });
+        expect(errores).toHaveLength(0);
+        // `null` se queda en null y el resto de vacíos pasa a undefined: ninguno
+        // llega como "" a PostgreSQL.
+        expect(plainToInstance(CrearUsuarioPlataformaDto, { ...baseAlta, cedula }).cedula).toBeFalsy();
+      },
+    );
+
+    it('convierte la cédula vacía en undefined (nunca en cadena vacía)', async () => {
+      const dto = plainToInstance(CrearUsuarioPlataformaDto, { ...baseAlta, cedula: '' });
+      expect(dto.cedula).toBeUndefined();
+    });
+  });
+
+  describe('CreateBarberiaDto y UpdateBarberiaDto', () => {
+    const baseSede = {
+      nombre: 'Sede Centro',
+      telefono: '8095550100',
+      ubicacion: 'Av. Principal 1',
+    };
+
+    it('acepta el alta de sede con 10 dígitos', async () => {
+      expect(await erroresDe(CreateBarberiaDto, baseSede)).toHaveLength(0);
+    });
+
+    it.each(['809555010', '80955501001', '809-555-0100'])(
+      'rechaza el teléfono %s en el alta de sede',
+      async (telefono) => {
+        const errores = await erroresDe(CreateBarberiaDto, { ...baseSede, telefono });
+        expect(erroresEn(errores, 'telefono').matches).toContain('10 dígitos');
+      },
+    );
+
+    it('acepta la edición con 10 dígitos', async () => {
+      expect(await erroresDe(UpdateBarberiaDto, { telefono: '8095550101' })).toHaveLength(0);
+    });
+
+    it('rechaza la edición con 9 dígitos', async () => {
+      const errores = await erroresDe(UpdateBarberiaDto, { telefono: '809555010' });
+      expect(erroresEn(errores, 'telefono').matches).toContain('10 dígitos');
     });
   });
 });

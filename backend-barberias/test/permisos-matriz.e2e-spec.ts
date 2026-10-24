@@ -112,21 +112,22 @@ const CASOS: Caso[] = [
   { verbo: 'post', ruta: `/reservas/${randomUUID()}/inasistencia`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
 
   // ── catálogo ─────────────────────────────────────────────────────────────
-  // D16 corregido: lecturas para todos (vitrina pública incluida) y escrituras
-  // SOLO del BARBERO. El ADMINISTRADOR global tampoco escribe el catálogo: la
-  // jerarquía de `RolesGuard` reparte acceso, no propiedad del negocio.
+  // D16: lecturas para todos (vitrina pública incluida) y escrituras del
+  // BARBERO y del ADMIN_BARBERIA de la sede. El ADMINISTRADOR global NO escribe
+  // el catálogo aunque `RolesGuard` le conceda acceso por jerarquía: de ese 403
+  // se ocupa `OperadorBarberiaGuard`.
   { verbo: 'get', ruta: '/catalogo/servicios', permitidos: TODOS },
-  { verbo: 'post', ruta: '/catalogo/servicios', permitidos: ['BARBERO'], cuerpo: {} },
+  { verbo: 'post', ruta: '/catalogo/servicios', permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: {} },
   { verbo: 'get', ruta: `/catalogo/servicios/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR'] },
-  { verbo: 'patch', ruta: `/catalogo/servicios/${randomUUID()}`, permitidos: ['BARBERO'], cuerpo: {} },
-  { verbo: 'patch', ruta: `/catalogo/servicios/${randomUUID()}/desactivar`, permitidos: ['BARBERO'] },
-  { verbo: 'patch', ruta: `/catalogo/servicios/${randomUUID()}/reactivar`, permitidos: ['BARBERO'] },
+  { verbo: 'patch', ruta: `/catalogo/servicios/${randomUUID()}`, permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: {} },
+  { verbo: 'patch', ruta: `/catalogo/servicios/${randomUUID()}/desactivar`, permitidos: ['BARBERO', 'ADMIN_BARBERIA'] },
+  { verbo: 'patch', ruta: `/catalogo/servicios/${randomUUID()}/reactivar`, permitidos: ['BARBERO', 'ADMIN_BARBERIA'] },
   { verbo: 'get', ruta: '/catalogo/combos', permitidos: TODOS },
-  { verbo: 'post', ruta: '/catalogo/combos', permitidos: ['BARBERO'], cuerpo: {} },
+  { verbo: 'post', ruta: '/catalogo/combos', permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: {} },
   { verbo: 'get', ruta: `/catalogo/combos/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR'] },
-  { verbo: 'patch', ruta: `/catalogo/combos/${randomUUID()}`, permitidos: ['BARBERO'], cuerpo: {} },
-  { verbo: 'patch', ruta: `/catalogo/combos/${randomUUID()}/desactivar`, permitidos: ['BARBERO'] },
-  { verbo: 'patch', ruta: `/catalogo/combos/${randomUUID()}/reactivar`, permitidos: ['BARBERO'] },
+  { verbo: 'patch', ruta: `/catalogo/combos/${randomUUID()}`, permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: {} },
+  { verbo: 'patch', ruta: `/catalogo/combos/${randomUUID()}/desactivar`, permitidos: ['BARBERO', 'ADMIN_BARBERIA'] },
+  { verbo: 'patch', ruta: `/catalogo/combos/${randomUUID()}/reactivar`, permitidos: ['BARBERO', 'ADMIN_BARBERIA'] },
 
   // ── E3-12/3 · la salida del cliente por su cuenta ─────────────────────────
   // Va al FINAL a propósito: es la única ruta de la matriz que CAMBIA el

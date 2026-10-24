@@ -403,7 +403,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                     class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 disabled:opacity-60 transition-colors"
                     placeholder="8095550199"
                   />
-                  <p class="text-[11px] text-zinc-600 mt-1">10 dígitos, sin espacios ni guiones</p>
+                  <p class="text-[11px] text-zinc-600 mt-1">Obligatorio · 10 dígitos, sin espacios ni guiones</p>
                 </div>
 
                 <div>
@@ -421,7 +421,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                     class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 disabled:opacity-60 transition-colors"
                     placeholder="00112345678"
                   />
-                  <p class="text-[11px] text-zinc-600 mt-1">11 dígitos, sin guiones</p>
+                  <p class="text-[11px] text-zinc-600 mt-1">Opcional · 11 dígitos si la ingresas</p>
                 </div>
 
                 <div>
@@ -873,8 +873,9 @@ export class AdminUsuariosComponent implements OnInit {
     if (password.length < PASSWORD_MINIMO) return false;
     if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) return false;
 
-    // Y la cédula, 11 dígitos exactos (opcional).
-    const cedula = this.formCedula();
+    // Y la cédula, 11 dígitos exactos si se indica (es opcional: hay clientes
+    // extranjeros sin cédula dominicana).
+    const cedula = this.formCedula().trim();
     if (cedula && !/^\d{11}$/.test(cedula)) return false;
 
     if (this.rolRequiereSede() && !this.formBarberiaId()) return false;
@@ -991,7 +992,9 @@ export class AdminUsuariosComponent implements OnInit {
       return;
     }
 
-    const cedula = this.formCedula();
+    // Nunca se manda `""`: el backend lo transforma a `undefined`, pero el
+    // contrato del alta es omitir el campo cuando no hay cédula.
+    const cedula = this.formCedula().trim();
     const requiereSede = this.rolRequiereSede();
 
     const dto: CrearUsuarioRequest = {

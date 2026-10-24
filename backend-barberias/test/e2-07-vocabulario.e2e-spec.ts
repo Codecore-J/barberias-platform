@@ -489,21 +489,24 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
   });
 
   /**
-   * D16 corregido (2026-10-24): el catálogo lo escribe el BARBERO.
+   * D16 (Especificación §2/§3.1): el catálogo lo opera el personal de la sede.
    *
-   * El caso interesante es el ADMINISTRADOR global: `RolesGuard` le concede
-   * acceso transversal a cualquier `@Roles` por jerarquía (E1-04), así que sin
-   * `SoloBarberoGuard` habría seguido creando servicios. Aquí se comprueba el
-   * 403 real de los tres roles administrativos y el 201 del barbero.
+   *   BARBERO ✅ · ADMIN_BARBERIA ✅ · ADMINISTRADOR global ❌ · CLIENTE ❌
+   *
+   * El caso interesante sigue siendo el ADMINISTRADOR global: `RolesGuard` le
+   * concede acceso transversal a cualquier `@Roles` por jerarquía (E1-04), así
+   * que sin `OperadorBarberiaGuard` habría seguido creando servicios. Y el
+   * ADMIN_BARBERIA tiene que poder: en V1 es el operador de la barbería.
    */
-  it('RBAC invertido · solo el BARBERO escribe el catálogo, los admins leen', async () => {
+  it('RBAC del catálogo · BARBERO y ADMIN_BARBERIA escriben, global y cliente no', async () => {
     const nuevoServicio = {
       nombre: 'Servicio del barbero E2-07',
       precio: 25,
       duracionEstimada: 30,
     };
 
-    for (const rol of ['admin', 'global', 'cliente']) {
+    // Roles que NO operan el catálogo: 403 aunque la sede sea la suya.
+    for (const rol of ['global', 'cliente']) {
       const res = await request(app.getHttpServer())
         .post(`${api}/catalogo/servicios`)
         .set(headers(rol, datos.sede))
@@ -513,6 +516,15 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
       );
     }
 
+    // El operador de la sede (ADMIN_BARBERIA) crea sin problemas.
+    const creadoPorAdmin = await request(app.getHttpServer())
+      .post(`${api}/catalogo/servicios`)
+      .set(headers('admin', datos.sede))
+      .send({ ...nuevoServicio, nombre: 'Servicio del admin de sede E2-07' });
+    expect(creadoPorAdmin.status, JSON.stringify(creadoPorAdmin.body)).toBe(201);
+    expect(creadoPorAdmin.body.barberiaId).toBe(datos.sede);
+
+    // Y el BARBERO también.
     const creado = await request(app.getHttpServer())
       .post(`${api}/catalogo/servicios`)
       .set(headers('barbero', datos.sede))
@@ -520,7 +532,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     expect(creado.status, JSON.stringify(creado.body)).toBe(201);
     expect(creado.body.barberiaId).toBe(datos.sede);
 
-    // Administradores y barbero LEEN el mismo catálogo (supervisión).
+    // Todos LEEN el mismo catálogo (vitrina + supervisión).
     for (const rol of ['admin', 'global', 'cliente', 'barbero']) {
       const res = await request(app.getHttpServer())
         .get(`${api}/catalogo/servicios`)
@@ -528,18 +540,27 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
       expect(`${rol} GET → ${res.status}`).toBe(`${rol} GET → 200`);
     }
 
-    // Y la edición también es del barbero: el admin recibe 403 aunque sea su sede.
+    // Edita el ADMIN_BARBERIA (operador de la sede)...
     const adminEdita = await request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${creado.body.id}`)
       .set(headers('admin', datos.sede))
       .send({ precio: 30 });
-    expect(adminEdita.status).toBe(403);
+    expect(adminEdita.status, JSON.stringify(adminEdita.body)).toBe(200);
+    expect(Number(adminEdita.body.precio)).toBe(30);
 
+    // ...y edita el BARBERO.
     const barberoEdita = await request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${creado.body.id}`)
       .set(headers('barbero', datos.sede))
-      .send({ precio: 30 });
+      .send({ precio: 35 });
     expect(barberoEdita.status).toBe(200);
-    expect(Number(barberoEdita.body.precio)).toBe(30);
+    expect(Number(barberoEdita.body.precio)).toBe(35);
+
+    // El ADMINISTRADOR global no edita: 403 explícito.
+    const globalEdita = await request(app.getHttpServer())
+      .patch(`${api}/catalogo/servicios/${creado.body.id}`)
+      .set(headers('global', datos.sede))
+      .send({ precio: 50 });
+    expect(globalEdita.status).toBe(403);
   });
 });
