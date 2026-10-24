@@ -10,10 +10,10 @@ import { UnirseBarberiaDto } from '../application/dto/unirse-barberia.dto.js';
  * H72 · `GET /mi-estado/barberias` — las sedes PROPIAS del CLIENTE.
  *
  * La ruta es hermana de `GET /barberias/:barberiaId/mi-estado` (H54) y
- * deliberadamente NO cuelga de `/barberias`: esa ruta base ya significa «las
- * sedes donde YO SOY responsable» (`findAllByResponsable`, E1-07), y colgar ahí
- * un listado con otro criterio haría que la misma URL dijera dos cosas según el
- * rol. `mi-estado` es el espacio de lo que el usuario ve de SÍ MISMO, y aquí
+ * deliberadamente NO cuelga de `/barberias`: esa ruta base significa «las
+ * sedes donde YO opero —responsable o staff asignado por rol—»
+ * (`findAllByResponsable`, E1-07 + H-01), y colgar ahí un listado con otro
+ * criterio haría que la misma URL dijera dos cosas según el rol. `mi-estado` es el espacio de lo que el usuario ve de SÍ MISMO, y aquí
  * «mis barberías» es lo que su vínculo de cliente le da.
  *
  * Sin `:barberiaId`: no hay sede en el parámetro que acotar, así que el

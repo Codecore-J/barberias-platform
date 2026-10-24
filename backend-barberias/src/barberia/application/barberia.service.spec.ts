@@ -706,11 +706,25 @@ describe('BarberiaService', () => {
       (prisma.barberia.findMany as any).mockResolvedValue([mockSede]);
     });
 
-    it('filtra igual que antes, por responsableId', async () => {
+    it('filtra por responsableId O por su fila de rol de staff (H-01, OR de Prisma)', async () => {
       await service.findAllByResponsable('usuario-z', RESPONSABLE_ADMIN);
 
       expect(prisma.barberia.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { responsableId: 'usuario-z' } }),
+        expect.objectContaining({
+          where: {
+            OR: [
+              { responsableId: 'usuario-z' },
+              {
+                usuarioRoles: {
+                  some: {
+                    usuarioId: 'usuario-z',
+                    rol: { nombre: { in: ['ADMIN_BARBERIA', 'BARBERO'] } },
+                  },
+                },
+              },
+            ],
+          },
+        }),
       );
     });
 
@@ -775,6 +789,70 @@ describe('BarberiaService', () => {
       expect(result).toHaveLength(2);
       expect((result[0] as any).codigoAcceso).toBe('CODIGOZ');
       expect((result[1] as any).codigoAcceso).toBe('CODIGOW');
+    });
+
+    /**
+     * H-01 · staff creado desde `/admin/usuarios`: su sede vive solo en
+     * `usuario_roles.barberia_id`, sin ser `responsableId`. Antes recibía `[]`
+     * en `GET /barberias`, el hub no le ofrecía la sede y el `tenantGuard` del
+     * frontend le bloqueaba `/admin/agenda` y `/admin/personal`.
+     */
+    const STAFF_POR_ROL_ADMIN: UsuarioAutenticado = {
+      id: 'staff-nuevo',
+      correo: 'staff.nuevo@test.com',
+      roles: ['ADMIN_BARBERIA'],
+      rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: SEDE, ambito: 'BARBERIA' }],
+    };
+
+    it('H-01: el ADMIN_BARBERIA asignado por rol recibe su sede aunque no sea responsable', async () => {
+      // La sede pertenece a OTRO responsable: solo está en su usuario_roles.
+      const sedeAsignada = { ...mockSede, responsableId: 'dueno-original' };
+      (prisma.barberia.findMany as any).mockResolvedValue([sedeAsignada]);
+
+      const result = await service.findAllByResponsable('staff-nuevo', STAFF_POR_ROL_ADMIN);
+
+      // Una sola consulta `findMany` con OR: sin duplicados y sin el antiguo
+      // `where: { responsableId }` suelto.
+      expect(prisma.barberia.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.barberia.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            OR: [
+              { responsableId: 'staff-nuevo' },
+              {
+                usuarioRoles: {
+                  some: {
+                    usuarioId: 'staff-nuevo',
+                    rol: { nombre: { in: ['ADMIN_BARBERIA', 'BARBERO'] } },
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe(SEDE);
+      // Es ADMIN_BARBERIA de ESA sede (E1-05): la puerta de entrada sí se entrega.
+      expect((result[0] as any).codigoAcceso).toBe('CODIGOZ');
+    });
+
+    it('H-01: el BARBERO asignado por rol recibe su sede SIN codigoAcceso', async () => {
+      const sedeAsignada = { ...mockSede, responsableId: 'dueno-original' };
+      (prisma.barberia.findMany as any).mockResolvedValue([sedeAsignada]);
+
+      const result = await service.findAllByResponsable('barbero-nuevo', {
+        id: 'barbero-nuevo',
+        correo: 'barbero.nuevo@test.com',
+        roles: ['BARBERO'],
+        rolesDetallados: [{ nombre: 'BARBERO', barberiaId: SEDE, ambito: 'BARBERIA' }],
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe(SEDE);
+      // E1-07: el código no es del barbero, solo lo ve el ADMIN_BARBERIA.
+      expect((result[0] as any).codigoAcceso).toBeUndefined();
+      expect(JSON.stringify(result)).not.toContain('CODIGOZ');
     });
   });
 

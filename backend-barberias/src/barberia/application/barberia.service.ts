@@ -366,13 +366,24 @@ export class BarberiaService {
     return personal.map(({ correo, telefono, ...resto }) => resto);
   }
 
-  // ── LISTAR (propias del responsable) ──────────────────────────────────────
+  // ── LISTAR (del responsable y del staff asignado por rol) ─────────────────
 
   /**
-   * E1-07. Lista las sedes donde el usuario es responsable.
+   * E1-07. Lista las sedes del usuario: las que RESPONSABILIZA y las que le
+   * pertenecen por fila `usuario_roles` (H-01).
    *
-   * El filtro `responsableId` ya impide sacar barberías ajenas, pero eso no es
-   * lo mismo que la regla del código de acceso: quien figura como responsable
+   * H-01: filtrar solo por `responsableId` dejaba fuera al staff que la
+   * plataforma creó desde `/admin/usuarios` con `usuario_roles.barberia_id`
+   * (ADMIN_BARBERIA o BARBERO de la sede sin ser su `responsableId`). Ese
+   * usuario recibía `[]` en el hub, no podía activar la sede y el
+   * `tenantGuard` del frontend le bloqueaba `/admin/agenda` y el resto de las
+   * vistas de staff, aunque el backend le reconocía el rol (E1-06 ya aceptaba
+   * activar por rol). El `OR` de Prisma devuelve cada sede UNA sola vez —sin
+   * duplicados— aunque el usuario sea a la vez responsable y staff de la misma
+   * barbería, porque es una única consulta `findMany`.
+   *
+   * El filtro por `responsableId` ya impide sacar barberías ajenas, pero eso no
+   * es lo mismo que la regla del código de acceso: quien figura como responsable
    * puede no tener su fila `usuario_roles` (la corrupción que ya hubo en E1-04),
    * y entonces recibiría `codigoAcceso` y `enlaceUnico` sin ser administrador de
    * nada. Por eso cada sede de la lista pasa por el MISMO criterio que usa
@@ -408,8 +419,22 @@ export class BarberiaService {
       return results;
     }
 
+    // H-01 · OR sin duplicados: una sola consulta trae las sedes donde es
+    // responsable Y las que tiene asignadas por rol de staff en usuario_roles.
     const barberias = await this.prisma.barberia.findMany({
-      where: { responsableId },
+      where: {
+        OR: [
+          { responsableId },
+          {
+            usuarioRoles: {
+              some: {
+                usuarioId: usuario.id,
+                rol: { nombre: { in: ['ADMIN_BARBERIA', 'BARBERO'] } },
+              },
+            },
+          },
+        ],
+      },
       orderBy: { nombre: 'asc' },
     });
     return barberias.map((b) =>
