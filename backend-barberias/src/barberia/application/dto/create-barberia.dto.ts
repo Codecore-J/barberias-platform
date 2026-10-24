@@ -4,6 +4,7 @@ import {
   MinLength,
   MaxLength,
   IsNotEmpty,
+  Matches,
 } from 'class-validator';
 
 export class CreateBarberiaDto {
@@ -18,9 +19,12 @@ export class CreateBarberiaDto {
   @MaxLength(1000)
   descripcion?: string;
 
+  /** Formato local: exactamente 10 dígitos numéricos, sin separadores. */
   @IsString()
   @IsNotEmpty()
-  @MaxLength(30)
+  @Matches(/^\d{10}$/, {
+    message: 'El teléfono debe tener exactamente 10 dígitos numéricos.',
+  })
   telefono: string;
 
   @IsString()

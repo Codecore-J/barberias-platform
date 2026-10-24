@@ -24,7 +24,15 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
   let app: INestApplication;
   let prisma: PrismaService;
 
-  const correos = ['admin.a.cta@test.com', 'admin.b.cta@test.com', 'suelto.cta@test.com', 'vinculado.cta@test.com'];
+  const correos = [
+    'admin.a.cta@test.com',
+    'admin.b.cta@test.com',
+    'suelto.cta@test.com',
+    'vinculado.cta@test.com',
+    // D16 corregido: el catálogo de A lo escribe su BARBERO, así que el control
+    // positivo de "editar SU servicio" necesita una sesión de barbero.
+    'barbero.a.cta@test.com',
+  ];
 
   let barberiaA: string;
   let barberiaB: string;
@@ -36,6 +44,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
   let tokenAdminA: string;
   let tokenSuelto: string;
   let tokenVinculado: string;
+  let tokenBarberoA: string;
 
   const api = '/api/v1';
 
@@ -65,7 +74,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
     await prisma.barberia.deleteMany({ where: { nombre: { contains: 'E1-06-CTA' } } });
     await prisma.usuario.deleteMany({ where: { correo: { in: correos } } });
 
-    const [rolAdmin, rolCliente] = await Promise.all([
+    const [rolAdmin, rolCliente, rolBarbero] = await Promise.all([
       prisma.rol.upsert({
         where: { nombre: 'ADMIN_BARBERIA' },
         update: {},
@@ -82,12 +91,18 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
         // fichero que corre en una BD limpia decide el ambito para los demas.
         create: { nombre: 'CLIENTE', ambito: 'GLOBAL' },
       }),
+      prisma.rol.upsert({
+        where: { nombre: 'BARBERO' },
+        update: {},
+        create: { nombre: 'BARBERO', ambito: 'BARBERIA' },
+      }),
     ]);
 
     const adminA = await crearUsuario('admin.a.cta@test.com', 'Admin A CTA', '9993000001');
     const adminB = await crearUsuario('admin.b.cta@test.com', 'Admin B CTA', '9993000002');
     const suelto = await crearUsuario('suelto.cta@test.com', 'Cliente Suelto', '9993000003');
     const vinculado = await crearUsuario('vinculado.cta@test.com', 'Cliente Vinculado', '9993000004');
+    const barberoA = await crearUsuario('barbero.a.cta@test.com', 'Barbero A CTA', '9993000005');
 
     barberiaA = (
       await prisma.barberia.create({
@@ -124,6 +139,8 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
         // Igual de GLOBAL y sin barberia_id en usuario_roles, pero CON fila ACTIVA
         // en cliente_barberias para A: es el control positivo de la regla.
         { usuarioId: vinculado.id, rolId: rolCliente.id, barberiaId: null },
+        // El barbero que SÍ puede escribir el catálogo de A (D16).
+        { usuarioId: barberoA.id, rolId: rolBarbero.id, barberiaId: barberiaA },
       ],
     });
 
@@ -202,6 +219,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
     tokenAdminA = await login('admin.a.cta@test.com');
     tokenSuelto = await login('suelto.cta@test.com');
     tokenVinculado = await login('vinculado.cta@test.com');
+    tokenBarberoA = await login('barbero.a.cta@test.com');
   }, 60000);
 
   afterAll(async () => {
@@ -234,15 +252,18 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       .set('Authorization', jwt(tokenAdminA))
       .set('x-barberia-id', barberiaA));
 
+    // D16 corregido: las escrituras del catálogo son del BARBERO, así que el
+    // intento de tocar B se hace con el barbero de A. El admin de A recibiría 403
+    // por rol y el caso no probaría aislamiento de tenant, que es su objetivo.
     await registrar('PATCH /catalogo/servicios/:id', 'editar servicio de B', request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${servicioB}`)
-      .set('Authorization', jwt(tokenAdminA))
+      .set('Authorization', jwt(tokenBarberoA))
       .set('x-barberia-id', barberiaA)
       .send({ nombre: 'SECUESTRADO-POR-A' }));
 
     await registrar('PATCH /catalogo/servicios/:id/desactivar', 'desactivar servicio de B', request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${servicioB}/desactivar`)
-      .set('Authorization', jwt(tokenAdminA))
+      .set('Authorization', jwt(tokenBarberoA))
       .set('x-barberia-id', barberiaA));
 
     await registrar('GET /catalogo/combos/:id', 'leer combo de B', request(app.getHttpServer())
@@ -252,13 +273,13 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
 
     await registrar('PATCH /catalogo/combos/:id', 'editar combo de B', request(app.getHttpServer())
       .patch(`${api}/catalogo/combos/${comboB}`)
-      .set('Authorization', jwt(tokenAdminA))
+      .set('Authorization', jwt(tokenBarberoA))
       .set('x-barberia-id', barberiaA)
       .send({ nombre: 'SECUESTRADO-POR-A' }));
 
     await registrar('PATCH /catalogo/combos/:id/desactivar', 'desactivar combo de B', request(app.getHttpServer())
       .patch(`${api}/catalogo/combos/${comboB}/desactivar`)
-      .set('Authorization', jwt(tokenAdminA))
+      .set('Authorization', jwt(tokenBarberoA))
       .set('x-barberia-id', barberiaA));
 
     await registrar('GET /catalogo/servicios', 'listar el catálogo de B', request(app.getHttpServer())
@@ -346,12 +367,13 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       .set('x-barberia-id', barberiaA));
 
 
-    // --- Control positivo: el mismo admin SÍ puede con lo suyo ---
+    // --- Control positivo: el BARBERO de A SÍ puede con lo suyo ---
+    // D16 corregido: el catálogo lo escribe el barbero, no el admin de la sede.
     const controlPropio = await request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${servicioA}`)
-      .set('Authorization', jwt(tokenAdminA))
+      .set('Authorization', jwt(tokenBarberoA))
       .set('x-barberia-id', barberiaA)
-      .send({ nombre: 'Corte E1-06-CTA de A (editado por su admin)' });
+      .send({ nombre: 'Corte E1-06-CTA de A (editado por su barbero)' });
 
     // CATÁLOGO PRIVADO HASTA EL VÍNCULO (decision del dueno, E1-06 paso 5).
     // Un CLIENTE sin fila ACTIVA en cliente_barberias para esa sede recibe 403
@@ -391,7 +413,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
     console.log(
       '\n| ruta | intento | estado |\n|---|---|---|\n' +
         casos.map((c) => `| \`${c.ruta}\` | ${c.intento} | ${c.estado} |`).join('\n') +
-        `\n| \`PATCH /catalogo/servicios/:id\` | *CONTROL* el admin edita SU servicio | ${controlPropio.status} |` +
+        `\n| \`PATCH /catalogo/servicios/:id\` | *CONTROL* el barbero edita SU servicio | ${controlPropio.status} |` +
         `\n| \`GET /barberias/:id/horarios (ruta A, cabecera B)\` | *CONTROL* lee A (diaSemana 1), no B (7) | ${rutaAconCabeceraB.status} |` +
         `\n| \`GET /catalogo/servicios\` | cliente SIN vinculo lee el catalogo de A | ${catalogoSuelto.status} |` +
         `\n| \`GET /catalogo/combos\` | cliente SIN vinculo lee los combos de A | ${combosSuelto.status} |` +
@@ -402,7 +424,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
 
     // El control positivo tiene que pasar: si esto no es 2xx, el 403/404 de los
     // casos ajenos no estaría probando aislamiento sino una app que deniega todo.
-    expect(controlPropio.status, 'control positivo: el admin edita su propio servicio').toBe(200);
+    expect(controlPropio.status, 'control positivo: el barbero edita el servicio de su sede').toBe(200);
 
     // La regla de vinculo: sin fila ACTIVA, 403 en servicios y combos.
     expect(catalogoSuelto.status, 'cliente sin vinculo: /catalogo/servicios').toBe(403);

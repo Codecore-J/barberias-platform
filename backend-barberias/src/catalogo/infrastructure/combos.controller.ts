@@ -16,16 +16,19 @@ import { UpdateComboDto } from '../application/dto/update-combo.dto.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import { VinculoBarberiaGuard } from '../../iam/infrastructure/vinculo-barberia.guard.js';
+import { SoloBarberoGuard } from './solo-barbero.guard.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 /**
  * Catálogo de combos de una barbería (E1-05).
  *
- * Misma política que los servicios: D16 deja al BARBERO fuera de la escritura y
- * la lectura se abre al ADMINISTRADOR global.
+ * Misma política que los servicios (D16 corregido): el BARBERO gestiona los
+ * combos de su sede y los administradores solo los consultan. El combo se arma
+ * con servicios, así que dejarlo en manos del admin obligaría al barbero a
+ * pedir permiso para vender su propio trabajo.
  *
- * E1-06 (paso 5): las dos lecturas exigen `VinculoBarberiaGuard`, igual que en
+ * E1-06 (paso 5): TODAS las rutas exigen `VinculoBarberiaGuard`, igual que en
  * los servicios. El fallo era el mismo: el rol CLIENTE tiene `barberia_id` nulo
  * y `alcanceCumple` lo trata como comodín, así que sin vínculo cualquier cliente
  * autenticado leía los precios de cualquier sede con solo la cabecera.
@@ -35,7 +38,8 @@ export class CombosController {
   constructor(private readonly combosService: CombosService) {}
 
   @Post()
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO')
+  @UseGuards(SoloBarberoGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.CREATED)
   create(
     @CurrentBarberiaId() barberiaId: string,
@@ -65,7 +69,8 @@ export class CombosController {
   }
 
   @Patch(':id')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO')
+  @UseGuards(SoloBarberoGuard, VinculoBarberiaGuard)
   update(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -80,7 +85,8 @@ export class CombosController {
    * desbloquea la regla `SERVICIO_EN_COMBO_ACTIVO` de sus servicios.
    */
   @Patch(':id/desactivar')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO')
+  @UseGuards(SoloBarberoGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.OK)
   desactivar(
     @CurrentBarberiaId() barberiaId: string,
@@ -91,7 +97,8 @@ export class CombosController {
 
   /** PATCH /catalogo/combos/:id/reactivar · E2-07 (D29) */
   @Patch(':id/reactivar')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO')
+  @UseGuards(SoloBarberoGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.OK)
   reactivar(
     @CurrentBarberiaId() barberiaId: string,

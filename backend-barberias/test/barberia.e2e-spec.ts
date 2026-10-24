@@ -107,7 +107,7 @@ describe('Barberias Endpoints (e2e)', () => {
         .send({
           nombre: 'Barberia E2E Test',
           descripcion: 'Barberia de prueba',
-          telefono: '111222333',
+          telefono: '1112223333',
           ubicacion: 'Centro',
         });
 

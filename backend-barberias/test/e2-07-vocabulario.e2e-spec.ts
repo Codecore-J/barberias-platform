@@ -97,13 +97,20 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     const sufijo = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     datos.fecha = fecha(1);
 
-    await registrarYLogin('admin', `admin.e207-${sufijo}@test.com`, `701${sufijo.slice(-6).padEnd(6, '0')}01`);
-    await registrarYLogin('cliente', `cliente.e207-${sufijo}@test.com`, `701${sufijo.slice(-6).padEnd(6, '0')}02`);
-    await registrarYLogin('global', `global.e207-${sufijo}@test.com`, `701${sufijo.slice(-6).padEnd(6, '0')}03`);
+    // D16: el catálogo lo escribe el BARBERO, así que la suite necesita uno.
+    // Los teléfonos son 10 dígitos exactos porque `RegisterDto` ahora los valida.
+    const serie = String(Math.floor(Math.random() * 9000) + 1000);
+    const tel = (n: number) => `809${serie}${String(n).padStart(3, '0')}`;
+
+    await registrarYLogin('admin', `admin.e207-${sufijo}@test.com`, tel(1));
+    await registrarYLogin('cliente', `cliente.e207-${sufijo}@test.com`, tel(2));
+    await registrarYLogin('global', `global.e207-${sufijo}@test.com`, tel(3));
+    await registrarYLogin('barbero', `barbero.e207-${sufijo}@test.com`, tel(4));
 
     const admin = await prisma.usuario.findUniqueOrThrow({ where: { correo: correos.admin }, select: { id: true } });
     const cliente = await prisma.usuario.findUniqueOrThrow({ where: { correo: correos.cliente }, select: { id: true } });
     const global = await prisma.usuario.findUniqueOrThrow({ where: { correo: correos.global }, select: { id: true } });
+    const barbero = await prisma.usuario.findUniqueOrThrow({ where: { correo: correos.barbero }, select: { id: true } });
 
     const sede = await prisma.barberia.create({
       data: {
@@ -134,12 +141,20 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     const rolAdmin = await prisma.rol.findUniqueOrThrow({ where: { nombre: 'ADMIN_BARBERIA' }, select: { id: true } });
     const rolCliente = await prisma.rol.findUniqueOrThrow({ where: { nombre: 'CLIENTE' }, select: { id: true } });
     const rolGlobal = await prisma.rol.findUniqueOrThrow({ where: { nombre: 'ADMINISTRADOR' }, select: { id: true } });
+    const rolBarbero = await prisma.rol.upsert({
+      where: { nombre: 'BARBERO' },
+      update: {},
+      create: { nombre: 'BARBERO', ambito: 'BARBERIA' },
+      select: { id: true },
+    });
 
     await prisma.usuarioRol.createMany({
       data: [
         { usuarioId: admin.id, rolId: rolAdmin.id, barberiaId: sede.id },
         { usuarioId: cliente.id, rolId: rolCliente.id, barberiaId: null },
         { usuarioId: global.id, rolId: rolGlobal.id, barberiaId: null },
+        // D16 corregido: el barbero gestiona el catálogo de su sede.
+        { usuarioId: barbero.id, rolId: rolBarbero.id, barberiaId: sede.id },
       ],
       skipDuplicates: true,
     });
@@ -256,9 +271,10 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
   }, 120_000);
 
   it('REGLA 3 · desactivar un servicio sin reservas abiertas y volver a activarlo', async () => {
+    // D16: escribe el BARBERO de la sede, no su administrador.
     const desactivar = await request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${datos.servicioLibre}/desactivar`)
-      .set(headers('admin', datos.sede));
+      .set(headers('barbero', datos.sede));
     expect(desactivar.status).toBe(200);
 
     const enBd = await prisma.servicio.findUniqueOrThrow({
@@ -283,7 +299,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
 
     const reactivar = await request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${datos.servicioLibre}/reactivar`)
-      .set(headers('admin', datos.sede));
+      .set(headers('barbero', datos.sede));
     expect(reactivar.status).toBe(200);
 
     const trasReactivar = await prisma.servicio.findUniqueOrThrow({
@@ -296,7 +312,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
   it('REGLA 1 · 422 SERVICIO_EN_USO con una reserva PENDIENTE que usa el servicio', async () => {
     const res = await request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${datos.servicioEnUso}/desactivar`)
-      .set(headers('admin', datos.sede));
+      .set(headers('barbero', datos.sede));
 
     expect(res.status).toBe(422);
     expect(res.body.codigo).toBe('SERVICIO_EN_USO');
@@ -312,7 +328,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
   it('REGLA 2 · 422 SERVICIO_EN_COMBO_ACTIVO, y el combo primero desbloquea', async () => {
     const bloqueado = await request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${datos.servicioEnCombo}/desactivar`)
-      .set(headers('admin', datos.sede));
+      .set(headers('barbero', datos.sede));
 
     expect(bloqueado.status).toBe(422);
     expect(bloqueado.body.codigo).toBe('SERVICIO_EN_COMBO_ACTIVO');
@@ -329,12 +345,12 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     // Se resuelve el combo (el orden que pide el backlog) y entonces sí.
     const combo = await request(app.getHttpServer())
       .patch(`${api}/catalogo/combos/${datos.combo}/desactivar`)
-      .set(headers('admin', datos.sede));
+      .set(headers('barbero', datos.sede));
     expect(combo.status).toBe(200);
 
     const despues = await request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${datos.servicioEnCombo}/desactivar`)
-      .set(headers('admin', datos.sede));
+      .set(headers('barbero', datos.sede));
     expect(despues.status).toBe(200);
 
     const enBd = await prisma.servicio.findUniqueOrThrow({
@@ -420,7 +436,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     // Desactivar un servicio para que quede INACTIVO
     const desactivar = await request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${datos.servicioLibre}/desactivar`)
-      .set(headers('admin', datos.sede));
+      .set(headers('barbero', datos.sede));
     expect(desactivar.status).toBe(200);
 
     // Cliente solo ve ACTIVOS
@@ -440,7 +456,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     // Reactivar para dejar estado limpio
     const reactivar = await request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${datos.servicioLibre}/reactivar`)
-      .set(headers('admin', datos.sede));
+      .set(headers('barbero', datos.sede));
     expect(reactivar.status).toBe(200);
   });
 
@@ -448,7 +464,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     // Desactivar combo
     const desactivarCombo = await request(app.getHttpServer())
       .patch(`${api}/catalogo/combos/${datos.combo}/desactivar`)
-      .set(headers('admin', datos.sede));
+      .set(headers('barbero', datos.sede));
     expect(desactivarCombo.status).toBe(200);
 
     // Cliente no ve inactivo
@@ -468,7 +484,62 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     // Reactivar combo
     const reactivarCombo = await request(app.getHttpServer())
       .patch(`${api}/catalogo/combos/${datos.combo}/reactivar`)
-      .set(headers('admin', datos.sede));
+      .set(headers('barbero', datos.sede));
     expect(reactivarCombo.status).toBe(200);
+  });
+
+  /**
+   * D16 corregido (2026-10-24): el catálogo lo escribe el BARBERO.
+   *
+   * El caso interesante es el ADMINISTRADOR global: `RolesGuard` le concede
+   * acceso transversal a cualquier `@Roles` por jerarquía (E1-04), así que sin
+   * `SoloBarberoGuard` habría seguido creando servicios. Aquí se comprueba el
+   * 403 real de los tres roles administrativos y el 201 del barbero.
+   */
+  it('RBAC invertido · solo el BARBERO escribe el catálogo, los admins leen', async () => {
+    const nuevoServicio = {
+      nombre: 'Servicio del barbero E2-07',
+      precio: 25,
+      duracionEstimada: 30,
+    };
+
+    for (const rol of ['admin', 'global', 'cliente']) {
+      const res = await request(app.getHttpServer())
+        .post(`${api}/catalogo/servicios`)
+        .set(headers(rol, datos.sede))
+        .send(nuevoServicio);
+      expect(`${rol} POST /catalogo/servicios → ${res.status}`).toBe(
+        `${rol} POST /catalogo/servicios → 403`,
+      );
+    }
+
+    const creado = await request(app.getHttpServer())
+      .post(`${api}/catalogo/servicios`)
+      .set(headers('barbero', datos.sede))
+      .send(nuevoServicio);
+    expect(creado.status, JSON.stringify(creado.body)).toBe(201);
+    expect(creado.body.barberiaId).toBe(datos.sede);
+
+    // Administradores y barbero LEEN el mismo catálogo (supervisión).
+    for (const rol of ['admin', 'global', 'cliente', 'barbero']) {
+      const res = await request(app.getHttpServer())
+        .get(`${api}/catalogo/servicios`)
+        .set(headers(rol, datos.sede));
+      expect(`${rol} GET → ${res.status}`).toBe(`${rol} GET → 200`);
+    }
+
+    // Y la edición también es del barbero: el admin recibe 403 aunque sea su sede.
+    const adminEdita = await request(app.getHttpServer())
+      .patch(`${api}/catalogo/servicios/${creado.body.id}`)
+      .set(headers('admin', datos.sede))
+      .send({ precio: 30 });
+    expect(adminEdita.status).toBe(403);
+
+    const barberoEdita = await request(app.getHttpServer())
+      .patch(`${api}/catalogo/servicios/${creado.body.id}`)
+      .set(headers('barbero', datos.sede))
+      .send({ precio: 30 });
+    expect(barberoEdita.status).toBe(200);
+    expect(Number(barberoEdita.body.precio)).toBe(30);
   });
 });

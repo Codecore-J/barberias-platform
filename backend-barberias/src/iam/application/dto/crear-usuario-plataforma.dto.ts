@@ -57,15 +57,20 @@ export class CrearUsuarioPlataformaDto {
   })
   password!: string;
 
+  /** Mismo formato que `/auth/register`: 10 dígitos, sin separadores. */
   @IsString()
   @IsNotEmpty({ message: 'El teléfono es obligatorio.' })
-  @MaxLength(30, { message: 'El teléfono no puede superar los 30 caracteres.' })
+  @Matches(/^\d{10}$/, {
+    message: 'El teléfono debe tener exactamente 10 dígitos numéricos.',
+  })
   telefono!: string;
 
+  /** Mismo formato que `/auth/register`: 11 dígitos, sin guiones. */
   @IsOptional()
   @IsString()
-  @Matches(/^\d+$/, { message: 'La cédula solo debe contener dígitos.' })
-  @MaxLength(30, { message: 'La cédula no puede superar los 30 caracteres.' })
+  @Matches(/^\d{11}$/, {
+    message: 'La cédula debe tener exactamente 11 dígitos numéricos.',
+  })
   cedula?: string;
 
   @IsIn([...ROLES_PLATAFORMA], {

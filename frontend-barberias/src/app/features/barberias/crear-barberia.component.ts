@@ -41,9 +41,13 @@ import { TenantService } from '../../core/services/tenant.service';
                 <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">Teléfono</label>
                 <div class="relative">
                   <i class="pi pi-phone absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
-                  <input type="text" formControlName="telefono" placeholder="+1 234 567 8900"
+                  <input type="tel" formControlName="telefono" inputmode="numeric" autocomplete="tel-national"
+                         maxlength="10" placeholder="8095550199" (input)="onTelefonoInput($event)"
                          class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
                 </div>
+                @if (form.get('telefono')?.touched && form.get('telefono')?.invalid) {
+                  <p class="text-[11px] text-red-400 pl-1">El teléfono debe tener exactamente 10 dígitos.</p>
+                }
               </div>
 
               <!-- Ubicación -->
@@ -102,10 +106,21 @@ export class CrearBarberiaComponent {
 
   form: FormGroup = this.fb.group({
     nombre: ['', [Validators.required, Validators.minLength(3)]],
-    telefono: ['', [Validators.required]],
+    // Mismo contrato que `CreateBarberiaDto`: 10 dígitos exactos, sin formato.
+    telefono: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
     ubicacion: ['', [Validators.required]],
     descripcion: ['']
   });
+
+  /** Solo dígitos y máximo 10: el backend rechaza cualquier otra cosa con 400. */
+  onTelefonoInput(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const limpio = input.value.replace(/\D/g, '').slice(0, 10);
+    if (input.value !== limpio) {
+      input.value = limpio;
+      this.form.get('telefono')?.setValue(limpio, { emitEvent: false });
+    }
+  }
 
   onSubmit() {
     if (this.form.invalid) return;

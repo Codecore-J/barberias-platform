@@ -63,9 +63,13 @@ describe('E4-02 · oportunidades de espacio (huecos) y alternativas', () => {
 
     const suffix = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const CORREOS = [`admin.e402-${suffix}@test.com`, `cliente.e402-${suffix}@test.com`];
-    const telefonoAdmin = `601${suffix.slice(-6).padEnd(6, '0')}01`;
-    const telefonoSede = `601${suffix.slice(-6).padEnd(6, '0')}02`;
-    await Promise.all(CORREOS.map((c, idx) => registrarYLogin(c, idx === 0 ? telefonoAdmin : `601${suffix.slice(-6).padEnd(6, '0')}99`)));
+    // `RegisterDto` exige 10 dígitos numéricos exactos (el sufijo base36 podía
+    // meter letras y la cadena resultante tenía 11 caracteres).
+    const serie = String(Math.floor(Math.random() * 9000) + 1000);
+    const tel = (n: number) => `809${serie}${String(n).padStart(3, '0')}`;
+    const telefonoAdmin = tel(1);
+    const telefonoSede = tel(2);
+    await Promise.all(CORREOS.map((c, idx) => registrarYLogin(c, idx === 0 ? telefonoAdmin : tel(3))));
 
     const admin = await prisma.usuario.findUniqueOrThrow({ where: { correo: CORREOS[0] }, select: { id: true } });
     const sedeA = await prisma.barberia.upsert({

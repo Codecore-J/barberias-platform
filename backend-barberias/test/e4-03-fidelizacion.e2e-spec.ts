@@ -48,7 +48,10 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
   /** Las 5 reservas CONFIRMADA del ciclo (fechas pasadas: no ocupan la agenda futura). */
   let reservasDelCiclo: string[] = [];
 
-  const telefono = (n: number) => `700${sufijo.slice(-5).padEnd(5, '0')}${String(n).padStart(2, '0')}`;
+  // 10 dígitos numéricos exactos: lo exige `RegisterDto` y el sufijo base36
+  // podía contener letras.
+  const serie = String(Math.floor(Math.random() * 9000) + 1000);
+  const telefono = (n: number) => `809${serie}${String(n).padStart(3, '0')}`;
 
   const registrar = async (correo: string, n: number) => {
     const res = await request(app.getHttpServer())

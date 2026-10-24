@@ -16,29 +16,38 @@ import { UpdateServicioDto } from '../application/dto/update-servicio.dto.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import { VinculoBarberiaGuard } from '../../iam/infrastructure/vinculo-barberia.guard.js';
+import { SoloBarberoGuard } from './solo-barbero.guard.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 /**
  * Catálogo de servicios de una barbería (E1-05).
  *
- * D16: el BARBERO consulta el catálogo pero no lo escribe. Quien crea, edita y
- * desactiva es el ADMIN_BARBERIA de la sede; el ADMINISTRADOR global entra como
- * en el resto de rutas de gestión, y así la pantalla /admin/servicios deja de
- * devolverle 403.
+ * D16 (corregido): el catálogo lo GESTIONA el BARBERO. Él crea, edita y
+ * desactiva los servicios de su sede; el ADMIN_BARBERIA y el ADMINISTRADOR
+ * global solo lo CONSULTAN, en modo lectura/supervisión. Antes estaba al revés
+ * y el barbero —quien conoce precios y duración real— no podía mantener su
+ * propio catálogo.
  *
- * E1-06 (paso 5): las dos lecturas exigen `VinculoBarberiaGuard`. El rol decide
- * si se puede consultar el catálogo; el vínculo decide de qué sede. Sin eso, un
- * CLIENTE con `barberia_id` nulo leía el catálogo de cualquier sede mandando la
- * cabecera. Las escrituras no lo necesitan: `RolesGuard` ya las acota al
- * ADMIN_BARBERIA de esa sede.
+ * Las lecturas conservan al CLIENTE: `GET /servicios` alimenta la vitrina
+ * pública, el wizard de reserva y el walk-in. Es una lectura acotada por
+ * `VinculoBarberiaGuard`, así que abrirla no da acceso a la escritura.
+ *
+ * `SoloBarberoGuard` es imprescindible en las escrituras: `RolesGuard` deja
+ * pasar al ADMINISTRADOR global por jerarquía y, sin este guard, el 403 que pide
+ * la regla de negocio no ocurriría nunca.
+ *
+ * E1-06 (paso 5): TODAS las rutas exigen `VinculoBarberiaGuard`. El rol decide
+ * qué se puede hacer; el vínculo decide de qué sede. Sin él, un usuario leía o
+ * escribía contra la sede que dijera la cabecera.
  */
 @Controller(['catalogo/servicios', 'servicios'])
 export class ServiciosController {
   constructor(private readonly serviciosService: ServiciosService) {}
 
   @Post()
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO')
+  @UseGuards(SoloBarberoGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.CREATED)
   create(
     @CurrentBarberiaId() barberiaId: string,
@@ -68,7 +77,8 @@ export class ServiciosController {
   }
 
   @Patch(':id')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO')
+  @UseGuards(SoloBarberoGuard, VinculoBarberiaGuard)
   update(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -86,7 +96,8 @@ export class ServiciosController {
    * 422 `SERVICIO_EN_COMBO_ACTIVO` si está dentro de un combo activo.
    */
   @Patch(':id/desactivar')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO')
+  @UseGuards(SoloBarberoGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.OK)
   desactivar(
     @CurrentBarberiaId() barberiaId: string,
@@ -102,7 +113,8 @@ export class ServiciosController {
    * un servicio exigía tocar la base.
    */
   @Patch(':id/reactivar')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO')
+  @UseGuards(SoloBarberoGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.OK)
   reactivar(
     @CurrentBarberiaId() barberiaId: string,

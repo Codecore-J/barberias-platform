@@ -17,9 +17,15 @@ import { AuthService } from '../../auth/auth.service';
       <div class="flex flex-col md:flex-row justify-between items-center gap-4 transform translate-z-12">
         <div>
           <h2 class="text-3xl font-display font-bold text-white">Panel de <span class="gold-gradient-text">Servicios</span></h2>
-          <p class="text-sm text-zinc-400">Gestiona los servicios y combos de {{ tenantService.nombreBarberiaActiva() }}</p>
+          <p class="text-sm text-zinc-400">
+            @if (puedeGestionar()) {
+              Gestiona los servicios y combos de {{ tenantService.nombreBarberiaActiva() }}
+            } @else {
+              Catálogo de {{ tenantService.nombreBarberiaActiva() }} · modo lectura (lo gestiona el barbero)
+            }
+          </p>
         </div>
-        @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'ADMINISTRADOR') {
+        @if (puedeGestionar()) {
           <button (click)="openForm()" class="px-5 py-2.5 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:-translate-y-1 hover:scale-105 transition-transform flex items-center gap-2">
             <i class="pi pi-plus"></i> Nuevo Servicio
           </button>
@@ -125,19 +131,21 @@ import { AuthService } from '../../auth/auth.service';
                 </span>
               </div>
 
-              <div class="flex gap-2 pt-4 border-t border-zinc-800 transform translate-z-12">
-                <button (click)="openForm(servicio)" class="flex-1 py-2 rounded-lg text-xs font-bold text-zinc-300 bg-zinc-800 hover:text-white hover:bg-zinc-700 transition-colors flex justify-center items-center gap-2">
-                  <i class="pi pi-pencil"></i> Editar
-                </button>
-                <button (click)="toggleEstado(servicio)"
-                        class="px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5"
-                        [ngClass]="servicio.estado === 'INACTIVO' 
-                          ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300' 
-                          : 'bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300'">
-                  <i [class]="servicio.estado === 'INACTIVO' ? 'pi pi-refresh' : 'pi pi-ban'"></i>
-                  {{ servicio.estado === 'INACTIVO' ? 'Reactivar' : 'Desactivar' }}
-                </button>
-              </div>
+              @if (puedeGestionar()) {
+                <div class="flex gap-2 pt-4 border-t border-zinc-800 transform translate-z-12">
+                  <button (click)="openForm(servicio)" class="flex-1 py-2 rounded-lg text-xs font-bold text-zinc-300 bg-zinc-800 hover:text-white hover:bg-zinc-700 transition-colors flex justify-center items-center gap-2">
+                    <i class="pi pi-pencil"></i> Editar
+                  </button>
+                  <button (click)="toggleEstado(servicio)"
+                          class="px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5"
+                          [ngClass]="servicio.estado === 'INACTIVO' 
+                            ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300' 
+                            : 'bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300'">
+                    <i [class]="servicio.estado === 'INACTIVO' ? 'pi pi-refresh' : 'pi pi-ban'"></i>
+                    {{ servicio.estado === 'INACTIVO' ? 'Reactivar' : 'Desactivar' }}
+                  </button>
+                </div>
+              }
             </div>
           }
         </div>
@@ -264,6 +272,14 @@ export class AdminServiciosComponent implements OnInit {
     return 'CLIENTE';
   }
 
+  /**
+   * D16 corregido: el catálogo lo escribe el BARBERO. El ADMIN_BARBERIA y el
+   * ADMINISTRADOR solo supervisan, así que no ven botones de alta, edición ni
+   * cambio de estado. Es una restricción de interfaz; la de verdad es la del
+   * backend (403 en POST/PATCH).
+   */
+  readonly puedeGestionar = computed(() => this.userRole() === 'BARBERO');
+
   showForm = signal(false);
   isEditing = signal(false);
   editingId = signal<string | null>(null);
@@ -321,6 +337,7 @@ export class AdminServiciosComponent implements OnInit {
   }
 
   openForm(servicio?: Servicio) {
+    if (!this.puedeGestionar()) return;
     if (servicio) {
       this.isEditing.set(true);
       this.editingId.set(servicio.id);
@@ -370,6 +387,7 @@ export class AdminServiciosComponent implements OnInit {
    * un error no capturado por consola.
    */
   toggleEstado(servicio: Servicio) {
+    if (!this.puedeGestionar()) return;
     const tipo = servicio.esCombo ? 'el combo' : 'el servicio';
     const esReactivacion = servicio.estado === 'INACTIVO';
 

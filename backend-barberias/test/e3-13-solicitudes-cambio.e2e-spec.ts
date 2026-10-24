@@ -258,7 +258,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       const res = await request(app.getHttpServer())
         .patch(`${API}/barberias/${barberiaA}`)
         .set('Authorization', `Bearer ${tokenAdminA}`)
-        .send({ telefono: '933333333' })
+        .send({ telefono: '9333333333' })
         .expect(422);
 
       expect(res.body).toMatchObject({ statusCode: 422, codigo: 'PASSWORD_REQUERIDA' });
@@ -276,7 +276,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
         .set('Authorization', `Bearer ${tokenAdminA}`)
         // Contraseña deliberadamente incorrecta para provocar el 422: no es un
         // secreto real. `gitleaks:allow` exime esta línea del escáner de CI.
-        .send({ telefono: '933333333', passwordActual: 'NoEsMiClave123' }) // gitleaks:allow
+        .send({ telefono: '9333333333', passwordActual: 'NoEsMiClave123' }) // gitleaks:allow
         .expect(422);
 
       expect(res.body).toMatchObject({ statusCode: 422, codigo: 'PASSWORD_INCORRECTA' });
@@ -286,10 +286,10 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       const res = await request(app.getHttpServer())
         .patch(`${API}/barberias/${barberiaA}`)
         .set('Authorization', `Bearer ${tokenAdminA}`)
-        .send({ telefono: '933333333', passwordActual: PASSWORD_ADMIN_A })
+        .send({ telefono: '9333333333', passwordActual: PASSWORD_ADMIN_A })
         .expect(200);
 
-      expect(res.body.telefono).toBe('933333333');
+      expect(res.body.telefono).toBe('9333333333');
     });
 
     it('el CLIENTE sigue recibiendo 403 en la edición directa', async () => {
