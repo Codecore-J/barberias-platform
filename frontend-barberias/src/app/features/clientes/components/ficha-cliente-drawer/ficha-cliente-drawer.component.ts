@@ -3,13 +3,15 @@ import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ClientesService, FichaCliente } from '../../../../core/services/clientes.service';
 
+import { ModalOverlayDirective } from '../../../../shared/directives/modal-overlay.directive';
+
 @Component({
   selector: 'app-ficha-cliente-drawer',
   standalone: true,
-  imports: [CommonModule, FormsModule, DatePipe],
+  imports: [CommonModule, FormsModule, DatePipe, ModalOverlayDirective],
   template: `
     <!-- Overlay/Backdrop -->
-    <div class="fixed inset-0 z-[100] flex justify-end">
+    <div appModalOverlay class="fixed inset-0 z-[100] flex justify-end">
       <div class="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" (click)="cerrar()"></div>
 
       <!-- Drawer Content -->

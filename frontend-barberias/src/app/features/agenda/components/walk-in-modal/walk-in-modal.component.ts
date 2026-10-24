@@ -6,12 +6,14 @@ import { Personal } from '../../../../core/services/personal.service';
 import { ServiciosService } from '../../../../core/services/servicios.service';
 import { TenantService } from '../../../../core/services/tenant.service';
 
+import { ModalOverlayDirective } from '../../../../shared/directives/modal-overlay.directive';
+
 @Component({
   selector: 'app-walk-in-modal',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ModalOverlayDirective],
   template: `
-    <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div appModalOverlay class="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" (click)="close.emit()"></div>
       
       <div class="glass-panel w-full max-w-lg rounded-3xl border border-white/10 p-6 relative z-10 animate-fade-in transform-style-3d shadow-2xl">

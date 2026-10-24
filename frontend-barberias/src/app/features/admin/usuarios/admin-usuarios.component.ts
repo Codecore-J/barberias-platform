@@ -10,6 +10,7 @@ import {
   UsuarioListResponse,
   UsuariosService,
 } from '../../../core/services/usuarios.service';
+import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
 
 /** Tope del backend (`CambiarEstadoCuentaDto`): 500 caracteres. */
 const MOTIVO_MAXIMO = 500;
@@ -35,7 +36,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
 @Component({
   selector: 'app-admin-usuarios',
   standalone: true,
-  imports: [CommonModule, DatePipe, FormsModule],
+  imports: [CommonModule, DatePipe, FormsModule, ModalOverlayDirective],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-6 bg-ambient-mesh">
       <!-- Header -->
@@ -329,6 +330,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
       <!-- Modal: alta de usuario -->
       @if (creacionAbierta()) {
         <div
+          appModalOverlay
           class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
@@ -509,6 +511,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
       <!-- Modal: cambiar el estado de la cuenta (D09/D24) -->
       @if (isModalOpen() && usuarioSeleccionado(); as usuario) {
         <div
+          appModalOverlay
           class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
@@ -632,6 +635,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
       <!-- Modal: historial de auditoría de la cuenta -->
       @if (historialAbierto() && usuarioHistorial(); as usuario) {
         <div
+          appModalOverlay
           class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
           role="dialog"
           aria-modal="true"

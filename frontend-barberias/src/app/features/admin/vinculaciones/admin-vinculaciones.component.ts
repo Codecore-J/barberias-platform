@@ -21,10 +21,12 @@ const MOTIVO_MINIMO = 10;
  * deja que el backend responda con el contrato de errores D40, cuyo `mensaje`
  * se muestra tal cual (`VinculacionesService.error`).
  */
+import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
+
 @Component({
   selector: 'app-admin-vinculaciones',
   standalone: true,
-  imports: [CommonModule, DatePipe, FormsModule],
+  imports: [CommonModule, DatePipe, FormsModule, ModalOverlayDirective],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-8 bg-ambient-mesh">
       <!-- Header -->
@@ -170,7 +172,7 @@ const MOTIVO_MINIMO = 10;
 
       <!-- Modal de rechazo: el motivo es obligatorio en el diseño -->
       @if (seleccionada(); as fila) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
           <div class="bg-zinc-900 border border-rose-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
             <div class="p-6 space-y-5">
               <div class="flex justify-between items-start">

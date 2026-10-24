@@ -28,6 +28,26 @@
   transform-style: preserve-3d;
 }
 
+/*
+ * H-03 · Contención de los modales.
+ *
+ * `perspective` y `transform-style: preserve-3d` convierten al contenedor en
+ * containing block de sus descendientes `position: fixed`. Con la decoración
+ * 3D que llevan las páginas, un overlay `fixed inset-0` se dimensionaba contra
+ * el documento entero y el panel quedaba centrado fuera del viewport (fondo
+ * oscuro visible, formulario invisible).
+ *
+ * El `ModalOverlayDirective` marca el documento mientras hay un modal abierto
+ * y aquí se neutralizan solo esas dos propiedades: el 3D de la página vuelve
+ * en cuanto se cierra el último overlay.
+ */
+html.modal-abierto .perspective-1000,
+html.modal-abierto .perspective-1200,
+html.modal-abierto .transform-style-3d {
+  perspective: none;
+  transform-style: flat;
+}
+
 .backface-hidden {
   backface-visibility: hidden;
 }

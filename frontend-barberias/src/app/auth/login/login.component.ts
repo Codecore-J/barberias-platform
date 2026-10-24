@@ -5,10 +5,12 @@ import { AuthService } from '../auth.service';
 import { CommonModule } from '@angular/common';
 import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
 
+import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.directive';
+
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
+  imports: [CommonModule, ReactiveFormsModule, RouterLink, ModalOverlayDirective],
   template: `
     <div class="min-h-screen flex items-center justify-center bg-ambient-mesh p-4 perspective-1200 overflow-hidden">
       
@@ -108,7 +110,7 @@ import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
 
         <!-- Modal de Recuperación de Contraseña (SEC-01) -->
         @if (showRecoveryModal()) {
-          <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in-up">
+          <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in-up">
             <div class="relative w-full max-w-md bg-zinc-950/95 border border-amber-500/40 rounded-3xl p-6 sm:p-8 shadow-[0_25px_60px_rgba(0,0,0,0.8)]">
               
               <button type="button" (click)="closeRecoveryModal()" class="absolute top-5 right-5 text-zinc-400 hover:text-white transition-colors cursor-pointer">
