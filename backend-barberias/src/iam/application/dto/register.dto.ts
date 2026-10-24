@@ -44,7 +44,7 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim() || undefined : value,
+    typeof value === 'string' ? (value.trim() === '' ? null : value.trim()) : value,
   )
   @Matches(/^\d{11}$/, {
     message: 'La cédula debe tener exactamente 11 dígitos numéricos.',
