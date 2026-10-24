@@ -5,10 +5,12 @@ import { PagosService, PagoHistorial } from '../../../core/services/pagos.servic
 import { TenantService } from '../../../core/services/tenant.service';
 import { AuthService } from '../../../auth/auth.service';
 
+import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
+
 @Component({
   selector: 'app-admin-tickets',
   standalone: true,
-  imports: [CommonModule, CurrencyPipe, DatePipe, FormsModule],
+  imports: [CommonModule, CurrencyPipe, DatePipe, FormsModule, ModalOverlayDirective],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
       
@@ -236,7 +238,7 @@ import { AuthService } from '../../../auth/auth.service';
 
       <!-- MODAL ANULAR COBRO (H68 · §7.3) -->
       @if (modalAnularAbierto() && pagoAAnular(); as pago) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
+        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
           <div class="bg-zinc-900 border border-rose-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
             <div class="p-6 space-y-6">
               <div class="flex justify-between items-start">
@@ -298,7 +300,7 @@ import { AuthService } from '../../../auth/auth.service';
 
       <!-- MODAL PURGA AUDITORÍA (ADMINISTRADOR) -->
       @if (modalPurgaAbierto()) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
+        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
           <div class="bg-zinc-900 border border-rose-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
             <div class="p-6 space-y-6">
               <div class="flex justify-between items-start">

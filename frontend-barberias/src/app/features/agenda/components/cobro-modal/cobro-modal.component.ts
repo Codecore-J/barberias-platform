@@ -3,13 +3,15 @@ import { CommonModule, CurrencyPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ReservasService } from '../../../../core/services/reservas.service';
 
+import { ModalOverlayDirective } from '../../../../shared/directives/modal-overlay.directive';
+
 @Component({
   selector: 'app-cobro-modal',
   standalone: true,
-  imports: [CommonModule, FormsModule, CurrencyPipe],
+  imports: [CommonModule, FormsModule, CurrencyPipe, ModalOverlayDirective],
   template: `
     <!-- Overlay/Backdrop -->
-    <div class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-0">
+    <div appModalOverlay class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-0">
       <div class="absolute inset-0 bg-black/80 backdrop-blur-md" (click)="cerrar()"></div>
 
       <!-- Modal Card -->

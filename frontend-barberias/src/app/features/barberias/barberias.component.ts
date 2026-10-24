@@ -10,10 +10,12 @@ import { qrDeInvitacion, urlDeInvitacion } from '../../core/utils/invitacion.uti
 import { VincularModalComponent } from './components/vincular-modal/vincular-modal.component';
 import { SedeCardComponent } from './components/sede-card/sede-card.component';
 
+import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.directive';
+
 @Component({
   selector: 'app-barberias',
   standalone: true,
-  imports: [CommonModule, RouterLink, VincularModalComponent, SedeCardComponent],
+  imports: [CommonModule, RouterLink, VincularModalComponent, SedeCardComponent, ModalOverlayDirective],
   template: `
     <div class="space-y-12 py-8 perspective-1200 bg-ambient-mesh min-h-screen">
       
@@ -245,7 +247,7 @@ import { SedeCardComponent } from './components/sede-card/sede-card.component';
         contador de inasistencias NO se borran.
       -->
       @if (barberiaADesvincular(); as objetivo) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
           <div class="bg-zinc-900 border border-rose-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
             <div class="p-6 space-y-5">
               <div class="flex justify-between items-start">
