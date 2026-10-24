@@ -1,15 +1,22 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
+import { of, firstValueFrom } from 'rxjs';
 import { roleGuard } from './role.guard';
 import { AuthService } from '../../auth/auth.service';
 
 describe('roleGuard', () => {
-  let mockAuthService: { authState: () => any };
+  let mockAuthService: {
+    authState: () => any;
+    getToken: () => string | null;
+    cargarSesion: () => any;
+  };
   let mockRouter: { createUrlTree: (commands: any[]) => any };
 
   beforeEach(() => {
     mockAuthService = {
-      authState: () => ({ user: null })
+      authState: () => ({ user: null }),
+      getToken: () => null,
+      cargarSesion: () => of(null),
     };
     mockRouter = {
       createUrlTree: (commands: any[]) => ({ tree: commands })
@@ -25,6 +32,7 @@ describe('roleGuard', () => {
 
   it('debe redirigir a /auth/login si no hay usuario autenticado', () => {
     mockAuthService.authState = () => ({ user: null });
+    mockAuthService.getToken = () => null;
     const guard = roleGuard(['ADMIN']);
     const result = TestBed.runInInjectionContext(() =>
       guard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot)
@@ -96,5 +104,71 @@ describe('roleGuard', () => {
       guard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot)
     );
     expect(result).toEqual({ tree: ['/admin/agenda'] });
+  });
+
+  // ── H-02 · recarga (F5) con token: esperar la sesión, no redirigir antes ──
+
+  it('H-02: con token y user en null, ESPERA la hidratación y permite si el rol calza', async () => {
+    mockAuthService.authState = () => ({ user: null });
+    mockAuthService.getToken = () => 'token-valido-en-recarga';
+    mockAuthService.cargarSesion = () =>
+      of({ id: '7', correo: 'admin@test.com', roles: ['ADMINISTRADOR'] });
+
+    const guard = roleGuard(['ADMINISTRADOR']);
+    const result = TestBed.runInInjectionContext(() =>
+      guard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot)
+    );
+
+    // No es un UrlTree sincrónico de login: es una espera de la sesión.
+    expect(typeof (result as any).subscribe).toBe('function');
+    const valor = await firstValueFrom(result as any);
+    expect(valor).toBe(true);
+  });
+
+  it('H-02: con token, tras hidratar evalúa los roles (CLIENTE bloqueado a /)', async () => {
+    mockAuthService.authState = () => ({ user: null });
+    mockAuthService.getToken = () => 'token-valido-en-recarga';
+    mockAuthService.cargarSesion = () =>
+      of({ id: '8', correo: 'cliente@test.com', roles: ['CLIENTE'] });
+
+    const guard = roleGuard(['ADMIN']);
+    const result = TestBed.runInInjectionContext(() =>
+      guard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot)
+    );
+
+    const valor = await firstValueFrom(result as any);
+    expect(valor).toEqual({ tree: ['/'] });
+  });
+
+  it('H-02: con token, si la sesión resuelve sin usuario va al login', async () => {
+    mockAuthService.authState = () => ({ user: null });
+    mockAuthService.getToken = () => 'token-expirado-que-falla-en-me';
+    mockAuthService.cargarSesion = () => of(null);
+
+    const guard = roleGuard(['ADMIN']);
+    const result = TestBed.runInInjectionContext(() =>
+      guard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot)
+    );
+
+    const valor = await firstValueFrom(result as any);
+    expect(valor).toEqual({ tree: ['/auth/login'] });
+  });
+
+  it('H-02: sin token y sin user no se llama a cargarSesion (respuesta sincrónica)', () => {
+    let llamoCargarSesion = false;
+    mockAuthService.authState = () => ({ user: null });
+    mockAuthService.getToken = () => null;
+    mockAuthService.cargarSesion = () => {
+      llamoCargarSesion = true;
+      return of(null);
+    };
+
+    const guard = roleGuard(['ADMIN']);
+    const result = TestBed.runInInjectionContext(() =>
+      guard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot)
+    );
+
+    expect(llamoCargarSesion).toBe(false);
+    expect(result).toEqual({ tree: ['/auth/login'] });
   });
 });

@@ -64,7 +64,10 @@ export class BarberiaController {
 
   /**
    * GET /barberias
-   * Lista las barberías donde el usuario es responsable. Los cuatro roles
+   * Lista las sedes del usuario: las que RESPONSABILIZA y las que tiene
+   * asignadas por fila `usuario_roles` con rol de staff —H-01: el
+   * ADMIN_BARBERIA o BARBERO creado desde `/admin/usuarios` debe ver su sede
+   * en el hub para poder activarla y pasar el `tenantGuard`. Los cuatro roles
    * necesitan esta pantalla: es el selector de sede del frontend.
    * E1-07: el servicio aplica por sede la misma regla de `codigoAcceso` que la
    * lectura por id, así que aquí no basta con saber quién pregunta.

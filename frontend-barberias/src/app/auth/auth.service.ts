@@ -1,6 +1,6 @@
 import { Injectable, signal, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, catchError, of } from 'rxjs';
+import { Observable, tap, catchError, of, shareReplay } from 'rxjs';
 import { Router } from '@angular/router';
 import {
   AuthResponseDto,
@@ -30,6 +30,15 @@ export class AuthService {
   private readonly apiUrl = `${API_URL}/auth`;
   private readonly tokenKey = 'access_token';
 
+  /**
+   * H-02 · hidratación de la sesión COMARTIDA: una sola petición `GET /me` por
+   * token, compartida entre el constructor (`checkSession`) y los guards que
+   * necesitan el usuario ya cargado antes de decidir —tras un F5, el
+   * `roleGuard` espera este observable en vez de redirigir a login con el
+   * token aún válido. Se invalida al cambiar el token (login/logout).
+   */
+  private sesionCargada$: Observable<UsuarioResponseDto | null> | null = null;
+
   // Reactive state using Angular Signals
   readonly authState = signal<AuthState>({
     user: null,
@@ -44,6 +53,7 @@ export class AuthService {
 
   private setToken(token: string) {
     localStorage.setItem(this.tokenKey, token);
+    this.sesionCargada$ = null;
   }
 
   getToken(): string | null {
@@ -52,6 +62,7 @@ export class AuthService {
 
   private removeToken() {
     localStorage.removeItem(this.tokenKey);
+    this.sesionCargada$ = null;
   }
 
   private updateState(partialState: Partial<AuthState>) {
@@ -167,26 +178,41 @@ export class AuthService {
   }
 
   checkSession(): void {
-    const token = this.getToken();
-    if (!token) {
-      this.updateState({ isLoading: false });
-      return;
-    }
+    this.cargarSesion().subscribe();
+  }
 
-    this.http.get<UsuarioResponseDto>(`${this.apiUrl}/me`).pipe(
-      tap(user => {
-        this.updateState({
-          user,
-          isAuthenticated: true,
-          isLoading: false,
-          error: null
-        });
-      }),
-      catchError(() => {
-        this.logout();
-        return of(null);
-      })
-    ).subscribe();
+  /**
+   * H-02 · resuelve la sesión hidratando el usuario (`GET /me`) UNA sola vez
+   * por token. Sin token no hay nada que hidratar; con token, la primera
+   * suscripción dispara la petición y el resto espera el MISMO resultado
+   * (shareReplay), así que un guard puede llamarla en paralelo al constructor
+   * sin duplicar la llamada. `catchError` cierra la sesión inválida y devuelve
+   * `null`, que el caller interpreta como «sin usuario».
+   */
+  cargarSesion(): Observable<UsuarioResponseDto | null> {
+    if (!this.sesionCargada$) {
+      if (!this.getToken()) {
+        this.updateState({ isLoading: false });
+        this.sesionCargada$ = of(null);
+      } else {
+        this.sesionCargada$ = this.http.get<UsuarioResponseDto>(`${this.apiUrl}/me`).pipe(
+          tap(user => {
+            this.updateState({
+              user,
+              isAuthenticated: true,
+              isLoading: false,
+              error: null,
+            });
+          }),
+          catchError(() => {
+            this.logout();
+            return of(null);
+          }),
+          shareReplay(1),
+        );
+      }
+    }
+    return this.sesionCargada$;
   }
 
   forgotPassword(correo: string): Observable<{ message: string; debugToken?: string }> {
