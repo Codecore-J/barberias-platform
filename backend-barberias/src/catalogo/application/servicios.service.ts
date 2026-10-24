@@ -10,7 +10,7 @@ import {
   fechaCalendarioISO,
   horaRelojHHMM,
 } from '../../shared/time/tiempo.service.js';
-import { reglaDeNegocio } from '../../shared/errors/d40.errors.js';
+import { errorDeConflicto, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { CreateServicioDto } from './dto/create-servicio.dto.js';
 import { UpdateServicioDto } from './dto/update-servicio.dto.js';
 import { esAdministradorGlobal } from '../../iam/domain/roles.js';
@@ -153,16 +153,15 @@ export class ServiciosService {
   }
 
   /**
-   * Regla 1 de E2-07: una reserva `PENDIENTE` o `PROPUESTA_PENDIENTE` todavía
+   * Regla 1: una reserva `PENDIENTE` o `PROPUESTA_PENDIENTE` todavía
    * puede confirmarse, así que el catálogo no puede cambiar bajo sus pies.
    */
   private async exigirSinReservasAbiertas(barberiaId: string, servicioId: string): Promise<void> {
     const pendientes = await this.prisma.reserva.findMany({
       where: {
         barberiaId,
-        // E2-02: los dos estados «abiertos» desde el catálogo, nunca literales.
+        // Los dos estados «abiertos» desde el catálogo, nunca literales.
         estado: { in: [ESTADOS.PENDIENTE, ESTADOS.PROPUESTA_PENDIENTE] },
-        fechaCita: { gte: new Date() }, // Futuras o de hoy
         participantes: {
           some: {
             participanteServicios: {
@@ -184,21 +183,20 @@ export class ServiciosService {
       return;
     }
 
-    // E2-04: etiquetas DATE/TIME por partes UTC, sin `toISOString()` sobre
-    // fechas de cita (prohibido por el backlog).
+    // Etiquetas DATE/TIME por partes UTC, sin `toISOString()` sobre
+    // fechas de cita.
     const citasDesc = pendientes
       .map((r) => `${fechaCalendarioISO(r.fechaCita)} a las ${horaRelojHHMM(r.horaInicio)}`)
       .join(', ');
 
-    throw reglaDeNegocio(
+    throw errorDeConflicto(
       'SERVICIO_EN_USO',
       `No se puede desactivar el servicio porque tiene ${pendientes.length} solicitud(es) de reserva por confirmar: ${citasDesc}`,
-      { reservas: pendientes.length },
     );
   }
 
   /**
-   * Regla 2 de E2-07: un combo ACTIVO se vende con sus servicios dentro, así que
+   * Regla 2: un combo ACTIVO se vende con sus servicios dentro, así que
    * desactivar uno lo dejaría incoherente. El mensaje trae los combos por nombre
    * y id para que la sede los apague o los edite antes.
    */
@@ -217,10 +215,9 @@ export class ServiciosService {
       return;
     }
 
-    throw reglaDeNegocio(
+    throw errorDeConflicto(
       'SERVICIO_EN_COMBO_ACTIVO',
       `El servicio pertenece a ${combos.length} combo(s) activo(s): ${combos.map((c) => c.nombre).join(', ')}. Desactiva o edita el combo antes de desactivar el servicio.`,
-      { combos: combos.map((c) => ({ id: c.id, nombre: c.nombre })) },
     );
   }
 }

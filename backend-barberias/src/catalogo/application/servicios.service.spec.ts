@@ -195,7 +195,7 @@ describe('ServiciosService', () => {
   describe('desactivar y reactivar (E2-07 · D29)', () => {
     const activo = { id: mockServicioId, barberiaId: mockBarberiaId, estado: 'ACTIVO' };
 
-    it('REGLA 1 · 422 SERVICIO_EN_USO si hay reservas PENDIENTE o PROPUESTA_PENDIENTE', async () => {
+    it('REGLA 1 · 409 SERVICIO_EN_USO si hay reservas PENDIENTE o PROPUESTA_PENDIENTE', async () => {
       prisma.servicio.findFirst.mockResolvedValue(activo);
       const mockFecha = new Date('2026-10-15T10:00:00.000Z');
       prisma.reserva.findMany.mockResolvedValue([
@@ -204,7 +204,7 @@ describe('ServiciosService', () => {
 
       const error = await service.desactivar(mockBarberiaId, mockServicioId).catch((e) => e);
 
-      expect(error.response.statusCode).toBe(422);
+      expect(error.response.statusCode).toBe(409);
       expect(error.response.codigo).toBe('SERVICIO_EN_USO');
       // El filtro pide los DOS estados abiertos del catálogo (E2-02), no un literal.
       expect(prisma.reserva.findMany).toHaveBeenCalledWith(
@@ -218,7 +218,7 @@ describe('ServiciosService', () => {
       expect(prisma.servicio.update).not.toHaveBeenCalled();
     });
 
-    it('REGLA 2 · 422 SERVICIO_EN_COMBO_ACTIVO con la lista de combos activos', async () => {
+    it('REGLA 2 · 409 SERVICIO_EN_COMBO_ACTIVO con la lista de combos activos', async () => {
       prisma.servicio.findFirst.mockResolvedValue(activo);
       prisma.reserva.findMany.mockResolvedValue([]);
       prisma.combo.findMany.mockResolvedValue([
@@ -228,13 +228,9 @@ describe('ServiciosService', () => {
 
       const error = await service.desactivar(mockBarberiaId, mockServicioId).catch((e) => e);
 
-      expect(error.response.statusCode).toBe(422);
+      expect(error.response.statusCode).toBe(409);
       expect(error.response.codigo).toBe('SERVICIO_EN_COMBO_ACTIVO');
       expect(error.response.mensaje).toContain('Combo Barba');
-      expect(error.response.combos).toEqual([
-        { id: 'combo-1', nombre: 'Combo Barba' },
-        { id: 'combo-2', nombre: 'Combo VIP' },
-      ]);
       expect(prisma.combo.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ barberiaId: mockBarberiaId, estado: 'ACTIVO' }),
