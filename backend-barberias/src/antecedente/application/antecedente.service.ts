@@ -216,33 +216,29 @@ export class AntecedenteService {
         },
       },
       orderBy: { creadoAt: 'desc' },
-    });
-
-    return antecedentes.map((item) => {
+    });        return antecedentes.map((item) => {
       const esPropio = item.barberiaOrigenId === barberiaId;
-
-      return {
-        id: item.id,
-        usuarioId: item.usuarioId,
-        barberiaOrigenId: esPropio ? item.barberiaOrigenId : null,
-        origenBarberia: esPropio ? ('PROPIA' as const) : ('EXTERNA' as const),
+      // Punto 5.1B: Eliminar por completo ID y referencia del barbero autor y barbería de origen para antecedentes externos      const datosUsuario = esPropio
+        ? { id: item.usuario.id, nombreCompleto: item.usuario.nombreCompleto, correo: item.usuario.correo, telefono: item.usuario.telefono }
+        : { id: null, nombreCompleto: 'Anónimo', correo: '***@***.***', telefono: '***' };
+      return {
+        id: esPropio ? item.id : null,
+        usuarioId: esPropio ? item.usuarioId : null,
+        barberiaOrigenId: null, // P5.1: Sin referencia a barbería de origen para externos        origenBarberia: esPropio ? ('PROPIA' as const) : ('EXTERNA' as const),
         nombreBarberiaOrigen: esPropio
           ? item.barberiaOrigen?.nombre
           : 'Red de Barberías (Aliada)',
         categoria: item.categoria,
         contenido: item.contenido,
-        origen: item.origen,
-        estadoValidacion: item.estadoValidacion,
+        origen: esPropio ? item.origen : 'SISTEMA', // Ocultar BARBERO/ADMIN para externos        estadoValidacion: item.estadoValidacion,
         compartido: item.compartido,
         motivoRechazo: esPropio ? item.motivoRechazo : null,
         creadoAt: item.creadoAt,
         cliente: {
-          id: item.usuario.id,
-          nombreCompleto: esPropio
-            ? item.usuario.nombreCompleto
-            : maskName(item.usuario.nombreCompleto),
-          correo: esPropio ? item.usuario.correo : maskEmail(item.usuario.correo),
-          telefono: esPropio ? item.usuario.telefono : maskPhone(item.usuario.telefono),
+          id: datosUsuario.id,
+          nombreCompleto: datosUsuario.nombreCompleto,
+          correo: datosUsuario.correo,
+          telefono: datosUsuario.telefono,
           esAnonimizado: !esPropio,
         },
       };

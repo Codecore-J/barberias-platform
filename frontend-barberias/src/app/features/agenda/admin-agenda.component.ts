@@ -5,14 +5,12 @@ import { ReservasService } from '../../core/services/reservas.service';
 import { PersonalService, Personal } from '../../core/services/personal.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
-import { CobroModalComponent } from './components/cobro-modal/cobro-modal.component';
 import { FichaClienteDrawerComponent } from '../clientes/components/ficha-cliente-drawer/ficha-cliente-drawer.component';
-import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.component';
 
 @Component({
   selector: 'app-admin-agenda',
   standalone: true,
-  imports: [CommonModule, FormsModule, CurrencyPipe, DatePipe, CobroModalComponent, FichaClienteDrawerComponent, WalkInModalComponent],
+  imports: [CommonModule, FormsModule, CurrencyPipe, DatePipe, FichaClienteDrawerComponent],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-[1400px] mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
       
@@ -254,13 +252,6 @@ import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.c
       }
 
       <!-- Modal de Cobro -->
-      @if (turnoACobrar() && (authService.authState().user?.roles?.includes('ADMINISTRADOR') || authService.authState().user?.roles?.includes('ADMIN_BARBERIA') || authService.authState().user?.roles?.includes('BARBERO'))) {
-        <app-cobro-modal 
-          [turno]="turnoACobrar()" 
-          (close)="turnoACobrar.set(null)"
-          (cobroExitoso)="onCobroExitoso()">
-        </app-cobro-modal>
-      }
 
       <!-- Drawer de Ficha de Cliente -->
       @if (clienteSeleccionado()) {
@@ -271,15 +262,6 @@ import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.c
         </app-ficha-cliente-drawer>
       }
 
-      <!-- Modal Walk-In -->
-      @if (mostrarModalWalkIn()) {
-        <app-walk-in-modal
-          [fecha]="fechaFiltro"
-          [barberos]="barberos()"
-          (close)="mostrarModalWalkIn.set(false)"
-          (creado)="onWalkInCreado()">
-        </app-walk-in-modal>
-      }
 
     </div>
   `
