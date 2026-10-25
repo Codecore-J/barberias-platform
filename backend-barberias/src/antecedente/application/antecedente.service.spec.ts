@@ -348,11 +348,20 @@ describe('AntecedenteService', () => {
       // Verificación de registro externo (ANONIMIZADO estrictamente T7.2)
       const externo = res.find((r) => r.id === 'ant-externo');
       expect(externo?.origenBarberia).toBe('EXTERNA');
-      expect(externo?.barberiaOrigenId).toBeNull(); // Oculta UUID del tenant ajeno
+      // P5.1: barberiaOrigenId es condicional - propio muestra ID, externo es null
+      expect(externo?.barberiaOrigenId).toBeNull();
       expect(externo?.nombreBarberiaOrigen).toBe('Red de Barberías (Aliada)');
+      // P5.1: Sin usuarioId ni referencias a barbero/barbería para externos
+      expect(externo?.usuarioId).toBeNull();
       expect(externo?.cliente.esAnonimizado).toBe(true);
       expect(externo?.cliente.nombreCompleto).toBe('C*** M***');
       expect(externo?.cliente.correo).toBe('ca***@test.com');
+      expect(externo?.cliente.telefono).toBe('*******1234');
+      // Duplicados removidos - already checked above
+      expect(externo?.cliente.esAnonimizado).toBe(true);
+      expect(externo?.cliente.nombreCompleto).toBe('C*** M***');
+      expect(externo?.cliente.correo).toBe('ca***@test.com');
+      expect(externo?.cliente.telefono).toBe('*******1234');
       expect(externo?.cliente.telefono).toBe('*******1234');
     });
   });

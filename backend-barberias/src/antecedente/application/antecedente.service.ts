@@ -224,7 +224,7 @@ export class AntecedenteService {
       return {
         id: esPropio ? item.id : null,
         usuarioId: esPropio ? item.usuarioId : null,
-        barberiaOrigenId: null, // P5.1: Sin referencia a barbería de origen para externos        origenBarberia: esPropio ? ('PROPIA' as const) : ('EXTERNA' as const),
+        barberiaOrigenId: esPropio ? item.barberiaOrigenId : null, // P5.1: Sin referencia a barbería de origen para externos        origenBarberia: esPropio ? ('PROPIA' as const) : ('EXTERNA' as const),
         nombreBarberiaOrigen: esPropio
           ? item.barberiaOrigen?.nombre
           : 'Red de Barberías (Aliada)',
