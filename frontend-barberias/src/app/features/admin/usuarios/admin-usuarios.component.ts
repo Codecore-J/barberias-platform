@@ -10,6 +10,7 @@ import {
   UsuarioListResponse,
   UsuariosService,
 } from '../../../core/services/usuarios.service';
+import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
 
 /** Tope del backend (`CambiarEstadoCuentaDto`): 500 caracteres. */
 const MOTIVO_MAXIMO = 500;
@@ -35,7 +36,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
 @Component({
   selector: 'app-admin-usuarios',
   standalone: true,
-  imports: [CommonModule, DatePipe, FormsModule],
+  imports: [CommonModule, DatePipe, FormsModule, ModalOverlayDirective],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-6 bg-ambient-mesh">
       <!-- Header -->
@@ -329,6 +330,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
       <!-- Modal: alta de usuario -->
       @if (creacionAbierta()) {
         <div
+          appModalOverlay
           class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
@@ -392,14 +394,18 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                 <div>
                   <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Teléfono</label>
                   <input
-                    [(ngModel)]="formTelefono"
+                    [ngModel]="formTelefono()"
+                    (ngModelChange)="formTelefono.set(soloDigitos($event, 10))"
                     name="formTelefono"
                     type="tel"
-                    maxlength="30"
+                    inputmode="numeric"
+                    autocomplete="tel-national"
+                    maxlength="10"
                     [disabled]="creando()"
                     class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 disabled:opacity-60 transition-colors"
-                    placeholder="8090000000"
+                    placeholder="8095550199"
                   />
+                  <p class="text-[11px] text-zinc-600 mt-1">Obligatorio · 10 dígitos, sin espacios ni guiones</p>
                 </div>
 
                 <div>
@@ -407,15 +413,17 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                     Cédula <span class="text-zinc-600 font-normal">(opcional)</span>
                   </label>
                   <input
-                    [(ngModel)]="formCedula"
+                    [ngModel]="formCedula()"
+                    (ngModelChange)="formCedula.set(soloDigitos($event, 11))"
                     name="formCedula"
                     type="text"
                     inputmode="numeric"
-                    maxlength="30"
+                    maxlength="11"
                     [disabled]="creando()"
                     class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 disabled:opacity-60 transition-colors"
-                    placeholder="Solo dígitos"
+                    placeholder="00112345678"
                   />
+                  <p class="text-[11px] text-zinc-600 mt-1">Opcional · 11 dígitos si la ingresas</p>
                 </div>
 
                 <div>
@@ -509,6 +517,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
       <!-- Modal: cambiar el estado de la cuenta (D09/D24) -->
       @if (isModalOpen() && usuarioSeleccionado(); as usuario) {
         <div
+          appModalOverlay
           class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
@@ -632,6 +641,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
       <!-- Modal: historial de auditoría de la cuenta -->
       @if (historialAbierto() && usuarioHistorial(); as usuario) {
         <div
+          appModalOverlay
           class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
@@ -842,6 +852,15 @@ export class AdminUsuariosComponent implements OnInit {
   readonly cargandoBarberias = signal(false);
   readonly errorBarberias = signal<string | null>(null);
 
+  /**
+   * Deja solo dígitos y recorta a `maximo`. Pegar "+1 (809) 555-0199" en el
+   * teléfono termina en "8095550199" en vez de viajar con formato libre al DTO
+   * (donde ya sería un 400 de validación).
+   */
+  soloDigitos(valor: string, maximo: number): string {
+    return (valor ?? '').replace(/\D/g, '').slice(0, maximo);
+  }
+
   /** ADMIN_BARBERIA y BARBERO son de ámbito BARBERIA: exigen sede (D05). */
   readonly rolRequiereSede = computed(
     () => this.formRol() === 'ADMIN_BARBERIA' || this.formRol() === 'BARBERO',
@@ -853,12 +872,15 @@ export class AdminUsuariosComponent implements OnInit {
 
     if (!this.formNombre().trim()) return false;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.formCorreo().trim())) return false;
-    if (!this.formTelefono().trim()) return false;
+    // Mismo contrato que `CrearUsuarioPlataformaDto`: 10 dígitos exactos.
+    if (!/^\d{10}$/.test(this.formTelefono())) return false;
     if (password.length < PASSWORD_MINIMO) return false;
     if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) return false;
 
+    // Y la cédula, 11 dígitos exactos si se indica (es opcional: hay clientes
+    // extranjeros sin cédula dominicana).
     const cedula = this.formCedula().trim();
-    if (cedula && !/^\d+$/.test(cedula)) return false;
+    if (cedula && !/^\d{11}$/.test(cedula)) return false;
 
     if (this.rolRequiereSede() && !this.formBarberiaId()) return false;
 
@@ -974,13 +996,15 @@ export class AdminUsuariosComponent implements OnInit {
       return;
     }
 
+    // Nunca se manda `""`: el backend lo transforma a `undefined`, pero el
+    // contrato del alta es omitir el campo cuando no hay cédula.
     const cedula = this.formCedula().trim();
     const requiereSede = this.rolRequiereSede();
 
     const dto: CrearUsuarioRequest = {
       nombreCompleto: this.formNombre().trim(),
       correo: this.formCorreo().trim(),
-      telefono: this.formTelefono().trim(),
+      telefono: this.formTelefono(),
       password: this.formPassword(),
       rolNombre: this.formRol(),
       ...(cedula ? { cedula } : {}),

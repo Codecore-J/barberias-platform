@@ -85,9 +85,10 @@ describe('Plataforma · usuarios (E2E)', () => {
     nuevo: `nuevo.pu-${sufijo}@${DOMINIO}`,
   };
 
-  const telefonoAdmin = `809${digitos}0`;
-  const telefonoNuevo = `809${digitos}1`;
-  const cedulaNueva = `9${digitos}${sufijo.length}`;
+  // 10 dígitos para el teléfono y 11 para la cédula: es el contrato de los DTOs.
+  const telefonoAdmin = `80${digitos}0`;
+  const telefonoNuevo = `80${digitos}1`;
+  const cedulaNueva = `90${digitos}00`;
   const password = 'Password1!';
 
   let tokenAdmin = '';

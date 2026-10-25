@@ -58,10 +58,11 @@ import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
               </div>
 
               <div class="space-y-2">
-                <label for="telefono" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Teléfono</label>
+                <label for="telefono" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Teléfono <span class="text-zinc-600 font-normal lowercase">(obligatorio · 10 dígitos)</span></label>
                 <div class="relative group">
                   <i class="pi pi-phone absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
-                  <input id="telefono" name="telefono" type="tel" autocomplete="tel" formControlName="telefono" placeholder="+123456789"
+                  <input id="telefono" name="telefono" type="tel" inputmode="numeric" autocomplete="tel-national" formControlName="telefono" placeholder="8095550199"
+                         maxlength="10" (input)="onTelefonoInput($event)"
                          class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner"
                          [ngClass]="{'border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50': registerForm.get('telefono')?.invalid && registerForm.get('telefono')?.touched}">
                 </div>
@@ -69,10 +70,11 @@ import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
             </div>
 
             <div class="space-y-2">
-              <label for="cedula" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Cédula <span class="text-zinc-600 font-normal lowercase">(opcional)</span></label>
+              <label for="cedula" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Cédula <span class="text-zinc-600 font-normal lowercase">(opcional · 11 dígitos si la tienes)</span></label>
               <div class="relative group">
                 <i class="pi pi-id-card absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
-                <input id="cedula" name="cedula" type="text" formControlName="cedula" placeholder="Solo dígitos (opcional)"
+                <input id="cedula" name="cedula" type="text" inputmode="numeric" formControlName="cedula" placeholder="Opcional: 11 dígitos"
+                       maxlength="11" (input)="onCedulaInput($event)"
                        class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner"
                        [ngClass]="{'border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50': registerForm.get('cedula')?.invalid && registerForm.get('cedula')?.touched}">
               </div>
@@ -160,8 +162,9 @@ export class RegisterComponent {
   registerForm = this.fb.group({
     nombreCompleto: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(150)]],
     correo: ['', [Validators.required, Validators.email, Validators.maxLength(150)]],
-    telefono: ['', [Validators.required, Validators.maxLength(30)]],
-    cedula: ['', [Validators.pattern(/^\d*$/), Validators.maxLength(30)]],
+    // Mismo contrato que `RegisterDto`: teléfono de 10 dígitos y cédula de 11.
+    telefono: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
+    cedula: ['', [Validators.pattern(/^\d{11}$/)]],
     password: ['', [
       Validators.required, 
       Validators.minLength(8), 
@@ -172,6 +175,25 @@ export class RegisterComponent {
 
   togglePassword() {
     this.showPassword.update(v => !v);
+  }
+
+  /** Deja solo dígitos y recorta: pegar "+1 (809) 555-0199" queda en 8095550199. */
+  private soloDigitos(event: Event, maximo: number): void {
+    const input = event.target as HTMLInputElement;
+    const limpio = input.value.replace(/\D/g, '').slice(0, maximo);
+    if (input.value !== limpio) {
+      input.value = limpio;
+    }
+  }
+
+  onTelefonoInput(event: Event): void {
+    this.soloDigitos(event, 10);
+    this.registerForm.get('telefono')?.setValue((event.target as HTMLInputElement).value, { emitEvent: false });
+  }
+
+  onCedulaInput(event: Event): void {
+    this.soloDigitos(event, 11);
+    this.registerForm.get('cedula')?.setValue((event.target as HTMLInputElement).value, { emitEvent: false });
   }
 
   onSubmit() {

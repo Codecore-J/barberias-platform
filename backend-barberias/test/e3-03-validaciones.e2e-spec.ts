@@ -150,16 +150,17 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
     // es el mismo y es lo que usan las pruebas.
     for (const [correo, telefono] of [
       ['admin.e303@test.com', '6000000000'],
-      ['cA.e303@test.com', '600010001'],
-      ['cB.e303@test.com', '600010002'],
-      ['cX.e303@test.com', '600010003'],
-      ['cY.e303@test.com', '600010004'],
-      ['cD.e303@test.com', '600010005'],
-      ['cE.e303@test.com', '600010006'],
-      ['cF.e303@test.com', '600010007'],
-      ['cG.e303@test.com', '600010008'],
-      ['cH.e303@test.com', '600010009'],
-      ['cI.e303@test.com', '600010010'],
+      // `RegisterDto` exige 10 dígitos exactos: los fixtures también.
+      ['cA.e303@test.com', '6000100011'],
+      ['cB.e303@test.com', '6000100012'],
+      ['cX.e303@test.com', '6000100013'],
+      ['cY.e303@test.com', '6000100014'],
+      ['cD.e303@test.com', '6000100015'],
+      ['cE.e303@test.com', '6000100016'],
+      ['cF.e303@test.com', '6000100017'],
+      ['cG.e303@test.com', '6000100018'],
+      ['cH.e303@test.com', '6000100019'],
+      ['cI.e303@test.com', '6000100020'],
     ] as [string, string][]) {
       const r = await registrarYLogin(correo, telefono);
       expect([200, 201, 409]).toContain(r.status);

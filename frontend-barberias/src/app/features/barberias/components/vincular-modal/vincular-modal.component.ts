@@ -3,13 +3,15 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TenantService } from '../../../../core/services/tenant.service';
 
+import { ModalOverlayDirective } from '../../../../shared/directives/modal-overlay.directive';
+
 @Component({
   selector: 'app-vincular-modal',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ModalOverlayDirective],
   template: `
     <!-- Overlay/Backdrop -->
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-0">
+    <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-0">
       <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" (click)="close.emit()"></div>
 
       <!-- Modal Card -->

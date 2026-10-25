@@ -96,6 +96,15 @@ import { NotificationService } from '../../core/services/notification.service';
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-calendar mr-1.5 text-xs text-amber-400/80"></i>Mi Agenda
               </a>
+              <a routerLink="/admin/servicios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-cog mr-1.5 text-xs text-amber-400/80"></i>Mis Servicios
+              </a>
+              <a routerLink="/catalogo" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo
+              </a>
+              <!-- E3-12: BARBERO puede ver catálogo pero no crear/editar (modo solo lectura) -->
               <a routerLink="/catalogo" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo
@@ -111,8 +120,9 @@ import { NotificationService } from '../../core/services/notification.service';
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-calendar mr-1.5 text-xs text-amber-400/80"></i>Agenda
               </a>
+              <!-- E3-12: Sedes y Equipo ocultos en V1 (único responsable) -->
               <a routerLink="/admin/personal" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
-                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all" *ngIf="userRole() !== 'ADMINISTRADOR'">
                 <i class="pi pi-users mr-1.5 text-xs text-amber-400/80"></i>Equipo
               </a>
               <a routerLink="/admin/servicios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
@@ -142,35 +152,32 @@ import { NotificationService } from '../../core/services/notification.service';
             }
 
             @if (userRole() === 'ADMINISTRADOR') {
-              <!-- Mis Sedes -->
+              <!-- ADMINISTRADOR Global: solo lectura en catálogo, usuarios, auditoría y aprobaciones -->
+              <a routerLink="/admin/usuarios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-id-card mr-1.5 text-xs text-amber-400/80"></i>Usuarios
+              </a>
               <a routerLink="/barberias" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-building mr-1.5 text-xs text-amber-400/80"></i>Sedes
+                <i class="pi pi-building mr-1.5 text-xs text-amber-400/80"></i>Barberías
               </a>
-              <!-- Agenda -->
-              <a routerLink="/admin/agenda" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
-                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-calendar mr-1.5 text-xs text-amber-400/80"></i>Agenda
-              </a>
-              <!-- Mi Equipo -->
-              <a routerLink="/admin/personal" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
-                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-users mr-1.5 text-xs text-amber-400/80"></i>Equipo
-              </a>
-              <!-- Catálogo -->
+              <!-- E3-12: solo auditoría, sin operaciones de catálogo -->
               <a routerLink="/admin/servicios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
-                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all" *ngIf="userRole() !== 'ADMINISTRADOR'">
                 <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo
               </a>
-              <!-- E3-12: sextas vinculaciones esperando decisión de plataforma -->
               <a routerLink="/admin/vinculaciones" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-user-plus mr-1.5 text-xs text-amber-400/80"></i>Vinculaciones
               </a>
-              <!-- Bandeja de cuentas de la plataforma (GET /plataforma/usuarios) -->
               <a routerLink="/admin/usuarios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-id-card mr-1.5 text-xs text-amber-400/80"></i>Usuarios
+              </a>
+              <!-- Aprobaciones (pending actions placeholder) -->
+              <a routerLink="/admin/agenda" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-calendar mr-1.5 text-xs text-amber-400/80"></i>Aprobaciones
               </a>
               <!-- Dropdown Configuración -->
               <div class="relative" (mouseenter)="configDropdownOpen.set(true)" (mouseleave)="configDropdownOpen.set(false)">
@@ -323,6 +330,9 @@ import { NotificationService } from '../../core/services/notification.service';
               @if (userRole() === 'BARBERO') {
                 <a routerLink="/admin/agenda" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-calendar text-amber-400"></i>Mi Agenda
+                </a>
+                <a routerLink="/admin/servicios" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-cog text-amber-400"></i>Mis Servicios
                 </a>
                 <a routerLink="/catalogo" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-list text-amber-400"></i>Catálogo de Servicios

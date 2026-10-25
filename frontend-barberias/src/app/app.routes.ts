@@ -79,8 +79,13 @@ export const routes: Routes = [
           import('./features/catalogo/catalogo.component').then((m) => m.CatalogoComponent),
       },
       {
+        //
+        // D16 corregido: el catálogo lo gestiona el BARBERO de la sede; el
+        // ADMIN_BARBERIA y el ADMINISTRADOR entran en modo lectura y el backend
+        // les responde 403 en cualquier escritura.
+        //
         path: 'admin/servicios',
-        canActivate: [tenantGuard, roleGuard(['ADMIN'])],
+        canActivate: [tenantGuard, roleGuard(['ADMIN', 'BARBERO'])],
         loadComponent: () =>
           import('./features/admin/admin-servicios.component').then((m) => m.AdminServiciosComponent),
       },

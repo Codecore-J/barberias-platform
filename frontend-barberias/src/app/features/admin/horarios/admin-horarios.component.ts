@@ -14,10 +14,12 @@ interface DiaConfig {
 
 type TabActiva = 'semanal' | 'excepciones' | 'bloqueos';
 
+import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
+
 @Component({
   selector: 'app-admin-horarios',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ModalOverlayDirective],
   template: `
     <div class="space-y-8 pb-12 animate-fade-in relative z-10">
       
@@ -332,7 +334,7 @@ type TabActiva = 'semanal' | 'excepciones' | 'bloqueos';
 
       <!-- ================= MODAL NUEVA EXCEPCIÓN ================= -->
       @if (modalExcepcionAbierto()) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
+        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
           <div class="bg-zinc-900 border border-amber-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
             <div class="p-6 space-y-6">
               <div class="flex justify-between items-start">
@@ -402,7 +404,7 @@ type TabActiva = 'semanal' | 'excepciones' | 'bloqueos';
 
       <!-- ================= MODAL NUEVO BLOQUEO ================= -->
       @if (modalBloqueoAbierto()) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
+        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
           <div class="bg-zinc-900 border border-amber-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
             <div class="p-6 space-y-6">
               <div class="flex justify-between items-start">

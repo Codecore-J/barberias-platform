@@ -272,21 +272,27 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /barberias/:barberiaId/reservas,reservas/:id/propuesta-horario/rechazar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /barberias/:barberiaId/reservas,reservas/agenda': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_ADMINISTRADOR],
 
+  // D16 (Especificación §2/§3.1): el catálogo lo opera el personal de la sede.
+  // Las escrituras son del BARBERO y del ADMIN_BARBERIA (en V1 suele ser el
+  // único responsable/operador). El ADMINISTRADOR global queda FUERA de la
+  // escritura aunque `RolesGuard` le conceda acceso por jerarquía (E1-04); de eso
+  // se ocupa `OperadorBarberiaGuard`. Las lecturas conservan al CLIENTE porque
+  // son la vitrina pública y el wizard.
   'GET /catalogo/servicios,servicios/': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
-  'POST /catalogo/servicios,servicios/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /catalogo/servicios,servicios/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   'GET /catalogo/servicios,servicios/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
-  'PATCH /catalogo/servicios,servicios/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /catalogo/servicios,servicios/:id': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   // E2-07: el `DELETE` del catálogo se parte en los dos verbos del cambio de
   // estado. Desactivar tiene reglas de negocio (422) que el guard no puede ver.
-  'PATCH /catalogo/servicios,servicios/:id/desactivar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'PATCH /catalogo/servicios,servicios/:id/reactivar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /catalogo/servicios,servicios/:id/desactivar': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'PATCH /catalogo/servicios,servicios/:id/reactivar': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
 
   'GET /catalogo/combos/': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
-  'POST /catalogo/combos/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /catalogo/combos/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   'GET /catalogo/combos/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
-  'PATCH /catalogo/combos/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'PATCH /catalogo/combos/:id/desactivar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'PATCH /catalogo/combos/:id/reactivar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /catalogo/combos/:id': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'PATCH /catalogo/combos/:id/desactivar': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'PATCH /catalogo/combos/:id/reactivar': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
 
   // E4-02 · D22 (2026-10-20): el alta de la lista de espera es del CLIENTE: el
   // `usuarioId` sale del token, así que la ruta no lleva `:barberiaId` y el

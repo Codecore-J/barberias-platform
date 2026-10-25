@@ -35,8 +35,10 @@ describe('E4-03/5 · suspensión manual de cuenta (D09/D24)', () => {
   const tokens: Record<string, string> = {};
   const usuarios: Record<string, string> = {};
 
-  const telefono = (n: number) =>
-    `701${sufijo.slice(-4).padEnd(4, '0')}${String(n).padStart(2, '0')}`;
+  // 10 dígitos numéricos exactos: `RegisterDto` lo valida y el sufijo base36 no
+  // garantizaba solo dígitos.
+  const serie = String(Math.floor(Math.random() * 9000) + 1000);
+  const telefono = (n: number) => `809${serie}${String(n).padStart(3, '0')}`;
 
   const password = 'Password1!';
 

@@ -133,10 +133,13 @@ describe('E4-02 · Carril B — el hueco liberado por una cancelación llega a l
     const suffix = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     ids.correoA = `cliente-a-le-${suffix}@test.com`;
     ids.correoB = `cliente-b-le-${suffix}@test.com`;
-    const telefonoBase = `601${suffix.slice(-6).padEnd(6, '0')}`;
+    // Teléfonos de 10 dígitos numéricos: `RegisterDto` ya no acepta otro formato
+    // (el sufijo base36 podía meter letras y la cadena superaba los 10 dígitos).
+    const serie = String(Math.floor(Math.random() * 9000) + 1000);
+    const telefonoBase = `809${serie}`;
 
-    await registrarYLogin(ids.correoA, `${telefonoBase}01`);
-    await registrarYLogin(ids.correoB, `${telefonoBase}02`);
+    await registrarYLogin(ids.correoA, `${telefonoBase}001`);
+    await registrarYLogin(ids.correoB, `${telefonoBase}002`);
 
     const usuarioA = await prisma.usuario.findUniqueOrThrow({
       where: { correo: ids.correoA },
@@ -152,7 +155,7 @@ describe('E4-02 · Carril B — el hueco liberado por una cancelación llega a l
     const sede = await prisma.barberia.create({
       data: {
         nombre: `Sede CarrilB-${suffix}`,
-        telefono: `${telefonoBase}03`,
+        telefono: `${telefonoBase}003`,
         ubicacion: 'Lista de espera E2E',
         estado: 'ACTIVO',
         codigoAcceso: `LE-${suffix}`,

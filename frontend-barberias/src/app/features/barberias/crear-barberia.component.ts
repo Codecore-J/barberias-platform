@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, Router } from '@angular/router';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { AuthService } from '../../auth/auth.service';
 import { TenantService } from '../../core/services/tenant.service';
 
 @Component({
@@ -11,11 +12,12 @@ import { TenantService } from '../../core/services/tenant.service';
   template: `
     <div class="min-h-[85vh] flex items-center justify-center p-4 bg-ambient-mesh transform-style-3d">
       <div class="glass-panel w-full max-w-2xl rounded-3xl p-8 sm:p-12 shadow-2xl relative overflow-hidden border border-amber-500/30">
-        
+
         <!-- Glow 3D -->
-        <div class="absolute -top-20 -left-20 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute -top-20 -left-20 w-64 h-64 bg-amber-500/10 rounded-full blur-3x pointer-events-none"></div>
 
         <div class="relative z-10 space-y-8 transform translate-z-12">
+
           <!-- Header -->
           <div class="text-center space-y-2">
             <h1 class="text-4xl font-display font-bold text-white">Registrar <span class="gold-gradient-text">Barbería</span></h1>
@@ -24,16 +26,34 @@ import { TenantService } from '../../core/services/tenant.service';
 
           <!-- Formulario -->
           <form [formGroup]="form" (ngSubmit)="onSubmit()" class="space-y-6">
-            
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+
               <!-- Nombre -->
               <div class="space-y-2 col-span-1 sm:col-span-2">
                 <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">Nombre del Local</label>
                 <div class="relative">
                   <i class="pi pi-building absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
                   <input type="text" formControlName="nombre" placeholder="Ej: The Gentlemen's Barbershop"
-                         class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
+                    class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner"
+                    [disabled]="isAdmin()"
+                    readonly>
                 </div>
+              </div>
+
+              <!-- Responsable -->
+              <div class="space-y-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">Responsable</label>
+                <div class="relative">
+                  <i class="pi pi-user absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
+                  <input type="text" formControlName="responsable"
+                    class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner"
+                    [disabled]="isAdmin()"
+                    readonly>
+                </div>
+                @if (isAdmin()) {
+                  <p class="text-[10px] text-zinc-500 text-xs uppercase tracking-wider">Solo ADMINISTRADOR puede modificar este campo</p>
+                }
               </div>
 
               <!-- Teléfono -->
@@ -41,9 +61,13 @@ import { TenantService } from '../../core/services/tenant.service';
                 <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">Teléfono</label>
                 <div class="relative">
                   <i class="pi pi-phone absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
-                  <input type="text" formControlName="telefono" placeholder="+1 234 567 8900"
-                         class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
+                  <input type="tel" formControlName="telefono" inputmode="numeric" autocomplete="tel-national"
+                    maxlength="10" placeholder="8095550199" (input)="onTelefonoInput($event)"
+                    class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
                 </div>
+                @if (form.get('telefono')?.touched && form.get('telefono')?.invalid) {
+                  <p class="text-[11px] text-red-400 pl-1">El teléfono debe tener exactamente 10 dígitos.</p>
+                }
               </div>
 
               <!-- Ubicación -->
@@ -52,7 +76,7 @@ import { TenantService } from '../../core/services/tenant.service';
                 <div class="relative">
                   <i class="pi pi-map-marker absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
                   <input type="text" formControlName="ubicacion" placeholder="Madrid, España"
-                         class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
+                    class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
                 </div>
               </div>
 
@@ -62,7 +86,17 @@ import { TenantService } from '../../core/services/tenant.service';
                 <div class="relative">
                   <i class="pi pi-info-circle absolute left-4 top-4 text-amber-500"></i>
                   <textarea formControlName="descripcion" rows="3" placeholder="Una breve descripción de tu barbería..."
-                         class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner resize-none"></textarea>
+                    class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner resize-none"></textarea>
+                </div>
+              </div>
+
+              <!-- Logo -->
+              <div class="space-y-2 col-span-1 sm:col-span-2">
+                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">Logo (URL o base64)</label>
+                <div class="relative">
+                  <i class="pi pi-image absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
+                  <input type="text" formControlName="logo"
+                    class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
                 </div>
               </div>
             </div>
@@ -78,7 +112,7 @@ import { TenantService } from '../../core/services/tenant.service';
                 Cancelar
               </a>
               <button type="submit" [disabled]="form.invalid || isSubmitting()"
-                      class="flex-[2] px-6 py-4 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_10px_30px_rgba(212,175,55,0.3)] hover:shadow-[0_15px_40px_rgba(212,175,55,0.5)] disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-1 transition-all flex items-center justify-center gap-2">
+                class="flex-[2] px-6 py-4 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_10px_30px_rgba(212,175,55,0.3)] hover:shadow-[0_15px_40px_rgba(212,175,55,0.5)] disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-1 transition-all flex items-center justify-center gap-2">
                 @if (isSubmitting()) {
                   <i class="pi pi-spin pi-spinner text-lg"></i> Creando Espacio...
                 } @else {
@@ -97,15 +131,31 @@ export class CrearBarberiaComponent {
   private readonly fb = inject(FormBuilder);
   protected readonly tenantService = inject(TenantService);
   private readonly router = inject(Router);
+  private readonly authService = inject(AuthService);
 
   isSubmitting = signal(false);
 
+  readonly isAdmin = signal(this.authService.authState().user?.roles.includes('ADMINISTRADOR') ?? false);
+
   form: FormGroup = this.fb.group({
     nombre: ['', [Validators.required, Validators.minLength(3)]],
-    telefono: ['', [Validators.required]],
+    // Mismo contrato que `CreateBarberiaDto`: 10 dígitos exactos, sin formato.
+    telefono: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
     ubicacion: ['', [Validators.required]],
-    descripcion: ['']
+    descripcion: [''],
+    // Responsable: solo editable por ADMINISTRADOR Global; ADMIN_BARBERIA y BARBERO ven deshabilitado
+    responsable: ['']
   });
+
+  /** Solo dígitos y máximo 10: el backend rechaza cualquier otra cosa con 400. */
+  onTelefonoInput(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const limpio = input.value.replace(/\D/g, '').slice(0, 10);
+    if (input.value !== limpio) {
+      input.value = limpio;
+      this.form.get('telefono')?.setValue(limpio, { emitEvent: false });
+    }
+  }
 
   onSubmit() {
     if (this.form.invalid) return;
@@ -121,4 +171,4 @@ export class CrearBarberiaComponent {
       }
     });
   }
-}
+}
