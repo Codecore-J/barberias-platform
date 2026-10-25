@@ -30,9 +30,17 @@ export function errorDeSolicitud(codigo: string, mensaje: string): BadRequestExc
 /**
  * 409 · conflicto: concurrencia o transición de estado no permitida (D40).
  * `ESTADO_INVALIDO` y `SOLICITUD_EXPIRADA` viajan por aquí (E3-04).
+ *
+ * `detalle` es opcional y sigue el mismo patrón que `reglaDeNegocio`: SOLO se
+ * usa cuando la regla exige exponer datos adicionales (p. ej. E3-11
+ * `CONFIG_CON_PENDIENTES` devuelve el `conteo` de reservas en curso).
  */
-export function errorDeConflicto(codigo: string, mensaje: string): ConflictException {
-  return new ConflictException({ statusCode: 409, codigo, mensaje });
+export function errorDeConflicto(
+  codigo: string,
+  mensaje: string,
+  detalle?: Record<string, unknown>,
+): ConflictException {
+  return new ConflictException({ statusCode: 409, codigo, mensaje, ...detalle });
 }
 
 /**
