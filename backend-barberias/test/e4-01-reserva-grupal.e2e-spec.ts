@@ -223,7 +223,7 @@ describe('E4-01 · reserva grupal', () => {
     cuerpo: Record<string, unknown>,
   ) =>
     request(app.getHttpServer())
-      .post(`${api}/barberias/${barberia[sede]}/reservas`)
+      .post(`${api}/shops/${barberia[sede]}/appointments`)
       .set(headers(correo, barberia[sede]))
       .send({
         fecha: fecha(1),
@@ -281,7 +281,7 @@ describe('E4-01 · reserva grupal', () => {
     const antes = await contarReservas('A');
 
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${barberia.A}/reservas/cotizar`)
+      .post(`${api}/shops/${barberia.A}/appointments/quote`)
       .set(headers('gA.e401@test.com', 'A'))
       .send({
         fecha: fecha(2),

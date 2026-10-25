@@ -219,7 +219,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       });
 
       const res = await request(app.getHttpServer())
-        .patch(`${API}/barberias/${barberiaA}`)
+        .patch(`${API}/shops/${barberiaA}`)
         .set('Authorization', `Bearer ${tokenAdminA}`)
         .send({ nombre: 'Nombre por la puerta de atrás' })
         .expect(422);
@@ -238,7 +238,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
 
     it('permite descripcion, ubicacion y logoUrl sin contraseña', async () => {
       const res = await request(app.getHttpServer())
-        .patch(`${API}/barberias/${barberiaA}`)
+        .patch(`${API}/shops/${barberiaA}`)
         .set('Authorization', `Bearer ${tokenAdminA}`)
         .send({
           descripcion: 'Descripción E3-13',
@@ -256,7 +256,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
 
     it('422 PASSWORD_REQUERIDA si se intenta cambiar el teléfono sin la contraseña actual (D27)', async () => {
       const res = await request(app.getHttpServer())
-        .patch(`${API}/barberias/${barberiaA}`)
+        .patch(`${API}/shops/${barberiaA}`)
         .set('Authorization', `Bearer ${tokenAdminA}`)
         .send({ telefono: '9333333333' })
         .expect(422);
@@ -272,7 +272,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
 
     it('422 PASSWORD_INCORRECTA si la contraseña actual no coincide', async () => {
       const res = await request(app.getHttpServer())
-        .patch(`${API}/barberias/${barberiaA}`)
+        .patch(`${API}/shops/${barberiaA}`)
         .set('Authorization', `Bearer ${tokenAdminA}`)
         // Contraseña deliberadamente incorrecta para provocar el 422: no es un
         // secreto real. `gitleaks:allow` exime esta línea del escáner de CI.
@@ -284,7 +284,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
 
     it('cambia el teléfono con la contraseña actual correcta', async () => {
       const res = await request(app.getHttpServer())
-        .patch(`${API}/barberias/${barberiaA}`)
+        .patch(`${API}/shops/${barberiaA}`)
         .set('Authorization', `Bearer ${tokenAdminA}`)
         .send({ telefono: '9333333333', passwordActual: PASSWORD_ADMIN_A })
         .expect(200);
@@ -294,7 +294,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
 
     it('el CLIENTE sigue recibiendo 403 en la edición directa', async () => {
       await request(app.getHttpServer())
-        .patch(`${API}/barberias/${barberiaA}`)
+        .patch(`${API}/shops/${barberiaA}`)
         .set('Authorization', `Bearer ${tokenCliente}`)
         .send({ descripcion: 'No debería' })
         .expect(403);
@@ -307,7 +307,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
 
     it('201: el ADMIN_BARBERIA de la sede crea la solicitud en PENDIENTE', async () => {
       const res = await request(app.getHttpServer())
-        .post(`${API}/barberias/${barberiaA}/solicitudes-cambio`)
+        .post(`${API}/shops/${barberiaA}/change-requests`)
         .set('Authorization', `Bearer ${tokenAdminA}`)
         .send({ tipo: 'NOMBRE', valorNuevo: `Barbería Renombrada ${sufijo}` })
         .expect(201);
@@ -325,7 +325,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
 
     it('409 SOLICITUD_PENDIENTE si se repite el mismo tipo pendiente', async () => {
       const res = await request(app.getHttpServer())
-        .post(`${API}/barberias/${barberiaA}/solicitudes-cambio`)
+        .post(`${API}/shops/${barberiaA}/change-requests`)
         .set('Authorization', `Bearer ${tokenAdminA}`)
         .send({ tipo: 'NOMBRE', valorNuevo: `Otro Nombre ${sufijo}` })
         .expect(409);
@@ -333,14 +333,18 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       expect(res.body).toMatchObject({ codigo: 'SOLICITUD_PENDIENTE' });
     });
 
-    it('403 SOLO_ADMIN_BARBERIA: el admin de OTRA sede no puede solicitar en esta', async () => {
+    it('403: el admin de OTRA sede no puede solicitar en esta (lo frena el guard)', async () => {
       const res = await request(app.getHttpServer())
-        .post(`${API}/barberias/${barberiaA}/solicitudes-cambio`)
+        .post(`${API}/shops/${barberiaA}/change-requests`)
         .set('Authorization', `Bearer ${tokenAdminB}`)
         .send({ tipo: 'NOMBRE', valorNuevo: 'Nombre ajeno' })
         .expect(403);
 
-      expect(res.body).toMatchObject({ codigo: 'SOLO_ADMIN_BARBERIA' });
+      // Fase 5: con la sede en la RUTA, `RolesGuard` acota el rol a la sede A y
+      // el ADMIN_BARBERIA de B no lo tiene ahí. La denegación es del guard, así
+      // que el cuerpo ya no es el `SOLO_ADMIN_BARBERIA` del servicio: lo que se
+      // exige es que NO se filtre el dato intentado.
+      expect(JSON.stringify(res.body)).not.toContain('Nombre ajeno');
     });
 
     it('el ADMINISTRADOR lista las solicitudes y los demás roles reciben 403', async () => {
@@ -406,7 +410,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
 
     it('422 MOTIVO_REQUERIDO y rechazo con motivo en una segunda solicitud', async () => {
       const creada = await request(app.getHttpServer())
-        .post(`${API}/barberias/${barberiaA}/solicitudes-cambio`)
+        .post(`${API}/shops/${barberiaA}/change-requests`)
         .set('Authorization', `Bearer ${tokenAdminA}`)
         .send({ tipo: 'NOMBRE', valorNuevo: `Barbería Que No Será ${sufijo}` })
         .expect(201);
@@ -444,7 +448,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
 
     it('201: el responsable solicita el cambio a un usuario existente', async () => {
       const res = await request(app.getHttpServer())
-        .post(`${API}/barberias/${barberiaB}/solicitudes-cambio`)
+        .post(`${API}/shops/${barberiaB}/change-requests`)
         .set('Authorization', `Bearer ${tokenAdminB}`)
         .send({ tipo: 'RESPONSABLE', valorNuevo: nuevoResponsableId })
         .expect(201);
@@ -462,7 +466,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       // La existencia del nuevo responsable se comprueba ANTES que el duplicado:
       // proponer un uuid que no es de nadie nunca crea una solicitud ambigua.
       const res = await request(app.getHttpServer())
-        .post(`${API}/barberias/${barberiaB}/solicitudes-cambio`)
+        .post(`${API}/shops/${barberiaB}/change-requests`)
         .set('Authorization', `Bearer ${tokenAdminB}`)
         .send({ tipo: 'RESPONSABLE', valorNuevo: '99999999-9999-4999-8999-999999999999' })
         .expect(422);
@@ -515,7 +519,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
 
     it('el antiguo responsable pierde la edición directa de esa sede (403)', async () => {
       await request(app.getHttpServer())
-        .patch(`${API}/barberias/${barberiaB}`)
+        .patch(`${API}/shops/${barberiaB}`)
         .set('Authorization', `Bearer ${tokenAdminB}`)
         .send({ descripcion: 'Ahora ya no soy el responsable' })
         .expect(403);
@@ -529,7 +533,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       });
 
       const res = await request(app.getHttpServer())
-        .patch(`${API}/barberias/${barberiaB}`)
+        .patch(`${API}/shops/${barberiaB}`)
         .set('Authorization', `Bearer ${tokenNuevo}`)
         .set('x-barberia-id', barberiaB)
         .send({ descripcion: 'Gestionada por el nuevo responsable' })
@@ -543,7 +547,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
   describe('validación de la solicitud', () => {
     it('400 al enviar un tipo fuera del catálogo D26', async () => {
       await request(app.getHttpServer())
-        .post(`${API}/barberias/${barberiaA}/solicitudes-cambio`)
+        .post(`${API}/shops/${barberiaA}/change-requests`)
         .set('Authorization', `Bearer ${tokenAdminA}`)
         .send({ tipo: 'COLOR_LOGO', valorNuevo: 'rojo' })
         .expect(400);

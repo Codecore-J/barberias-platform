@@ -40,7 +40,7 @@ import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
  * qué se puede hacer; el vínculo decide de qué sede. Sin él, un usuario leía o
  * escribía contra la sede que dijera la cabecera.
  */
-@Controller(['catalogo/servicios', 'servicios'])
+@Controller('shops/:shopId/services')
 export class ServiciosController {
   constructor(private readonly serviciosService: ServiciosService) {}
 
@@ -87,14 +87,14 @@ export class ServiciosController {
   }
 
   /**
-   * PATCH /catalogo/servicios/:id/desactivar · E2-07 (D29)
+   * PATCH /shops/:shopId/services/:id/deactivate · E2-07 (D29)
    *
    * El verbo describe el EFECTO: el servicio no se borra, pasa a INACTIVO y sale
    * del catálogo (`findAll` filtra por ACTIVO). Las reglas de cuándo se puede
    * viven en el servicio: 422 `SERVICIO_EN_USO` si hay reservas por confirmar y
    * 422 `SERVICIO_EN_COMBO_ACTIVO` si está dentro de un combo activo.
    */
-  @Patch(':id/desactivar')
+  @Patch(':id/deactivate')
   @Roles('BARBERO', 'ADMIN_BARBERIA')
   @UseGuards(OperadorBarberiaGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.OK)
@@ -106,12 +106,12 @@ export class ServiciosController {
   }
 
   /**
-   * PATCH /catalogo/servicios/:id/reactivar · E2-07 (D29)
+   * PATCH /shops/:shopId/services/:id/reactivate · E2-07 (D29)
    *
    * La vuelta atrás explícita: sin ella, `DELETE` era irreversible y recuperar
    * un servicio exigía tocar la base.
    */
-  @Patch(':id/reactivar')
+  @Patch(':id/reactivate')
   @Roles('BARBERO', 'ADMIN_BARBERIA')
   @UseGuards(OperadorBarberiaGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.OK)

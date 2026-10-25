@@ -19,8 +19,8 @@ describe('MiEstadoService · el cliente y su vínculo (H54 · E3-12/3)', () => {
   let http: HttpTestingController;
 
   const SEDE = 'b1';
-  const ESTADO_URL = `${API_URL}/barberias/${SEDE}/mi-estado`;
-  const DESVINCULAR_URL = `${ESTADO_URL}/desvincular`;
+  const ESTADO_URL = `${API_URL}/shops/${SEDE}/membership`;
+  const DESVINCULAR_URL = `${ESTADO_URL}/unlink`;
 
   const estadoCrudo = {
     barberiaId: SEDE,

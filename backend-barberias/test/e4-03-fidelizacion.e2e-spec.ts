@@ -263,7 +263,7 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
     // 1. Cinco inasistencias: el contador de ESA sede sube una a una.
     for (let i = 0; i < reservasDelCiclo.length; i++) {
       const res = await request(app.getHttpServer())
-        .post(`${api}/barberias/${sede.A}/reservas/${reservasDelCiclo[i]}/inasistencia`)
+        .post(`${api}/shops/${sede.A}/appointments/${reservasDelCiclo[i]}/no-show`)
         .set(headers(correos.adminA, sede.A));
 
       expect([200, 201]).toContain(res.status);
@@ -295,7 +295,7 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
 
     // 4. La bandeja de la sede lista al cliente con su motivo.
     const listado = await request(app.getHttpServer())
-      .get(`${api}/barberias/${sede.A}/clientes-restringidos`)
+      .get(`${api}/shops/${sede.A}/restricted-clients`)
       .set(headers(correos.adminA, sede.A));
 
     expect(listado.status).toBe(200);
@@ -309,7 +309,7 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
     // 5. Intentar reservar en A falla con 403 CLIENTE_RESTRINGIDO (individual y grupal).
     for (const payload of [payloadIndividual(sede.A), payloadGrupal(sede.A)]) {
       const intento = await request(app.getHttpServer())
-        .post(`${api}/barberias/${sede.A}/reservas`)
+        .post(`${api}/shops/${sede.A}/appointments`)
         .set(headers(correos.cliente, sede.A))
         .send(payload);
 
@@ -319,7 +319,7 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
 
     // 6. Aislamiento por sede: en B reserva sin problema.
     const enBReserva = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede.B}/reservas`)
+      .post(`${api}/shops/${sede.B}/appointments`)
       .set(headers(correos.cliente, sede.B))
       .send(payloadIndividual(sede.B));
 
@@ -327,7 +327,7 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
 
     // 7. El ADMIN_BARBERIA de A lo perdona: contador a 0 y sin restricción.
     const reactivacion = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede.A}/clientes/${clienteId}/reactivar`)
+      .post(`${api}/shops/${sede.A}/restricted-clients/${clienteId}/reactivate`)
       .set(headers(correos.adminA, sede.A))
       .send({ motivo: 'Primera vez: se le perdona la racha' });
 
@@ -363,7 +363,7 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
 
     // 9. El cliente vuelve a reservar en A.
     const reservaFinal = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede.A}/reservas`)
+      .post(`${api}/shops/${sede.A}/appointments`)
       .set(headers(correos.cliente, sede.A))
       .send({ ...payloadIndividual(sede.A), horaInicio: '15:00', horaFin: '15:30' });
 
@@ -371,7 +371,7 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
 
     // 10. La lista de la sede ya está vacía: nadie más está restringido.
     const listadoFinal = await request(app.getHttpServer())
-      .get(`${api}/barberias/${sede.A}/clientes-restringidos`)
+      .get(`${api}/shops/${sede.A}/restricted-clients`)
       .set(headers(correos.adminA, sede.A));
     expect(listadoFinal.body).toHaveLength(0);
 
@@ -387,29 +387,29 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
     const clienteId = usuarios[correos.cliente];
 
     const comoBarbero = await request(app.getHttpServer())
-      .get(`${api}/barberias/${sede.A}/clientes-restringidos`)
+      .get(`${api}/shops/${sede.A}/restricted-clients`)
       .set(headers(correos.barbero, sede.A));
     expect(comoBarbero.status).toBe(403);
 
     const comoCliente = await request(app.getHttpServer())
-      .get(`${api}/barberias/${sede.A}/clientes-restringidos`)
+      .get(`${api}/shops/${sede.A}/restricted-clients`)
       .set(headers(correos.cliente, sede.A));
     expect(comoCliente.status).toBe(403);
 
     // El admin de la sede B no manda en la A (mismo error de pertenencia que E3-13).
     const adminAjeno = await request(app.getHttpServer())
-      .get(`${api}/barberias/${sede.A}/clientes-restringidos`)
+      .get(`${api}/shops/${sede.A}/restricted-clients`)
       .set(headers(correos.adminB, sede.A));
     expect(adminAjeno.status).toBe(403);
 
     const reactivarAjeno = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede.A}/clientes/${clienteId}/reactivar`)
+      .post(`${api}/shops/${sede.A}/restricted-clients/${clienteId}/reactivate`)
       .set(headers(correos.adminB, sede.A))
       .send({ motivo: 'No devería poder' });
     expect(reactivarAjeno.status).toBe(403);
 
     const reactivarComoCliente = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede.A}/clientes/${clienteId}/reactivar`)
+      .post(`${api}/shops/${sede.A}/restricted-clients/${clienteId}/reactivate`)
       .set(headers(correos.cliente, sede.A))
       .send({ motivo: 'Yo mismo me perdono' });
     expect(reactivarComoCliente.status).toBe(403);
@@ -419,7 +419,7 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
     const clienteId = usuarios[correos.cliente];
 
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede.A}/clientes/${clienteId}/reactivar`)
+      .post(`${api}/shops/${sede.A}/restricted-clients/${clienteId}/reactivate`)
       .set(headers(correos.adminA, sede.A))
       .send({ motivo: 'Perdón repetido' });
 
@@ -429,7 +429,7 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
 
   it('un cliente sin vinculación con la sede responde 404 (nunca 500)', async () => {
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede.A}/clientes/11111111-1111-4111-8111-111111111111/reactivar`)
+      .post(`${api}/shops/${sede.A}/restricted-clients/11111111-1111-4111-8111-111111111111/reactivate`)
       .set(headers(correos.adminA, sede.A))
       .send({ motivo: 'Cliente inexistente en la sede' });
 
@@ -442,7 +442,7 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
   // ── H54 (E4-03/2) · el cliente VE su estado ────────────────────────────
   it('H54: el cliente ve su contador, su advertencia y su restricción (y solo la suya)', async () => {
     const clienteId = usuarios[correos.cliente];
-    const ruta = `${api}/barberias/${sede.A}/mi-estado`;
+    const ruta = `${api}/shops/${sede.A}/membership`;
 
     const fijarVinculo = (data: Record<string, unknown>) =>
       prisma.clienteBarberia.update({
@@ -533,7 +533,7 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
 
     // 6. La sede B no ve nada de esto: allí el contador sigue en 0.
     const enB = await request(app.getHttpServer())
-      .get(`${api}/barberias/${sede.B}/mi-estado`)
+      .get(`${api}/shops/${sede.B}/membership`)
       .set(headers(correos.cliente, sede.B));
 
     expect(enB.status).toBe(200);
@@ -550,7 +550,7 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
 
   it('H54: sin vinculación con la sede → 403 NO_VINCULADO, sin filtrar nada', async () => {
     const res = await request(app.getHttpServer())
-      .get(`${api}/barberias/11111111-1111-4111-8111-111111111111/mi-estado`)
+      .get(`${api}/shops/11111111-1111-4111-8111-111111111111/membership`)
       .set(headers(correos.cliente));
 
     expect(res.status).toBe(403);

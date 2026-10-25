@@ -32,7 +32,7 @@ import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
  * y `alcanceCumple` lo trata como comodín, así que sin vínculo cualquier cliente
  * autenticado leía los precios de cualquier sede con solo la cabecera.
  */
-@Controller('catalogo/combos')
+@Controller('shops/:shopId/combos')
 export class CombosController {
   constructor(private readonly combosService: CombosService) {}
 
@@ -79,11 +79,11 @@ export class CombosController {
   }
 
   /**
-   * PATCH /catalogo/combos/:id/desactivar · E2-07 (D29)
+   * PATCH /shops/:shopId/combos/:id/deactivate · E2-07 (D29)
    * El combo pasa a INACTIVO y sale del catálogo. Es además la acción que
    * desbloquea la regla `SERVICIO_EN_COMBO_ACTIVO` de sus servicios.
    */
-  @Patch(':id/desactivar')
+  @Patch(':id/deactivate')
   @Roles('BARBERO', 'ADMIN_BARBERIA')
   @UseGuards(OperadorBarberiaGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.OK)
@@ -94,8 +94,8 @@ export class CombosController {
     return this.combosService.desactivar(barberiaId, id);
   }
 
-  /** PATCH /catalogo/combos/:id/reactivar · E2-07 (D29) */
-  @Patch(':id/reactivar')
+  /** PATCH /shops/:shopId/combos/:id/reactivate · E2-07 (D29) */
+  @Patch(':id/reactivate')
   @Roles('BARBERO', 'ADMIN_BARBERIA')
   @UseGuards(OperadorBarberiaGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.OK)

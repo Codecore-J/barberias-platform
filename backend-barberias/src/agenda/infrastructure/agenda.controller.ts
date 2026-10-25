@@ -18,7 +18,7 @@ import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.dec
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 
-@Controller(['barberias/:barberiaId/agenda', 'agenda'])
+@Controller('shops/:shopId/appointments/schedule')
 export class AgendaController {
   constructor(
     private readonly agendaService: AgendaService,
@@ -33,7 +33,7 @@ export class AgendaController {
    * pertenece a ella. Antes bastaba con la cabecera `x-barberia-id` de otra sede.
    */
   @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Get('disponibilidad')
+  @Get('availability')
   async consultarDisponibilidadGet(
     @CurrentBarberiaId() barberiaId: string,
     @CurrentUser() user: UsuarioAutenticado,
@@ -61,9 +61,9 @@ export class AgendaController {
    * ADMINISTRADOR global. El BARBERO solo gestiona su propio horario.
    */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Post('bloqueos')
+  @Post('blocks')
   crearBloqueo(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @Body() dto: CreateBloqueoDto,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
@@ -73,9 +73,9 @@ export class AgendaController {
   // E1-03 · H20: un CLIENTE nunca lee bloqueos ni sus motivos; para su
   // disponibilidad usa `GET .../agenda/disponibilidad`.
   @Roles('ADMIN_BARBERIA', 'BARBERO')
-  @Get('bloqueos')
+  @Get('blocks')
   obtenerBloqueos(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @Query('from') from: string,
     @Query('to') to: string,
     @CurrentUser() user: UsuarioAutenticado,
@@ -98,10 +98,10 @@ export class AgendaController {
    * 200 (no el 201 por defecto de POST) porque no se crea ningún recurso.
    */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Post('bloqueos/:id/liberar')
+  @Post('blocks/:id/release')
   @HttpCode(HttpStatus.OK)
   liberarBloqueo(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
@@ -119,7 +119,7 @@ export class AgendaController {
    * que es la misma cadena que usa el guard.
    */
   @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Post('disponibilidad')
+  @Post('availability')
   async obtenerDisponibilidad(
     @CurrentBarberiaId() barberiaId: string,
     @CurrentUser() user: UsuarioAutenticado,

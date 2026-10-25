@@ -318,7 +318,7 @@ describe('E2-07 · vocabulario del diseño en el backend', () => {
     expect(
       hallazgos.length === 0
         ? ''
-        : `rutas @Delete que Spec 01 §9 prohíbe (usa PATCH :id/desactivar, PATCH :id/estado o POST :id/liberar):\n${hallazgos.join('\n')}`,
+        : `rutas @Delete que Spec 01 §9 prohíbe (usa PATCH :id/deactivate, PATCH :id/estado o POST :id/release):\n${hallazgos.join('\n')}`,
     ).toBe('');
     // La comprobación de que la allowlist no engorda sin control ya no es «está
     // vacía» (dejó de estarlo al cubrir los borrados de datos de P-SD-5): ahora
@@ -329,10 +329,12 @@ describe('E2-07 · vocabulario del diseño en el backend', () => {
     const fuente = fuenteCompleta();
 
     const esperados = [
-      "@Patch(':id/desactivar')",
-      "@Patch(':id/reactivar')",
+      // Fase 5 (Punto 5.3): el vocabulario E2-07 viaja ahora en rutas anidadas
+      // en inglés (`/shops/:shopId/...`), pero los verbos siguen siendo los mismos.
+      "@Patch(':id/deactivate')",
+      "@Patch(':id/reactivate')",
       "@Patch(':id/estado')",
-      "@Post('bloqueos/:id/liberar')",
+      "@Post('blocks/:id/release')",
     ];
 
     const faltantes = esperados.filter((verbo) => !fuente.includes(verbo));

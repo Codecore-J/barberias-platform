@@ -14,7 +14,7 @@ import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js'
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 
-@Controller('barberias/:barberiaId/antecedentes')
+@Controller('shops/:shopId/records')
 export class AntecedenteController {
   constructor(private readonly antecedenteService: AntecedenteService) {}
 
@@ -27,7 +27,7 @@ export class AntecedenteController {
   @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Post()
   crear(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @Body() dto: CreateAntecedenteDto,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
@@ -39,9 +39,9 @@ export class AntecedenteController {
    * Evaluar la cola de antecedentes es del responsable de la barbería (D35).
    */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Patch(':id/evaluar')
+  @Patch(':id/evaluate')
   evaluar(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @Param('id', ParseUUIDPipe) antecedenteId: string,
     @Body() dto: EvaluarAntecedenteDto,
     @CurrentUser() user: UsuarioAutenticado,
@@ -54,9 +54,9 @@ export class AntecedenteController {
    * Cola de evaluación: la lee quien puede evaluar (D35).
    */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Get('pendientes')
+  @Get('pending')
   listarPendientes(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.antecedenteService.listarPendientes(user.id, barberiaId);
@@ -68,10 +68,10 @@ export class AntecedenteController {
    * responsable de la barbería y el ADMINISTRADOR global (decisión 7).
    */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Get('cliente/:clienteId')
+  @Get('client/:clientId')
   listarPorCliente(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
-    @Param('clienteId', ParseUUIDPipe) clienteId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
+    @Param('clientId', ParseUUIDPipe) clienteId: string,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.antecedenteService.listarPorCliente(user.id, barberiaId, clienteId);

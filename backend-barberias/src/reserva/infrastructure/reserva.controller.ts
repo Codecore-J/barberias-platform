@@ -18,11 +18,11 @@ import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.dec
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
-@Controller(['barberias/:barberiaId/reservas', 'reservas'])
+@Controller('shops/:shopId/appointments')
 export class ReservaController {
   constructor(private readonly reservaService: ReservaService) {}
 
-  @Get('agenda')
+  @Get('day')
   @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR')
   obtenerAgenda(
     @CurrentBarberiaId() barberiaId: string,
@@ -35,11 +35,11 @@ export class ReservaController {
   }
 
   /**
-   * GET /reservas/mis-reservas
+   * GET /shops/:shopId/appointments/mine
    * Las reservas del propio cliente: el `clienteId` sale del token.
    */
   @Roles('CLIENTE')
-  @Get('mis-reservas')
+  @Get('mine')
   obtenerMisReservas(@CurrentUser() user: UsuarioAutenticado) {
     return this.reservaService.obtenerMisReservas(user.id);
   }
@@ -93,7 +93,7 @@ export class ReservaController {
    * Declara los cuatro roles: el CLIENTE consume la cotización como paso previo a su propia reserva; el wizard del cliente y el modal de walk-in comparten este mismo blanco.
    */
   @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Post('cotizar')
+  @Post('quote')
   async cotizar(@CurrentBarberiaId() barberiaId: string, @Body() dto: CreateReservaDto) {
     return this.reservaService.cotizar(barberiaId, dto);
   }
@@ -105,7 +105,7 @@ export class ReservaController {
    * El `RolesGuard` acota la ruta al `barberiaId` del parámetro, así que un
    * admin de otra sede recibe 403 antes de llegar al servicio.
    */
-  @Post(':id/aceptar')
+  @Post(':id/accept')
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   aceptarReserva(
     @CurrentBarberiaId() barberiaId: string,
@@ -120,7 +120,7 @@ export class ReservaController {
    * `PENDIENTE → RECHAZADA` con `motivoCodigo` obligatorio del catálogo §5.5.
    * Mismos roles que aceptar.
    */
-  @Post(':id/rechazar')
+  @Post(':id/reject')
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   rechazarReserva(
     @CurrentBarberiaId() barberiaId: string,
@@ -139,7 +139,7 @@ export class ReservaController {
    * ver) la valida el servicio, que exige que sea suya cuando no hay rol de
    * sede. Cancela el job de expiración y audita `RESERVA_CANCELADA`.
    */
-  @Post(':id/cancelar')
+  @Post(':id/cancel')
   @Roles('CLIENTE', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   cancelarReserva(
     @CurrentBarberiaId() barberiaId: string,
@@ -159,7 +159,7 @@ export class ReservaController {
    * es la propuesta de horario con sus 10 minutos de ventana (§5.4 / E3-06 del
    * backlog), que todavía no existe.
    */
-  @Patch(':id/reprogramar')
+  @Patch(':id/reschedule')
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   reprogramarReserva(
     @CurrentBarberiaId() barberiaId: string,
@@ -176,7 +176,7 @@ export class ReservaController {
    * motivo obligatorio del catálogo §5.5. Solo el responsable de la sede y el
    * ADMINISTRADOR global; el `RolesGuard` la acota al `barberiaId` del parámetro.
    */
-  @Post(':id/cancelacion-especial')
+  @Post(':id/special-cancellation')
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   cancelacionEspecial(
     @CurrentBarberiaId() barberiaId: string,
@@ -192,7 +192,7 @@ export class ReservaController {
    * El CLIENTE dueño propone un bloque nuevo para su cita. No ocupa agenda: deja
    * una propuesta PENDIENTE con 10 minutos de ventana que la sede resuelve.
    */
-  @Post(':id/proponer-horario')
+  @Post(':id/propose-time')
   @Roles('CLIENTE')
   proponerHorario(
     @CurrentBarberiaId() barberiaId: string,
@@ -208,7 +208,7 @@ export class ReservaController {
    * La sede acepta la propuesta: mueve la cita tras revalidar el hueco bajo el
    * lock de la sede. Mismos roles que la reprogramación directa.
    */
-  @Post(':id/propuesta-horario/aceptar')
+  @Post(':id/proposed-time/accept')
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   aceptarPropuestaHorario(
     @CurrentBarberiaId() barberiaId: string,
@@ -222,7 +222,7 @@ export class ReservaController {
    * POST /reservas/:id/propuesta-horario/rechazar (E3-08/D18)
    * La sede rechaza la propuesta sin mover la cita.
    */
-  @Post(':id/propuesta-horario/rechazar')
+  @Post(':id/proposed-time/reject')
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   rechazarPropuestaHorario(
     @CurrentBarberiaId() barberiaId: string,
@@ -247,7 +247,7 @@ export class ReservaController {
    * Marcar una reserva como no presentada (D02): del responsable de la sede y
    * del ADMINISTRADOR global.
    */
-  @Post(':id/inasistencia')
+  @Post(':id/no-show')
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   marcarInasistencia(
     @CurrentBarberiaId() barberiaId: string,

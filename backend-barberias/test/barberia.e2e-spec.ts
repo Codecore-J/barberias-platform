@@ -102,7 +102,7 @@ describe('Barberias Endpoints (e2e)', () => {
   describe('T2.1 Creación y configuración de barberías', () => {
     it('debe crear una barbería, generar código único y asignar ADMIN_BARBERIA', async () => {
       const response = await request(app.getHttpServer())
-        .post('/api/v1/barberias')
+        .post('/api/v1/shops')
         .set('Authorization', `Bearer ${ownerToken}`)
         .send({
           nombre: 'Barberia E2E Test',
@@ -141,7 +141,7 @@ describe('Barberias Endpoints (e2e)', () => {
   describe('T2.2 Vinculación de clientes (Límite 5)', () => {
     it('debe vincular al cliente y asignarle estado ACTIVO si es su primera', async () => {
       const response = await request(app.getHttpServer())
-        .post('/api/v1/barberias/vincular')
+        .post('/api/v1/shops/link')
         .set('Authorization', `Bearer ${clientToken}`)
         .send({ codigoAcceso: createdCodigoAcceso })
         .expect(201);
@@ -173,7 +173,7 @@ describe('Barberias Endpoints (e2e)', () => {
       // Nos vinculamos a 4 barberías más para llegar a 5 vinculaciones totales
       for (let i = 0; i < 4; i++) {
         const res = await request(app.getHttpServer())
-          .post('/api/v1/barberias/vincular')
+          .post('/api/v1/shops/link')
           .set('Authorization', `Bearer ${clientToken}`)
           .send({ codigoAcceso: barberiasExtra[i].codigoAcceso })
           .expect(201);
@@ -183,7 +183,7 @@ describe('Barberias Endpoints (e2e)', () => {
 
       // La vinculación #6 debe devolver PENDIENTE_APROBACION (D10)
       const res6 = await request(app.getHttpServer())
-        .post('/api/v1/barberias/vincular')
+        .post('/api/v1/shops/link')
         .set('Authorization', `Bearer ${clientToken}`)
         .send({ codigoAcceso: barberiasExtra[4].codigoAcceso })
         .expect(201);
@@ -210,7 +210,7 @@ describe('Barberias Endpoints (e2e)', () => {
 
       // Mandamos a activar `nuevaAActivar`
       await request(app.getHttpServer())
-        .patch(`/api/v1/barberias/${nuevaAActivar!.barberiaId}/seleccionar`)
+        .patch(`/api/v1/shops/${nuevaAActivar!.barberiaId}/select`)
         .set('Authorization', `Bearer ${clientToken}`)
         .expect(200);
 

@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
+import { TenantService } from './tenant.service.js';
 
 export interface NotaCliente {
   id: string;
@@ -23,7 +24,12 @@ export interface FichaCliente {
 })
 export class ClientesService {
   private readonly http = inject(HttpClient);
-  private readonly apiUrl = `${API_URL}/clientes`;
+  private readonly tenant = inject(TenantService);
+
+  /** Fase 5: la sede viaja en la ruta, nunca en la cabecera x-barberia-id. */
+  private get apiUrl(): string {
+    return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/clients`;
+  }
 
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
@@ -35,7 +41,7 @@ export class ClientesService {
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.get<FichaCliente>(`${this.apiUrl}/${clienteId}/ficha`).pipe(
+    return this.http.get<FichaCliente>(`${this.apiUrl}/${clienteId}/profile`).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
@@ -52,7 +58,7 @@ export class ClientesService {
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.post<NotaCliente>(`${this.apiUrl}/${clienteId}/notas`, { contenido }).pipe(
+    return this.http.post<NotaCliente>(`${this.apiUrl}/${clienteId}/notes`, { contenido }).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);

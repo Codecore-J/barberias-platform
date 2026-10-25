@@ -8,9 +8,9 @@ import { API_URL } from '../constants/api.constants.js';
  *
  * Las dos rutas son las del backend (`MiEstadoController`, `@Roles('CLIENTE')`):
  *
- *  - `GET  /barberias/:barberiaId/mi-estado` → su contador de inasistencias, su
+ *  - `GET  /shops/:shopId/membership` → su contador de inasistencias, su
  *    advertencia, su restricción y el estado de su vinculación.
- *  - `POST /barberias/:barberiaId/mi-estado/desvincular` → cierra SU vínculo
+ *  - `POST /shops/:shopId/membership/unlink` → cierra SU vínculo
  *    (`DESVINCULADO`), conservando historial y penalización (D20/D21).
  *
  * El backend es la única fuente de verdad: aquí no se decide si alguien puede
@@ -50,7 +50,7 @@ export interface MiDesvinculacion {
 })
 export class MiEstadoService {
   private readonly http = inject(HttpClient);
-  private readonly apiUrl = `${API_URL}/barberias`;
+  private readonly apiUrl = `${API_URL}/shops`;
 
   /** Estado por sede, indexado por `barberiaId`: la tarjeta lo lee de aquí. */
   readonly estados = signal<Record<string, MiEstado>>({});
@@ -58,15 +58,15 @@ export class MiEstadoService {
   readonly error = signal<string | null>(null);
 
   private ruta(barberiaId: string): string {
-    return `${this.apiUrl}/${barberiaId}/mi-estado`;
+    return `${this.apiUrl}/${barberiaId}/membership`;
   }
 
   /**
-   * `GET /barberias/:barberiaId/mi-estado`.
+   * `GET /shops/:shopId/membership`.
    *
    * Un 403 `NO_VINCULADO` NO es un error de pantalla: la lista de sedes de la
    * vista puede traer sedes donde el usuario no tiene vínculo de cliente (el
-   * listado de `GET /barberias` filtra por responsabilidad, no por vínculo), y
+   * listado de `GET /shops` filtra por responsabilidad, no por vínculo), y
    * ahí lo correcto es no pintar nada. Por eso el fallo se traduce a `null` y no
    * se ensucia `error()`, que es para lo que el cliente tiene que ver.
    */
@@ -78,7 +78,7 @@ export class MiEstadoService {
   }
 
   /**
-   * `POST /barberias/:barberiaId/mi-estado/desvincular`.
+   * `POST /shops/:shopId/membership/unlink`.
    *
    * El cierre es definitivo hasta que el cliente vuelva a introducir el código
    * de acceso (D21), así que se olvida el estado de esa sede —la tarjeta deja de
@@ -92,7 +92,7 @@ export class MiEstadoService {
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.post<MiDesvinculacion>(`${this.ruta(barberiaId)}/desvincular`, {}).pipe(
+    return this.http.post<MiDesvinculacion>(`${this.ruta(barberiaId)}/unlink`, {}).pipe(
       tap((resultado) => {
         this.isLoading.set(false);
         this.olvidar(barberiaId);

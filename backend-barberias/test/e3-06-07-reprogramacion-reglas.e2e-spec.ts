@@ -278,7 +278,7 @@ describe('E3-06/E3-07 · reprogramación y reglas de cancelación del cliente', 
     const horaFin = sumarMinutos(horaInicio, 30);
 
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede}/reservas`)
+      .post(`${api}/shops/${sede}/appointments`)
       .set('Authorization', `Bearer ${token}`)
       .send({
         fecha: fecha(dia),
@@ -301,7 +301,7 @@ describe('E3-06/E3-07 · reprogramación y reglas de cancelación del cliente', 
   async function crearConfirmada(dia: number, horaInicio: string, token = tokenCliente) {
     const reservaId = await crearPendiente(dia, horaInicio, token);
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede}/reservas/${reservaId}/aceptar`)
+      .post(`${api}/shops/${sede}/appointments/${reservaId}/accept`)
       .set('Authorization', `Bearer ${tokenAdminSede}`);
     expect(res.status, `aceptar ${reservaId}: ${JSON.stringify(res.body)}`).toBe(201);
     return reservaId;
@@ -320,13 +320,13 @@ describe('E3-06/E3-07 · reprogramación y reglas de cancelación del cliente', 
     barberiaId = sede,
   ) =>
     request(app.getHttpServer())
-      .patch(`${api}/barberias/${barberiaId}/reservas/${reservaId}/reprogramar`)
+      .patch(`${api}/shops/${barberiaId}/appointments/${reservaId}/reschedule`)
       .set('Authorization', `Bearer ${token}`)
       .send(body);
 
   const cancelar = (reservaId: string, token: string, barberiaId = sede) =>
     request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas/${reservaId}/cancelar`)
+      .post(`${api}/shops/${barberiaId}/appointments/${reservaId}/cancel`)
       .set('Authorization', `Bearer ${token}`);
 
   /**

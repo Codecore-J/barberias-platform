@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { PagosService } from './pagos.service';
+import { TenantService } from './tenant.service';
 import { API_URL } from '../constants/api.constants.js';
 
 /**
@@ -9,9 +10,9 @@ import { API_URL } from '../constants/api.constants.js';
  *
  * Estas pruebas fijan el contrato con el backend que la pantalla necesita:
  *
- *  - el historial sale de `/cobros/historial` (estado VIVO + id del pago) y no del
- *    rastro de auditoría, porque sin el id no se puede anular y sin el estado no
- *    se puede pintar una anulación;
+ *  - el historial sale de `/shops/:shopId/payments/history` (estado VIVO + id del
+ *    pago) y no del rastro de auditoría, porque sin el id no se puede anular y sin
+ *    el estado no se puede pintar una anulación;
  *  - un 422 del backend deja su `mensaje` en `error()` para que la tabla lo muestre;
  *  - la anulación manda el motivo en el cuerpo: sin él el backend responde 422 y
  *    el cobro no se corrige.
@@ -20,8 +21,9 @@ describe('PagosService · historial y anulación de cobros (H68)', () => {
   let service: PagosService;
   let http: HttpTestingController;
 
-  const HISTORIAL_URL = `${API_URL}/cobros/historial`;
-  const ANULAR_URL = (id: string) => `${API_URL}/cobros/${id}/anular`;
+  const SEDE = 'b1';
+  const HISTORIAL_URL = `${API_URL}/shops/${SEDE}/payments/history`;
+  const ANULAR_URL = (id: string) => `${API_URL}/shops/${SEDE}/payments/${id}/void`;
 
   const cobro = {
     id: 'pago-1',
@@ -42,7 +44,13 @@ describe('PagosService · historial y anulación de cobros (H68)', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [PagosService, provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        PagosService,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        // Fase 5: la sede sale de la ruta, así que el servicio la lee del tenant.
+        { provide: TenantService, useValue: { barberiaActivaId: () => SEDE } },
+      ],
     });
 
     service = TestBed.inject(PagosService);
@@ -53,7 +61,7 @@ describe('PagosService · historial y anulación de cobros (H68)', () => {
     http.verify();
   });
 
-  it('pide el historial a /cobros/historial y guarda las filas de `data`', () => {
+  it('pide el historial a /shops/:shopId/payments/history y guarda las filas de `data`', () => {
     let recibidos: unknown[] = [];
 
     service.obtenerHistorial().subscribe((pagos) => (recibidos = pagos));

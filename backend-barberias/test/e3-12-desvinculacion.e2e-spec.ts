@@ -255,7 +255,7 @@ describe('E3-12/3 · desvinculación por el cliente (D20/D21)', () => {
 
   const desvincular = (token: string | null, sede = sedeS1) =>
     request(app.getHttpServer())
-      .post(`${API}/barberias/${sede}/mi-estado/desvincular`)
+      .post(`${API}/shops/${sede}/membership/unlink`)
       .set(token ? { Authorization: `Bearer ${token}` } : {})
       .send({});
 
@@ -405,7 +405,7 @@ describe('E3-12/3 · desvinculación por el cliente (D20/D21)', () => {
 
     it('el cliente ve su vínculo cerrado y SIGUE restringido (no se evade la penalización)', async () => {
       const res = await request(app.getHttpServer())
-        .get(`${API}/barberias/${sedeS1}/mi-estado`)
+        .get(`${API}/shops/${sedeS1}/membership`)
         .set('Authorization', `Bearer ${tokenClienteA}`)
         .expect(200);
 
@@ -418,7 +418,7 @@ describe('E3-12/3 · desvinculación por el cliente (D20/D21)', () => {
 
     it('cerrado el vínculo, la sede deja de estar a su alcance (403 del guard de vínculo)', async () => {
       await request(app.getHttpServer())
-        .get(`${API}/catalogo/servicios`)
+        .get(`${API}/shops/${sedeS1}/services`)
         .set('Authorization', `Bearer ${tokenClienteA}`)
         .set('x-barberia-id', sedeS1)
         .expect(403);
@@ -430,7 +430,7 @@ describe('E3-12/3 · desvinculación por el cliente (D20/D21)', () => {
   describe('D10 · el vínculo cerrado deja de ocupar cupo', () => {
     it('la siguiente sede nace ACTIVA, no PENDIENTE_APROBACION', async () => {
       const res = await request(app.getHttpServer())
-        .post(`${API}/barberias/vincular`)
+        .post(`${API}/shops/link`)
         .set('Authorization', `Bearer ${tokenClienteA}`)
         .send({ codigoAcceso: codigoS6 })
         .expect(201);
@@ -446,7 +446,7 @@ describe('E3-12/3 · desvinculación por el cliente (D20/D21)', () => {
 
     it('D21/D20: reintroducir el código REABRE la fila cerrada conservando el contador y la restricción', async () => {
       const res = await request(app.getHttpServer())
-        .post(`${API}/barberias/vincular`)
+        .post(`${API}/shops/link`)
         .set('Authorization', `Bearer ${tokenClienteA}`)
         .send({ codigoAcceso: codigoS1 })
         .expect(201);

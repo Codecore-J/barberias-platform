@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RolesGuard } from './roles.guard.js';
 import { Reflector } from '@nestjs/core';
-import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { ROLES_KEY } from './roles.decorator.js';
 import { AUTENTICADO_KEY } from './autenticado.decorator.js';
 import { IS_PUBLIC_KEY } from './public.decorator.js';
@@ -12,6 +12,10 @@ type Politica = {
   autenticado?: boolean;
   roles?: string[];
 };
+
+/** Las rutas reales llevan UUID; un id inventado ya no llega al guard. */
+const SEDE_PROPIA = '11111111-1111-4111-8111-111111111111';
+const SEDE_AJENA = '22222222-2222-4222-8222-222222222222';
 
 describe('RolesGuard', () => {
   let guard: RolesGuard;
@@ -109,17 +113,17 @@ describe('RolesGuard', () => {
 
     it('debe permitir acceso a un BARBERO en su propia barbería específica', () => {
       mockPolitica({ roles: ['BARBERO'] });
-      const barberiaId = 'barberia-uuid-123';
+      const barberiaId = '11111111-1111-4111-8111-111111111111';
       const context = createMockContext(
         {
           id: '1',
           correo: 'barbero@barber.com',
           roles: ['BARBERO'],
           rolesDetallados: [
-            { nombre: 'BARBERO', barberiaId: 'barberia-uuid-123', ambito: 'BARBERIA' },
+            { nombre: 'BARBERO', barberiaId: '11111111-1111-4111-8111-111111111111', ambito: 'BARBERIA' },
           ],
         },
-        { barberiaId },
+        { shopId: '11111111-1111-4111-8111-111111111111' },
       );
 
       expect(guard.canActivate(context)).toBe(true);
@@ -133,13 +137,32 @@ describe('RolesGuard', () => {
           correo: 'barbero@barber.com',
           roles: ['BARBERO'],
           rolesDetallados: [
-            { nombre: 'BARBERO', barberiaId: 'barberia-uuid-123', ambito: 'BARBERIA' },
+            { nombre: 'BARBERO', barberiaId: '11111111-1111-4111-8111-111111111111', ambito: 'BARBERIA' },
           ],
         },
-        { barberiaId: 'otra-barberia-distinta-456' },
+        { shopId: '22222222-2222-4222-8222-222222222222' },
       );
 
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+    });
+  });
+
+  describe('Fase 5 · sede malformada en la ruta', () => {
+    it('debe responder 400 si el shopId de la ruta no es un UUID', () => {
+      mockPolitica({ roles: ['BARBERO'] });
+      const context = createMockContext(
+        {
+          id: '1',
+          correo: 'barbero@barber.com',
+          roles: ['BARBERO'],
+          rolesDetallados: [
+            { nombre: 'BARBERO', barberiaId: SEDE_PROPIA, ambito: 'BARBERIA' },
+          ],
+        },
+        { shopId: 'no-es-uuid' },
+      );
+
+      expect(() => guard.canActivate(context)).toThrow(BadRequestException);
     });
   });
 
@@ -155,7 +178,7 @@ describe('RolesGuard', () => {
             { nombre: 'ADMIN_BARBERIA', barberiaId: null, ambito: 'BARBERIA' },
           ],
         },
-        { barberiaId: 'barberia-ajena-789' },
+        { shopId: '22222222-2222-4222-8222-222222222222' },
       );
 
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
@@ -170,7 +193,7 @@ describe('RolesGuard', () => {
           roles: ['BARBERO'],
           rolesDetallados: [{ nombre: 'BARBERO', barberiaId: null, ambito: 'BARBERIA' }],
         },
-        { barberiaId: 'barberia-ajena-789' },
+        { shopId: '22222222-2222-4222-8222-222222222222' },
       );
 
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
@@ -185,7 +208,7 @@ describe('RolesGuard', () => {
           roles: ['ADMINISTRADOR'],
           rolesDetallados: [{ nombre: 'ADMINISTRADOR', barberiaId: null, ambito: 'GLOBAL' }],
         },
-        { barberiaId: 'barberia-ajena-789' },
+        { shopId: '22222222-2222-4222-8222-222222222222' },
       );
 
       expect(guard.canActivate(context)).toBe(true);

@@ -18,7 +18,7 @@ import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
  * transaccional, así que aquí no hay transacción ni `FOR UPDATE`: es una
  * lectura pura que no retiene NADA de lo que sugiere.
  */
-@Controller(['barberias/:barberiaId/disponibilidad', 'disponibilidad'])
+@Controller('shops/:shopId/appointments/schedule')
 export class HuecosController {
   constructor(private readonly disponibilidadService: DisponibilidadService) {}
 
@@ -37,7 +37,7 @@ export class HuecosController {
    * no depende de la configuración de cada tenant (E4-02/8, D22).
    */
   @Roles('CLIENTE', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Get('huecos')
+  @Get('slots')
   async huecos(
     @CurrentBarberiaId() barberiaId: string,
     @CurrentUser() user: UsuarioAutenticado,

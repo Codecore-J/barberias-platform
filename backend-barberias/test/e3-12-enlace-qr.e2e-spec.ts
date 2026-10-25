@@ -16,7 +16,7 @@ const API = '/api/v1';
  * E3-12/2 · punto 2 · la puerta de entrada del cliente (regla 1.10).
  *
  * Hasta aquí la vinculación solo existía por el código de acceso que el staff
- * dictaba a mano (`POST /barberias/vincular`) y el `enlace_unico` de la sede
+ * dictaba a mano (`POST /shops/link`) y el `enlace_unico` de la sede
  * —columna que existe desde la migración base— no lo consumía NADIE: no había
  * forma de que el dueño de una sede compartiera su puerta de entrada ni de que
  * un cliente entrara por un enlace o un QR.
@@ -265,7 +265,7 @@ describe('E3-12/2 · enlace único y QR: la puerta de entrada del cliente (regla
   describe('GET /barberias/:id/invitacion', () => {
     it('el ADMIN_BARBERIA de la sede recibe su código y su enlace único', async () => {
       const res = await request(app.getHttpServer())
-        .get(`${API}/barberias/${sedeA}/invitacion`)
+        .get(`${API}/shops/${sedeA}/invitation`)
         .set('Authorization', `Bearer ${tokenAdminSedeA}`)
         .expect(200);
 
@@ -279,7 +279,7 @@ describe('E3-12/2 · enlace único y QR: la puerta de entrada del cliente (regla
 
     it('el ADMINISTRADOR global también la lee, en cualquier sede (E1-04)', async () => {
       const res = await request(app.getHttpServer())
-        .get(`${API}/barberias/${sedeB}/invitacion`)
+        .get(`${API}/shops/${sedeB}/invitation`)
         .set('Authorization', `Bearer ${tokenGlobal}`)
         .expect(200);
 
@@ -288,27 +288,27 @@ describe('E3-12/2 · enlace único y QR: la puerta de entrada del cliente (regla
 
     it('el ADMIN_BARBERIA de OTRA sede recibe 403: la puerta de entrada no se presta', async () => {
       await request(app.getHttpServer())
-        .get(`${API}/barberias/${sedeA}/invitacion`)
+        .get(`${API}/shops/${sedeA}/invitation`)
         .set('Authorization', `Bearer ${tokenAdminSedeB}`)
         .expect(403);
     });
 
     it('un BARBERO de la misma sede recibe 403: no es quien comparte la entrada', async () => {
       await request(app.getHttpServer())
-        .get(`${API}/barberias/${sedeA}/invitacion`)
+        .get(`${API}/shops/${sedeA}/invitation`)
         .set('Authorization', `Bearer ${tokenBarberoA}`)
         .expect(403);
     });
 
     it('un CLIENTE de la sede recibe 403', async () => {
       await request(app.getHttpServer())
-        .get(`${API}/barberias/${sedeA}/invitacion`)
+        .get(`${API}/shops/${sedeA}/invitation`)
         .set('Authorization', `Bearer ${tokenClienteA}`)
         .expect(403);
     });
 
     it('sin token responde 401 (fail-closed)', async () => {
-      await request(app.getHttpServer()).get(`${API}/barberias/${sedeA}/invitacion`).expect(401);
+      await request(app.getHttpServer()).get(`${API}/shops/${sedeA}/invitation`).expect(401);
     });
 
     it('una sede inexistente responde 404', async () => {
@@ -324,7 +324,7 @@ describe('E3-12/2 · enlace único y QR: la puerta de entrada del cliente (regla
   describe('POST /mi-estado/unirse', () => {
     it('ciclo completo: el cliente usa el código que el staff le entregó y queda ACTIVO', async () => {
       const invitacion = await request(app.getHttpServer())
-        .get(`${API}/barberias/${sedeA}/invitacion`)
+        .get(`${API}/shops/${sedeA}/invitation`)
         .set('Authorization', `Bearer ${tokenAdminSedeA}`)
         .expect(200);
 

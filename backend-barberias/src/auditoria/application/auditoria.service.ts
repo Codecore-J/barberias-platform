@@ -164,7 +164,7 @@ export class AuditoriaService implements OnModuleInit {
 
     if (!barberiaId) {
       throw new BadRequestException(
-        'Debes indicar la barbería (query barberiaId o cabecera x-barberia-id) para consultar la auditoría.',
+        'Debes indicar la barbería (query shopId o barberiaId) para consultar la auditoría.',
       );
     }
 

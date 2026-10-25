@@ -19,6 +19,6 @@ export class PersonalService {
   private http = inject(HttpClient);
 
   obtenerPersonal(barberiaId: string): Observable<Personal[]> {
-    return this.http.get<Personal[]>(`${API_URL}/barberias/${barberiaId}/personal`);
+    return this.http.get<Personal[]>(`${API_URL}/shops/${barberiaId}/staff`);
   }
 }

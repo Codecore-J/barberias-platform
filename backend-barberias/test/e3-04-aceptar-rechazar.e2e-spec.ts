@@ -256,7 +256,7 @@ describe('E3-04 · aceptar y rechazar solicitudes MANUALES', () => {
     const horaFin = `${String(fin.getHours()).padStart(2, '0')}:${String(fin.getMinutes()).padStart(2, '0')}`;
 
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede}/reservas`)
+      .post(`${api}/shops/${sede}/appointments`)
       .set('Authorization', `Bearer ${tokenCliente}`)
       .send({
         fecha: fecha(dia),
@@ -277,7 +277,7 @@ describe('E3-04 · aceptar y rechazar solicitudes MANUALES', () => {
 
   const aceptar = (reservaId: string, token: string, barberiaId = sede) =>
     request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas/${reservaId}/aceptar`)
+      .post(`${api}/shops/${barberiaId}/appointments/${reservaId}/accept`)
       .set('Authorization', `Bearer ${token}`);
 
   const rechazar = (
@@ -287,7 +287,7 @@ describe('E3-04 · aceptar y rechazar solicitudes MANUALES', () => {
     barberiaId = sede,
   ) =>
     request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas/${reservaId}/rechazar`)
+      .post(`${api}/shops/${barberiaId}/appointments/${reservaId}/reject`)
       .set('Authorization', `Bearer ${token}`)
       .send(body);
 
@@ -453,7 +453,7 @@ describe('E3-04 · aceptar y rechazar solicitudes MANUALES', () => {
 
     // Mismo hueco: si RECHAZADA siguiera ocupando, esto daría 409.
     const segunda = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede}/reservas`)
+      .post(`${api}/shops/${sede}/appointments`)
       .set('Authorization', `Bearer ${tokenCliente}`)
       .send({
         fecha: fecha(1),

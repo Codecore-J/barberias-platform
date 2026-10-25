@@ -22,11 +22,11 @@ export class AntecedentesService {
   private readonly http = inject(HttpClient);
 
   obtenerPendientes(barberiaId: string): Observable<Antecedente[]> {
-    return this.http.get<Antecedente[]>(`${API_URL}/barberias/${barberiaId}/antecedentes/pendientes`);
+    return this.http.get<Antecedente[]>(`${API_URL}/shops/${barberiaId}/records/pending`);
   }
 
   evaluar(barberiaId: string, antecedenteId: string, decision: 'APROBADO' | 'RECHAZADO', motivoRechazo?: string): Observable<any> {
-    return this.http.patch(`${API_URL}/barberias/${barberiaId}/antecedentes/${antecedenteId}/evaluar`, {
+    return this.http.patch(`${API_URL}/shops/${barberiaId}/records/${antecedenteId}/evaluate`, {
       decision,
       motivoRechazo
     });

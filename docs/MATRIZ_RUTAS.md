@@ -1,5 +1,14 @@
 # MATRIZ_RUTAS.md · Permisos por ruta (E1-05)
 
+> **Fase 5 (Punto 5.3) — contrato REST nuevo.** Las rutas de este documento son las de
+> `main` antes de la refactorización: convivían alias planos (`/catalogo/servicios`,
+> `/reservas`, `/cobros`, `/agenda/*`) y la sede llegaba por cabecera `x-barberia-id`.
+> Hoy **no existe ningún alias**: la sede viaja siempre en la ruta
+> (`/shops/:shopId/services|combos|appointments|payments|staff|hours|records|...`) y la
+> cabecera se ignora. La lista vigente la produce `test/route-security.spec.ts` y la
+> política se mide en `test/permisos-matriz.spec.ts` (e2e) y `test/permisos-matriz.spec.ts`
+> (unitario). El resto del documento se conserva como histórico de E1-05.
+
 > **Estado: aplicada.** Este documento nació como inventario de solo lectura en `main` y
 > ahora refleja la política que hay en `fix/matriz-permisos`, rama de E1-05.
 > La tabla de rutas es la que produce `test/route-security.spec.ts` (`=== TABLA DE RUTAS (80) ===`)

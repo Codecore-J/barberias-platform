@@ -99,7 +99,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
 
     // Crear Barberia
     const bRes = await request(app.getHttpServer())
-      .post('/api/v1/barberias')
+      .post('/api/v1/shops')
       .set('Authorization', `Bearer ${ownerToken}`)
       .send({
         nombre: 'Barberia IDOR Test',
@@ -169,11 +169,11 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     const rolCliente = await prisma.rol.findFirst({ where: { nombre: 'CLIENTE' } });
     
     // Vincular usa vincular() para hacerlo limpiamente en vez de prisma.usuarioRol
-    await request(app.getHttpServer()).post('/api/v1/barberias/vincular')
+    await request(app.getHttpServer()).post('/api/v1/shops/link')
       .set('Authorization', `Bearer ${clienteAToken}`)
       .send({ codigoAcceso: bRes.body.codigoAcceso });
 
-    await request(app.getHttpServer()).post('/api/v1/barberias/vincular')
+    await request(app.getHttpServer()).post('/api/v1/shops/link')
       .set('Authorization', `Bearer ${clienteBToken}`)
       .send({ codigoAcceso: bRes.body.codigoAcceso });
 
@@ -228,7 +228,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     const dateString = date.toISOString().split('T')[0];
 
     const response = await request(app.getHttpServer())
-      .post(`/api/v1/barberias/${barberiaId}/reservas`)
+      .post(`/api/v1/shops/${barberiaId}/appointments`)
       .set('Authorization', `Bearer ${clienteAToken}`)
       .send({
         serviciosIds: [servicioId],
@@ -249,7 +249,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
 
   it('Cliente A debe poder ver su propia reserva', async () => {
     const response = await request(app.getHttpServer())
-      .get(`/api/v1/barberias/${barberiaId}/reservas/${reservaIdA}`)
+      .get(`/api/v1/shops/${barberiaId}/appointments/${reservaIdA}`)
       .set('Authorization', `Bearer ${clienteAToken}`);
       
     expect(response.status).toBe(200);
@@ -258,7 +258,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
 
   it('Cliente B NO debe poder ver la reserva del Cliente A (IDOR resuelto)', async () => {
     const response = await request(app.getHttpServer())
-      .get(`/api/v1/barberias/${barberiaId}/reservas/${reservaIdA}`)
+      .get(`/api/v1/shops/${barberiaId}/appointments/${reservaIdA}`)
       .set('Authorization', `Bearer ${clienteBToken}`);
       
     expect(response.status).toBe(403);
@@ -267,7 +267,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
 
   it('Owner (Admin) DEBE poder ver la reserva del Cliente A', async () => {
     const response = await request(app.getHttpServer())
-      .get(`/api/v1/barberias/${barberiaId}/reservas/${reservaIdA}`)
+      .get(`/api/v1/shops/${barberiaId}/appointments/${reservaIdA}`)
       .set('Authorization', `Bearer ${ownerToken}`);
       
     expect(response.status).toBe(200);
@@ -277,7 +277,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
   it('Usuario con rol BARBERO en otra barberia pero CLIENTE aqui NO debe poder ver la reserva', async () => {
     // 1. Crear Barberia Y
     const bYRes = await request(app.getHttpServer())
-      .post('/api/v1/barberias')
+      .post('/api/v1/shops')
       .set('Authorization', `Bearer ${ownerToken}`)
       .send({
         nombre: 'Barberia Y',
@@ -311,13 +311,13 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     });
 
     // 4. Vincular U a Barberia X (barberiaId) y asignarle CLIENTE
-    await request(app.getHttpServer()).post('/api/v1/barberias/vincular')
+    await request(app.getHttpServer()).post('/api/v1/shops/link')
       .set('Authorization', `Bearer ${usuarioUToken}`)
       .send({ codigoAcceso: await prisma.barberia.findUnique({where:{id:barberiaId}}).then(b=>b!.codigoAcceso) });
 
     // 5. U intenta acceder a la reserva de A en Barberia X
     const response = await request(app.getHttpServer())
-      .get(`/api/v1/barberias/${barberiaId}/reservas/${reservaIdA}`)
+      .get(`/api/v1/shops/${barberiaId}/appointments/${reservaIdA}`)
       .set('Authorization', `Bearer ${usuarioUToken}`);
       
     expect(response.status).toBe(403);

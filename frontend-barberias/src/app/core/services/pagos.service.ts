@@ -3,9 +3,11 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { API_URL } from '../constants/api.constants';
+import { TenantService } from './tenant.service';
 
 /**
- * H68 · el recibo de un cobro tal como lo sirve `GET /cobros/historial`.
+ * H68 · el recibo de un cobro tal como lo sirve
+ * `GET /shops/:shopId/payments/history`.
  *
  * Es el ESTADO VIVO del pago —incluido `ANULADO`—, no el rastro de auditoría: por
  * eso trae el `id` de la FILA (lo que permite corregirla) y el detalle de la cita
@@ -33,7 +35,13 @@ export interface PagoHistorial {
 })
 export class PagosService {
   private readonly http = inject(HttpClient);
+  private readonly tenant = inject(TenantService);
   private readonly apiUrl = `${API_URL}`;
+
+  /** Fase 5: la sede vive en la ruta (`/shops/:shopId/payments`). */
+  private get pagosUrl(): string {
+    return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/payments`;
+  }
 
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
@@ -45,14 +53,14 @@ export class PagosService {
    * Cambió de fuente a propósito: antes leía `/cobros/auditoria` —el rastro
    * inmutable—, que no devuelve el estado del pago ni el id de su fila, así que
    * la tabla no podía mostrar una anulación ni ofrecer corregirla. La barbería
-   * viaja en la cabecera `x-barberia-id` que añade `authInterceptor`.
+   * viaja en la RUTA (`/shops/:shopId/payments/history`), no en una cabecera.
    */
   obtenerHistorial(page = 1, pageSize = 50): Observable<PagoHistorial[]> {
     this.isLoading.set(true);
     this.error.set(null);
 
     return this.http
-      .get<any>(`${this.apiUrl}/cobros/historial?page=${page}&pageSize=${pageSize}`)
+      .get<any>(`${this.pagosUrl}/history?page=${page}&pageSize=${pageSize}`)
       .pipe(
         map(res => res.data || []),
         tap((data) => {
@@ -75,7 +83,7 @@ export class PagosService {
    * sede puede anular; el backend responde 403 si quien lo intenta es un barbero.
    */
   anularPago(pagoId: string, motivo: string): Observable<any> {
-    return this.http.post<any>(`${this.apiUrl}/cobros/${pagoId}/anular`, { motivo });
+    return this.http.post<any>(`${this.pagosUrl}/${pagoId}/void`, { motivo });
   }
 
   /**

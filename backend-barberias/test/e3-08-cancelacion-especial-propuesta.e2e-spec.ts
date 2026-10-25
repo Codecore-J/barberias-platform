@@ -265,7 +265,7 @@ describe('E3-08 · cancelación especial y propuesta de horario', () => {
     servicioId = servicio,
   ): Promise<string> {
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas`)
+      .post(`${api}/shops/${barberiaId}/appointments`)
       .set('Authorization', `Bearer ${token}`)
       .send({
         fecha: fecha(dia),
@@ -294,7 +294,7 @@ describe('E3-08 · cancelación especial y propuesta de horario', () => {
   ) {
     const reservaId = await crearPendiente(dia, horaInicio, token, barberiaId, servicioId);
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas/${reservaId}/aceptar`)
+      .post(`${api}/shops/${barberiaId}/appointments/${reservaId}/accept`)
       .set('Authorization', `Bearer ${tokenAdminSede}`);
     expect(res.status, `aceptar ${reservaId}: ${JSON.stringify(res.body)}`).toBe(201);
     return reservaId;
@@ -307,7 +307,7 @@ describe('E3-08 · cancelación especial y propuesta de horario', () => {
     barberiaId = sede,
   ) =>
     request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas/${reservaId}/cancelacion-especial`)
+      .post(`${api}/shops/${barberiaId}/appointments/${reservaId}/special-cancellation`)
       .set('Authorization', `Bearer ${token}`)
       .send(body);
 
@@ -318,18 +318,18 @@ describe('E3-08 · cancelación especial y propuesta de horario', () => {
     barberiaId = sede,
   ) =>
     request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas/${reservaId}/proponer-horario`)
+      .post(`${api}/shops/${barberiaId}/appointments/${reservaId}/propose-time`)
       .set('Authorization', `Bearer ${token}`)
       .send(body);
 
   const aceptarPropuesta = (reservaId: string, token: string, barberiaId = sede) =>
     request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas/${reservaId}/propuesta-horario/aceptar`)
+      .post(`${api}/shops/${barberiaId}/appointments/${reservaId}/proposed-time/accept`)
       .set('Authorization', `Bearer ${token}`);
 
   const rechazarPropuesta = (reservaId: string, token: string, barberiaId = sede) =>
     request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas/${reservaId}/propuesta-horario/rechazar`)
+      .post(`${api}/shops/${barberiaId}/appointments/${reservaId}/proposed-time/reject`)
       .set('Authorization', `Bearer ${token}`);
 
   const auditoriasDe = (reservaId: string, accion: string) =>

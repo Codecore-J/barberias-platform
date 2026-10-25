@@ -415,7 +415,7 @@ export class PagoService {
 
     if (!barberiaId && !esGlobal) {
       throw new BadRequestException(
-        'Debes indicar la barbería (ruta /barberias/:barberiaId/pagos/historial o cabecera x-barberia-id) para consultar el historial de cobros.',
+        'Debes indicar la barbería (ruta /shops/:shopId/payments/history o query ?shopId=) para consultar el historial de cobros.',
       );
     }
 
@@ -519,7 +519,7 @@ export class PagoService {
     // ADMINISTRADOR, 400 antes de tocar la base.
     if (!barberiaId && !esGlobal) {
       throw new BadRequestException(
-        'Debes indicar la barbería (ruta /barberias/:barberiaId/cobros/auditoria o cabecera x-barberia-id) para consultar la auditoría.',
+        'Debes indicar la barbería (ruta /shops/:shopId/payments/audit o query ?shopId=) para consultar la auditoría de cobros.',
       );
     }
 

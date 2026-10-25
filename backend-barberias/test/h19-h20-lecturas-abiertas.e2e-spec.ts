@@ -183,7 +183,7 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
   describe('GET /barberias/:id/personal', () => {
     it('un CLIENTE recibe 403', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/barberias/${barberiaB}/personal`)
+        .get(`/api/v1/shops/${barberiaB}/staff`)
         .set('Authorization', `Bearer ${tokenCliente}`);
 
       expect(res.status).toBe(403);
@@ -191,7 +191,7 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
 
     it('un ADMIN de otra barberia recibe 403', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/barberias/${barberiaB}/personal`)
+        .get(`/api/v1/shops/${barberiaB}/staff`)
         .set('Authorization', `Bearer ${tokenAdminA}`);
 
       expect(res.status).toBe(403);
@@ -199,7 +199,7 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
 
     it('el ADMIN propio recibe 200 con correo y telefono', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/barberias/${barberiaB}/personal`)
+        .get(`/api/v1/shops/${barberiaB}/staff`)
         .set('Authorization', `Bearer ${tokenAdminB}`);
 
       expect(res.status).toBe(200);
@@ -209,7 +209,7 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
 
     it('el ADMINISTRADOR global recibe 200 con correo y telefono', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/barberias/${barberiaB}/personal`)
+        .get(`/api/v1/shops/${barberiaB}/staff`)
         .set('Authorization', `Bearer ${tokenGlobal}`);
 
       expect(res.status).toBe(200);
@@ -218,7 +218,7 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
 
     it('el BARBERO de esa barbería recibe 200 sin correo ni telefono', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/barberias/${barberiaB}/personal`)
+        .get(`/api/v1/shops/${barberiaB}/staff`)
         .set('Authorization', `Bearer ${tokenBarberoB}`);
 
       expect(res.status).toBe(200);
@@ -234,7 +234,7 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
 
     it('un BARBERO de otra barbería recibe 403', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/barberias/${barberiaB}/personal`)
+        .get(`/api/v1/shops/${barberiaB}/staff`)
         .set('Authorization', `Bearer ${tokenBarberoA}`);
 
       expect(res.status).toBe(403);
@@ -245,7 +245,7 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
   describe('GET /barberias/:barberiaId/agenda/bloqueos', () => {
     it('un CLIENTE recibe 403 y no ve motivos', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/barberias/${barberiaB}/agenda/bloqueos`)
+        .get(`/api/v1/shops/${barberiaB}/appointments/schedule/blocks`)
         .set('Authorization', `Bearer ${tokenCliente}`);
 
       expect(res.status).toBe(403);
@@ -254,7 +254,7 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
 
     it('un ADMIN de otra barberia recibe 403', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/barberias/${barberiaB}/agenda/bloqueos`)
+        .get(`/api/v1/shops/${barberiaB}/appointments/schedule/blocks`)
         .set('Authorization', `Bearer ${tokenAdminA}`);
 
       expect(res.status).toBe(403);
@@ -262,7 +262,7 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
 
     it('el ADMIN propio recibe 200 con sus bloqueos', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/barberias/${barberiaB}/agenda/bloqueos`)
+        .get(`/api/v1/shops/${barberiaB}/appointments/schedule/blocks`)
         .set('Authorization', `Bearer ${tokenAdminB}`);
 
       expect(res.status).toBe(200);

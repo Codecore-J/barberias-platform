@@ -227,7 +227,7 @@ describe('E3-03 · partición de POST /reservas: cliente vs walk-in', () => {
 
   it('ROJO: un CLIENTE no puede crear un walk-in por la ruta de agenda (403)', async () => {
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas/walk-in`)
+      .post(`${api}/shops/${barberiaId}/appointments/walk-in`)
       .set('Authorization', `Bearer ${tokenCliente}`)
       .send(payloadWalkIn('10:00'));
 
@@ -236,7 +236,7 @@ describe('E3-03 · partición de POST /reservas: cliente vs walk-in', () => {
 
   it('ROJO: un BARBERO no puede usar el alias de cliente POST /reservas (403)', async () => {
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas`)
+      .post(`${api}/shops/${barberiaId}/appointments`)
       .set('Authorization', `Bearer ${tokenBarbero}`)
       .send(payload('11:00'));
 
@@ -245,7 +245,7 @@ describe('E3-03 · partición de POST /reservas: cliente vs walk-in', () => {
 
   it('control: el CLIENTE sigue creando su reserva por POST /reservas (201)', async () => {
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas`)
+      .post(`${api}/shops/${barberiaId}/appointments`)
       .set('Authorization', `Bearer ${tokenCliente}`)
       .send(payload('12:00'));
 
@@ -254,7 +254,7 @@ describe('E3-03 · partición de POST /reservas: cliente vs walk-in', () => {
 
   it('control: el BARBERO sí crea el walk-in por la ruta nueva (201)', async () => {
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas/walk-in`)
+      .post(`${api}/shops/${barberiaId}/appointments/walk-in`)
       .set('Authorization', `Bearer ${tokenBarbero}`)
       .send(payloadWalkIn('13:00'));
 
@@ -263,7 +263,7 @@ describe('E3-03 · partición de POST /reservas: cliente vs walk-in', () => {
 
   it('control: el ADMIN_BARBERIA de la sede también crea walk-in (201)', async () => {
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas/walk-in`)
+      .post(`${api}/shops/${barberiaId}/appointments/walk-in`)
       .set('Authorization', `Bearer ${tokenAdminSede}`)
       .send(payloadWalkIn('14:00'));
 
