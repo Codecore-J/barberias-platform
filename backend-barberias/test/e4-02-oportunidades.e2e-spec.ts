@@ -159,7 +159,7 @@ describe('E4-02 · oportunidades de espacio (huecos) y alternativas', () => {
   it('VERDE: intento de reserva fallido por falta de espacio devuelve alternativas en 409', async () => {
     const data = (global as any).e402Data;
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${data.sede}/reservas`)
+      .post(`${api}/shops/${data.sede}/appointments`)
       .set(headers(data.cliente, data.sede))
       .send({ fecha: fecha(1), horaInicio: '09:00', horaFin: '17:00', serviciosIds: [data.s2], precioTotalEsperado: 10, tipo: 'INDIVIDUAL' });
 
@@ -175,7 +175,7 @@ describe('E4-02 · oportunidades de espacio (huecos) y alternativas', () => {
     const data = (global as any).e402Data;
     // El bloque de 480 min no cabe; para 30 min el día tiene huecos.
     const res = await request(app.getHttpServer())
-      .get(`${api}/barberias/${data.sede}/disponibilidad/huecos?fecha=${fecha(1)}&duracionMinutos=30&participantes=1`)
+      .get(`${api}/shops/${data.sede}/appointments/schedule/slots?fecha=${fecha(1)}&duracionMinutos=30&participantes=1`)
       .set(headers(data.cliente, data.sede));
 
     expect(res.status).toBe(200);
@@ -193,7 +193,7 @@ describe('E4-02 · oportunidades de espacio (huecos) y alternativas', () => {
     });
 
     const res = await request(app.getHttpServer())
-      .get(`${api}/barberias/${data.sede}/disponibilidad/huecos?fecha=${fecha(1)}&duracionMinutos=30&participantes=1`)
+      .get(`${api}/shops/${data.sede}/appointments/schedule/slots?fecha=${fecha(1)}&duracionMinutos=30&participantes=1`)
       .set(headers(data.cliente, data.sede));
 
     expect(res.status).toBe(200);

@@ -80,19 +80,19 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'GET /auditoria/estadisticas': [ROL_ADMINISTRADOR],
   'POST /auditoria/purgar': [ROL_ADMINISTRADOR],
 
-  'GET /barberias/': TODOS,
-  'POST /barberias/': TODOS,
-  'GET /barberias/all': [ROL_ADMINISTRADOR],
-  'GET /barberias/:id/personal': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
-  'GET /barberias/:id': TODOS,
-  'PATCH /barberias/:id/seleccionar': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'PATCH /barberias/:id': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/': TODOS,
+  'POST /shops/': TODOS,
+  'GET /shops/all': [ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/staff': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
+  'GET /shops/:shopId': TODOS,
+  'PATCH /shops/:shopId/select': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /shops/:shopId': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // E2-07 (2026-10-13): el borrado lógico de la sede pasa a ser un cambio de
   // estado explícito. La ruta usa `:id` (no `:barberiaId`), así que el guard NO
   // resuelve la sede del parámetro y la política es la lista plana: el
   // ADMINISTRADOR global (decisión 4).
-  'PATCH /barberias/:id/estado': [ROL_ADMINISTRADOR],
-  'POST /barberias/vincular': [ROL_CLIENTE],
+  'PATCH /shops/:shopId/status': [ROL_ADMINISTRADOR],
+  'POST /shops/link': [ROL_CLIENTE],
   // E3-12/2 (2026-10-17): la invitación de la sede (regla 1.10). La ruta usa
   // `:id`, así que el guard NO resuelve la sede del parámetro y la política es
   // la lista plana del decorador: la pertenencia la exige
@@ -100,24 +100,24 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // `codigoAcceso` en la lectura por id (E1-05/E1-07). El CLIENTE queda fuera
   // —no es él quien comparte la puerta de entrada— y el ADMINISTRADOR entra por
   // jerarquía (E1-04).
-  'GET /barberias/:id/invitacion': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/invitation': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // E3-11 (2026-10-11): la configuración de la barbería la consulta y la
   // modifica la SEDE; el `RolesGuard` la acota al `barberiaId` del parámetro.
-  'GET /barberias/:barberiaId/configuracion': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'PATCH /barberias/:barberiaId/configuracion': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/settings/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /shops/:shopId/settings/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
   // E3-13 (2026-10-11): el nombre y el responsable solo cambian por solicitud
   // aprobada. La ruta usa `:id` (no `:barberiaId`), así que el guard NO resuelve
   // la sede del parámetro: la pertenencia real la comprueba el servicio
   // (`SOLO_ADMIN_BARBERIA`, 403) y eso lo cubre el E2E de E3-13. La bandeja de
   // plataforma es exclusiva del ADMINISTRADOR global.
-  'POST /barberias/:id/solicitudes-cambio': [ROL_ADMIN_BARBERIA],
+  'POST /shops/:shopId/change-requests': [ROL_ADMIN_BARBERIA],
   // E4-03 (2026-10-12): la bandeja de restringidos es de la SEDE. Como en
   // E3-13 la ruta usa `:id` y el guard no resuelve la sede del parámetro, así
   // que la pertenencia la exige el servicio (403). D48: la lista es local y no
   // existe ninguna acción de cuenta global en estos dos endpoints.
-  'GET /barberias/:id/clientes-restringidos': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /barberias/:id/clientes/:clienteId/reactivar': [
+  'GET /shops/:shopId/restricted-clients/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/restricted-clients/:clientId/reactivate': [
     ROL_ADMIN_BARBERIA,
     ROL_ADMINISTRADOR,
   ],
@@ -135,13 +135,13 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // La ruta usa `:barberiaId`, así que el guard SÍ acota por el parámetro; el
   // servicio vuelve a acotar por el usuario del token (nunca datos de otro).
   // `@Get()` sin argumento compone la ruta con barra final (igual que `GET /barberias/`).
-  'GET /barberias/:barberiaId/mi-estado/': [ROL_CLIENTE],
+  'GET /shops/:shopId/membership/': [ROL_CLIENTE],
   // E3-12/3 (2026-10-15): la desvinculación a petición del cliente (la otra
   // mitad de 1.9). Misma ruta base que `mi-estado` y por la misma razón: el
   // `:barberiaId` deja que el guard acote la sede del parámetro, y el servicio
   // vuelve a acotar por el usuario del token. Solo `CLIENTE`: cerrar el vínculo
   // de otro no es una operación de nadie más.
-  'POST /barberias/:barberiaId/mi-estado/desvincular': [ROL_CLIENTE],
+  'POST /shops/:shopId/membership/unlink': [ROL_CLIENTE],
   // H72 (2026-10-16): `GET /mi-estado/barberias` lista las sedes PROPIAS del
   // CLIENTE con vínculo `ACTIVO` o `PENDIENTE_APROBACION`, excluyendo
   // `DESVINCULADO` y las barberías inactivas. No cuelga de `/barberias` porque
@@ -171,37 +171,37 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // Es la vista global del comportamiento de una cuenta: solo plataforma.
   'GET /plataforma/usuarios/:id/auditoria': [ROL_ADMINISTRADOR],
 
-  'GET /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
-  'POST /barberias/:barberiaId/agenda,agenda/bloqueos': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/appointments/schedule/blocks': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
+  'POST /shops/:shopId/appointments/schedule/blocks': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // E2-07: `DELETE .../bloqueos/:id` —que borraba la fila— pasa a
   // `POST .../bloqueos/:id/liberar`, que fija `liberado_at` y conserva el rastro.
-  'POST /barberias/:barberiaId/agenda,agenda/bloqueos/:id/liberar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'GET /barberias/:barberiaId/agenda,agenda/disponibilidad': TODOS,
-  'POST /barberias/:barberiaId/agenda,agenda/disponibilidad': TODOS,
+  'POST /shops/:shopId/appointments/schedule/blocks/:id/release': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/appointments/schedule/availability': TODOS,
+  'POST /shops/:shopId/appointments/schedule/availability': TODOS,
   // E4-02 (2026-10): los huecos de espacio son lectura de la capacidad de venta
   // de la sede, no gestión de agenda, así que el BARBERO queda fuera (§E4-02/2).
   // El CLIENTE los consulta para su propia reserva y el ADMINISTRADOR es
   // transversal por jerarquía (E1-04), que MATRIZ_ESPERADA lo añade solo.
-  'GET /barberias/:barberiaId/disponibilidad,disponibilidad/huecos': [
+  'GET /shops/:shopId/appointments/schedule/slots': [
     ROL_CLIENTE,
     ROL_ADMIN_BARBERIA,
     ROL_ADMINISTRADOR,
   ],
 
-  'POST /barberias/:barberiaId/antecedentes/': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'PATCH /barberias/:barberiaId/antecedentes/:id/evaluar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'GET /barberias/:barberiaId/antecedentes/cliente/:clienteId': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'GET /barberias/:barberiaId/antecedentes/pendientes': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/records/': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /shops/:shopId/records/:id/evaluate': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/records/client/:clientId': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/records/pending': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
-  'GET /barberias/:barberiaId/horarios/': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /barberias/:barberiaId/horarios/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'GET /barberias/:barberiaId/horarios/mi-horario': [ROL_BARBERO],
-  'POST /barberias/:barberiaId/horarios/mi-horario': [ROL_BARBERO],
-  'GET /barberias/:barberiaId/horarios/excepciones': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /barberias/:barberiaId/horarios/excepciones': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /barberias/:barberiaId/horarios/barberos/:barberoId/excepciones': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/hours/': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/hours/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/hours/mine': [ROL_BARBERO],
+  'POST /shops/:shopId/hours/mine': [ROL_BARBERO],
+  'GET /shops/:shopId/hours/exceptions': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/hours/barbers/:barberoId/exceptions': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
-  'GET /barberias/:barberiaId/pagos,cobros,pagos/auditoria': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/payments/audit': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // E3-09 (2026-10): la política de la RUTA no cambia — el guard sigue
   // admitiendo a los tres roles en POST /cobros. Lo que se añade es una
   // comprobación de SERVICIO: un BARBERO solo cobra las reservas asignadas a
@@ -209,7 +209,7 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // porque no consulta la reserva. Cubierto por
   // `test/pago-barbero-asignado.e2e-spec.ts` (5 casos, rojo→verde) y por el
   // describe E3-09 de `src/pago/application/pago.service.spec.ts`.
-  'POST /barberias/:barberiaId/pagos,cobros,pagos/en-persona,': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/payments/': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // H68 (2026-10-18): §7.3 · corregir un cobro. El recibo de la sede es la
   // lectura del dinero cobrado y la anulación es una decisión administrativa,
   // así que las dos son de la SEDE: el BARBERO cobra (E3-09) pero no deshace un
@@ -217,8 +217,8 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // NO resuelve la sede del parámetro y la pertenencia la vuelve a exigir
   // `PagoService.anularPago` con la sede del PAGO (403 `ANULACION_SOLO_ADMIN` si
   // quien anula es barbero de esa sede, 404 si el cobro es de otra sede).
-  'GET /barberias/:barberiaId/pagos,cobros,pagos/historial': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /barberias/:barberiaId/pagos,cobros,pagos/:id/anular': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/payments/history': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/payments/:id/void': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
   // E3-03 (2026-10): la única fila de cuatro roles se parte en dos. El alias
   // `/reservas` lo usaban DOS pantallas: el wizard del cliente
@@ -228,49 +228,49 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // vuelve a ser exclusivo del CLIENTE y el walk-in, que solo ocurre en la
   // sede y siempre con barbero, queda para el staff. No se debilita ninguna
   // de las dos: se sustituyen 4 aserciones mezcladas por 2 + 2 más estrictas.
-  'POST /barberias/:barberiaId/reservas,reservas/': [ROL_CLIENTE],
-  'POST /barberias/:barberiaId/reservas,reservas/walk-in': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/': [ROL_CLIENTE],
+  'POST /shops/:shopId/appointments/walk-in': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // D44: la cotización sin persistir la usan tanto el wizard del cliente (que
   // necesita cotizar antes de crear su propia reserva) como el modal de
   // walk-in, así que declara los cuatro roles: cotizar no persiste nada y el
   // CLIENTE debe poder consultar el precio de su futura reserva.
-  'POST /barberias/:barberiaId/reservas,reservas/cotizar': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'GET /barberias/:barberiaId/reservas,reservas/mis-reservas': [ROL_CLIENTE],
-  'GET /barberias/:barberiaId/reservas,reservas/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE],
+  'POST /shops/:shopId/appointments/quote': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/appointments/mine': [ROL_CLIENTE],
+  'GET /shops/:shopId/appointments/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE],
   // E2-02 (2026-10-11): `PATCH .../reservas/:id/estado` se eliminó. Era un
   // «pon el estado que quieras» que escribía directo sobre `reservas.estado`
   // sin comprobar el grafo de §5.2: con ella, un ADMIN podía saltarse
   // aceptar/rechazar/cancelar y hasta cobrar sin pasar por caja. La matriz
   // pierde esa fila (64 → 63 rutas) y el único escritor de estado es ahora
   // `ReservaService.cambiarEstado`, privado y con la máquina delante.
-  'POST /barberias/:barberiaId/reservas,reservas/:id/inasistencia': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/:id/no-show': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // E3-04 (2026-10-09): aceptar y rechazar una solicitud son decisiones de la
   // SEDE, no del barbero: la misma matriz que el no presentado (D02) y que el
   // cambio de estado (decisión 11, hoy ya sin ruta genérica). El `RolesGuard`
   // las acota al `barberiaId` del parámetro, así que un admin de otra sede
   // recibe 403.
-  'POST /barberias/:barberiaId/reservas,reservas/:id/aceptar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /barberias/:barberiaId/reservas,reservas/:id/rechazar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/:id/accept': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/:id/reject': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // E3-05 (2026-10-09): cancelar la declaran los tres roles. El CLIENTE dueño
   // cancela lo suyo y la sede cancela por mostrador; lo que el guard NO puede
   // ver —que la reserva sea del CLIENTE que la cancela— lo exige el servicio
   // (403 RESERVA_AJENA) y lo cubren las pruebas de servicio y el E2E.
-  'POST /barberias/:barberiaId/reservas,reservas/:id/cancelar': [ROL_CLIENTE, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/:id/cancel': [ROL_CLIENTE, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // E3-06 (2026-10-09): reprogramar una reserva vigente es una decisión de la
   // SEDE, como aceptar, rechazar o marcar el no presentado: la misma política y
   // el mismo acotado por `barberiaId` del parámetro. La vía del CLIENTE para
   // cambiar de horario es la propuesta con ventana de 10 minutos (§5.4), que
   // sigue pendiente como tarea del backlog.
-  'PATCH /barberias/:barberiaId/reservas,reservas/:id/reprogramar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /shops/:shopId/appointments/:id/reschedule': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // E3-08 (2026-10-10): la cancelación especial (D17) es una decisión de la SEDE
   // con motivo obligatorio, así que declara los mismos dos roles que aceptar,
   // rechazar o reprogramar. La propuesta de horario (D18) es la vía del CLIENTE
   // dueño y su bandeja de resolución (aceptar/rechazar) vuelve a ser de la SEDE.
-  'POST /barberias/:barberiaId/reservas,reservas/:id/cancelacion-especial': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /barberias/:barberiaId/reservas,reservas/:id/proponer-horario': [ROL_CLIENTE],
-  'POST /barberias/:barberiaId/reservas,reservas/:id/propuesta-horario/aceptar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /barberias/:barberiaId/reservas,reservas/:id/propuesta-horario/rechazar': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'GET /barberias/:barberiaId/reservas,reservas/agenda': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/:id/special-cancellation': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/:id/propose-time': [ROL_CLIENTE],
+  'POST /shops/:shopId/appointments/:id/proposed-time/accept': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/:id/proposed-time/reject': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/appointments/day': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_ADMINISTRADOR],
 
   // D16 (Especificación §2/§3.1): el catálogo lo opera el personal de la sede.
   // Las escrituras son del BARBERO y del ADMIN_BARBERIA (en V1 suele ser el
@@ -278,21 +278,21 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // escritura aunque `RolesGuard` le conceda acceso por jerarquía (E1-04); de eso
   // se ocupa `OperadorBarberiaGuard`. Las lecturas conservan al CLIENTE porque
   // son la vitrina pública y el wizard.
-  'GET /catalogo/servicios,servicios/': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
-  'POST /catalogo/servicios,servicios/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
-  'GET /catalogo/servicios,servicios/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
-  'PATCH /catalogo/servicios,servicios/:id': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'GET /shops/:shopId/services/': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/services/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'GET /shops/:shopId/services/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
+  'PATCH /shops/:shopId/services/:id': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   // E2-07: el `DELETE` del catálogo se parte en los dos verbos del cambio de
   // estado. Desactivar tiene reglas de negocio (422) que el guard no puede ver.
-  'PATCH /catalogo/servicios,servicios/:id/desactivar': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
-  'PATCH /catalogo/servicios,servicios/:id/reactivar': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'PATCH /shops/:shopId/services/:id/deactivate': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'PATCH /shops/:shopId/services/:id/reactivate': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
 
-  'GET /catalogo/combos/': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
-  'POST /catalogo/combos/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
-  'GET /catalogo/combos/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
-  'PATCH /catalogo/combos/:id': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
-  'PATCH /catalogo/combos/:id/desactivar': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
-  'PATCH /catalogo/combos/:id/reactivar': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'GET /shops/:shopId/combos/': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/combos/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'GET /shops/:shopId/combos/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
+  'PATCH /shops/:shopId/combos/:id': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'PATCH /shops/:shopId/combos/:id/deactivate': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'PATCH /shops/:shopId/combos/:id/reactivate': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
 
   // E4-02 · D22 (2026-10-20): el alta de la lista de espera es del CLIENTE: el
   // `usuarioId` sale del token, así que la ruta no lleva `:barberiaId` y el
@@ -380,7 +380,7 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
           esPublica,
           esAutenticada: esAutenticada,
           roles,
-          esTenant: ruta.includes(':barberiaId'),
+          esTenant: ruta.includes(':shopId'),
         });
       }
     }
@@ -409,7 +409,7 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     const request = {
       method: ruta.verbo,
       originalUrl: ruta.ruta,
-      params: ruta.esTenant ? { barberiaId: BARBERIA_ID } : {},
+      params: ruta.esTenant ? { shopId: BARBERIA_ID } : {},
       headers: {},
       query: {},
       user: usuario(rol),

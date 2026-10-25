@@ -261,7 +261,7 @@ describe('E3-05 · expiración automática y cancelación manual', () => {
     const horaFin = `${String(fin.getHours()).padStart(2, '0')}:${String(fin.getMinutes()).padStart(2, '0')}`;
 
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede}/reservas`)
+      .post(`${api}/shops/${sede}/appointments`)
       .set('Authorization', `Bearer ${token}`)
       .send({
         fecha: fecha(dia),
@@ -297,7 +297,7 @@ describe('E3-05 · expiración automática y cancelación manual', () => {
 
   const cancelar = (reservaId: string, token: string, barberiaId = sede) =>
     request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas/${reservaId}/cancelar`)
+      .post(`${api}/shops/${barberiaId}/appointments/${reservaId}/cancel`)
       .set('Authorization', `Bearer ${token}`);
 
   const auditoriasDe = (reservaId: string, accion: string) =>
@@ -335,7 +335,7 @@ describe('E3-05 · expiración automática y cancelación manual', () => {
 
     // Con la reserva PENDIENTE el hueco está ocupado: otro cliente recibe 409.
     const ocupado = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede}/reservas`)
+      .post(`${api}/shops/${sede}/appointments`)
       .set('Authorization', `Bearer ${tokenCliente2}`)
       .send({
         fecha: fecha(1),
@@ -352,7 +352,7 @@ describe('E3-05 · expiración automática y cancelación manual', () => {
 
     // El espacio vuelve a estar libre: el mismo intento ahora entra.
     const libre = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede}/reservas`)
+      .post(`${api}/shops/${sede}/appointments`)
       .set('Authorization', `Bearer ${tokenCliente2}`)
       .send({
         fecha: fecha(1),
@@ -438,7 +438,7 @@ describe('E3-05 · expiración automática y cancelación manual', () => {
     const reservaId = await crearPendiente('20:00');
 
     const aceptada = await request(app.getHttpServer())
-      .post(`${api}/barberias/${sede}/reservas/${reservaId}/aceptar`)
+      .post(`${api}/shops/${sede}/appointments/${reservaId}/accept`)
       .set('Authorization', `Bearer ${tokenAdminSede}`);
     expect(aceptada.status, JSON.stringify(aceptada.body)).toBe(201);
 

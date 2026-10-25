@@ -17,40 +17,40 @@ import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 /**
  * E4-03 · bandeja de la SEDE para su propia lista de restringidos (D48).
  *
- * Las rutas usan `:id` (no `:barberiaId`), así que el `RolesGuard` solo filtra
- * el ROL y no puede acotar la sede: la pertenencia real la comprueba el
- * servicio (403), igual que en `POST /barberias/:id/solicitudes-cambio` de
+ * Las rutas usan `:shopId`, así que el `RolesGuard` acota la sede desde el
+ * parámetro; aun así la pertenencia real la vuelve a comprobar el
+ * servicio (403), igual que en `POST /shops/:shopId/change-requests` de
  * E3-13. Sin `@Roles` la ruta quedaría abierta a cualquier autenticado, que es
  * lo que el principio de seguridad «fail-closed» prohíbe.
  */
-@Controller('barberias')
+@Controller('shops/:shopId/restricted-clients')
 export class ClientesRestringidosController {
   constructor(private readonly clientesRestringidosService: ClientesRestringidosService) {}
 
   /**
-   * GET /barberias/:id/clientes-restringidos
+   * GET /shops/:shopId/restricted-clients
    * Lista negra LOCAL de esa sede: contador de inasistencias y motivo.
    */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Get(':id/clientes-restringidos')
+  @Get()
   listar(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('shopId', ParseUUIDPipe) id: string,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.clientesRestringidosService.listar(id, user);
   }
 
   /**
-   * POST /barberias/:id/clientes/:clienteId/reactivar
+   * POST /shops/:shopId/restricted-clients/:clientId/reactivate
    * Levanta la restricción de esa sede y reinicia su contador (auditado).
    * Responde 200: no crea un recurso, resuelve una restricción.
    */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Post(':id/clientes/:clienteId/reactivar')
+  @Post(':clientId/reactivate')
   @HttpCode(HttpStatus.OK)
   reactivar(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('clienteId', ParseUUIDPipe) clienteId: string,
+    @Param('shopId', ParseUUIDPipe) id: string,
+    @Param('clientId', ParseUUIDPipe) clienteId: string,
     @Body() dto: ReactivarClienteDto,
     @CurrentUser() user: UsuarioAutenticado,
   ) {

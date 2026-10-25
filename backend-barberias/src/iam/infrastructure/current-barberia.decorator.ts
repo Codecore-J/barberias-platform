@@ -1,4 +1,6 @@
-import { BadRequestException, createParamDecorator, ExecutionContext } from '@nestjs/common';/**
+import { BadRequestException, createParamDecorator, ExecutionContext } from '@nestjs/common';
+
+/**
  * Un UUID, y solo un UUID, es una sede válida. La columna `barberia_id` es de
  * tipo uuid: dejar pasar otra cosa convierte un error del cliente en un fallo
  * de base de datos.
@@ -7,36 +9,41 @@ const UUID_BARBERIA =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * E1-06: la sede sale del CONTEXTO DEL TENANT y solo de ahí.
+ * Fase 5 (Punto 5.3): la sede sale del CONTEXTO DEL TENANT y solo de ahí, y el
+ * contrato RESTful la lleva SIEMPRE en la ruta.
  *
  * Fuentes, en este orden, y ninguna más:
- * 1. Parámetro de ruta `barberiaId` (`/barberias/:barberiaId/...`).
- * 2. Cabecera `x-barberia-id`, que es lo que manda el frontend (`auth.interceptor.ts`).
- * 3. Query `?barberiaId=`.
+ * 1. Parámetro de ruta `shopId` (`/shops/:shopId/...`).
+ * 2. Query `?shopId=` (o su nombre histórico `?barberiaId=`), reservado a las
+ *    rutas globales que pueden consultarse sin sede (`GET /auditoria`).
  *
- * Antes añadía una cuarta fuente, `params.id`, y en las rutas con `:id` —el
- * catálogo— eso era el id del recurso, no el de la sede: el servicio buscaba
- * `{ id, barberiaId }` con los dos iguales y no encontraba nunca nada. Peor,
- * `RolesGuard` NO usa ese fallback, así que el guard verificaba una sede y el
- * servicio consultaba otra. La cadena de aquí es ahora idéntica a la del guard.
+ * La cabecera `x-barberia-id` se eliminó: era una fuente paralela de tenant que
+ * el frontend inyectaba en `auth.interceptor.ts` y que permitía acotar una
+ * petición a cualquier sede sin que la ruta lo dijera. Con ella fuera, la única
+ * vía de entrada es el parámetro de ruta, que es lo que comprueban también
+ * `RolesGuard` y `VinculoBarberiaGuard` (misma cadena, sin divergence).
  *
- * E1-06 (parte 2): lo que sale de aquí tiene que ser un UUID o nada. Antes
- * `x-barberia-id: no-es-uuid` llegaba intacto al `where` de una columna uuid y
- * era Prisma quien decidia el 400, despues de abrir la conexion. Ahora se
- * responde 400 aquí, y un valor no reconocido se trata como sede no indicada.
+ * E1-06 (parte 2): lo que sale de aquí tiene que ser un UUID o nada. Un valor
+ * no reconocido se trata como sede no indicada (400), en vez de llegar al
+ * `where` de una columna uuid para que Prisma decidiera el error.
  */
+/** `true` cuando el valor es un UUID de sede utilizable en un `where`. */
+export function esUuidSede(valor: unknown): boolean {
+  return typeof valor === 'string' && UUID_BARBERIA.test(valor.trim());
+}
+
 export function resolverBarberiaId(request: any): string | null {
-  const cabecera = request?.headers?.['x-barberia-id'];
-  // Express entrega `string | string[]` si la cabecera llega repetida.
-  const header = Array.isArray(cabecera) ? cabecera[0] : cabecera;
   const valor =
-    request?.params?.barberiaId ?? header ?? request?.query?.barberiaId ?? null;
+    request?.params?.shopId ??
+    request?.query?.shopId ??
+    request?.query?.barberiaId ??
+    null;
 
   if (typeof valor !== 'string') {
     return null;
   }
   const sede = valor.trim();
-  return UUID_BARBERIA.test(sede) ? sede : null;
+  return esUuidSede(sede) ? sede : null;
 }
 
 /**
@@ -50,7 +57,7 @@ export const CurrentBarberiaId = createParamDecorator(
     const barberiaId = resolverBarberiaId(ctx.switchToHttp().getRequest());
     if (!barberiaId) {
       throw new BadRequestException(
-        'No se indicó una barbería válida: usa un UUID en la cabecera x-barberia-id, en la ruta /barberias/:barberiaId/... o en el parámetro ?barberiaId=.',
+        'No se indicó una barbería válida: usa un UUID en la ruta /shops/:shopId/... o en el parámetro ?shopId=.',
       );
     }
     return barberiaId;
@@ -59,9 +66,9 @@ export const CurrentBarberiaId = createParamDecorator(
 
 /**
  * Variante opcional: solo para las rutas donde "sin sede" es una consulta
- * legítima. Hoy es `GET /cobros/auditoria`, que el ADMINISTRADOR global llama
- * sin cabecera para ver todas las sedes (`pago.service.ts` lo trata con
- * `esAdministradorGlobal`) y que el panel de inicio consume.
+ * legítima. Hoy es `GET /shops/:shopId/payments/audit`, que el ADMINISTRADOR
+ * global también puede llamar por la ruta global equivalente para ver todas
+ * las sedes (`pago.service.ts` lo trata con `esAdministradorGlobal`).
  */
 export const CurrentBarberiaIdOpcional = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): string | null =>

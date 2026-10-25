@@ -65,7 +65,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
 
   const disponibilidad = async () => {
     const res = await request(app.getHttpServer())
-      .get(`${api}/barberias/${datos.sede}/agenda/disponibilidad?fecha=${datos.fecha}&duracionMinutos=30`)
+      .get(`${api}/shops/${datos.sede}/appointments/schedule/availability?fecha=${datos.fecha}&duracionMinutos=30`)
       .set(headers('admin', datos.sede));
     expect(res.status).toBe(200);
     return res.body as { inicio: string; fin: string }[];
@@ -274,7 +274,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
   it('REGLA 3 · desactivar un servicio sin reservas abiertas y volver a activarlo', async () => {
     // D16: escribe el BARBERO de la sede, no su administrador.
     const desactivar = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/servicios/${datos.servicioLibre}/desactivar`)
+      .patch(`${api}/shops/${datos.sede}/services/${datos.servicioLibre}/deactivate`)
       .set(headers('barbero', datos.sede));
     expect(desactivar.status).toBe(200);
 
@@ -286,20 +286,20 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
 
     // Sale del catálogo para cliente: `findAll` solo lista los ACTIVO.
     const catalogoCliente = await request(app.getHttpServer())
-      .get(`${api}/catalogo/servicios`)
+      .get(`${api}/shops/${datos.sede}/services`)
       .set(headers('cliente', datos.sede));
     expect(catalogoCliente.status).toBe(200);
     expect(catalogoCliente.body.map((s: { id: string }) => s.id)).not.toContain(datos.servicioLibre);
 
     // Admin ve todos (incluye INACTIVOS)
     const catalogoAdmin = await request(app.getHttpServer())
-      .get(`${api}/catalogo/servicios`)
+      .get(`${api}/shops/${datos.sede}/services`)
       .set(headers('admin', datos.sede));
     expect(catalogoAdmin.status).toBe(200);
     expect(catalogoAdmin.body.map((s: { id: string }) => s.id)).toContain(datos.servicioLibre);
 
     const reactivar = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/servicios/${datos.servicioLibre}/reactivar`)
+      .patch(`${api}/shops/${datos.sede}/services/${datos.servicioLibre}/reactivate`)
       .set(headers('barbero', datos.sede));
     expect(reactivar.status).toBe(200);
 
@@ -312,7 +312,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
 
   it('REGLA 1 · 422 SERVICIO_EN_USO con una reserva PENDIENTE que usa el servicio', async () => {
     const res = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/servicios/${datos.servicioEnUso}/desactivar`)
+      .patch(`${api}/shops/${datos.sede}/services/${datos.servicioEnUso}/deactivate`)
       .set(headers('barbero', datos.sede));
 
     expect(res.status).toBe(422);
@@ -328,7 +328,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
 
   it('REGLA 2 · 422 SERVICIO_EN_COMBO_ACTIVO, y el combo primero desbloquea', async () => {
     const bloqueado = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/servicios/${datos.servicioEnCombo}/desactivar`)
+      .patch(`${api}/shops/${datos.sede}/services/${datos.servicioEnCombo}/deactivate`)
       .set(headers('barbero', datos.sede));
 
     expect(bloqueado.status).toBe(422);
@@ -345,12 +345,12 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
 
     // Se resuelve el combo (el orden que pide el backlog) y entonces sí.
     const combo = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/combos/${datos.combo}/desactivar`)
+      .patch(`${api}/shops/${datos.sede}/combos/${datos.combo}/deactivate`)
       .set(headers('barbero', datos.sede));
     expect(combo.status).toBe(200);
 
     const despues = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/servicios/${datos.servicioEnCombo}/desactivar`)
+      .patch(`${api}/shops/${datos.sede}/services/${datos.servicioEnCombo}/deactivate`)
       .set(headers('barbero', datos.sede));
     expect(despues.status).toBe(200);
 
@@ -370,7 +370,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     const antes = await disponibilidad();
 
     const liberar = await request(app.getHttpServer())
-      .post(`${api}/barberias/${datos.sede}/agenda/bloqueos/${datos.bloqueo}/liberar`)
+      .post(`${api}/shops/${datos.sede}/appointments/schedule/blocks/${datos.bloqueo}/release`)
       .set(headers('admin', datos.sede));
     expect(liberar.status).toBe(200);
     expect(liberar.body.success).toBe(true);
@@ -389,7 +389,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
 
     // Idempotente: la segunda llamada no cambia nada ni falla.
     const otraVez = await request(app.getHttpServer())
-      .post(`${api}/barberias/${datos.sede}/agenda/bloqueos/${datos.bloqueo}/liberar`)
+      .post(`${api}/shops/${datos.sede}/appointments/schedule/blocks/${datos.bloqueo}/release`)
       .set(headers('admin', datos.sede));
     expect(otraVez.status).toBe(200);
     expect(otraVez.body.message).toContain('ya estaba liberado');
@@ -401,13 +401,13 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
   it('suspender y reactivar la sede es cambio de estado (y solo del ADMINISTRADOR)', async () => {
     // La sede no entra por aquí: su vía es la plataforma (decisión 4).
     const noAutorizado = await request(app.getHttpServer())
-      .patch(`${api}/barberias/${datos.sede}/estado`)
+      .patch(`${api}/shops/${datos.sede}/status`)
       .set(headers('admin', datos.sede))
       .send({ estado: 'INACTIVO' });
     expect(noAutorizado.status).toBe(403);
 
     const suspender = await request(app.getHttpServer())
-      .patch(`${api}/barberias/${datos.sede}/estado`)
+      .patch(`${api}/shops/${datos.sede}/status`)
       .set(headers('global'))
       .send({ estado: 'INACTIVO' });
     expect(suspender.status).toBe(200);
@@ -421,7 +421,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     expect(suspendida.nombre).toContain('Sede E207-');
 
     const reactivar = await request(app.getHttpServer())
-      .patch(`${api}/barberias/${datos.sede}/estado`)
+      .patch(`${api}/shops/${datos.sede}/status`)
       .set(headers('global'))
       .send({ estado: 'ACTIVO' });
     expect(reactivar.status).toBe(200);
@@ -436,27 +436,27 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
   it('visibilidad por rol: inactivos ocultos al cliente, visibles al admin', async () => {
     // Desactivar un servicio para que quede INACTIVO
     const desactivar = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/servicios/${datos.servicioLibre}/desactivar`)
+      .patch(`${api}/shops/${datos.sede}/services/${datos.servicioLibre}/deactivate`)
       .set(headers('barbero', datos.sede));
     expect(desactivar.status).toBe(200);
 
     // Cliente solo ve ACTIVOS
     const clienteGet = await request(app.getHttpServer())
-      .get(`${api}/catalogo/servicios`)
+      .get(`${api}/shops/${datos.sede}/services`)
       .set(headers('cliente', datos.sede));
     expect(clienteGet.status).toBe(200);
     expect(clienteGet.body.some((s: any) => s.id === datos.servicioLibre)).toBe(false);
 
     // Admin ve TODOS
     const adminGet = await request(app.getHttpServer())
-      .get(`${api}/catalogo/servicios`)
+      .get(`${api}/shops/${datos.sede}/services`)
       .set(headers('admin', datos.sede));
     expect(adminGet.status).toBe(200);
     expect(adminGet.body.some((s: any) => s.id === datos.servicioLibre)).toBe(true);
 
     // Reactivar para dejar estado limpio
     const reactivar = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/servicios/${datos.servicioLibre}/reactivar`)
+      .patch(`${api}/shops/${datos.sede}/services/${datos.servicioLibre}/reactivate`)
       .set(headers('barbero', datos.sede));
     expect(reactivar.status).toBe(200);
   });
@@ -464,27 +464,27 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
   it('visibilidad de combos por rol y endpoints de transición', async () => {
     // Desactivar combo
     const desactivarCombo = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/combos/${datos.combo}/desactivar`)
+      .patch(`${api}/shops/${datos.sede}/combos/${datos.combo}/deactivate`)
       .set(headers('barbero', datos.sede));
     expect(desactivarCombo.status).toBe(200);
 
     // Cliente no ve inactivo
     const clienteCombos = await request(app.getHttpServer())
-      .get(`${api}/catalogo/combos`)
+      .get(`${api}/shops/${datos.sede}/combos`)
       .set(headers('cliente', datos.sede));
     expect(clienteCombos.status).toBe(200);
     expect(clienteCombos.body.some((c: any) => c.id === datos.combo)).toBe(false);
 
     // Admin ve todos
     const adminCombos = await request(app.getHttpServer())
-      .get(`${api}/catalogo/combos`)
+      .get(`${api}/shops/${datos.sede}/combos`)
       .set(headers('admin', datos.sede));
     expect(adminCombos.status).toBe(200);
     expect(adminCombos.body.some((c: any) => c.id === datos.combo)).toBe(true);
 
     // Reactivar combo
     const reactivarCombo = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/combos/${datos.combo}/reactivar`)
+      .patch(`${api}/shops/${datos.sede}/combos/${datos.combo}/reactivate`)
       .set(headers('barbero', datos.sede));
     expect(reactivarCombo.status).toBe(200);
   });
@@ -509,17 +509,17 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     // Roles que NO operan el catálogo: 403 aunque la sede sea la suya.
     for (const rol of ['global', 'cliente']) {
       const res = await request(app.getHttpServer())
-        .post(`${api}/catalogo/servicios`)
+        .post(`${api}/shops/${datos.sede}/services`)
         .set(headers(rol, datos.sede))
         .send(nuevoServicio);
-      expect(`${rol} POST /catalogo/servicios → ${res.status}`).toBe(
-        `${rol} POST /catalogo/servicios → 403`,
+      expect(`${rol} POST /shops/${datos.sede}/services → ${res.status}`).toBe(
+        `${rol} POST /shops/${datos.sede}/services → 403`,
       );
     }
 
     // El operador de la sede (ADMIN_BARBERIA) crea sin problemas.
     const creadoPorAdmin = await request(app.getHttpServer())
-      .post(`${api}/catalogo/servicios`)
+      .post(`${api}/shops/${datos.sede}/services`)
       .set(headers('admin', datos.sede))
       .send({ ...nuevoServicio, nombre: 'Servicio del admin de sede E2-07' });
     expect(creadoPorAdmin.status, JSON.stringify(creadoPorAdmin.body)).toBe(201);
@@ -527,7 +527,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
 
     // Y el BARBERO también.
     const creado = await request(app.getHttpServer())
-      .post(`${api}/catalogo/servicios`)
+      .post(`${api}/shops/${datos.sede}/services`)
       .set(headers('barbero', datos.sede))
       .send(nuevoServicio);
     expect(creado.status, JSON.stringify(creado.body)).toBe(201);
@@ -536,14 +536,14 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     // Todos LEEN el mismo catálogo (vitrina + supervisión).
     for (const rol of ['admin', 'global', 'cliente', 'barbero']) {
       const res = await request(app.getHttpServer())
-        .get(`${api}/catalogo/servicios`)
+        .get(`${api}/shops/${datos.sede}/services`)
         .set(headers(rol, datos.sede));
       expect(`${rol} GET → ${res.status}`).toBe(`${rol} GET → 200`);
     }
 
     // Edita el ADMIN_BARBERIA (operador de la sede)...
     const adminEdita = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/servicios/${creado.body.id}`)
+      .patch(`${api}/shops/${datos.sede}/services/${creado.body.id}`)
       .set(headers('admin', datos.sede))
       .send({ precio: 30 });
     expect(adminEdita.status, JSON.stringify(adminEdita.body)).toBe(200);
@@ -551,7 +551,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
 
     // ...y edita el BARBERO.
     const barberoEdita = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/servicios/${creado.body.id}`)
+      .patch(`${api}/shops/${datos.sede}/services/${creado.body.id}`)
       .set(headers('barbero', datos.sede))
       .send({ precio: 35 });
     expect(barberoEdita.status).toBe(200);
@@ -559,7 +559,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
 
     // El ADMINISTRADOR global no edita: 403 explícito.
     const globalEdita = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/servicios/${creado.body.id}`)
+      .patch(`${api}/shops/${datos.sede}/services/${creado.body.id}`)
       .set(headers('global', datos.sede))
       .send({ precio: 50 });
     expect(globalEdita.status).toBe(403);

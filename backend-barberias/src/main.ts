@@ -88,8 +88,6 @@ async function bootstrap() {
       'Content-Type',
       'Accept',
       'Authorization',
-      'x-barberia-id',
-      'X-Barberia-Id',
       'X-RateLimit-Limit',
       'X-RateLimit-Remaining',
       'X-RateLimit-Reset',
@@ -100,8 +98,6 @@ async function bootstrap() {
       'X-RateLimit-Remaining',
       'X-RateLimit-Reset',
       'Retry-After',
-      'x-barberia-id',
-      'X-Barberia-Id',
     ],
     credentials: true,
     maxAge: 86400, // Cache de preflight por 24 horas

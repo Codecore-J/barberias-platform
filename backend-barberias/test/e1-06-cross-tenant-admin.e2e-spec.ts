@@ -247,84 +247,78 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
     };
 
     // --- Catálogo de B: leer, editar y desactivar ---
-    await registrar('GET /catalogo/servicios/:id', 'leer servicio de B', request(app.getHttpServer())
-      .get(`${api}/catalogo/servicios/${servicioB}`)
-      .set('Authorization', jwt(tokenAdminA))
-      .set('x-barberia-id', barberiaA));
+    // Fase 5 (Punto 5.3): la sede va en la RUTA. El admin de A apunta a la ruta
+    // de B y no hay cabecera que lo desvíe: la denegación es del guard.
+    await registrar('GET /shops/:shopId/services/:id', 'leer servicio de B', request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaB}/services/${servicioB}`)
+      .set('Authorization', jwt(tokenAdminA)));
 
     // D16: las escrituras del catálogo son del BARBERO y del ADMIN_BARBERIA de la
     // sede, así que el intento de tocar B se hace con el barbero de A. El rol
     // pasa; lo que debe frenarlo es el aislamiento de tenant, que es el objetivo.
-    await registrar('PATCH /catalogo/servicios/:id', 'editar servicio de B', request(app.getHttpServer())
-      .patch(`${api}/catalogo/servicios/${servicioB}`)
+    await registrar('PATCH /shops/:shopId/services/:id', 'editar servicio de B', request(app.getHttpServer())
+      .patch(`${api}/shops/${barberiaB}/services/${servicioB}`)
       .set('Authorization', jwt(tokenBarberoA))
-      .set('x-barberia-id', barberiaA)
       .send({ nombre: 'SECUESTRADO-POR-A' }));
 
-    await registrar('PATCH /catalogo/servicios/:id/desactivar', 'desactivar servicio de B', request(app.getHttpServer())
-      .patch(`${api}/catalogo/servicios/${servicioB}/desactivar`)
-      .set('Authorization', jwt(tokenBarberoA))
-      .set('x-barberia-id', barberiaA));
+    await registrar('PATCH /shops/:shopId/services/:id/deactivate', 'desactivar servicio de B', request(app.getHttpServer())
+      .patch(`${api}/shops/${barberiaB}/services/${servicioB}/deactivate`)
+      .set('Authorization', jwt(tokenBarberoA)));
 
-    await registrar('GET /catalogo/combos/:id', 'leer combo de B', request(app.getHttpServer())
-      .get(`${api}/catalogo/combos/${comboB}`)
-      .set('Authorization', jwt(tokenAdminA))
-      .set('x-barberia-id', barberiaA));
+    await registrar('GET /shops/:shopId/combos/:id', 'leer combo de B', request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaB}/combos/${comboB}`)
+      .set('Authorization', jwt(tokenAdminA)));
 
-    await registrar('PATCH /catalogo/combos/:id', 'editar combo de B', request(app.getHttpServer())
-      .patch(`${api}/catalogo/combos/${comboB}`)
+    await registrar('PATCH /shops/:shopId/combos/:id', 'editar combo de B', request(app.getHttpServer())
+      .patch(`${api}/shops/${barberiaB}/combos/${comboB}`)
       .set('Authorization', jwt(tokenBarberoA))
-      .set('x-barberia-id', barberiaA)
       .send({ nombre: 'SECUESTRADO-POR-A' }));
 
-    await registrar('PATCH /catalogo/combos/:id/desactivar', 'desactivar combo de B', request(app.getHttpServer())
-      .patch(`${api}/catalogo/combos/${comboB}/desactivar`)
-      .set('Authorization', jwt(tokenBarberoA))
-      .set('x-barberia-id', barberiaA));
+    await registrar('PATCH /shops/:shopId/combos/:id/deactivate', 'desactivar combo de B', request(app.getHttpServer())
+      .patch(`${api}/shops/${barberiaB}/combos/${comboB}/deactivate`)
+      .set('Authorization', jwt(tokenBarberoA)));
 
-    await registrar('GET /catalogo/servicios', 'listar el catálogo de B', request(app.getHttpServer())
-      .get(`${api}/catalogo/servicios`)
-      .set('Authorization', jwt(tokenAdminA))
-      .set('x-barberia-id', barberiaB));
+    await registrar('GET /shops/:shopId/services', 'listar el catálogo de B', request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaB}/services`)
+      .set('Authorization', jwt(tokenAdminA)));
 
     // --- Agenda, bloqueos, pagos, horarios, auditoría y antecedentes de B ---
-    await registrar('GET /barberias/:id/agenda/disponibilidad', 'leer la agenda de B', request(app.getHttpServer())
-      .get(`${api}/barberias/${barberiaB}/agenda/disponibilidad?fecha=2026-12-01&duracionMinutos=30`)
+    await registrar('GET /shops/:shopId/appointments/schedule/availability', 'leer la agenda de B', request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaB}/appointments/schedule/availability?fecha=2026-12-01&duracionMinutos=30`)
       .set('Authorization', jwt(tokenAdminA)));
 
-    await registrar('GET /barberias/:id/agenda/bloqueos', 'leer los bloqueos de B', request(app.getHttpServer())
-      .get(`${api}/barberias/${barberiaB}/agenda/bloqueos?fromDate=2026-11-01&toDate=2026-12-31`)
+    await registrar('GET /shops/:shopId/appointments/schedule/blocks', 'leer los bloqueos de B', request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaB}/appointments/schedule/blocks?fromDate=2026-11-01&toDate=2026-12-31`)
       .set('Authorization', jwt(tokenAdminA)));
 
-    await registrar('GET /agenda/bloqueos', 'bloqueos de B por cabecera', request(app.getHttpServer())
-      .get(`${api}/agenda/bloqueos?fromDate=2026-11-01&toDate=2026-12-31`)
+    await registrar('GET /shops/:shopId/appointments/schedule/blocks (cabecera A)', 'bloqueos de B con cabecera de A', request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaB}/appointments/schedule/blocks?fromDate=2026-11-01&toDate=2026-12-31`)
       .set('Authorization', jwt(tokenAdminA))
-      .set('x-barberia-id', barberiaB));
+      .set('x-barberia-id', barberiaA));
 
-    await registrar('POST /barberias/:id/agenda/bloqueos/:id/liberar', 'liberar un bloqueo de B', request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaB}/agenda/bloqueos/${bloqueoB}/liberar`)
+    await registrar('POST /shops/:shopId/appointments/schedule/blocks/:id/release', 'liberar un bloqueo de B', request(app.getHttpServer())
+      .post(`${api}/shops/${barberiaB}/appointments/schedule/blocks/${bloqueoB}/release`)
       .set('Authorization', jwt(tokenAdminA)));
 
-    await registrar('GET /cobros/auditoria', 'leer la auditoría de cobros de B', request(app.getHttpServer())
-      .get(`${api}/cobros/auditoria`)
-      .set('Authorization', jwt(tokenAdminA))
-      .set('x-barberia-id', barberiaB));
+    await registrar('GET /shops/:shopId/payments/audit', 'leer la auditoría de cobros de B', request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaB}/payments/audit`)
+      .set('Authorization', jwt(tokenAdminA)));
 
-    await registrar('POST /barberias/:id/pagos/en-persona', 'cobrar en B', request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaB}/pagos/en-persona`)
+    await registrar('POST /shops/:shopId/payments', 'cobrar en B', request(app.getHttpServer())
+      .post(`${api}/shops/${barberiaB}/payments`)
       .set('Authorization', jwt(tokenAdminA))
       .send({}));
 
-    await registrar('GET /barberias/:id/horarios', 'leer los horarios de B', request(app.getHttpServer())
-      .get(`${api}/barberias/${barberiaB}/horarios`)
+    await registrar('GET /shops/:shopId/hours', 'leer los horarios de B', request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaB}/hours`)
       .set('Authorization', jwt(tokenAdminA)));
 
     await registrar('GET /auditoria?barberiaId=B', 'auditoría de B por query', request(app.getHttpServer())
       .get(`${api}/auditoria?barberiaId=${barberiaB}`)
       .set('Authorization', jwt(tokenAdminA)));
 
-    await registrar('GET /barberias/:id/antecedentes/pendientes', 'antecedentes de B', request(app.getHttpServer())
-      .get(`${api}/barberias/${barberiaB}/antecedentes/pendientes`)
+    await registrar('GET /shops/:shopId/records/pending', 'antecedentes de B', request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaB}/records/pending`)
       .set('Authorization', jwt(tokenAdminA)));
 
     await registrar('GET /auditoria/estadisticas', 'estadísticas globales sin ser ADMINISTRADOR', request(app.getHttpServer())
@@ -332,8 +326,8 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       .set('Authorization', jwt(tokenAdminA)));
 
     // --- Manipulación: la cabecera no manda sobre el parámetro de la ruta ---
-    await registrar('GET /barberias/:id/horarios (ruta B, cabecera A)', 'ruta B con cabecera de A', request(app.getHttpServer())
-      .get(`${api}/barberias/${barberiaB}/horarios`)
+    await registrar('GET /shops/:shopId/hours (ruta B, cabecera A)', 'ruta B con cabecera de A', request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaB}/hours`)
       .set('Authorization', jwt(tokenAdminA))
       .set('x-barberia-id', barberiaA));
 
@@ -342,7 +336,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
     // que probar no es el estado sino QUE sede se leyo: `params` debe ganar a la
     // cabecera. A tiene diaSemana=1, B tiene diaSemana=7.
     const rutaAconCabeceraB = await request(app.getHttpServer())
-      .get(`${api}/barberias/${barberiaA}/horarios`)
+      .get(`${api}/shops/${barberiaA}/hours`)
       .set('Authorization', jwt(tokenAdminA))
       .set('x-barberia-id', barberiaB);
     const diasDevueltos = (rutaAconCabeceraB.body as { diaSemana: number }[]).map((h) => h.diaSemana);
@@ -350,76 +344,67 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
     expect(diasDevueltos, 'la cabecera B no se cuela: no aparece el diaSemana de B (7)').not.toContain(7);
     expect(diasDevueltos, 'devuelve la sede de la ruta (A, diaSemana 1)').toContain(1);
 
-    // --- Manipulación: barberiaId en la query ---
-    await registrar('GET /catalogo/servicios?barberiaId=B', 'catálogo de B por query', request(app.getHttpServer())
-      .get(`${api}/catalogo/servicios?barberiaId=${barberiaB}`)
+    // --- Manipulación: una query con otra sede no cambia la sede de la ruta ---
+    await registrar('GET /shops/:shopId/services?barberiaId=A', 'catálogo de B con query de A', request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaB}/services?barberiaId=${barberiaA}`)
       .set('Authorization', jwt(tokenAdminA)));
 
-    await registrar('GET /agenda/bloqueos?barberiaId=B', 'bloqueos de B por query', request(app.getHttpServer())
-      .get(`${api}/agenda/bloqueos?barberiaId=${barberiaB}&fromDate=2026-11-01&toDate=2026-12-31`)
+    await registrar('GET /shops/:shopId/appointments/schedule/blocks?barberiaId=A', 'bloqueos de B con query de A', request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaB}/appointments/schedule/blocks?barberiaId=${barberiaA}&fromDate=2026-11-01&toDate=2026-12-31`)
       .set('Authorization', jwt(tokenAdminA)));
 
     // --- CLIENTE no vinculado a ninguna sede ---
     // La disponibilidad SI exige pertenencia (E1-06 parte 3): 403 sin vinculo.
-    await registrar('GET /agenda/disponibilidad (CLIENTE suelto)', 'cliente sin vínculo lee la agenda de A', request(app.getHttpServer())
-      .get(`${api}/agenda/disponibilidad?fecha=2026-12-01&duracionMinutos=30`)
-      .set('Authorization', jwt(tokenSuelto))
-      .set('x-barberia-id', barberiaA));
-
+    await registrar('GET /shops/:shopId/appointments/schedule/availability (CLIENTE suelto)', 'cliente sin vínculo lee la agenda de A', request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaA}/appointments/schedule/availability?fecha=2026-12-01&duracionMinutos=30`)
+      .set('Authorization', jwt(tokenSuelto)));
 
     // --- Control positivo: el operador de A SÍ puede con lo suyo ---
     // D16: el catálogo lo escribe el personal de la sede (aquí, su barbero).
     const controlPropio = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/servicios/${servicioA}`)
+      .patch(`${api}/shops/${barberiaA}/services/${servicioA}`)
       .set('Authorization', jwt(tokenBarberoA))
-      .set('x-barberia-id', barberiaA)
       .send({ nombre: 'Corte E1-06-CTA de A (editado por su barbero)' });
 
     // CATÁLOGO PRIVADO HASTA EL VÍNCULO (decision del dueno, E1-06 paso 5).
     // Un CLIENTE sin fila ACTIVA en cliente_barberias para esa sede recibe 403
-    // en /catalogo/servicios y /catalogo/combos. Antes respondia 200 con solo la
-    // cabecera x-barberia-id de cualquier sede.
+    // en /shops/:shopId/services y /shops/:shopId/combos.
     const catalogoSuelto = await request(app.getHttpServer())
-      .get(`${api}/catalogo/servicios`)
-      .set('Authorization', jwt(tokenSuelto))
-      .set('x-barberia-id', barberiaA);
+      .get(`${api}/shops/${barberiaA}/services`)
+      .set('Authorization', jwt(tokenSuelto));
 
     const combosSuelto = await request(app.getHttpServer())
-      .get(`${api}/catalogo/combos`)
-      .set('Authorization', jwt(tokenSuelto))
-      .set('x-barberia-id', barberiaA);
+      .get(`${api}/shops/${barberiaA}/combos`)
+      .set('Authorization', jwt(tokenSuelto));
 
     // CONTROL POSITIVO: el mismo rol CLIENTE, pero VINCULADO a A con fila ACTIVA,
     // sigue viendo el catalogo de A con normalidad. Sin este caso, un arreglo que
     // denegase a todos los CLIENTES pasaria el spec por el motivo equivocado.
     const catalogoVinculado = await request(app.getHttpServer())
-      .get(`${api}/catalogo/servicios`)
-      .set('Authorization', jwt(tokenVinculado))
-      .set('x-barberia-id', barberiaA);
+      .get(`${api}/shops/${barberiaA}/services`)
+      .set('Authorization', jwt(tokenVinculado));
 
     const combosVinculado = await request(app.getHttpServer())
-      .get(`${api}/catalogo/combos`)
-      .set('Authorization', jwt(tokenVinculado))
-      .set('x-barberia-id', barberiaA);
+      .get(`${api}/shops/${barberiaA}/combos`)
+      .set('Authorization', jwt(tokenVinculado));
 
     // El vinculo con B esta DESVINCULADO: el mismo cliente que si lee A no puede
     // leer el catalogo de B. Comprueba que la regla mira `estado_vinculacion` y
     // no solo la existencia de la fila.
     const catalogoVinculadoB = await request(app.getHttpServer())
-      .get(`${api}/catalogo/servicios`)
-      .set('Authorization', jwt(tokenVinculado))
-      .set('x-barberia-id', barberiaB);
+      .get(`${api}/shops/${barberiaB}/services`)
+      .set('Authorization', jwt(tokenVinculado));
 
     console.log(
       '\n| ruta | intento | estado |\n|---|---|---|\n' +
         casos.map((c) => `| \`${c.ruta}\` | ${c.intento} | ${c.estado} |`).join('\n') +
-        `\n| \`PATCH /catalogo/servicios/:id\` | *CONTROL* el barbero edita SU servicio | ${controlPropio.status} |` +
-        `\n| \`GET /barberias/:id/horarios (ruta A, cabecera B)\` | *CONTROL* lee A (diaSemana 1), no B (7) | ${rutaAconCabeceraB.status} |` +
-        `\n| \`GET /catalogo/servicios\` | cliente SIN vinculo lee el catalogo de A | ${catalogoSuelto.status} |` +
-        `\n| \`GET /catalogo/combos\` | cliente SIN vinculo lee los combos de A | ${combosSuelto.status} |` +
-        `\n| \`GET /catalogo/servicios\` | *CONTROL* cliente VINCULADO lee el catalogo de A | ${catalogoVinculado.status} |` +
-        `\n| \`GET /catalogo/combos\` | *CONTROL* cliente VINCULADO lee los combos de A | ${combosVinculado.status} |` +
-        `\n| \`GET /catalogo/servicios\` | cliente con vinculo DESVINCULADO en B | ${catalogoVinculadoB.status} |\n`,
+        `\n| \`PATCH /shops/:shopId/services/:id\` | *CONTROL* el barbero edita SU servicio | ${controlPropio.status} |` +
+        `\n| \`GET /shops/:shopId/hours (ruta A, cabecera B)\` | *CONTROL* lee A (diaSemana 1), no B (7) | ${rutaAconCabeceraB.status} |` +
+        `\n| \`GET /shops/:shopId/services\` | cliente SIN vinculo lee el catalogo de A | ${catalogoSuelto.status} |` +
+        `\n| \`GET /shops/:shopId/combos\` | cliente SIN vinculo lee los combos de A | ${combosSuelto.status} |` +
+        `\n| \`GET /shops/:shopId/services\` | *CONTROL* cliente VINCULADO lee el catalogo de A | ${catalogoVinculado.status} |` +
+        `\n| \`GET /shops/:shopId/combos\` | *CONTROL* cliente VINCULADO lee los combos de A | ${combosVinculado.status} |` +
+        `\n| \`GET /shops/:shopId/services\` | cliente con vinculo DESVINCULADO en B | ${catalogoVinculadoB.status} |\n`,
     );
 
     // El control positivo tiene que pasar: si esto no es 2xx, el 403/404 de los
@@ -427,13 +412,13 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
     expect(controlPropio.status, 'control positivo: el barbero edita el servicio de su sede').toBe(200);
 
     // La regla de vinculo: sin fila ACTIVA, 403 en servicios y combos.
-    expect(catalogoSuelto.status, 'cliente sin vinculo: /catalogo/servicios').toBe(403);
-    expect(combosSuelto.status, 'cliente sin vinculo: /catalogo/combos').toBe(403);
+    expect(catalogoSuelto.status, 'cliente sin vinculo: /shops/:shopId/services').toBe(403);
+    expect(combosSuelto.status, 'cliente sin vinculo: /shops/:shopId/combos').toBe(403);
 
     // Y el control positivo tiene que seguir en verde: vinculo ACTIVO, catalogo
     // propio de A, con el servicio de A dentro y sin el de B.
-    expect(catalogoVinculado.status, 'cliente vinculado: /catalogo/servicios').toBe(200);
-    expect(combosVinculado.status, 'cliente vinculado: /catalogo/combos').toBe(200);
+    expect(catalogoVinculado.status, 'cliente vinculado: /shops/:shopId/services').toBe(200);
+    expect(combosVinculado.status, 'cliente vinculado: /shops/:shopId/combos').toBe(200);
     expect(
       (catalogoVinculado.body as { id: string }[]).map((s) => s.id),
       'el cliente vinculado ve el servicio de su sede',

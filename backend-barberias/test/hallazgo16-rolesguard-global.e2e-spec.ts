@@ -101,9 +101,9 @@ describe('Hallazgo 16 - RolesGuard Global (e2e)', () => {
     await app.close();
   });
 
-  it('debe rechazar a un CLIENTE al intentar POST /catalogo/servicios con 403', async () => {
+  it('debe rechazar a un CLIENTE al intentar POST /shops/:shopId/services con 403', async () => {
     const response = await request(app.getHttpServer())
-      .post('/catalogo/servicios')
+      .post(`/shops/${barberiaId}/services`)
       .set('Authorization', `Bearer ${clienteToken}`)
       .set('x-barberia-id', barberiaId)
       .send({
@@ -121,16 +121,16 @@ describe('Hallazgo 16 - RolesGuard Global (e2e)', () => {
 
   it('debe rechazar a un CLIENTE al intentar PATCH /barberias/:id con 403', async () => {
     const response = await request(app.getHttpServer())
-      .patch(`/barberias/${barberiaId}`)
+      .patch(`/shops/${barberiaId}`)
       .set('Authorization', `Bearer ${clienteToken}`)
       .send({ nombre: 'Nombre Hackeado' });
       
     expect(response.status).toBe(403);
   });
 
-  it('debe rechazar a un CLIENTE al intentar GET /reservas/agenda con 403', async () => {
+  it('debe rechazar a un CLIENTE al intentar GET /shops/:shopId/appointments/day con 403', async () => {
     const response = await request(app.getHttpServer())
-      .get('/reservas/agenda')
+      .get(`/shops/${barberiaId}/appointments/day`)
       .set('Authorization', `Bearer ${clienteToken}`)
       .set('x-barberia-id', barberiaId)
       .query({ fecha: '2026-09-30' });

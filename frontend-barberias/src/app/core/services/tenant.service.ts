@@ -6,7 +6,7 @@ import type { PuertaDeEntrada } from '../utils/invitacion.util.js';
 
 /**
  * E3-12/2 · la invitación de una sede (regla 1.10): lo que el staff comparte.
- * Solo la sirve `GET /barberias/:id/invitacion`, y solo al ADMIN_BARBERIA de esa
+ * Solo la sirve `GET /shops/:shopId/invitation`, y solo al ADMIN_BARBERIA de esa
  * sede o al ADMINISTRADOR global.
  */
 export interface InvitacionSede {
@@ -32,7 +32,7 @@ export interface BarberiaResumen {
   telefono: string;
   ubicacion: string;
   /**
-   * H72 · `codigoAcceso` y `enlaceUnico` solo los sirve `GET /barberias` (la
+   * H72 · `codigoAcceso` y `enlaceUnico` solo los sirve `GET /shops` (la
    * sede que uno RESPONSABILIZA): son la puerta de entrada y quien ya está
    * dentro no los necesita. El listado del CLIENTE
    * (`GET /mi-estado/barberias`) no los trae, así que la tarjeta no puede
@@ -52,16 +52,16 @@ export interface BarberiaResumen {
 })
 export class TenantService {
   private readonly http = inject(HttpClient);
-  private readonly apiUrl = `${API_URL}/barberias`;
+  private readonly apiUrl = `${API_URL}/shops`;
   /**
    * H72 · las sedes del CLIENTE son las de su VÍNCULO, no las que responsabiliza.
-   * `GET /barberias` filtra por `responsableId`, así que a un cliente puro le
+   * `GET /shops` filtra por `responsableId`, así que a un cliente puro le
    * devuelve `[]` aunque tenga vínculos en `cliente_barberias`.
    */
   private readonly apiUrlMisSedes = `${API_URL}/mi-estado/barberias`;
   /**
    * E3-12/2 · la entrada del cliente. La ruta vive bajo `mi-estado` —el espacio
-   * del vínculo propio— y es la MISMA lógica blindada que `POST /barberias/vincular`
+   * del vínculo propio— y es la MISMA lógica blindada que `POST /shops/link`
    * (`vincularCliente`): el límite de D10, la reapertura de H71 y su auditoría
    * son del backend, no de esta pantalla.
    */
@@ -99,7 +99,7 @@ export class TenantService {
   /**
    * Carga las barberías del usuario y determina la activa.
    *
-   * H72 · dos orígenes, un solo resultado. `GET /barberias` responde por
+   * H72 · dos orígenes, un solo resultado. `GET /shops` responde por
    * RESPONSABILIDAD (el dueño, el admin de sede y el barbero que entró por rol);
    * el CLIENTE responde por VÍNCULO, y esa lista la sirve
    * `GET /mi-estado/barberias`. Se pregunta primero por responsabilidad y, si
@@ -152,7 +152,7 @@ export class TenantService {
    *
    * Hallazgo 2 · el cambio de manos lo autoriza y registra el backend: el
    * estado local —señal y `localStorage`— solo se toca en el `tap`, es decir,
-   * tras el 200 de `PATCH /barberias/:id/seleccionar`. Si el backend falla
+   * tras el 200 de `PATCH /shops/:shopId/select`. Si el backend falla
    * (403 de un vínculo `PENDIENTE_APROBACION`, 404 de una sede sin vínculo o
    * caída de red) la sede anterior sigue siendo la activa, el mensaje del
    * contrato D40 queda en `error()` y el error se propaga para que la pantalla
@@ -175,12 +175,12 @@ export class TenantService {
   }
 
   /**
-   * `PATCH /barberias/:id/seleccionar`. La ÚNICA puerta del servicio para que
+   * `PATCH /shops/:shopId/select`. La ÚNICA puerta del servicio para que
    * una sede pase a ser activa: la llaman el botón del usuario y el auto-pick
    * de `sincronizarSedeActiva`, que por eso ya no decide nada por su cuenta.
    */
   private pedirSeleccion(barberiaId: string): Observable<any> {
-    return this.http.patch(`${this.apiUrl}/${barberiaId}/seleccionar`, {});
+    return this.http.patch(`${this.apiUrl}/${barberiaId}/select`, {});
   }
 
   /**
@@ -217,7 +217,7 @@ export class TenantService {
    */
   obtenerInvitacion(barberiaId: string): Observable<InvitacionSede> {
     this.error.set(null);
-    return this.http.get<InvitacionSede>(`${this.apiUrl}/${barberiaId}/invitacion`).pipe(
+    return this.http.get<InvitacionSede>(`${this.apiUrl}/${barberiaId}/invitation`).pipe(
       catchError((err) => {
         this.error.set(
           err.error?.mensaje || err.error?.message || 'No se pudo obtener la invitación de la sede',

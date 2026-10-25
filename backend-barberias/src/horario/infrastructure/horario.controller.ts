@@ -6,7 +6,7 @@ import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js'
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 
-@Controller('barberias/:barberiaId/horarios')
+@Controller('shops/:shopId/hours')
 export class HorarioController {
   constructor(private readonly horarioService: HorarioService) {}
 
@@ -17,7 +17,7 @@ export class HorarioController {
    */
   @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Get()
-  findSchedules(@Param('barberiaId', ParseUUIDPipe) barberiaId: string) {
+  findSchedules(@Param('shopId', ParseUUIDPipe) barberiaId: string) {
     return this.horarioService.getSchedules(barberiaId);
   }
 
@@ -29,7 +29,7 @@ export class HorarioController {
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Post()
   configureSchedules(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @Body(new ParseArrayPipe({ items: CreateHorarioDto })) dto: CreateHorarioDto[],
     @CurrentUser() user: UsuarioAutenticado,
   ) {
@@ -42,9 +42,9 @@ export class HorarioController {
    * (decisión 8).
    */
   @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Get('excepciones')
+  @Get('exceptions')
   findExceptions(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @Query('from') from: string,
     @Query('to') to: string,
   ) {
@@ -58,9 +58,9 @@ export class HorarioController {
    * Excepción global de la barbería: la declara su responsable.
    */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Post('excepciones')
+  @Post('exceptions')
   addException(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @Body() dto: CreateExcepcionHorarioDto,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
@@ -73,9 +73,9 @@ export class HorarioController {
    * cuerpo ni de la ruta.
    */
   @Roles('BARBERO')
-  @Get('mi-horario')
+  @Get('mine')
   findMyBarberSchedules(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.horarioService.getBarberSchedules(barberiaId, user.id);
@@ -86,9 +86,9 @@ export class HorarioController {
    * El BARBERO declara sus horas; el resto usa el horario general de la sede.
    */
   @Roles('BARBERO')
-  @Post('mi-horario')
+  @Post('mine')
   configureMyBarberSchedules(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @Body(new ParseArrayPipe({ items: CreateHorarioDto })) dto: CreateHorarioDto[],
     @CurrentUser() user: UsuarioAutenticado,
   ) {
@@ -101,9 +101,9 @@ export class HorarioController {
    * o su responsable.
    */
   @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Post('barberos/:barberoId/excepciones')
+  @Post('barbers/:barberoId/exceptions')
   addBarberException(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @Param('barberoId', ParseUUIDPipe) barberoId: string,
     @Body() dto: CreateExcepcionHorarioDto,
     @CurrentUser() user: UsuarioAutenticado,

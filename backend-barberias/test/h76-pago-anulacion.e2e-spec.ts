@@ -136,7 +136,7 @@ describe('H76 · ciclo HTTP completo de la anulación de un cobro', () => {
   function crearReserva(token: string, inicioSede: Date) {
     const { fecha, horaInicio, horaFin } = cita(inicioSede);
     return request(app.getHttpServer())
-      .post(`${api}/barberias/${sedeA}/reservas`)
+      .post(`${api}/shops/${sedeA}/appointments`)
       .set(header(token, sedeA))
       .send({
         fecha,
@@ -150,14 +150,14 @@ describe('H76 · ciclo HTTP completo de la anulación de un cobro', () => {
 
   function cobrar(token: string, reservaId: string, extra: Record<string, unknown> = {}) {
     return request(app.getHttpServer())
-      .post(`${api}/cobros`)
+      .post(`${api}/shops/${sedeA}/payments`)
       .set(header(token, sedeA))
       .send({ reservaId, monto: 30, metodoPago: 'EFECTIVO', ...extra });
   }
 
   function anular(token: string, pagoId: string, body: Record<string, unknown>, sede = sedeA) {
     return request(app.getHttpServer())
-      .post(`${api}/cobros/${pagoId}/anular`)
+      .post(`${api}/shops/${sede}/payments/${pagoId}/void`)
       .set(header(token, sede))
       .send(body);
   }
@@ -420,7 +420,7 @@ describe('H76 · ciclo HTTP completo de la anulación de un cobro', () => {
 
     // 5. El recibo de la sede refleja el estado vivo, con su motivo y autor.
     const historial = await request(app.getHttpServer())
-      .get(`${api}/cobros/historial?pageSize=100`)
+      .get(`${api}/shops/${sedeA}/payments/history?pageSize=100`)
       .set(header(tokenAdmin, sedeA));
     expect(historial.status, JSON.stringify(historial.body)).toBe(200);
     const recibo = (historial.body.data as any[]).find((fila) => fila.id === pagoId);

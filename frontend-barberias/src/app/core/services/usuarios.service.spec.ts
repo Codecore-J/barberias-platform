@@ -240,7 +240,7 @@ describe('UsuariosService · listado de plataforma', () => {
     let sedes: unknown = 'sin asignar';
 
     service.listarBarberias().subscribe((valor) => (sedes = valor));
-    http.expectOne(`${API_URL}/barberias/all`).flush([
+    http.expectOne(`${API_URL}/shops/all`).flush([
       { id: 'b1', nombre: 'Sede Uno' },
       { id: 'b2', nombre: 'Sede Dos' },
     ]);

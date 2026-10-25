@@ -9,17 +9,21 @@ import { PrismaService } from '../src/shared/prisma/prisma.service.js';
 import { PrismaExceptionFilter } from '../src/shared/filters/prisma-exception.filter.js';
 
 /**
- * E1-06: `@CurrentBarberiaId` caía en `params.id` como cuarta fuente, así que en
- * `GET /catalogo/servicios/:id` y `GET /catalogo/combos/:id` el id del recurso se
- * usaba como id de barbería y la consulta quedaba `{ id, barberiaId }` con los
- * dos iguales: nunca encontraba nada. Peor aún, el guard NO usa ese fallback, de
- * modo que el guard verificaba una sede y el servicio consultaba otra.
+ * E1-06 + Fase 5 (Punto 5.3): la sede sale de la RUTA ()
+ * y de ningún otro sitio.
  *
- * El contrato que fija este archivo: la sede sale del contexto del tenant
- * (`params.barberiaId`, `x-barberia-id` o query) y, si no hay ninguna, la ruta
- * responde 400 en vez de inventarse un tenant.
+ * El contrato viejo permitía indicar la sede por cabecera (),
+ * por query o cayendo en : en  el id del recurso
+ * se usaba como id de barbería, el guard verificaba una sede y el servicio
+ * consultaba otra. La cabecera se eliminó del backend y del frontend, así que
+ * este archivo fija el contrato nuevo:
+ *
+ *  - la sede en la ruta acota el recurso (404 si es de otra barbería);
+ *  - una sede que no es UUID responde 400, nunca se inventa un tenant;
+ *  - las rutas planas del contrato viejo ya no existen (404);
+ *  - la pertenencia se decide contra la sede de la ruta (403).
  */
-describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
+describe('E1-06 · la sede sale de la ruta, nunca de una cabecera', () => {
   let app: INestApplication;
   let prisma: PrismaService;
 
@@ -216,12 +220,11 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
     await app.close();
   }, 30000);
 
-  describe('GET /catalogo/servicios/:id', () => {
-    it('devuelve el servicio cuando la sede viene en la cabecera', async () => {
+describe('GET /shops/:shopId/services/:id', () => {
+    it('devuelve el servicio cuando la sede viene en la ruta', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/catalogo/servicios/${servicioA}`)
-        .set('Authorization', `Bearer ${tokenAdminA}`)
-        .set('x-barberia-id', barberiaA);
+        .get(`/api/v1/shops/${barberiaA}/services/${servicioA}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`);
 
       expect(res.status).toBe(200);
       expect(res.body.id).toBe(servicioA);
@@ -230,18 +233,17 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
 
     it('responde 404 si el servicio es de otra barbería', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/catalogo/servicios/${servicioB}`)
-        .set('Authorization', `Bearer ${tokenAdminA}`)
-        .set('x-barberia-id', barberiaA);
+        .get(`/api/v1/shops/${barberiaA}/services/${servicioB}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`);
 
       expect(res.status).toBe(404);
       expect(JSON.stringify(res.body)).not.toContain('Combo E1-06');
       expect(JSON.stringify(res.body)).not.toContain('Corte E1-06 de B');
     });
 
-    it('responde 400 si no se indica la sede, en vez de usar params.id', async () => {
+    it('responde 400 si la sede de la ruta no es un UUID, en vez de inventarse un tenant', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/catalogo/servicios/${servicioA}`)
+        .get(`/api/v1/shops/no-es-uuid/services/${servicioA}`)
         .set('Authorization', `Bearer ${tokenAdminA}`);
 
       expect(res.status).toBe(400);
@@ -249,31 +251,33 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
       expect(JSON.stringify(res.body)).not.toContain('Corte E1-06');
     });
 
-    it('el ADMINISTRADOR global sin sede activa recibe 400, no todas las sedes', async () => {
+    it('la cabecera x-barberia-id ya NO decide la sede: manda la ruta', async () => {
+      // La ruta dice B, la cabecera vieja dice A: si la cabecera contara, el
+      // ADMIN_BARBERIA de A leería el recurso de B (era la fuga de E1-06).
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/catalogo/servicios/${servicioA}`)
-        .set('Authorization', `Bearer ${tokenGlobal}`);
+        .get(`/api/v1/shops/${barberiaB}/services/${servicioB}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .set('x-barberia-id', barberiaA);
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(403);
+      expect(JSON.stringify(res.body)).not.toContain('Corte E1-06 de B');
     });
 
-    it('la ruta no filtra el recurso del admin de otra sede', async () => {
+    it('el ADMINISTRADOR global lee cualquier sede por la ruta: es transversal', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/catalogo/servicios/${servicioA}`)
-        .set('Authorization', `Bearer ${tokenGlobal}`)
-        .set('x-barberia-id', barberiaA);
+        .get(`/api/v1/shops/${barberiaA}/services/${servicioA}`)
+        .set('Authorization', `Bearer ${tokenGlobal}`);
 
       expect(res.status).toBe(200);
       expect(res.body.id).toBe(servicioA);
     });
   });
 
-  describe('GET /catalogo/combos/:id', () => {
-    it('devuelve el combo cuando la sede viene en la cabecera', async () => {
+  describe('GET /shops/:shopId/combos/:id', () => {
+    it('devuelve el combo cuando la sede viene en la ruta', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/catalogo/combos/${comboA}`)
-        .set('Authorization', `Bearer ${tokenAdminA}`)
-        .set('x-barberia-id', barberiaA);
+        .get(`/api/v1/shops/${barberiaA}/combos/${comboA}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`);
 
       expect(res.status).toBe(200);
       expect(res.body.id).toBe(comboA);
@@ -282,120 +286,106 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
 
     it('responde 404 si el combo es de otra barbería', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/catalogo/combos/${comboB}`)
-        .set('Authorization', `Bearer ${tokenAdminA}`)
-        .set('x-barberia-id', barberiaA);
+        .get(`/api/v1/shops/${barberiaA}/combos/${comboB}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`);
 
       expect(res.status).toBe(404);
       expect(JSON.stringify(res.body)).not.toContain('Combo E1-06 de B');
     });
 
-    it('responde 400 si no se indica la sede, en vez de usar params.id', async () => {
+    it('responde 400 si la sede de la ruta no es un UUID', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/catalogo/combos/${comboA}`)
+        .get(`/api/v1/shops/no-es-uuid/combos/${comboA}`)
         .set('Authorization', `Bearer ${tokenAdminA}`);
 
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/barber/i);
       expect(JSON.stringify(res.body)).not.toContain('Combo E1-06 de A');
     });
-
-    it('el ADMINISTRADOR global sin sede activa recibe 400', async () => {
-      const res = await request(app.getHttpServer())
-        .get(`/api/v1/catalogo/combos/${comboA}`)
-        .set('Authorization', `Bearer ${tokenGlobal}`);
-
-      expect(res.status).toBe(400);
-    });
   });
 
-  describe('GET /catalogo/servicios (lista)', () => {
-    it('sin sede no lista los servicios de todas las barberías', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/api/v1/catalogo/servicios')
-        .set('Authorization', `Bearer ${tokenAdminA}`);
-
-      expect(res.status).toBe(400);
-      expect(JSON.stringify(res.body)).not.toContain('Corte E1-06 de B');
-    });
-
+  describe('GET /shops/:shopId/services (lista)', () => {
     it('con sede lista solo los de esa barbería', async () => {
       const res = await request(app.getHttpServer())
-        .get('/api/v1/catalogo/servicios')
-        .set('Authorization', `Bearer ${tokenAdminA}`)
-        .set('x-barberia-id', barberiaA);
+        .get(`/api/v1/shops/${barberiaA}/services`)
+        .set('Authorization', `Bearer ${tokenAdminA}`);
 
       expect(res.status).toBe(200);
       expect(res.body.map((s: any) => s.id)).toContain(servicioA);
       expect(res.body.map((s: any) => s.id)).not.toContain(servicioB);
     });
+
+    it('otra sede lista lo suyo: la ruta acota el tenant', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/shops/${barberiaB}/services`)
+        .set('Authorization', `Bearer ${tokenGlobal}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.map((s: any) => s.id)).toContain(servicioB);
+      expect(res.body.map((s: any) => s.id)).not.toContain(servicioA);
+    });
   });
 
   /**
-   * El alias que usa la app. `ServiciosService` llama a `${API_URL}/servicios`,
-   * no a `/catalogo/servicios`, así que el contrato nuevo hay que comprobarlo
-   * también en la URL que el frontend usa de verdad.
+   * Fase 5 (Punto 5.3): las rutas planas del contrato viejo se eliminaron sin
+   * alias. Lo que pide una sede sin llevarla en la ruta ya no responde con un
+   * 400 «indica la barbería»: la ruta simplemente no existe (404).
    */
-  describe('GET /servicios/:id (alias de la app)', () => {
-    it('devuelve el servicio cuando la sede viene en la cabecera', async () => {
+  describe('las rutas planas del contrato antiguo ya no existen', () => {
+    it('GET /catalogo/servicios/:id → 404', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/servicios/${servicioA}`)
+        .get(`/api/v1/catalogo/servicios/${servicioA}`)
         .set('Authorization', `Bearer ${tokenAdminA}`)
         .set('x-barberia-id', barberiaA);
 
-      expect(res.status).toBe(200);
-      expect(res.body.id).toBe(servicioA);
+      expect(res.status).toBe(404);
+      expect(JSON.stringify(res.body)).not.toContain('Corte E1-06 de A');
     });
 
-    it('responde 404 si el servicio es de otra barbería', async () => {
+    it('GET /servicios y GET /servicios/:id (alias de la app) → 404', async () => {
+      const lista = await request(app.getHttpServer())
+        .get('/api/v1/servicios')
+        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .set('x-barberia-id', barberiaA);
+      expect(lista.status).toBe(404);
+
+      const detalle = await request(app.getHttpServer())
+        .get(`/api/v1/servicios/${servicioA}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .set('x-barberia-id', barberiaA);
+      expect(detalle.status).toBe(404);
+      expect(JSON.stringify(detalle.body)).not.toContain('Corte E1-06 de A');
+    });
+
+    it('GET /catalogo/servicios (lista plana) → 404, nunca todas las sedes', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/servicios/${servicioB}`)
+        .get('/api/v1/catalogo/servicios')
         .set('Authorization', `Bearer ${tokenAdminA}`)
         .set('x-barberia-id', barberiaA);
 
       expect(res.status).toBe(404);
       expect(JSON.stringify(res.body)).not.toContain('Corte E1-06 de B');
     });
-
-    it('responde 400 si no se indica la sede', async () => {
-      const res = await request(app.getHttpServer())
-        .get(`/api/v1/servicios/${servicioA}`)
-        .set('Authorization', `Bearer ${tokenAdminA}`);
-
-      expect(res.status).toBe(400);
-      expect(JSON.stringify(res.body)).not.toContain('Corte E1-06');
-    });
-
-    it('la lista por alias sin sede tampoco devuelve todas las barberías', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/api/v1/servicios')
-        .set('Authorization', `Bearer ${tokenAdminA}`);
-
-      expect(res.status).toBe(400);
-      expect(JSON.stringify(res.body)).not.toContain('Corte E1-06 de B');
-    });
   });
 
   /**
    * `home` es la ÚNICA ruta de la app que llama a un handler con sede
-   * obligatoria sin pasar por `tenantGuard`, así que es el único sitio donde el
-   * 400 se ve de verdad. Antes de E1-06 ya respondía 400 desde
-   * `ReservaService.obtenerAgendaDiaria`; aquí se fija el contrato nuevo.
+   * obligatoria sin pasar por `tenantGuard`, así que era el único sitio donde el
+   * 400 se veía de verdad. Con la sede en la ruta, esa llamada ya no existe.
    */
-  describe('GET /reservas/agenda sin sede', () => {
-    it('responde 400 en vez de buscar con params.id', async () => {
+  describe('GET /shops/:shopId/appointments/day', () => {
+    it('la ruta plana antigua (/reservas/agenda) ya no existe → 404', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/reservas/agenda?fecha=2026-10-05')
         .set('Authorization', `Bearer ${tokenAdminA}`);
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(404);
     });
 
-    it('con sede devuelve 200 y no filtra datos de otra barbería', async () => {
+    it('con sede en la ruta devuelve 200 y no filtra datos de otra barbería', async () => {
       const res = await request(app.getHttpServer())
-        .get('/api/v1/reservas/agenda?fecha=2026-10-05')
-        .set('Authorization', `Bearer ${tokenAdminA}`)
-        .set('x-barberia-id', barberiaA);
+        .get(`/api/v1/shops/${barberiaA}/appointments/day?fecha=2026-10-05`)
+        .set('Authorization', `Bearer ${tokenAdminA}`);
 
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
@@ -403,96 +393,90 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
   });
 
   /**
-   * La única ruta que usa la variante opcional. El ADMINISTRADOR global no
-   * tiene sede activa (`GET /barberias` le devuelve `[]` porque filtra por
-   * `responsableId`), y su panel de inicio llama a esta ruta sin cabecera. Si
-   * `CurrentBarberiaIdOpcional` dejara de ser opcional, ese panel se rompe.
+   * La única ruta que usa la variante opcional del decorador: la auditoría de
+   * cobros de una sede. La sede viaja en la ruta; la variante opcional existe
+   * para que un `?shopId=` global siga siendo legítimo, no para prescindir de
+   * la sede.
    */
-  describe('GET /cobros/auditoria sin sede (ADMINISTRADOR global)', () => {
-    it('responde 200 con el listado global, no 400', async () => {
+  describe('GET /shops/:shopId/payments/audit', () => {
+    it('el ADMINISTRADOR global la lee con la sede en la ruta', async () => {
       const res = await request(app.getHttpServer())
-        .get('/api/v1/cobros/auditoria')
+        .get(`/api/v1/shops/${barberiaA}/payments/audit`)
         .set('Authorization', `Bearer ${tokenGlobal}`);
 
       expect(res.status).toBe(200);
-      // `consultarAuditorias` devuelve la página, no un array suelto.
       expect(Array.isArray(res.body.data)).toBe(true);
       expect(typeof res.body.total).toBe('number');
       expect(res.body.page).toBe(1);
     });
 
-    it('un ADMIN_BARBERIA sin sede sigue recibiendo 400', async () => {
+    it('la ruta plana /cobros/auditoria ya no existe → 404', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/cobros/auditoria')
-        .set('Authorization', `Bearer ${tokenAdminA}`);
+        .set('Authorization', `Bearer ${tokenGlobal}`);
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(404);
     });
   });
 
   /**
    * E1-06 · parte 3. Los dos huecos que dejó la parte 1 del arreglo.
    *
-   * 1. `/agenda/disponibilidad`: el guard y el decorador miran el ROL, y el
-   *    `CLIENTE` es GLOBAL con `barberia_id` nulo, así que `alcanceCumple` lo
-   *    admitía contra cualquier sede. Con solo la cabecera `x-barberia-id` un
-   *    cliente autenticado leía los horarios de una barbería ajena.
+   * 1. `/appointments/schedule/availability`: el guard y el decorador miran el
+   *    ROL, y el `CLIENTE` es GLOBAL con `barberia_id` nulo, así que
+   *    `alcanceCumple` lo admitía contra cualquier sede. Con solo la cabecera
+   *    `x-barberia-id` un cliente autenticado leía los horarios de una barbería
+   *    ajena. Hoy la sede está en la RUTA, así que el cruce se intenta
+   *    explícitamente contra la sede ajena.
    *
-   * 2. `/seleccionar`: el servicio exigía una fila en `cliente_barberias`, que
-   *    un BARBERO no tiene porque entra por `usuario_roles`. Pasaba el guard y
+   * 2. `/select`: el servicio exigía una fila en `cliente_barberias`, que un
+   *    BARBERO no tiene porque entra por `usuario_roles`. Pasaba el guard y
    *    recibía 404 en la ruta que el frontend encadena tras crear sede.
    */
   describe('E1-06 parte 3 · pertenencia a la sede', () => {
+    const disponibilidad = '?fecha=2026-10-05&duracionMinutos=30';
+
     it('un cliente NO puede leer la disponibilidad de otra sede: 403', async () => {
       const res = await request(app.getHttpServer())
-        .get('/api/v1/agenda/disponibilidad')
-        .set('Authorization', `Bearer ${tokenCliente}`)
-        .set('x-barberia-id', barberiaB);
+        .get(`/api/v1/shops/${barberiaB}/appointments/schedule/availability${disponibilidad}`)
+        .set('Authorization', `Bearer ${tokenCliente}`);
 
       expect(res.status).toBe(403);
     });
 
     it('el mismo cliente SÍ lee la disponibilidad de la suya', async () => {
       const res = await request(app.getHttpServer())
-        .get('/api/v1/agenda/disponibilidad')
-        .set('Authorization', `Bearer ${tokenCliente}`)
-        .set('x-barberia-id', barberiaA);
+        .get(`/api/v1/shops/${barberiaA}/appointments/schedule/availability${disponibilidad}`)
+        .set('Authorization', `Bearer ${tokenCliente}`);
 
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
     });
 
-    it('el POST también exige pertenencia: 403 desde el alias', async () => {
+    it('el POST también exige pertenencia: 403 contra la sede ajena', async () => {
       const res = await request(app.getHttpServer())
-        .post('/api/v1/agenda/disponibilidad')
+        .post(`/api/v1/shops/${barberiaB}/appointments/schedule/availability`)
         .set('Authorization', `Bearer ${tokenCliente}`)
-        .set('x-barberia-id', barberiaB)
         .send({ fecha: '2026-10-05', duracionTotal: 30 });
 
       expect(res.status).toBe(403);
     });
 
-    it('el POST con la sede propia resuelve el alias (ya no exige params.barberiaId)', async () => {
+    it('el POST con la sede propia resuelve: 201', async () => {
       const res = await request(app.getHttpServer())
-        .post('/api/v1/agenda/disponibilidad')
+        .post(`/api/v1/shops/${barberiaA}/appointments/schedule/availability`)
         .set('Authorization', `Bearer ${tokenCliente}`)
-        .set('x-barberia-id', barberiaA)
         .send({ fecha: '2026-10-05', duracionTotal: 30 });
 
-      // 201, no 200: `@Post('disponibilidad')` no lleva `@HttpCode`, asi que Nest
-      // aplica el 201 que da por defecto a POST. Esta asercion pedia 200 y era el
-      // unico rojo del fichero la primera vez que se ejecuto (E1-06, 2026-10-05);
-      // el fallo era de la expectativa, no de la ruta. Corregir el codigo de
-      // estado del endpoint seria cambiar el contrato que ya consume el frontend
-      // (`core/services/reservas.service.ts:38`), asi que fuera de alcance.
+      // 201, no 200: `@Post('availability')` no lleva `@HttpCode`, así que Nest
+      // aplica el 201 que da por defecto a POST (mismo motivo que en E1-06).
       expect(res.status).toBe(201);
     });
 
     it('el ADMINISTRADOR global sí lee cualquier sede: es transversal', async () => {
       const res = await request(app.getHttpServer())
-        .get('/api/v1/agenda/disponibilidad')
-        .set('Authorization', `Bearer ${tokenGlobal}`)
-        .set('x-barberia-id', barberiaB);
+        .get(`/api/v1/shops/${barberiaB}/appointments/schedule/availability${disponibilidad}`)
+        .set('Authorization', `Bearer ${tokenGlobal}`);
 
       expect(res.status).toBe(200);
     });
@@ -502,24 +486,27 @@ describe('E1-06 · la sede sale del tenant, nunca de params.id', () => {
       expect(vinculos, 'el barbero no debe tener vínculo de cliente').toBe(0);
 
       const res = await request(app.getHttpServer())
-        .patch(`/api/v1/barberias/${barberiaA}/seleccionar`)
+        .patch(`/api/v1/shops/${barberiaA}/select`)
         .set('Authorization', `Bearer ${tokenBarberoA}`);
 
       expect(res.status).toBe(200);
       expect(res.body.vinculo).toBe('ROL');
     });
 
-    it('el barbero NO puede seleccionar la sede en la que no trabaja', async () => {
+    it('el barbero NO puede seleccionar la sede en la que no trabaja: 403', async () => {
+      // Con la sede en la ruta, `RolesGuard` acota el rol a la sede B y el
+      // barbero solo tiene rol en A: la denegación ocurre en el guard (403),
+      // antes de que el servicio llegue a responder su 404 de siempre.
       const res = await request(app.getHttpServer())
-        .patch(`/api/v1/barberias/${barberiaB}/seleccionar`)
+        .patch(`/api/v1/shops/${barberiaB}/select`)
         .set('Authorization', `Bearer ${tokenBarberoA}`);
 
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(403);
     });
 
     it('un usuario sin vínculo ni rol recibe 404 en la sede ajena', async () => {
       const res = await request(app.getHttpServer())
-        .patch(`/api/v1/barberias/${barberiaB}/seleccionar`)
+        .patch(`/api/v1/shops/${barberiaB}/select`)
         .set('Authorization', `Bearer ${tokenCliente}`);
 
       expect(res.status).toBe(404);

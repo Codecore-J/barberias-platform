@@ -1,21 +1,20 @@
 import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { AuthService } from './auth.service';
-import { TenantService } from '../core/services/tenant.service';
 import { catchError, throwError } from 'rxjs';
 
+/**
+ * Fase 5 (Punto 5.3): el interceptor YA NO inyecta `x-barberia-id`. La sede
+ * viaja en la ruta (`/shops/:shopId/...`) de cada servicio, que es la única
+ * fuente de tenant que acepta el backend; aquí solo se autentica.
+ */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
-  const tenantService = inject(TenantService);
   const token = authService.getToken();
-  const barberiaId = tenantService.barberiaActivaId();
 
   const headers: Record<string, string> = {};
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
-  }
-  if (barberiaId && !req.headers.has('x-barberia-id')) {
-    headers['x-barberia-id'] = barberiaId;
   }
 
   const authReq = req.clone({

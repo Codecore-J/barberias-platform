@@ -78,24 +78,24 @@ describe('E2-07 · P-SD-3/P-SD-4 · sede suspendida: no reserva, no expone agend
 
   const cambiarEstado = (estado: string) =>
     request(app.getHttpServer())
-      .patch(`${api}/barberias/${datos.sede}/estado`)
+      .patch(`${api}/shops/${datos.sede}/status`)
       .set(headers('global'))
       .send({ estado });
 
   const altaDeReserva = (horaInicio: string, horaFin: string) =>
     request(app.getHttpServer())
-      .post(`${api}/barberias/${datos.sede}/reservas`)
+      .post(`${api}/shops/${datos.sede}/appointments`)
       .set(headers('cliente', datos.sede))
       .send(payloadReserva(horaInicio, horaFin));
 
   const disponibilidad = () =>
     request(app.getHttpServer())
-      .get(`${api}/barberias/${datos.sede}/agenda/disponibilidad?fecha=${datos.fecha}&duracionMinutos=30`)
+      .get(`${api}/shops/${datos.sede}/appointments/schedule/availability?fecha=${datos.fecha}&duracionMinutos=30`)
       .set(headers('cliente', datos.sede));
 
   const huecos = () =>
     request(app.getHttpServer())
-      .get(`${api}/barberias/${datos.sede}/disponibilidad/huecos?fecha=${datos.fecha}&duracionMinutos=30`)
+      .get(`${api}/shops/${datos.sede}/appointments/schedule/slots?fecha=${datos.fecha}&duracionMinutos=30`)
       .set(headers('cliente', datos.sede));
 
   const eventosDeEstado = (accion: string) =>
@@ -371,10 +371,10 @@ describe('E2-07 · P-SD-3/P-SD-4 · sede suspendida: no reserva, no expone agend
 
   it('la API responde 400 antes que 500 si alguien manda un estado fuera de catálogo', async () => {
     const res = await request(app.getHttpServer())
-      .patch(`${api}/catalogo/servicios/${datos.servicio}`)
+      .patch(`${api}/shops/${datos.sede}/services/${datos.servicio}`)
       .set(headers('barbero', datos.sede))
       .send({ estado: 'BORRADO' });
 
-    expect(res.status, `PATCH /catalogo/servicios → ${res.status} ${JSON.stringify(res.body)}`).toBe(400);
+    expect(res.status, `PATCH /shops/${datos.sede}/services → ${res.status} ${JSON.stringify(res.body)}`).toBe(400);
   });
 });

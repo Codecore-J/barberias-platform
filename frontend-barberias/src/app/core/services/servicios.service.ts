@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, of, map, forkJoin } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
+import { TenantService } from './tenant.service.js';
 
 export interface Servicio {
   id: string;
@@ -20,8 +21,19 @@ export interface Servicio {
 })
 export class ServiciosService {
   private readonly http = inject(HttpClient);
-  private readonly apiUrl = `${API_URL}/servicios`;
-  private readonly combosUrl = `${API_URL}/catalogo/combos`;
+  private readonly tenant = inject(TenantService);
+
+  /**
+   * Fase 5 (Punto 5.3): la sede viaja en la RUTA, nunca en una cabecera.
+   * `/servicios` y `/catalogo/combos` dejan de existir como alias planos.
+   */
+  private get serviciosUrl(): string {
+    return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/services`;
+  }
+
+  private get combosUrl(): string {
+    return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/combos`;
+  }
 
   readonly servicios = signal<Servicio[]>([]);
   readonly isLoading = signal<boolean>(false);
@@ -32,7 +44,7 @@ export class ServiciosService {
    * `incluirCombos = true`, y eso cambia DOS cosas respecto a las vistas de
    * cliente:
    *
-   *  - Se suman los COMBOS, que en la API son otro recurso (`/catalogo/combos`).
+   *  - Se suman los COMBOS, que en la API son otro recurso (`/shops/:shopId/combos`).
    *    Sin ellos la pestaña «Combos» está siempre vacía, así que el
    *    `desactivarCombo` no tenía a quién llamar: era justo la acción que
    *    desbloquea el 422 `SERVICIO_EN_COMBO_ACTIVO` y no existía en la UI
@@ -65,7 +77,7 @@ export class ServiciosService {
   }
 
   private peticionServicios(): Observable<Servicio[]> {
-    return this.http.get<any>(this.apiUrl).pipe(
+    return this.http.get<any>(this.serviciosUrl).pipe(
       map(res => this.extraerLista(res).map((s: any) => this.aServicio(s))),
     );
   }
@@ -125,7 +137,7 @@ export class ServiciosService {
       ...dto,
       duracionEstimada: dto.duracionEstimada ?? dto.duracionMinutos ?? 30,
     };
-    return this.http.post<Servicio>(this.apiUrl, payload).pipe(
+    return this.http.post<Servicio>(this.serviciosUrl, payload).pipe(
       tap(() => {
         this.recargarCatalogo(); // Recargar tras crear
       }),
@@ -143,7 +155,7 @@ export class ServiciosService {
       ...dto,
       duracionEstimada: dto.duracionEstimada ?? dto.duracionMinutos ?? 30,
     };
-    return this.http.patch<Servicio>(`${this.apiUrl}/${id}`, payload).pipe(
+    return this.http.patch<Servicio>(`${this.serviciosUrl}/${id}`, payload).pipe(
       tap(() => {
         this.recargarCatalogo();
       }),
@@ -156,14 +168,14 @@ export class ServiciosService {
   }
 
   /**
-   * E2-07: el servicio no se elimina, se DESACTIVA (`PATCH .../desactivar`). El
+   * E2-07: el servicio no se elimina, se DESACTIVA (`PATCH .../deactivate`). El
    * backend responde 422 y el `mensaje` explica la regla (`SERVICIO_EN_USO` si
    * hay reservas por confirmar, `SERVICIO_EN_COMBO_ACTIVO` si está en un combo),
    * así que se muestra tal cual en lugar de un texto genérico.
    */
   desactivarServicio(id: string): Observable<void> {
     this.isLoading.set(true);
-    return this.http.patch<void>(`${this.apiUrl}/${id}/desactivar`, {}).pipe(
+    return this.http.patch<void>(`${this.serviciosUrl}/${id}/deactivate`, {}).pipe(
       tap(() => {
         this.recargarCatalogo();
       }),
@@ -183,7 +195,7 @@ export class ServiciosService {
   /** E2-07: la vuelta atrás que `DELETE` no ofrecía. */
   reactivarServicio(id: string): Observable<Servicio> {
     this.isLoading.set(true);
-    return this.http.patch<Servicio>(`${this.apiUrl}/${id}/reactivar`, {}).pipe(
+    return this.http.patch<Servicio>(`${this.serviciosUrl}/${id}/reactivate`, {}).pipe(
       tap(() => {
         this.recargarCatalogo();
       }),
@@ -198,7 +210,7 @@ export class ServiciosService {
   /** P-SD-2: apagar el combo es lo que libera a sus servicios del 422. */
   desactivarCombo(id: string): Observable<void> {
     this.isLoading.set(true);
-    return this.http.patch<void>(`${this.combosUrl}/${id}/desactivar`, {}).pipe(
+    return this.http.patch<void>(`${this.combosUrl}/${id}/deactivate`, {}).pipe(
       tap(() => {
         this.recargarCatalogo();
       }),
@@ -212,7 +224,7 @@ export class ServiciosService {
 
   reactivarCombo(id: string): Observable<Servicio> {
     this.isLoading.set(true);
-    return this.http.patch<Servicio>(`${this.combosUrl}/${id}/reactivar`, {}).pipe(
+    return this.http.patch<Servicio>(`${this.combosUrl}/${id}/reactivate`, {}).pipe(
       tap(() => {
         this.recargarCatalogo();
       }),

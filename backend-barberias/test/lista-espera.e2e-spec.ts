@@ -218,7 +218,7 @@ describe('E4-02 · Carril B — el hueco liberado por una cancelación llega a l
 
   it('el Cliente A reserva un bloque y la cita queda CONFIRMADA (ocupa agenda)', async () => {
     const res = await request(app.getHttpServer())
-      .post(`${api}/barberias/${ids.sede}/reservas`)
+      .post(`${api}/shops/${ids.sede}/appointments`)
       .set(headers(ids.correoA))
       .send({
         fecha: FECHA_OBJETIVO,
@@ -255,7 +255,7 @@ describe('E4-02 · Carril B — el hueco liberado por una cancelación llega a l
 
   it('el Cliente A cancela su reserva y el bloque queda libre', async () => {
     const res = await request(app.getHttpServer())
-      .post(`${api}/reservas/${ids.reserva}/cancelar`)
+      .post(`${api}/shops/${ids.sede}/appointments/${ids.reserva}/cancel`)
       .set(headers(ids.correoA));
 
     expect(res.status).toBe(201);

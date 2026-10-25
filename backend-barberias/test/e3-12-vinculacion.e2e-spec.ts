@@ -238,7 +238,7 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
   describe('la 6.ª vinculación queda PENDIENTE_APROBACION (D10)', () => {
     it('201: con cinco vínculos previos, la sexta nace pendiente y sin sede activa', async () => {
       const res = await request(app.getHttpServer())
-        .post(`${API}/barberias/vincular`)
+        .post(`${API}/shops/link`)
         .set('Authorization', `Bearer ${tokenClienteA}`)
         .send({ codigoAcceso: codigoObjetivoA })
         .expect(201);
@@ -255,7 +255,7 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
 
     it('201: el segundo cliente entra igual en la misma situación', async () => {
       const res = await request(app.getHttpServer())
-        .post(`${API}/barberias/vincular`)
+        .post(`${API}/shops/link`)
         .set('Authorization', `Bearer ${tokenClienteB}`)
         .send({ codigoAcceso: codigoObjetivoB })
         .expect(201);
@@ -270,14 +270,14 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
 
     it('el vínculo pendiente NO autoriza la sede: seleccionar responde 403', async () => {
       await request(app.getHttpServer())
-        .patch(`${API}/barberias/${sedeObjetivoA}/seleccionar`)
+        .patch(`${API}/shops/${sedeObjetivoA}/select`)
         .set('Authorization', `Bearer ${tokenClienteA}`)
         .expect(403);
     });
 
     it('el cliente ve su vinculación pendiente en mi-estado', async () => {
       const res = await request(app.getHttpServer())
-        .get(`${API}/barberias/${sedeObjetivoA}/mi-estado`)
+        .get(`${API}/shops/${sedeObjetivoA}/membership`)
         .set('Authorization', `Bearer ${tokenClienteA}`)
         .expect(200);
 
@@ -413,12 +413,12 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
 
     it('una vez ACTIVO el cliente ya opera: selecciona la sede y su estado es ACTIVO', async () => {
       await request(app.getHttpServer())
-        .patch(`${API}/barberias/${sedeObjetivoA}/seleccionar`)
+        .patch(`${API}/shops/${sedeObjetivoA}/select`)
         .set('Authorization', `Bearer ${tokenClienteA}`)
         .expect(200);
 
       const estado = await request(app.getHttpServer())
-        .get(`${API}/barberias/${sedeObjetivoA}/mi-estado`)
+        .get(`${API}/shops/${sedeObjetivoA}/membership`)
         .set('Authorization', `Bearer ${tokenClienteA}`)
         .expect(200);
 
@@ -508,7 +508,7 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
 
     it('el vínculo rechazado sigue sin autorizar la sede (403)', async () => {
       await request(app.getHttpServer())
-        .patch(`${API}/barberias/${sedeObjetivoB}/seleccionar`)
+        .patch(`${API}/shops/${sedeObjetivoB}/select`)
         .set('Authorization', `Bearer ${tokenClienteB}`)
         .expect(403);
     });
@@ -519,7 +519,7 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
   describe('H71 · revincular reabre el vínculo cerrado (D21)', () => {
     it('el cliente rechazado vuelve a introducir el código y su vínculo se reabre', async () => {
       const res = await request(app.getHttpServer())
-        .post(`${API}/barberias/vincular`)
+        .post(`${API}/shops/link`)
         .set('Authorization', `Bearer ${tokenClienteB}`)
         .send({ codigoAcceso: codigoObjetivoB })
         .expect(201);
@@ -584,12 +584,12 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
         .expect(200);
 
       await request(app.getHttpServer())
-        .patch(`${API}/barberias/${sedeObjetivoB}/seleccionar`)
+        .patch(`${API}/shops/${sedeObjetivoB}/select`)
         .set('Authorization', `Bearer ${tokenClienteB}`)
         .expect(200);
 
       const estado = await request(app.getHttpServer())
-        .get(`${API}/barberias/${sedeObjetivoB}/mi-estado`)
+        .get(`${API}/shops/${sedeObjetivoB}/membership`)
         .set('Authorization', `Bearer ${tokenClienteB}`)
         .expect(200);
 

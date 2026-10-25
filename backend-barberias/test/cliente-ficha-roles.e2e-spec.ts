@@ -170,7 +170,7 @@ describe('Cliente · ficha y notas: qué rol entra de verdad', () => {
 
   it('el ADMIN_BARBERIA de la sede lee la ficha de un cliente de su sede', async () => {
     const res = await request(app.getHttpServer())
-      .get(`${api}/clientes/${clienteId}/ficha`)
+      .get(`${api}/shops/${barberiaA}/clients/${clienteId}/profile`)
       .set('Authorization', `Bearer ${tokenAdminA}`)
       .set('x-barberia-id', barberiaA);
 
@@ -180,7 +180,7 @@ describe('Cliente · ficha y notas: qué rol entra de verdad', () => {
 
   it('el ADMIN_BARBERIA de la sede escribe una nota de un cliente de su sede', async () => {
     const res = await request(app.getHttpServer())
-      .post(`${api}/clientes/${clienteId}/notas`)
+      .post(`${api}/shops/${barberiaA}/clients/${clienteId}/notes`)
       .set('Authorization', `Bearer ${tokenAdminA}`)
       .set('x-barberia-id', barberiaA)
       .send({ contenido: 'Nota escrita por el ADMIN_BARBERIA' });
@@ -195,13 +195,13 @@ describe('Cliente · ficha y notas: qué rol entra de verdad', () => {
 
   it('el BARBERO sigue entrando: no es una regresión del cambio de rol', async () => {
     const ficha = await request(app.getHttpServer())
-      .get(`${api}/clientes/${clienteId}/ficha`)
+      .get(`${api}/shops/${barberiaA}/clients/${clienteId}/profile`)
       .set('Authorization', `Bearer ${tokenBarberoA}`)
       .set('x-barberia-id', barberiaA);
     expect(ficha.status).toBe(200);
 
     const nota = await request(app.getHttpServer())
-      .post(`${api}/clientes/${clienteId}/notas`)
+      .post(`${api}/shops/${barberiaA}/clients/${clienteId}/notes`)
       .set('Authorization', `Bearer ${tokenBarberoA}`)
       .set('x-barberia-id', barberiaA)
       .send({ contenido: 'Nota del barbero' });
@@ -212,13 +212,13 @@ describe('Cliente · ficha y notas: qué rol entra de verdad', () => {
     // El arreglo abre la ruta al ADMIN_BARBERIA, no a cualquier admin. Este es
     // el control que separa "arreglar el rol equivocado" de "abrir la ruta".
     const ficha = await request(app.getHttpServer())
-      .get(`${api}/clientes/${clienteId}/ficha`)
+      .get(`${api}/shops/${barberiaA}/clients/${clienteId}/profile`)
       .set('Authorization', `Bearer ${tokenAjeno}`)
       .set('x-barberia-id', barberiaA);
     expect(ficha.status).toBe(403);
 
     const nota = await request(app.getHttpServer())
-      .post(`${api}/clientes/${clienteId}/notas`)
+      .post(`${api}/shops/${barberiaA}/clients/${clienteId}/notes`)
       .set('Authorization', `Bearer ${tokenAjeno}`)
       .set('x-barberia-id', barberiaA)
       .send({ contenido: 'Nota de un admin de otra sede' });

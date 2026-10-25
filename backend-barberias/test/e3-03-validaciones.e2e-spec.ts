@@ -258,7 +258,7 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
 
   const reserva = (correo: string, barberiaId: string, { tipo, fecha, services, barberoId }: { tipo: 'INDIVIDUAL' | 'AUTOMATICO' | 'GRUPAL'; fecha: string; services: string; barberoId?: string }) =>
     request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas`)
+      .post(`${api}/shops/${barberiaId}/appointments`)
       .set(headers(correo, barberiaId))
       .send({ fecha, horaInicio: '10:00', horaFin: '10:30', serviciosIds: [services], precioTotalEsperado: 30, tipo, ...(barberoId ? { barberoId } : {}) });
 
@@ -317,7 +317,7 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
   /** Control D44: cotización sin persistir, mismo blanco que crear. */
   const cotizar = (correo: string, barberiaId: string, { fecha, services }: { fecha: string; services: string }) =>
     request(app.getHttpServer())
-      .post(`${api}/barberias/${barberiaId}/reservas/cotizar`)
+      .post(`${api}/shops/${barberiaId}/appointments/quote`)
       .set(headers(correo, barberiaId))
       .send({ fecha, horaInicio: '10:00', horaFin: '10:30', serviciosIds: [services], precioTotalEsperado: 30, tipo: 'INDIVIDUAL' });
 
@@ -332,7 +332,7 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
 
   it('CONTROL: cotización sin persistir (D44) - mismo blanco que crear', async () => {
     const cot = await request(app.getHttpServer())
-      .post(`${api}/barberias/${barberia.A}/reservas/cotizar`)
+      .post(`${api}/shops/${barberia.A}/appointments/quote`)
       .set(headers('cA.e303@test.com', barberia.A))
       .send({ fecha: fecha(1), horaInicio: '10:00', horaFin: '10:30', serviciosIds: [servicio.A], precioTotalEsperado: 30, tipo: 'INDIVIDUAL' });
     expect(cot.status).toBe(201);

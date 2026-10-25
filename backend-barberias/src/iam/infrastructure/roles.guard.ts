@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   CanActivate,
   ExecutionContext,
   ForbiddenException,
@@ -7,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from './roles.decorator.js';
+import { esUuidSede } from './current-barberia.decorator.js';
 import { AUTENTICADO_KEY } from './autenticado.decorator.js';
 import { IS_PUBLIC_KEY } from './public.decorator.js';
 import { UsuarioAutenticado } from '../domain/jwt.interface.js';
@@ -57,12 +59,25 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    // Extraer barberiaId del contexto (si aplica a la ruta)
-    const barberiaId =
-      request.params?.barberiaId ??
-      request.headers?.['x-barberia-id'] ??
+    // Extraer la sede del contexto (si aplica a la ruta). Fase 5: la única
+    // fuente es el parámetro de ruta `shopId` (o la query de las rutas
+    // globales); la cabecera `x-barberia-id` se eliminó del contrato.
+    const crudo =
+      request.params?.shopId ??
+      request.query?.shopId ??
       request.query?.barberiaId ??
       null;
+
+    // Una sede malformada no es «sin sede»: es un error del cliente y tiene
+    // que contestar 400 como hace `@CurrentBarberiaId`, en vez de un 403 que
+    // habla de permisos sobre una barbería que no existe.
+    if (typeof crudo === 'string' && !esUuidSede(crudo)) {
+      throw new BadRequestException(
+        'No se indicó una barbería válida: usa un UUID en la ruta /shops/:shopId/... o en el parámetro ?shopId=.',
+      );
+    }
+
+    const barberiaId = typeof crudo === 'string' ? crudo.trim() : null;
 
     // Si la ruta está acotada a una barbería y el usuario tiene roles detallados
     if (barberiaId && user.rolesDetallados && user.rolesDetallados.length > 0) {

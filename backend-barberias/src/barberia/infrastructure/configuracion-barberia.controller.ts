@@ -13,16 +13,16 @@ import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js'
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
-@Controller('barberias')
+@Controller('shops/:shopId/settings')
 export class ConfiguracionBarberiaController {
   constructor(
     private readonly configuracionService: ConfiguracionBarberiaService,
   ) {}
 
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Get(':barberiaId/configuracion')
+  @Get()
   async configuracion(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     // Solo ADMIN_BARBERIA de esa barbería o ADMINISTRADOR global.
@@ -47,9 +47,9 @@ export class ConfiguracionBarberiaController {
   }
 
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Patch(':barberiaId/configuracion')
+  @Patch()
   async actualizarConfiguracion(
-    @Param('barberiaId', ParseUUIDPipe) barberiaId: string,
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @Body() dto: ConfiguracionBarberiaDto,
     @CurrentUser() user: UsuarioAutenticado,
   ) {

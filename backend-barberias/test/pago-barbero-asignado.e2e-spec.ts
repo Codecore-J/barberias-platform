@@ -103,7 +103,7 @@ describe('E3-09 · POST /cobros: el BARBERO solo cobra lo que tiene asignado', (
 
   async function cobrar(token: string, reservaId: string) {
     return request(app.getHttpServer())
-      .post(`${api}/cobros`)
+      .post(`${api}/shops/${barberiaA}/payments`)
       .set('Authorization', `Bearer ${token}`)
       .set('x-barberia-id', barberiaA)
       .send({ reservaId, monto: 100, metodoPago: 'EFECTIVO' });

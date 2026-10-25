@@ -188,7 +188,7 @@ export class UsuariosService {
    */
   listarBarberias(): Observable<BarberiaOpcion[]> {
     return this.http
-      .get<BarberiaOpcion[]>(`${API_URL}/barberias/all`)
+      .get<BarberiaOpcion[]>(`${API_URL}/shops/all`)
       .pipe(map((barberias) => barberias ?? []));
   }
 }

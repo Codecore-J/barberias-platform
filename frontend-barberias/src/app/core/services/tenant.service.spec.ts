@@ -21,7 +21,7 @@ import { API_URL } from '../constants/api.constants.js';
  *
  * Y (hallazgo 2 de `docs/MATRIZ_RUTAS.md`) la sede no la decide el navegador:
  * toda sede que PASA a ser activa —el auto-pick sin caché, el que sustituye a
- * una purgada, o el botón— pasa antes por `PATCH /barberias/:id/seleccionar`, y
+ * una purgada, o el botón— pasa antes por `PATCH /shops/:shopId/select`, y
  * el estado local no se toca hasta el 200. Un 403/404 o una caída de red no
  * fijan nada.
  */
@@ -30,7 +30,7 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
   let http: HttpTestingController;
 
   /** El listado por responsabilidad (fila 12 de la matriz) y el del vínculo (H72). */
-  const RESPONSABILIDAD_URL = `${API_URL}/barberias`;
+  const RESPONSABILIDAD_URL = `${API_URL}/shops`;
   const VINCULO_URL = `${API_URL}/mi-estado/barberias`;
 
   const sede = (id: string, extra: Partial<BarberiaResumen> = {}): BarberiaResumen => ({
@@ -124,7 +124,7 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
     expect(service.barberiaActiva()).toBeNull();
     expect(activaGuardada()).toBeNull();
 
-    http.expectOne(`${RESPONSABILIDAD_URL}/b2/seleccionar`).flush({});
+    http.expectOne(`${RESPONSABILIDAD_URL}/b2/select`).flush({});
 
     expect(service.barberiaActiva()?.id).toBe('b2');
     expect(activaGuardada()).toBe('b2');
@@ -177,7 +177,7 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
       .flush([sede('b9', { estadoVinculacion: 'ACTIVO', esBarberiaActiva: true })]);
 
     // La que el backend marcó activa también confirma el cambio (hallazgo 2).
-    http.expectOne(`${RESPONSABILIDAD_URL}/b9/seleccionar`).flush({});
+    http.expectOne(`${RESPONSABILIDAD_URL}/b9/select`).flush({});
 
     expect(service.barberiasVinculadas().map((b) => b.id)).toEqual(['b9']);
     expect(service.barberiaActiva()?.id).toBe('b9');
@@ -189,7 +189,7 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
     service.cargarBarberias().subscribe();
     http.expectOne(RESPONSABILIDAD_URL).flush([sede('b2'), sede('b3')]);
 
-    const peticion = http.expectOne(`${RESPONSABILIDAD_URL}/b2/seleccionar`);
+    const peticion = http.expectOne(`${RESPONSABILIDAD_URL}/b2/select`);
     expect(peticion.request.method).toBe('PATCH');
     // Mientras el backend no conteste no hay sede activa ni caché que escribir.
     expect(service.barberiaActiva()).toBeNull();
@@ -212,7 +212,7 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
       .flush([sede('b9', { estadoVinculacion: 'PENDIENTE_APROBACION', esBarberiaActiva: true })]);
 
     http
-      .expectOne(`${RESPONSABILIDAD_URL}/b9/seleccionar`)
+      .expectOne(`${RESPONSABILIDAD_URL}/b9/select`)
       .flush(
         { message: 'Tu vinculación a esta barbería no está activa.' },
         { status: 403, statusText: 'Forbidden' },
@@ -227,7 +227,7 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
     expect(service.barberiasVinculadas().map((b) => b.id)).toEqual(['b9']);
   });
 
-  it('hallazgo 2: la sede de la caché que sigue en la lista no vuelve a pasar por /seleccionar', () => {
+  it('hallazgo 2: la sede de la caché que sigue en la lista no vuelve a pasar por /select', () => {
     service.setBarberiaActiva(sede('b1'));
 
     service.cargarBarberias().subscribe();
@@ -235,8 +235,8 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
 
     // No hubo cambio de manos: la eligió el usuario y el backend la registró
     // cuando la fijó. Solo se refresca el objeto cacheado.
-    http.expectNone(`${RESPONSABILIDAD_URL}/b1/seleccionar`);
-    http.expectNone(`${RESPONSABILIDAD_URL}/b2/seleccionar`);
+    http.expectNone(`${RESPONSABILIDAD_URL}/b1/select`);
+    http.expectNone(`${RESPONSABILIDAD_URL}/b2/select`);
     expect(service.barberiaActiva()?.id).toBe('b1');
     expect(activaGuardada()).toBe('b1');
   });
@@ -248,7 +248,7 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
 
     service.seleccionarBarberia('b2').subscribe();
 
-    const peticion = http.expectOne(`${RESPONSABILIDAD_URL}/b2/seleccionar`);
+    const peticion = http.expectOne(`${RESPONSABILIDAD_URL}/b2/select`);
     expect(peticion.request.method).toBe('PATCH');
     // El estado local NO se toca mientras la petición esté en el aire.
     expect(service.barberiaActiva()?.id).toBe('b1');
@@ -272,7 +272,7 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
     service.seleccionarBarberia('b2').subscribe({ error: (err) => (fallo = err) });
 
     http
-      .expectOne(`${RESPONSABILIDAD_URL}/b2/seleccionar`)
+      .expectOne(`${RESPONSABILIDAD_URL}/b2/select`)
       .flush(
         { message: 'No estás vinculado a esta barbería.' },
         { status: 404, statusText: 'Not Found' },
@@ -293,7 +293,7 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
       let recibida: any = null;
       service.obtenerInvitacion('b1').subscribe((inv) => (recibida = inv));
 
-      const peticion = http.expectOne(`${RESPONSABILIDAD_URL}/b1/invitacion`);
+      const peticion = http.expectOne(`${RESPONSABILIDAD_URL}/b1/invitation`);
       expect(peticion.request.method).toBe('GET');
       peticion.flush({
         barberiaId: 'b1',
@@ -310,7 +310,7 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
       service.obtenerInvitacion('b1').subscribe({ error: (err) => (fallo = err) });
 
       http
-        .expectOne(`${RESPONSABILIDAD_URL}/b1/invitacion`)
+        .expectOne(`${RESPONSABILIDAD_URL}/b1/invitation`)
         .flush(
           { statusCode: 403, codigo: 'SIN_PERMISO', mensaje: 'Solo el ADMIN_BARBERIA ve su invitación.' },
           { status: 403, statusText: 'Forbidden' },
@@ -342,7 +342,7 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
       http
         .expectOne(VINCULO_URL)
         .flush([sede('b9', { estadoVinculacion: 'ACTIVO', esBarberiaActiva: true })]);
-      http.expectOne(`${RESPONSABILIDAD_URL}/b9/seleccionar`).flush({});
+      http.expectOne(`${RESPONSABILIDAD_URL}/b9/select`).flush({});
 
       expect(service.barberiasVinculadas().map((b) => b.id)).toEqual(['b9']);
     });

@@ -51,7 +51,7 @@ describe('VinculoBarberiaGuard · el catálogo exige vínculo (E1-06 paso 5)', (
 
   it('el ADMIN_BARBERIA de la sede entra por usuario_roles', async () => {
     await expect(
-      guard.canActivate(ctx({ user: cliente('adm-a', ['ADMIN_BARBERIA']), header: SEDE_A })),
+      guard.canActivate(ctx({ user: cliente('adm-a', ['ADMIN_BARBERIA']), params: { shopId: SEDE_A } })),
     ).resolves.toBe(true);
     // No hay que mirar `cliente_barberias`: el personal entra por rol.
     expect(prisma.clienteBarberia.findFirst).not.toHaveBeenCalled();
@@ -59,7 +59,7 @@ describe('VinculoBarberiaGuard · el catálogo exige vínculo (E1-06 paso 5)', (
 
   it('el BARBERO de la sede entra por usuario_roles', async () => {
     await expect(
-      guard.canActivate(ctx({ user: cliente('barb-a', ['BARBERO']), header: SEDE_A })),
+      guard.canActivate(ctx({ user: cliente('barb-a', ['BARBERO']), params: { shopId: SEDE_A } })),
     ).resolves.toBe(true);
   });
 
@@ -69,7 +69,7 @@ describe('VinculoBarberiaGuard · el catálogo exige vínculo (E1-06 paso 5)', (
     prisma.usuarioRol.findFirst.mockResolvedValue(null);
 
     await expect(
-      guard.canActivate(ctx({ user: cliente('cli-vinc'), header: SEDE_A })),
+      guard.canActivate(ctx({ user: cliente('cli-vinc'), params: { shopId: SEDE_A } })),
     ).resolves.toBe(true);
 
     // Lo que hace que pase es el ACTIVO: si el filtro desapareciera, el e2e del
@@ -86,7 +86,7 @@ describe('VinculoBarberiaGuard · el catálogo exige vínculo (E1-06 paso 5)', (
     prisma.clienteBarberia.findFirst.mockResolvedValue(null);
 
     await expect(
-      guard.canActivate(ctx({ user: cliente('cli-suelto'), header: SEDE_A })),
+      guard.canActivate(ctx({ user: cliente('cli-suelto'), params: { shopId: SEDE_A } })),
     ).rejects.toThrow(ForbiddenException);
   });
 
@@ -99,7 +99,7 @@ describe('VinculoBarberiaGuard · el catálogo exige vínculo (E1-06 paso 5)', (
     );
 
     await expect(
-      guard.canActivate(ctx({ user: cliente('cli-susp'), header: SEDE_B })),
+      guard.canActivate(ctx({ user: cliente('cli-susp'), params: { shopId: SEDE_B } })),
     ).rejects.toThrow(ForbiddenException);
   });
 
@@ -110,17 +110,17 @@ describe('VinculoBarberiaGuard · el catálogo exige vínculo (E1-06 paso 5)', (
     );
 
     await expect(
-      guard.canActivate(ctx({ user: cliente('cli-a'), header: SEDE_A })),
+      guard.canActivate(ctx({ user: cliente('cli-a'), params: { shopId: SEDE_A } })),
     ).resolves.toBe(true);
 
     await expect(
-      guard.canActivate(ctx({ user: cliente('cli-a'), header: SEDE_B })),
+      guard.canActivate(ctx({ user: cliente('cli-a'), params: { shopId: SEDE_B } })),
     ).rejects.toThrow(ForbiddenException);
   });
 
   it('el ADMINISTRADOR global conserva el bypass: ve cualquier sede sin vínculo', async () => {
     await expect(
-      guard.canActivate(ctx({ user: cliente('adm-global', ['ADMINISTRADOR']), header: SEDE_B })),
+      guard.canActivate(ctx({ user: cliente('adm-global', ['ADMINISTRADOR']), params: { shopId: SEDE_B } })),
     ).resolves.toBe(true);
 
     // El bypass es total: ni consulta las tablas de pertenencia.
@@ -129,7 +129,7 @@ describe('VinculoBarberiaGuard · el catálogo exige vínculo (E1-06 paso 5)', (
   });
 
   it('sin sesión no pasa, aunque las tablas digan que sí', async () => {
-    await expect(guard.canActivate(ctx({ user: null, header: SEDE_A }))).rejects.toThrow(
+    await expect(guard.canActivate(ctx({ user: null, params: { shopId: SEDE_A } }))).rejects.toThrow(
       ForbiddenException,
     );
   });
@@ -142,20 +142,19 @@ describe('VinculoBarberiaGuard · el catálogo exige vínculo (E1-06 paso 5)', (
     expect(prisma.clienteBarberia.findFirst).not.toHaveBeenCalled();
   });
 
-  it('la sede sale de la misma cadena que el decorador: ruta > cabecera > query', async () => {
+  it('la sede sale de la misma cadena que el decorador: ruta > query', async () => {
     prisma.usuarioRol.findFirst.mockResolvedValue(null);
     prisma.clienteBarberia.findFirst.mockImplementation(async ({ where }: any) =>
       where.barberiaId === SEDE_A ? { id: 'v' } : null,
     );
 
-    // Con las tres fuentes, `params` manda: es la ruta la que acota la sede.
+    // Con las dos fuentes que quedan, `params` manda: es la ruta la que acota la sede.
     await expect(
       guard.canActivate(
         ctx({
           user: cliente('cli-a'),
-          params: { barberiaId: SEDE_A },
-          header: SEDE_B,
-          query: { barberiaId: SEDE_B },
+          params: { shopId: SEDE_A },
+          query: { shopId: SEDE_B },
         }),
       ),
     ).resolves.toBe(true);
@@ -164,12 +163,22 @@ describe('VinculoBarberiaGuard · el catálogo exige vínculo (E1-06 paso 5)', (
     );
   });
 
-  it('una cabecera que no es UUID no cuenta como sede', async () => {
+  it('la cabecera x-barberia-id ya NO es fuente de sede (Punto 5.3)', async () => {
+    // Sin ruta ni query, la cabecera ya no acota: el guard no busca vínculo y
+    // la ruta contesta 400 con el mensaje de "no indicaste la sede".
+    prisma.clienteBarberia.findFirst.mockClear();
+    await expect(guard.canActivate(ctx({ user: cliente('cli-a'), header: SEDE_A }))).resolves.toBe(
+      true,
+    );
+    expect(prisma.clienteBarberia.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('una sede que no es UUID no cuenta como sede', async () => {
     // `resolverBarberiaId` devuelve null para lo que no es UUID, así que el
     // guard no busca vínculo: la ruta contestará 400.
     prisma.clienteBarberia.findFirst.mockClear();
     await expect(
-      guard.canActivate(ctx({ user: cliente('cli-a'), header: 'no-es-uuid' })),
+      guard.canActivate(ctx({ user: cliente('cli-a'), params: { shopId: 'no-es-uuid' } })),
     ).resolves.toBe(true);
     expect(prisma.clienteBarberia.findFirst).not.toHaveBeenCalled();
   });

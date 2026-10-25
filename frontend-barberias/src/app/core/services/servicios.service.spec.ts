@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ServiciosService } from './servicios.service';
+import { TenantService } from './tenant.service';
 import { API_URL } from '../constants/api.constants.js';
 
 /**
@@ -17,8 +18,9 @@ describe('ServiciosService · catálogo de administración (E2-07)', () => {
   let service: ServiciosService;
   let http: HttpTestingController;
 
-  const SERVICIOS_URL = `${API_URL}/servicios`;
-  const COMBOS_URL = `${API_URL}/catalogo/combos`;
+  const SEDE = 'b1';
+  const SERVICIOS_URL = `${API_URL}/shops/${SEDE}/services`;
+  const COMBOS_URL = `${API_URL}/shops/${SEDE}/combos`;
 
   const servicioCrudo = {
     id: 's1',
@@ -43,7 +45,12 @@ describe('ServiciosService · catálogo de administración (E2-07)', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        // Fase 5: la sede viaja en la ruta, así que el servicio la lee del tenant.
+        { provide: TenantService, useValue: { barberiaActivaId: () => SEDE } },
+      ],
     });
     service = TestBed.inject(ServiciosService);
     http = TestBed.inject(HttpTestingController);
@@ -106,7 +113,7 @@ describe('ServiciosService · catálogo de administración (E2-07)', () => {
   it('un 422 de regla de negocio deja su mensaje en error() y no recarga', () => {
     service.desactivarServicio('s1').subscribe({ error: () => undefined });
 
-    const peticion = http.expectOne(`${SERVICIOS_URL}/s1/desactivar`);
+    const peticion = http.expectOne(`${SERVICIOS_URL}/s1/deactivate`);
     expect(peticion.request.method).toBe('PATCH');
     peticion.flush(
       {
@@ -123,7 +130,7 @@ describe('ServiciosService · catálogo de administración (E2-07)', () => {
   it('desactivar un servicio recarga el catálogo completo, combos incluidos', () => {
     service.desactivarServicio('s1').subscribe();
 
-    http.expectOne(`${SERVICIOS_URL}/s1/desactivar`).flush({});
+    http.expectOne(`${SERVICIOS_URL}/s1/deactivate`).flush({});
     http.expectOne(SERVICIOS_URL).flush([{ ...servicioCrudo, estado: 'INACTIVO' }]);
     http.expectOne(COMBOS_URL).flush([]);
 
@@ -133,7 +140,7 @@ describe('ServiciosService · catálogo de administración (E2-07)', () => {
   it('desactivar un combo llama al endpoint de combos (P-SD-2)', () => {
     service.desactivarCombo('c1').subscribe();
 
-    const peticion = http.expectOne(`${COMBOS_URL}/c1/desactivar`);
+    const peticion = http.expectOne(`${COMBOS_URL}/c1/deactivate`);
     expect(peticion.request.method).toBe('PATCH');
     peticion.flush({});
 
@@ -144,7 +151,7 @@ describe('ServiciosService · catálogo de administración (E2-07)', () => {
   it('reactivar un combo también pide el catálogo completo', () => {
     service.reactivarCombo('c1').subscribe();
 
-    const peticion = http.expectOne(`${COMBOS_URL}/c1/reactivar`);
+    const peticion = http.expectOne(`${COMBOS_URL}/c1/reactivate`);
     expect(peticion.request.method).toBe('PATCH');
     peticion.flush({ ...comboCrudo, estado: 'ACTIVO' });
 

@@ -16,12 +16,12 @@ import { CurrentBarberiaId, CurrentBarberiaIdOpcional } from '../../iam/infrastr
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 
-@Controller(['barberias/:barberiaId/pagos', 'cobros', 'pagos'])
+@Controller('shops/:shopId/payments')
 export class PagoController {
   constructor(private readonly pagoService: PagoService) {}
 
   /**
-   * POST /pagos (alias /cobros)
+   * POST /shops/:shopId/payments
    * Registrar atención y pago: BARBERO, ADMIN_BARBERIA y ADMINISTRADOR
    * (decisión 9). Lo usa el modal de cobro de la pantalla de agenda, que
    * comparten el barbero y el responsable.
@@ -32,7 +32,7 @@ export class PagoController {
    * la reserva concreta y el decorador solo ve el rol.
    */
   @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Post(['en-persona', ''])
+  @Post()
   registrarPagoEnPersona(
     @CurrentBarberiaId() barberiaId: string,
     @Body() dto: RegistrarPagoDto,
@@ -42,7 +42,7 @@ export class PagoController {
   }
 
   /**
-   * GET /pagos/historial (alias /cobros/historial)
+   * GET /shops/:shopId/payments/history
    *
    * H68 · el recibo de la sede: cada cobro con su estado VIVO (`PAGADA` o
    * `ANULADO`), su cliente, sus servicios con el precio histórico y quién lo
@@ -52,7 +52,7 @@ export class PagoController {
    * y la auditoría es el rastro, no la vista.
    */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Get('historial')
+  @Get('history')
   listarHistorial(
     @CurrentBarberiaIdOpcional() barberiaId: string | null,
     @CurrentUser() user: UsuarioAutenticado,
@@ -68,7 +68,7 @@ export class PagoController {
   }
 
   /**
-   * POST /pagos/:id/anular (alias /cobros/:id/anular)
+   * POST /shops/:shopId/payments/:id/void
    *
    * H68 · §7.3: corrige un cobro anulándolo con motivo obligatorio. Es una
    * decisión de la SEDE, no del barbero: el rol que cobra no es el que deshace un
@@ -76,7 +76,7 @@ export class PagoController {
    * solo ve el rol cuando la ruta no lleva `:barberiaId`).
    */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Post(':id/anular')
+  @Post(':id/void')
   @HttpCode(HttpStatus.OK)
   anularPago(
     @Param('id') id: string,
@@ -88,22 +88,21 @@ export class PagoController {
   }
 
   /**
-   * GET /pagos/auditoria (alias /cobros/auditoria)
+   * GET /shops/:shopId/payments/audit
    * Auditoría de cobros: la lee el responsable de la barbería y el
    * ADMINISTRADOR global. El barbero ve sus cobros en la agenda, no la
    * auditoría.
    */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
-  @Get('auditoria')
+  @Get('audit')
   obtenerAuditoriaPagos(
     @CurrentBarberiaIdOpcional() barberiaId: string | null,
     @CurrentUser() user: UsuarioAutenticado,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    // E1-02: mismo criterio que GET /auditoria. La barbería sale de la ruta
-    // (alias `barberias/:barberiaId/pagos`) o de la cabecera x-barberia-id;
-    // sin ella y sin ADMINISTRADOR, la respuesta es 400.
+    // Fase 5: la sede ya no viaja en cabecera; sale de la ruta
+    // (`/shops/:shopId/payments/audit`) y, si la ruta es global, de la query.
     return this.pagoService.obtenerAuditoriaPagos(
       user,
       barberiaId,
