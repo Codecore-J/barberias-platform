@@ -32,6 +32,14 @@ import {
   type MotivoCancelacionEspecial,
 } from './dto/cancelacion-especial.dto.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
+// Fase 7 · bus de eventos: la reserva publica HECHOS ya confirmados en la base y
+// el módulo de notificaciones decide cómo avisar (correo, WhatsApp, mañana SMS).
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  EVENTOS_RESERVA,
+  type EventoReserva,
+  type TipoEventoReserva,
+} from '../../notificaciones/domain/eventos-reserva.js';
 import { CotizacionResponse, BloqueCalculado } from './dto/cotizacion.dto.js';
 import {
   calcularBloqueGrupal,
@@ -155,6 +163,10 @@ export class ReservaService {
     @Optional()
     @InjectQueue(QUEUES.LISTA_ESPERA)
     private readonly listaEsperaQueue?: Queue,
+    // Fase 7 · bus de eventos de dominio. Opcional para que las pruebas que
+    // construyen el servicio sin el módulo sigan funcionando: sin bus no se
+    // publica nada y el flujo de reservas no cambia.
+    @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   /**
@@ -521,7 +533,7 @@ export class ReservaService {
 
     const duracionSolicitada = (fin.getTime() - inicio.getTime()) / 60000;
 
-    return withSerializableTransaction(this.prisma, async (tx) => {
+    const creada = await withSerializableTransaction(this.prisma, async (tx) => {
       // 0. Orden de validaciones (principio 9): sesión → rol → DTO → sede
       //    ACTIVA (P-SD-4) → vinculación ACTIVO con esa barbería → no restringido
       //    → configuración (pausa, tipo aceptado, horizonte, max_pendientes) →
@@ -944,6 +956,17 @@ export class ReservaService {
         participantes: dto.participantes,
       }),
     );
+
+    // Fase 7 · el hecho se publica DESPUÉS del commit: si la transacción abortó
+    // no hay evento y, por tanto, ningún aviso de una reserva que no existe.
+    await this.emitirEventoReserva(
+      creada.estado === ESTADOS.CONFIRMADA
+        ? EVENTOS_RESERVA.CONFIRMADA
+        : EVENTOS_RESERVA.CREADA,
+      creada.id,
+    );
+
+    return creada;
   }
 
   async obtenerDetalleReserva(barberiaId: string, reservaId: string, user: UsuarioAutenticado) {
@@ -1141,6 +1164,10 @@ export class ReservaService {
     // E2-02 §5.2: al entrar en NO_PRESENTADO el temporizador de expiración se
     // cierra por el hook, fuera de la transacción (BullMQ no participa).
     await this.aplicarEfectosPostCommit(reservaId, ESTADOS.NO_PRESENTADO);
+
+    // Fase 7: la inasistencia ya está contada y auditada; el aviso al cliente se
+    // publica aquí, después del commit, y es best-effort.
+    await this.emitirEventoReserva(EVENTOS_RESERVA.INASISTENCIA, reservaId);
 
     return resultado;
   }
@@ -1426,6 +1453,10 @@ export class ReservaService {
           this.logger.warn(`No se pudo notificar la confirmación: ${err.message}`),
         );
     }
+
+    // Fase 7: PENDIENTE → CONFIRMADA es el momento en que la solicitud pasa a
+    // ser una cita firme; el bus lo publica ya con el commit hecho.
+    await this.emitirEventoReserva(EVENTOS_RESERVA.CONFIRMADA, reservaId);
 
     return reserva;
   }
@@ -2109,6 +2140,10 @@ export class ReservaService {
         );
     }
 
+    // Fase 7: la cancelación libera agenda y hay clientes esperando; el hecho se
+    // publica fuera de la transacción, como el aviso de hueco liberado.
+    await this.emitirEventoReserva(EVENTOS_RESERVA.CANCELADA, reservaId);
+
     return reserva;
   }
 
@@ -2526,6 +2561,69 @@ export class ReservaService {
    * E3-03 a E3-08 son los únicos caminos, cada uno con sus condiciones (ventana
    * de 30 minutos, motivo obligatorio, bandera D17, revalidación del hueco).
    */
+  /**
+   * Fase 7 · publica un hecho de la reserva en el bus con los datos de contacto
+   * ya resueltos (nombre, correo y teléfono del cliente; nombre de la sede).
+   *
+   * Se llama SIEMPRE fuera de la transacción: un evento emitido dentro podría
+   * avisar de algo que el rollback deshizo. La lectura es de solo lectura y
+   * cualquier fallo se registra y se traga —una notificación no puede hacer
+   * fallar una reserva ya guardada—.
+   */
+  private async emitirEventoReserva(
+    tipo: TipoEventoReserva,
+    reservaId: string,
+  ): Promise<void> {
+    if (!this.eventEmitter) return;
+
+    try {
+      const reserva = await this.prisma.reserva.findUnique({
+        where: { id: reservaId },
+        select: {
+          id: true,
+          barberiaId: true,
+          clienteId: true,
+          estado: true,
+          fechaCita: true,
+          horaInicio: true,
+          cliente: {
+            select: { nombreCompleto: true, correo: true, telefono: true },
+          },
+          barberia: { select: { nombre: true, telefono: true } },
+        },
+      });
+
+      if (!reserva) return;
+
+      const evento: EventoReserva = {
+        tipo,
+        reservaId: reserva.id,
+        barberiaId: reserva.barberiaId,
+        clienteId: reserva.clienteId,
+        nombreCliente: reserva.cliente.nombreCompleto,
+        correoCliente: reserva.cliente.correo,
+        telefonoCliente: reserva.cliente.telefono,
+        nombreBarberia: reserva.barberia.nombre,
+        telefonoBarberia: reserva.barberia.telefono,
+        // Etiquetas locales de la sede (E2-04), nunca instantes reinterpretados
+        // con la zona del servidor.
+        fechaCita: this.fechaISO(reserva.fechaCita),
+        horaInicio: this.horaHHMM(reserva.horaInicio),
+        estado: reserva.estado,
+      };
+
+      // `emit` y no `emitAsync`: el listener captura sus propios errores, así que
+      // la petición no espera a un proveedor externo para responder.
+      this.eventEmitter.emit(tipo, evento);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo publicar ${tipo} de la reserva ${reservaId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
   private async cambiarEstado(
     tx: Prisma.TransactionClient,
     reserva: { id: string; estado: string },
