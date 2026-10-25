@@ -8,7 +8,7 @@ import type {
   ModoReserva,
 } from './dto/configuracion-barberia.dto.js';
 import { ESTADOS } from '../../shared/domain/estados.js';
-import { reglaDeNegocio } from '../../shared/errors/d40.errors.js';
+import { errorDeConflicto, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import {
   fechaCalendarioISO,
@@ -113,9 +113,9 @@ export class ConfiguracionBarberiaService {
         });
 
         if (pendientes > 0) {
-          // 422 HAY_PENDIENTES con el conteo obligatorio en la respuesta.
-          throw reglaDeNegocio(
-            'HAY_PENDIENTES',
+          // 409 CONFLICT: no se puede modificar la configuración si hay reservas pendientes.
+          throw errorDeConflicto(
+            'CONFIG_CON_PENDIENTES',
             `No se puede modificar modo_reserva, acepta_individual, acepta_grupal ni max_pendientes porque existen ${pendientes} reserva(s) pendiente(s).`,
             { conteo: pendientes },
           );
