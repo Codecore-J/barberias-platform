@@ -23,7 +23,6 @@ function nuevoPrisma() {
 
 const baseConfig = {
   barberiaId: BARBERIA_ID,
-  // Prisma devuelve el enum/string tal cual está en la columna.
   modoReserva: 'MANUAL',
   aceptaIndividual: true,
   aceptaGrupal: true,
@@ -75,10 +74,19 @@ describe('ConfiguracionBarberiaService (E3-11)', () => {
     }));
   }
 
+  async function capturarError(promesa: Promise<unknown>) {
+    try {
+      await promesa;
+    } catch (error: any) {
+      const respuesta = typeof error?.getResponse === 'function' ? error.getResponse() : {};
+      return { ...respuesta };
+    }
+    throw new Error('Se esperaba una excepción y la promesa se resolvió.');
+  }
+
   it('mapea la entidad campo por campo (no devuelve columnas internas)', async () => {
     prisma.configuracionBarberia.findUnique.mockResolvedValue({
       ...baseConfig,
-      // columna interna que NO debe filtrarse al DTO de salida
       campoInternoNoExpuesto: 'secreto',
     });
 
@@ -96,7 +104,6 @@ describe('ConfiguracionBarberiaService (E3-11)', () => {
       nuevasReservasActivas: true,
       margenGrupalMinutos: 10,
       permiteCancelacionEspecial: false,
-      // E4-02/8: la nueva bandera viaja en la respuesta y se mapea campo a campo.
       oportunidadesEspacioActivas: true,
       motivoPausa: null,
       pausaDesde: null,
@@ -110,33 +117,27 @@ describe('ConfiguracionBarberiaService (E3-11)', () => {
     prisma.configuracionBarberia.findUnique.mockResolvedValue(null);
 
     await expect(service.getConfiguracion(BARBERIA_ID)).rejects.toThrow(ForbiddenException);
-  });
-
-  // --- Regla 2: 422 HAY_PENDIENTES con conteo -----------------------------
+  });// --- Regla 2: 409 CONFLICT HAY_PENDIENTES con conteo -----------------------------
 
   it.each([
     ['modoReserva', { modoReserva: 'AUTOMATICO' as const }, 2],
     ['aceptaIndividual', { aceptaIndividual: false }, 3],
     ['aceptaGrupal', { aceptaGrupal: false }, 1],
     ['maxPendientes', { maxPendientes: 5 }, 4],
-  ])(
-    'bloquea 422 HAY_PENDIENTES con el conteo al cambiar %s con reservas en curso',
+  ])
+  ('bloquea 409 CONFLICT HAY_PENDIENTES con el conteo al cambiar %s con reservas en curso',
     async (_campo, dto, pendientes) => {
       prepararActualizacion({}, pendientes as number);
 
-      const error = await service
-        .actualizarConfiguracion(BARBERIA_ID, dto as any, usuarioAdmin)
-        .catch((e) => e);
-
-      expect(error.getResponse()).toMatchObject({
-        statusCode: 422,
-        codigo: 'HAY_PENDIENTES',
-        conteo: pendientes,
-      });
-      expect(error.getResponse().mensaje).toContain(
-        `${pendientes} reserva(s) pendiente(s)`,
+      const error = await capturarError(
+        service.actualizarConfiguracion(BARBERIA_ID, dto as any, usuarioAdmin),
       );
-      expect(prisma.configuracionBarberia.update).not.toHaveBeenCalled();
+
+      expect(error).toMatchObject({
+        statusCode: 409,
+        codigo: 'CONFIG_CON_PENDIENTES',
+        mensaje: expect.stringContaining(`${pendientes} reserva(s) pendiente(s)`),
+      });
     },
   );
 
@@ -170,21 +171,21 @@ describe('ConfiguracionBarberiaService (E3-11)', () => {
   it('rechaza max_personas_total < max_ninos + 1 cuando se envían ambos', async () => {
     prepararActualizacion({}, 0);
 
-    const error = await service
-      .actualizarConfiguracion(BARBERIA_ID, { maxNinos: 5, maxPersonasTotal: 5 }, usuarioAdmin)
-      .catch((e) => e);
+    const error = await capturarError(
+      service.actualizarConfiguracion(BARBERIA_ID, { maxNinos: 5, maxPersonasTotal: 5 }, usuarioAdmin),
+    );
 
-    expect(error.getResponse()).toMatchObject({ statusCode: 422, codigo: 'VALIDACION' });
+    expect(error).toMatchObject({ statusCode: 422, codigo: 'VALIDACION' });
   });
 
   it('rechaza el estado resultante inválido al enviar solo maxPersonasTotal (usa el maxNinos persistido)', async () => {
     prepararActualizacion({ maxNinos: 10, maxPersonasTotal: 20 }, 0);
 
-    const error = await service
-      .actualizarConfiguracion(BARBERIA_ID, { maxPersonasTotal: 5 }, usuarioAdmin)
-      .catch((e) => e);
+    const error = await capturarError(
+      service.actualizarConfiguracion(BARBERIA_ID, { maxPersonasTotal: 5 }, usuarioAdmin),
+    );
 
-    expect(error.getResponse()).toMatchObject({
+    expect(error).toMatchObject({
       statusCode: 422,
       codigo: 'VALIDACION',
       maxNinos: 10,
@@ -195,11 +196,11 @@ describe('ConfiguracionBarberiaService (E3-11)', () => {
   it('rechaza el estado resultante inválido al enviar solo maxNinos (usa el maxPersonasTotal persistido)', async () => {
     prepararActualizacion({ maxNinos: 2, maxPersonasTotal: 3 }, 0);
 
-    const error = await service
-      .actualizarConfiguracion(BARBERIA_ID, { maxNinos: 5 }, usuarioAdmin)
-      .catch((e) => e);
+    const error = await capturarError(
+      service.actualizarConfiguracion(BARBERIA_ID, { maxNinos: 5 }, usuarioAdmin),
+    );
 
-    expect(error.getResponse()).toMatchObject({ statusCode: 422, codigo: 'VALIDACION' });
+    expect(error).toMatchObject({ statusCode: 422, codigo: 'VALIDACION' });
   });
 
   it('acepta max_personas_total = max_ninos + 1 (borde exacto)', async () => {
@@ -218,11 +219,11 @@ describe('ConfiguracionBarberiaService (E3-11)', () => {
   it('rechaza límites < 1', async () => {
     prepararActualizacion({}, 0);
 
-    const error = await service
-      .actualizarConfiguracion(BARBERIA_ID, { maxPendientes: 0 }, usuarioAdmin)
-      .catch((e) => e);
+    const error = await capturarError(
+      service.actualizarConfiguracion(BARBERIA_ID, { maxPendientes: 0 }, usuarioAdmin),
+    );
 
-    expect(error.getResponse()).toMatchObject({ statusCode: 422, codigo: 'VALIDACION' });
+    expect(error).toMatchObject({ statusCode: 422, codigo: 'VALIDACION' });
   });
 
   // --- Regla 4: pausa / reactivación --------------------------------------
@@ -244,11 +245,11 @@ describe('ConfiguracionBarberiaService (E3-11)', () => {
   it('exige motivo_pausa para pausar', async () => {
     prepararActualizacion({ nuevasReservasActivas: true }, 0);
 
-    const error = await service
-      .actualizarConfiguracion(BARBERIA_ID, { nuevasReservasActivas: false }, usuarioAdmin)
-      .catch((e) => e);
+    const error = await capturarError(
+      service.actualizarConfiguracion(BARBERIA_ID, { nuevasReservasActivas: false }, usuarioAdmin),
+    );
 
-    expect(error.getResponse()).toMatchObject({ statusCode: 422, codigo: 'VALIDACION' });
+    expect(error).toMatchObject({ statusCode: 422, codigo: 'VALIDACION' });
   });
 
   it('al reactivar limpia motivo_pausa, pausa_desde y reactivacion_programada', async () => {

@@ -235,55 +235,61 @@ describe('E3-11 · configuración de la barbería', () => {
     expect(res.body.horizonteReservaDias).toBe(15);
   });
 
-  it('422 HAY_PENDIENTES con conteo al cambiar modoReserva con una reserva PENDIENTE', async () => {
+  it('409 CONFLICT CONFIG_CON_PENDIENTES con conteo al cambiar modoReserva con una reserva PENDIENTE', async () => {
     await crearReserva('PENDIENTE');
 
     const res = await request(app.getHttpServer())
       .patch(`${API}/barberias/${barberiaId}/configuracion`)
       .set('Authorization', `Bearer ${tokenAdmin}`)
       .send({ modoReserva: 'AUTOMATICO' })
-      .expect(422);
+      .expect(409);
 
     expect(res.body).toMatchObject({
-      statusCode: 422,
-      codigo: 'HAY_PENDIENTES',
+      statusCode: 409,
+      codigo: 'CONFIG_CON_PENDIENTES',
       conteo: 1,
     });
     expect(res.body.mensaje).toContain('1 reserva(s) pendiente(s)');
   });
 
-  it('422 HAY_PENDIENTES con conteo al cambiar aceptaIndividual con dos reservas en curso', async () => {
+  it('409 CONFLICT CONFIG_CON_PENDIENTES con conteo al cambiar aceptaIndividual con dos reservas en curso', async () => {
     await crearReserva('PROPUESTA_PENDIENTE');
 
     const res = await request(app.getHttpServer())
       .patch(`${API}/barberias/${barberiaId}/configuracion`)
       .set('Authorization', `Bearer ${tokenAdmin}`)
       .send({ aceptaIndividual: false })
-      .expect(422);
+      .expect(409);
 
     expect(res.body).toMatchObject({
-      statusCode: 422,
-      codigo: 'HAY_PENDIENTES',
+      statusCode: 409,
+      codigo: 'CONFIG_CON_PENDIENTES',
       conteo: 2,
     });
   });
 
-  it('422 HAY_PENDIENTES con conteo al cambiar aceptaGrupal y maxPendientes', async () => {
+  it('409 CONFLICT CONFIG_CON_PENDIENTES con conteo al cambiar aceptaGrupal y maxPendientes', async () => {
     const porGrupal = await request(app.getHttpServer())
       .patch(`${API}/barberias/${barberiaId}/configuracion`)
       .set('Authorization', `Bearer ${tokenAdmin}`)
       .send({ aceptaGrupal: false })
-      .expect(422);
+      .expect(409);
 
-    expect(porGrupal.body).toMatchObject({ codigo: 'HAY_PENDIENTES', conteo: 2 });
+    expect(porGrupal.body).toMatchObject({
+      codigo: 'CONFIG_CON_PENDIENTES',
+      conteo: 2,
+    });
 
     const porMax = await request(app.getHttpServer())
       .patch(`${API}/barberias/${barberiaId}/configuracion`)
       .set('Authorization', `Bearer ${tokenAdmin}`)
       .send({ maxPendientes: 5 })
-      .expect(422);
+      .expect(409);
 
-    expect(porMax.body).toMatchObject({ codigo: 'HAY_PENDIENTES', conteo: 2 });
+    expect(porMax.body).toMatchObject({
+      codigo: 'CONFIG_CON_PENDIENTES',
+      conteo: 2,
+    });
   });
 
   it('permite cambiar campos no bloqueados aunque haya reservas en curso', async () => {
