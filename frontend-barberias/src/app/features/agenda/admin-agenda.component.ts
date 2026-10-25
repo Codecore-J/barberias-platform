@@ -29,10 +29,12 @@ import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.c
           </div>
           
           <div class="flex flex-wrap items-center gap-3">
+            @if (authService.authState().user?.roles?.includes('ADMINISTRADOR') || authService.authState().user?.roles?.includes('ADMIN_BARBERIA')) {
             <button (click)="mostrarModalWalkIn.set(true)" 
                     class="px-4 py-2 rounded-xl flex items-center gap-2 font-bold text-xs sm:text-sm text-zinc-950 gold-gradient-bg shadow-[0_4px_16px_rgba(212,175,55,0.25)] hover:brightness-110 transition-all">
               <i class="pi pi-user-plus"></i> Walk-In
             </button>
+            }
 
             <!-- NAVEGACIÓN RÁPIDA DE FECHA -->
             <div class="flex items-center bg-zinc-900/90 border border-zinc-700/70 rounded-xl p-1 shadow-lg">
@@ -252,7 +254,7 @@ import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.c
       }
 
       <!-- Modal de Cobro -->
-      @if (turnoACobrar()) {
+      @if (turnoACobrar() && (authService.authState().user?.roles?.includes('ADMINISTRADOR') || authService.authState().user?.roles?.includes('ADMIN_BARBERIA') || authService.authState().user?.roles?.includes('BARBERO'))) {
         <app-cobro-modal 
           [turno]="turnoACobrar()" 
           (close)="turnoACobrar.set(null)"
