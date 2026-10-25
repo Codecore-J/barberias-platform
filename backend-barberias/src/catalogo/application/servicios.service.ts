@@ -10,7 +10,7 @@ import {
   fechaCalendarioISO,
   horaRelojHHMM,
 } from '../../shared/time/tiempo.service.js';
-import { errorDeConflicto } from '../../shared/errors/d40.errors.js';
+import { reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { CreateServicioDto } from './dto/create-servicio.dto.js';
 import { UpdateServicioDto } from './dto/update-servicio.dto.js';
 import { esAdministradorGlobal } from '../../iam/domain/roles.js';
@@ -148,7 +148,8 @@ export class ServiciosService {
       data: { estado: 'ACTIVO' },
     });
 
-    this.logger.log(`Servicio reactivado: ${id}`
+    this.logger.log(`Servicio reactivado: ${id}`);
+    return reactivado;
   }
 
   /**
@@ -216,29 +217,10 @@ export class ServiciosService {
       return;
     }
 
-    throw errorDeConflicto(
+    throw reglaDeNegocio(
       'SERVICIO_EN_COMBO_ACTIVO',
       `El servicio pertenece a ${combos.length} combo(s) activo(s): ${combos.map((c) => c.nombre).join(', ')}. Desactiva o edita el combo antes de desactivar el servicio.`,
       { combos: combos.map((c) => ({ id: c.id, nombre: c.nombre })) },
     );
-  }
-}
-
-  /**
-   * E2-07: la vuelta atrás explícita, idempotente. */
-  async reactivar(barberiaId: string, id: string) {
-    const servicio = await this.findOne(barberiaId, id);
-
-    if (servicio.estado === 'ACTIVO') {
-      return servicio;
-    }
-
-    const reactivado = await this.prisma.servicio.update({
-      where: { id: servicio.id },
-      data: { estado: 'ACTIVO' },
-    });
-
-    this.logger.log(`Servicio reactivado: ${id}`);
-    return reactivado;
   }
 }
