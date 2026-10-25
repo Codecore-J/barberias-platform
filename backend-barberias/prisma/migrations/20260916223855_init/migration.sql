@@ -4,7 +4,7 @@ CREATE TABLE "usuarios" (
     "nombre_completo" VARCHAR(150) NOT NULL,
     "correo" VARCHAR(150) NOT NULL,
     "telefono" VARCHAR(30) NOT NULL,
-    "cedula" VARCHAR(30),
+    "cedula" VARCHAR(30) NOT NULL,
     "password_hash" VARCHAR(255) NOT NULL,
     "estado_cuenta" VARCHAR(20) NOT NULL DEFAULT 'ACTIVO',
     "creado_at" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,

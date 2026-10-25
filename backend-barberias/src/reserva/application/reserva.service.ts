@@ -1100,6 +1100,14 @@ export class ReservaService {
         },
       });
 
+      // Punto 5.1A: Eliminar físicamente cualquier nota temporal asociada a la cita cancelada/no-presentada.      // Las notas temporales (compartido: false) se destruyen cuando la reserva llega a NO_PRESENTADO.      await this.prisma.antecedente.deleteMany({
+        where: {
+          usuarioId: reserva.clienteId,
+          barberiaOrigenId: reserva.barberiaId,
+          compartido: false,
+        },
+      });
+
       // D28: la restricción automática es un cambio de estado y se audita. La
       // penalización es local: el evento nombra la sede, nunca la cuenta global.
       if (evaluacion.restringidoAhora) {

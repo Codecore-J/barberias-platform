@@ -117,15 +117,15 @@ jobs:
       #
       # APP_ENV=dev no es opcional: test/setup.e2e.ts aborta con exit 1
       # si process.env.APP_ENV !== 'dev', por seguridad anti datos reales.
-      - name: Run E2E Tests (Backend)
-        working-directory: ./backend-barberias
-        run: npm run test:e2e
-
       # `seed` es idempotente (upserts) y deja el catálogo de roles/permisos que
       # exige `admin:create` para poder crear el ADMINISTRADOR de Playwright.
       - name: Seed Roles and Permissions
         working-directory: ./backend-barberias
         run: npm run seed
+
+      - name: Run E2E Tests (Backend)
+        working-directory: ./backend-barberias
+        run: npm run test:e2e
 
       - name: Run Unit Tests (Frontend)
         working-directory: ./frontend-barberias

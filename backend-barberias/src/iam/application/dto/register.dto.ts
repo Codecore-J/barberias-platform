@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsNotEmpty,
@@ -18,20 +19,36 @@ export class RegisterDto {
   @MaxLength(150, { message: 'El correo no puede superar los 150 caracteres.' })
   correo: string;
 
+  /**
+   * Formato local: exactamente 10 dígitos numéricos, sin guiones, espacios ni
+   * prefijo internacional. `usuarios.telefono` es UNIQUE, así que una cadena
+   * con formato libre acababa siendo la clave de identidad de la cuenta.
+   */
   @IsString()
   @IsNotEmpty({ message: 'El teléfono es obligatorio.' })
-  @MaxLength(30, { message: 'El teléfono no puede superar los 30 caracteres.' })
+  @Matches(/^\d{10}$/, {
+    message: 'El teléfono debe tener exactamente 10 dígitos numéricos.',
+  })
   telefono: string;
 
   /**
-   * La cédula es OPCIONAL. Cuando existe, debe ser única en la base de datos.
-   * La unicidad se garantiza a nivel de BD (índice parcial) y en el servicio.
-   * Regla: máximo 30 caracteres, solo dígitos.
+   * La cédula es OPCIONAL (esquema: `usuarios.cedula` NULLABLE con índice único
+   * parcial `WHERE cedula IS NOT NULL`). Un turista o residente extranjero sin
+   * cédula dominicana debe poder registrarse; si la escribe, son exactamente 11
+   * dígitos numéricos.
+   *
+   * El `@Transform` es imprescindible: el formulario manda `""` cuando el campo
+   * queda vacío, y sin normalizarlo a `undefined` fallaría `@Matches` y, peor,
+   * dos usuarios sin cédula colisionarían en el índice único al guardar `""`.
    */
   @IsOptional()
   @IsString()
-  @Matches(/^\d+$/, { message: 'La cédula solo debe contener dígitos.' })
-  @MaxLength(30, { message: 'La cédula no puede superar los 30 caracteres.' })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? (value.trim() === '' ? undefined : value.trim()) : value,
+  )
+  @Matches(/^\d{11}$/, {
+    message: 'La cédula debe tener exactamente 11 dígitos numéricos.',
+  })
   cedula?: string;
 
   /**

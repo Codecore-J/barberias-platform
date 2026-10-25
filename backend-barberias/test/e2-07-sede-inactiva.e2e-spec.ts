@@ -125,13 +125,19 @@ describe('E2-07 · P-SD-3/P-SD-4 · sede suspendida: no reserva, no expone agend
     const sufijo = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     datos.fecha = fecha(2);
 
-    await registrarYLogin('admin', `admin.psd34-${sufijo}@test.com`, `702${sufijo.slice(-6).padEnd(6, '0')}01`);
-    await registrarYLogin('cliente', `cliente.psd34-${sufijo}@test.com`, `702${sufijo.slice(-6).padEnd(6, '0')}02`);
-    await registrarYLogin('global', `global.psd34-${sufijo}@test.com`, `702${sufijo.slice(-6).padEnd(6, '0')}03`);
+    // Teléfonos de 10 dígitos exactos: `RegisterDto` los valida.
+    const serie = String(Math.floor(Math.random() * 9000) + 1000);
+    const tel = (n: number) => `809${serie}${String(n).padStart(3, '0')}`;
+
+    await registrarYLogin('admin', `admin.psd34-${sufijo}@test.com`, tel(1));
+    await registrarYLogin('cliente', `cliente.psd34-${sufijo}@test.com`, tel(2));
+    await registrarYLogin('global', `global.psd34-${sufijo}@test.com`, tel(3));
+    await registrarYLogin('barbero', `barbero.psd34-${sufijo}@test.com`, tel(4));
 
     const admin = await prisma.usuario.findUniqueOrThrow({ where: { correo: correos.admin }, select: { id: true } });
     const cliente = await prisma.usuario.findUniqueOrThrow({ where: { correo: correos.cliente }, select: { id: true } });
     const global = await prisma.usuario.findUniqueOrThrow({ where: { correo: correos.global }, select: { id: true } });
+    const barbero = await prisma.usuario.findUniqueOrThrow({ where: { correo: correos.barbero }, select: { id: true } });
 
     const sede = await prisma.barberia.create({
       data: {
@@ -173,12 +179,15 @@ describe('E2-07 · P-SD-3/P-SD-4 · sede suspendida: no reserva, no expone agend
     const rolAdmin = await upsertRol('ADMIN_BARBERIA', 'BARBERIA');
     const rolCliente = await upsertRol('CLIENTE', 'GLOBAL');
     const rolGlobal = await upsertRol('ADMINISTRADOR', 'GLOBAL');
+    const rolBarbero = await upsertRol('BARBERO', 'BARBERIA');
 
     await prisma.usuarioRol.createMany({
       data: [
         { usuarioId: admin.id, rolId: rolAdmin.id, barberiaId: sede.id },
         { usuarioId: cliente.id, rolId: rolCliente.id, barberiaId: null },
         { usuarioId: global.id, rolId: rolGlobal.id, barberiaId: null },
+        // D16 corregido: el barbero es quien escribe el catálogo.
+        { usuarioId: barbero.id, rolId: rolBarbero.id, barberiaId: sede.id },
       ],
       skipDuplicates: true,
     });
@@ -363,7 +372,7 @@ describe('E2-07 · P-SD-3/P-SD-4 · sede suspendida: no reserva, no expone agend
   it('la API responde 400 antes que 500 si alguien manda un estado fuera de catálogo', async () => {
     const res = await request(app.getHttpServer())
       .patch(`${api}/catalogo/servicios/${datos.servicio}`)
-      .set(headers('admin', datos.sede))
+      .set(headers('barbero', datos.sede))
       .send({ estado: 'BORRADO' });
 
     expect(res.status, `PATCH /catalogo/servicios → ${res.status} ${JSON.stringify(res.body)}`).toBe(400);

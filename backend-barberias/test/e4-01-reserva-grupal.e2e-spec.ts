@@ -129,10 +129,11 @@ describe('E4-01 · reserva grupal', () => {
 
     for (const [correo, telefono] of [
       ['admin.e401@test.com', '6010000000'],
-      ['gA.e401@test.com', '601010001'],
-      ['gB.e401@test.com', '601010002'],
-      ['gC.e401@test.com', '601010003'],
-      ['gD.e401@test.com', '601010004'],
+      // `RegisterDto` exige 10 dígitos exactos: los fixtures también.
+      ['gA.e401@test.com', '6010100011'],
+      ['gB.e401@test.com', '6010100012'],
+      ['gC.e401@test.com', '6010100013'],
+      ['gD.e401@test.com', '6010100014'],
     ] as [string, string][]) {
       await registrarYLogin(correo, telefono);
     }

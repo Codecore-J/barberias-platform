@@ -56,12 +56,41 @@ describe('Auth Endpoints (e2e)', () => {
         .send({
           nombreCompleto: 'Juan Pérez',
           correo: 'juan.val@example.com',
-          telefono: '+584141112233',
+          telefono: '8095551122',
           password: '123', // Menor a 8 caracteres y sin letras
         })
         .expect(400);
 
       expect(response.body.message).toBeDefined();
+    });
+
+    it('debe rechazar con 400 un teléfono que no tenga 10 dígitos', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/register')
+        .send({
+          nombreCompleto: 'Juan Pérez',
+          correo: 'juan.tel@example.com',
+          telefono: '809555112', // 9 dígitos
+          password: 'Password123',
+        })
+        .expect(400);
+
+      expect(JSON.stringify(response.body.message)).toContain('10 dígitos');
+    });
+
+    it('debe rechazar con 400 una cédula que no tenga 11 dígitos', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/register')
+        .send({
+          nombreCompleto: 'Juan Pérez',
+          correo: 'juan.ced2@example.com',
+          telefono: '8095551124',
+          cedula: '0011234567', // 10 dígitos
+          password: 'Password123',
+        })
+        .expect(400);
+
+      expect(JSON.stringify(response.body.message)).toContain('11 dígitos');
     });
 
     it('debe rechazar con 400 si la cédula contiene caracteres no numéricos', async () => {
@@ -70,7 +99,7 @@ describe('Auth Endpoints (e2e)', () => {
         .send({
           nombreCompleto: 'Juan Pérez',
           correo: 'juan.ced@example.com',
-          telefono: '+584141112234',
+          telefono: '8095551123',
           cedula: 'ABC-1234', // No numérico
           password: 'Password123',
         })

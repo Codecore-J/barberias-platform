@@ -5,10 +5,12 @@ import { PersonalService, Personal } from '../../../core/services/personal.servi
 import { HorariosService, ExcepcionHorario } from '../../../core/services/horarios.service';
 import { TenantService } from '../../../core/services/tenant.service';
 
+import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
+
 @Component({
   selector: 'app-admin-personal',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ModalOverlayDirective],
   template: `
     <div class="space-y-8 pb-12 animate-fade-in relative z-10">
       
@@ -85,7 +87,7 @@ import { TenantService } from '../../../core/services/tenant.service';
 
       <!-- Modal Excepción -->
       @if (modalAbierto()) {
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
             <div class="p-6 space-y-6">
               <div class="flex justify-between items-start">

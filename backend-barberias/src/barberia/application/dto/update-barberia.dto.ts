@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 /**
  * E3-13 · edición directa de la sede (D26/D27).
@@ -23,9 +23,12 @@ export class UpdateBarberiaDto {
   @MaxLength(1000)
   descripcion?: string;
 
+  /** Mismo formato que el alta: 10 dígitos, sin separadores. */
   @IsString()
   @IsOptional()
-  @MaxLength(30)
+  @Matches(/^\d{10}$/, {
+    message: 'El teléfono debe tener exactamente 10 dígitos numéricos.',
+  })
   telefono?: string;
 
   @IsString()
