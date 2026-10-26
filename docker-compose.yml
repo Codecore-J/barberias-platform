@@ -1,6 +1,75 @@
-version: '3.8'
+# Orquestación local del sistema completo (Paso 17).
+#
+#   docker compose up --build            # backend + frontend + postgres + redis
+#   docker compose --profile migrate run --rm migrate   # aplicar migraciones
+#
+# Cada variable se lee del .env de la raíz si existe (docker compose lo carga
+# automáticamente); los valores por defecto permiten arrancar sin ningún .env.
+# Copia .env.example a .env para personalizarlos.
 
 services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend-barberias/Dockerfile
+    container_name: barberias_backend
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    environment:
+      # APP_ENV es obligatorio: main.ts aborta el arranque si falta o no es
+      # dev/staging/production («development» NO vale).
+      APP_ENV: ${APP_ENV:-dev}
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:password@postgres:5432/barberias_test?schema=public}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-cambiar-en-produccion}
+      # CORS del navegador: la SPA servida por nginx.
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      WHATSAPP_API_URL: ${WHATSAPP_API_URL:-}
+      WHATSAPP_API_TOKEN: ${WHATSAPP_API_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      # busybox (alpine) trae wget: sonda de vida, no de preparación (H64).
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/v1/health/liveness"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend-barberias/Dockerfile
+    container_name: barberias_frontend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Unsolcito (profile "migrate"): corre las migraciones de Prisma con el CLI
+  # que solo existe en la etapa builder de la imagen del backend.
+  migrate:
+    build:
+      context: .
+      dockerfile: backend-barberias/Dockerfile
+      target: builder
+    command: ["npx", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:password@postgres:5432/barberias_test?schema=public}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["migrate"]
+    restart: "no"
+
   redis:
     image: redis:7-alpine
     container_name: barberias_redis
