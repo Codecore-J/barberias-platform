@@ -47,6 +47,10 @@ Reglas:
 | `REDIS_PORT` | Puerto de Redis cuando no se usa `REDIS_URL`. | `6379` |
 | `UV_THREADPOOL_SIZE` | Tamaño del pool de libuv (bcrypt/IO). El código lo eleva a 16 si no se define. | `16` |
 | `DEBUG_PRISMA` | `true` activa el log de consultas SQL de Prisma (solo desarrollo). | `false` |
+| `SENTRY_DSN` | DSN del proyecto de Sentry. **Si no está definida, Sentry no se inicializa** y el interceptor global de errores no hace nada: no rompe ni el desarrollo ni el CI. | `https://clave_falsa@o000000.ingest.sentry.io/0000000` |
+| `SENTRY_TRACES_SAMPLE_RATE` | Proporción de trazas que se envían (0 a 1). Default `0.1`. | `0.1` |
+| `SENTRY_PROFILES_SAMPLE_RATE` | Proporción de perfiles (0 a 1). Se recorta al valor de trazas para no perfilar sin traza. Default `0.1`. | `0.1` |
+| `SENTRY_RELEASE` | Etiqueta de versión que Sentry asocia a cada evento; normalmente el SHA del despliegue. | `barberias-api@1.0.0` |
 
 > **Nota de despliegue:** `render.yaml` declara `CORS_ORIGINS`, pero el código **no** lee esa variable; usa `FRONTEND_URL`. Configura `FRONTEND_URL` en Render (ver `docs/DESPLIEGUE.md`).
 

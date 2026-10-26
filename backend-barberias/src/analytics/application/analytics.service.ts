@@ -245,8 +245,13 @@ export class AnalyticsService {
       const valor = await this.cache.get<T>(clave);
       return valor ?? undefined;
     } catch (error) {
+      // `warn` y no `error`: la petición se resuelve igual contra Prisma, así
+      // que esto no es un 5xx ni debe despertar a nadie de guardia. El texto
+      // lleva la clave para saber QUÉ sede y QUÉ rango se quedaron sin caché.
       this.logger.warn(
-        `No se pudo leer ${clave} del caché: ${error instanceof Error ? error.message : String(error)}`,
+        `Caché no disponible (no bloqueante): fallo al leer ${clave}; se calcula contra Prisma: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
       return undefined;
     }
@@ -256,8 +261,12 @@ export class AnalyticsService {
     try {
       await this.cache.set(clave, valor, TTL_CACHE_ANALITICAS_MS);
     } catch (error) {
+      // El resultado ya se calculó y se devuelve: solo se pierde la próxima
+      // lectura rápida. Nivel `warn` con la clave afectada.
       this.logger.warn(
-        `No se pudo escribir ${clave} en el caché: ${error instanceof Error ? error.message : String(error)}`,
+        `Caché no disponible (no bloqueante): fallo al guardar ${clave}; la respuesta ya se calculó: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     }
   }

@@ -48,6 +48,8 @@
     "@nestjs/terminus": "^12.1.0",
     "@nestjs/throttler": "^6.7.1",
     "@prisma/client": "^5.22.0",
+    "@sentry/node": "^11.9.0",
+    "@sentry/profiling-node": "^11.9.0",
     "bcrypt": "^6.0.0",
     "bullmq": "^6.3.6",
     "cache-manager": "^7.2.9",
@@ -58,10 +60,12 @@
     "ioredis": "^6.0.0",
     "keyv": "^6.1.0",
     "luxon": "^3.7.2",
+    "nest-winston": "^2.0.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "winston": "^3.19.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",

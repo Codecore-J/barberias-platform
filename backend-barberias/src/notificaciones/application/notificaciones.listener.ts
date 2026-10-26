@@ -142,10 +142,15 @@ export class NotificacionesListener {
     } catch (error) {
       const identificador =
         evento?.reservaId || evento?.suscripcionId || evento?.usuarioId || '';
-      this.logger.warn(
-        `No se pudo entregar ${evento?.tipo} ${identificador ? 'de ' + identificador : ''} por ${canal}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+      // Nivel `error`, no `warn`: la reserva sigue siendo válida, pero el aviso
+      // NO llegó y eso se paga en retención (una inasistencia que se podía
+      // evitar). Con el logger estructurado esto queda filtrable por
+      // `level=error` y `context=NotificacionesListener` sin parsear el texto.
+      this.logger.error(
+        `No se pudo entregar ${evento?.tipo} ${identificador ? 'de ' + identificador : ''} por ${canal}` +
+          `${evento?.barberiaId ? ` (sede ${evento.barberiaId})` : ''}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
       );
     }
   }

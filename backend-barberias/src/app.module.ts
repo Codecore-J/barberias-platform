@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { SharedModule } from './shared/shared.module.js';
@@ -28,6 +28,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { NotificacionesModule } from './notificaciones/infrastructure/notificaciones.module.js';
 import { AppCacheModule } from './shared/cache/app-cache.module.js';
+import { SentryInterceptor } from './shared/observability/sentry.interceptor.js';
 import Redis from 'ioredis';
 
 @Module({
@@ -86,6 +87,13 @@ import Redis from 'ioredis';
   controllers: [AppController],
   providers: [
     AppService,
+    // Observabilidad · todo error 5xx (y cualquier excepción no HTTP) viaja a
+    // Sentry con la ruta y el usuario del token. Sin SENTRY_DSN el interceptor
+    // no hace nada y la respuesta al cliente es idéntica.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: SentryInterceptor,
+    },
     // Guard de Rate Limiting global (SEC-02): intercepta ráfagas abusivas antes de procesar peticiones
     {
       provide: APP_GUARD,
