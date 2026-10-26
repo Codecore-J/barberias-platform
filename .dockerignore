@@ -1,0 +1,33 @@
+# Contexto de build (raíz del monorepo) mínimo para las imágenes del Paso 17.
+
+# Dependencias y salidas de build: se instalan/generan dentro de la imagen.
+node_modules
+**/node_modules
+**/dist
+**/coverage
+**/.angular
+**/.turbo
+
+# VCS y CI
+.git
+.github
+
+# Secrets y entornos: jamás dentro de una imagen.
+.env
+.env.*
+**/.env
+**/.env.*
+**/.dev.vars
+!**/.env.example
+!**/.env.example.*
+
+# Artefactos locales, reportes y basura de desarrollo.
+*.log
+scratch
+docs
+test-horarios.js
+push_db.js
+e2e-p3-run.log
+1_LiceoTecnicoFeYAlegria
+**/*.md
+!**/README.md

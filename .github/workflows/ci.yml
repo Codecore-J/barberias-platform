@@ -41,9 +41,16 @@ jobs:
       # Los servicios salen de `docker-compose.yml`, la misma definición que usa
       # el equipo en local (postgres:15 + redis:7-alpine, con healthcheck de
       # Postgres). `--wait` no devuelve el control hasta que están listos.
+      #
+      # SOLO postgres y redis: las suites corren en el host contra localhost.
+      # Levantar aquí `backend`/`frontend` sería un error — el env del job
+      # (DATABASE_URL=...@localhost) se interpola dentro del contenedor vía
+      # ${DATABASE_URL:-...} y PrismaService aborta el arranque con «Can't
+      # reach database server», dejando el contenedor en bucle de reinicio y
+      # rompiendo `--wait`. (Verificado reproduciéndolo: exit 1, unhealthy.)
       - name: Start PostgreSQL and Redis (docker compose)
         run: |
-          docker compose up -d --wait
+          docker compose up -d --wait postgres redis
 
           for intento in $(seq 1 30); do
             if docker compose exec -T postgres pg_isready -U postgres -d barberias_test > /dev/null 2>&1 \
