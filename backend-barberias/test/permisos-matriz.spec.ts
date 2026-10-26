@@ -112,6 +112,8 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'PATCH /shops/:shopId/settings/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // Paso 10: analíticas operativas y de retención (solo admin de sede / plataforma).
   'GET /shops/:shopId/analytics/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // Paso 12: resumen consolidado multisede / franquicia.
+  'GET /shops/overview/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
   // E3-13 (2026-10-11): el nombre y el responsable solo cambian por solicitud
   // aprobada. La ruta usa `:id` (no `:barberiaId`), así que el guard NO resuelve
@@ -571,7 +573,7 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // usuarios de plataforma suma la 87: 348. El alta de cuenta y su historial de
   // auditoría suman las 88 y 89: 356. El webhook de WhatsApp de la Fase 7 suma
   // la 90: 360.
-  expect(evaluaciones).toBe(364);
+  expect(evaluaciones).toBe(368);
     expect(
       desviaciones.length === 0
         ? ''

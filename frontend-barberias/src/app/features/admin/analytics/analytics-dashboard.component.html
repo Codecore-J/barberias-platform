@@ -1,0 +1,140 @@
+<div class="analytics-container">
+  <h1>Analíticas y Retención</h1>
+
+  <div class="filters">
+    <button (click)="aplicarFiltroRapido('7')">Últimos 7 días</button>
+    <button (click)="aplicarFiltroRapido('30')">Últimos 30 días</button>
+    <button (click)="aplicarFiltroRapido('mes')">Este mes</button>
+    <div class="date-filters">
+      <label>Desde: <input type="date" [(ngModel)]="desde" /></label>
+      <label>Hasta: <input type="date" [(ngModel)]="hasta" /></label>
+      <button (click)="cargar(); cargarOverview()">Aplicar</button>
+    </div>
+  </div>
+
+  <div *ngIf="overview && overview.sedes && overview.sedes.length > 1" class="multisede-section">
+    <h2>Resumen Multisede</h2>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <h3>Ingresos consolidados</h3>
+        <p class="kpi-value">${{ overview.totalesGlobales.ingresosConsolidados | number:'1.2-2' }}</p>
+      </div>
+      <div class="kpi-card">
+        <h3>Total de citas</h3>
+        <p class="kpi-value">{{ overview.totalesGlobales.totalCitas }}</p>
+      </div>
+      <div class="kpi-card">
+        <h3>Tasa global de inasistencia</h3>
+        <p class="kpi-value">{{ overview.totalesGlobales.tasaGlobalInasistencia }}%</p>
+      </div>
+      <div class="kpi-card">
+        <h3>Tasa global de cancelación</h3>
+        <p class="kpi-value">{{ overview.totalesGlobales.tasaGlobalCancelacion }}%</p>
+      </div>
+    </div>
+    <div class="section">
+      <h3>Comparativa por sucursal</h3>
+      <table class="barbero-table">
+        <thead>
+          <tr>
+            <th>Sede</th>
+            <th>Activa</th>
+            <th>Ingresos</th>
+            <th>Total Citas</th>
+            <th>Citas Completadas</th>
+            <th>Tasa Inasistencia</th>
+            <th>Recordatorios Enviados</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let s of overview.sedes">
+            <td>{{ s.nombre }}</td>
+            <td>{{ s.activa ? 'Sí' : 'No' }}</td>
+            <td>${{ s.ingresos | number:'1.2-2' }}</td>
+            <td>{{ s.totalCitas }}</td>
+            <td>{{ s.citasCompletadas }}</td>
+            <td>{{ s.tasaInasistencia }}%</td>
+            <td>{{ s.recordatoriosEnviados }}</td>
+            <td><button (click)="irASede(s.barberiaId)">Ir a esta sede</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div *ngIf="loading" class="loading">Cargando...</div>
+  <div *ngIf="error" class="error">{{ error }}</div>
+
+  <div *ngIf="data && !loading">
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <h3>Ingresos totales</h3>
+        <p class="kpi-value">${{ data.ingresos.totalRecaudado | number:'1.2-2' }}</p>
+      </div>
+      <div class="kpi-card">
+        <h3>Ticket promedio</h3>
+        <p class="kpi-value">${{ data.ingresos.ticketPromedio | number:'1.2-2' }}</p>
+      </div>
+      <div class="kpi-card">
+        <h3>Tasa de Inasistencia</h3>
+        <p class="kpi-value">{{ data.retencion.tasaInasistencia }}%</p>
+      </div>
+      <div class="kpi-card">
+        <h3>Tasa de Cancelación</h3>
+        <p class="kpi-value">{{ data.retencion.tasaCancelacion }}%</p>
+      </div>
+      <div class="kpi-card">
+        <h3>Recordatorios enviados</h3>
+        <p class="kpi-value">{{ data.retencion.recordatoriosEnviados }}</p>
+      </div>
+      <div class="kpi-card">
+        <h3>Cupos de lista de espera notificados</h3>
+        <p class="kpi-value">{{ data.retencion.cuposListaEsperaNotificados }}</p>
+      </div>
+    </div>
+
+    <div class="sections">
+      <div class="section">
+        <h2>Citas por estado</h2>
+        <ul>
+          <li *ngFor="let key of getObjectKeys(data.resumenCitas.porEstado)">
+            {{ key }}: {{ data.resumenCitas.porEstado[key] }}
+          </li>
+        </ul>
+        <p><strong>Total:</strong> {{ data.resumenCitas.total }}</p>
+      </div>
+
+      <div class="section">
+        <h2>Recaudación por método de pago</h2>
+        <ul>
+          <li *ngFor="let key of getObjectKeys(data.ingresos.porMetodoPago)">
+            {{ key }}: ${{ data.ingresos.porMetodoPago[key] | number:'1.2-2' }}
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Rendimiento por Barbero</h2>
+      <table class="barbero-table">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Citas Completadas</th>
+            <th>Inasistencias</th>
+            <th>Ingresos Generados</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let b of data.rendimientoPorBarbero">
+            <td>{{ b.nombre }}</td>
+            <td>{{ b.citasCompletadas }}</td>
+            <td>{{ b.inasistencias }}</td>
+            <td>${{ b.ingresosGenerados | number:'1.2-2' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

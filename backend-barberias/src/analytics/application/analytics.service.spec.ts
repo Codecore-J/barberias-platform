@@ -58,4 +58,37 @@ describe('AnalyticsService', () => {
     expect(result.rendimientoPorBarbero[0].inasistencias).toBe(1);
     expect(result.rendimientoPorBarbero[0].ingresosGenerados).toBe(1500);
   });
+
+  it('getShopsOverview: ADMIN_BARBERIA solo ve sus sedes vinculadas', async () => {
+    prisma.usuarioBarberia = {
+      findMany: vi.fn().mockResolvedValue([{ barberiaId: 'shop-1' }]),
+    };
+    prisma.barberia = {
+      findMany: vi.fn().mockResolvedValue([{ id: 'shop-1', nombre: 'Sede 1', activa: true }]),
+    };
+    prisma.reserva.findMany.mockResolvedValue([
+      { estado: 'COMPLETADA', recordatorioEnviado: true },
+      { estado: 'INASISTENCIA', recordatorioEnviado: false },
+    ]);
+    prisma.pago.findMany.mockResolvedValue([{ monto: 200 }]);
+    const user = { id: 'u1', roles: ['ADMIN_BARBERIA'], rolesDetallados: [] };
+    const result = await service.getShopsOverview(user, '2026-10-01', '2026-10-31', false);
+    expect(result.sedes.length).toBe(1);
+    expect(result.sedes[0].barberiaId).toBe('shop-1');
+    expect(result.totalesGlobales.totalCitas).toBe(2);
+  });
+
+  it('getShopsOverview: ADMINISTRADOR global ve todas las sedes', async () => {
+    prisma.barberia = {
+      findMany: vi.fn().mockResolvedValue([
+        { id: 'shop-1', nombre: 'Sede 1', activa: true },
+        { id: 'shop-2', nombre: 'Sede 2', activa: true },
+      ]),
+    };
+    prisma.reserva.findMany.mockResolvedValue([]);
+    prisma.pago.findMany.mockResolvedValue([]);
+    const user = { id: 'admin', roles: ['ADMINISTRADOR'], rolesDetallados: [] };
+    const result = await service.getShopsOverview(user, '2026-10-01', '2026-10-31', true);
+    expect(result.sedes.length).toBe(2);
+  });
 });
