@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { AnalyticsService } from './analytics.service';
 import { TenantService } from './tenant.service';
 import { API_URL } from '../constants/api.constants';
@@ -7,16 +8,18 @@ import { API_URL } from '../constants/api.constants';
 describe('AnalyticsService', () => {
   let service: AnalyticsService;
   let httpMock: HttpTestingController;
-  let tenantServiceSpy: jasmine.SpyObj<TenantService>;
+  let tenantServiceSpy: any;
 
   beforeEach(() => {
-    tenantServiceSpy = jasmine.createSpyObj('TenantService', ['barberiaActivaId']);
-    tenantServiceSpy.barberiaActivaId.and.returnValue('shop-123');
+    tenantServiceSpy = {
+      barberiaActivaId: () => 'shop-123',
+    };
 
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule],
       providers: [
         AnalyticsService,
+        provideHttpClient(),
+        provideHttpClientTesting(),
         { provide: TenantService, useValue: tenantServiceSpy },
       ],
     });
@@ -35,7 +38,7 @@ describe('AnalyticsService', () => {
     });
 
     const req = httpMock.expectOne(
-      (r) =>
+      (r: any) =>
         r.method === 'GET' &&
         r.url === `${API_URL}/shops/shop-123/analytics` &&
         r.params.get('desde') === '2026-10-01' &&
