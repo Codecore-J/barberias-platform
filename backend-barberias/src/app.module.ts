@@ -19,6 +19,7 @@ import { NotificacionModule } from './notificacion/infrastructure/notificacion.m
 import { AuditoriaModule } from './auditoria/infrastructure/auditoria.module.js';
 import { PlataformaUsuariosModule } from './iam/infrastructure/plataforma-usuarios.module.js';
 import { ListaEsperaModule } from './lista-espera/lista-espera.module.js';
+import { AnalyticsModule } from './analytics/analytics.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 // Fase 7: bus de eventos de dominio (reserva.*) y scheduler de los recordatorios
@@ -76,6 +77,7 @@ import Redis from 'ioredis';
     // H22: desactivado hasta E4-05. ClienteController expone /clientes/:id/ficha
     // y /clientes/:id/notas. El modulo sigue en src/cliente/, sin registrar:
     // mientras tanto esas rutas responden 404.
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [
