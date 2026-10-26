@@ -12,8 +12,13 @@ describe('AnalyticsDashboardComponent', () => {
   let analyticsServiceSpy: {
     getAnalytics: (desde?: string, hasta?: string) => any;
     getShopsOverview: (desde?: string, hasta?: string) => any;
+    exportAnalytics: (desde?: string, hasta?: string) => any;
   };
-  let tenantServiceSpy: { barberiasVinculadas: () => any[]; seleccionarBarberia: (id: string) => any };
+  let tenantServiceSpy: {
+    barberiasVinculadas: () => any[];
+    seleccionarBarberia: (id: string) => any;
+    barberiaActivaId: () => string | null;
+  };
   let routerSpy: { navigate: (commands: any[]) => Promise<boolean> };
 
   const mockData = {
@@ -40,10 +45,12 @@ describe('AnalyticsDashboardComponent', () => {
     analyticsServiceSpy = {
       getAnalytics: vi.fn(() => of(mockData)),
       getShopsOverview: vi.fn(() => of(mockOverview)),
+      exportAnalytics: vi.fn(() => of(new Blob(['a,b'], { type: 'text/csv' }))),
     };
     tenantServiceSpy = {
       barberiasVinculadas: vi.fn(() => []),
       seleccionarBarberia: vi.fn(() => of({})),
+      barberiaActivaId: vi.fn(() => 's1'),
     };
     routerSpy = {
       navigate: vi.fn(() => Promise.resolve(true)),
@@ -82,6 +89,30 @@ describe('AnalyticsDashboardComponent', () => {
     expect(compiled.textContent).toContain('Cupos de lista de espera notificados');
     expect(compiled.textContent).toContain('Carlos');
     expect(compiled.textContent).toContain('Luis');
+  });
+
+  it('descarga el CSV al pulsar Exportar CSV', () => {
+    const createObjectURL = vi.fn(() => 'blob:reporte');
+    const revokeObjectURL = vi.fn();
+    const originales = {
+      create: (window.URL as any).createObjectURL,
+      revoke: (window.URL as any).revokeObjectURL,
+    };
+    (window.URL as any).createObjectURL = createObjectURL;
+    (window.URL as any).revokeObjectURL = revokeObjectURL;
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    const boton = fixture.nativeElement.querySelector('.export-button') as HTMLButtonElement;
+    boton.click();
+
+    expect(analyticsServiceSpy.exportAnalytics).toHaveBeenCalled();
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+    expect(clickSpy).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:reporte');
+
+    clickSpy.mockRestore();
+    (window.URL as any).createObjectURL = originales.create;
+    (window.URL as any).revokeObjectURL = originales.revoke;
   });
 
   it('muestra resumen multisede cuando hay más de una sede', () => {

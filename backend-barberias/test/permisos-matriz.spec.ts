@@ -112,6 +112,9 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'PATCH /shops/:shopId/settings/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // Paso 10: analíticas operativas y de retención (solo admin de sede / plataforma).
   'GET /shops/:shopId/analytics/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // Paso 13: descarga CSV del mismo panel. Es el mismo balance financiero, así
+  // que la política es idéntica y el guard vuelve a acotar la sede del parámetro.
+  'GET /shops/:shopId/analytics/export': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // Paso 12: resumen consolidado multisede / franquicia.
   'GET /shops/overview/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
@@ -572,8 +575,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // E4-02 suma el alta de la lista de espera: 86 × 4 = 344. El listado de
   // usuarios de plataforma suma la 87: 348. El alta de cuenta y su historial de
   // auditoría suman las 88 y 89: 356. El webhook de WhatsApp de la Fase 7 suma
-  // la 90: 360.
-  expect(evaluaciones).toBe(368);
+  // la 90: 360. El panel de analíticas (Pasos 10 y 12) sumó dos rutas: 92 × 4 =
+  // 368. La exportación CSV del Paso 13 suma la 93: 372.
+  expect(evaluaciones).toBe(372);
     expect(
       desviaciones.length === 0
         ? ''

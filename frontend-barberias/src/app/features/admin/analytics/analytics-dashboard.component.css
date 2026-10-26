@@ -2,6 +2,34 @@
   padding: 2rem;
 }
 
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.panel-header h1 {
+  margin: 0;
+}
+
+.export-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid #444;
+  border-radius: 6px;
+  background: #1f1f1f;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.export-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 .filters {
   display: flex;
   gap: 1rem;

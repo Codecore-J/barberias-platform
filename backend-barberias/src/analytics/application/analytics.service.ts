@@ -6,6 +6,7 @@ import { ROL_ADMIN_BARBERIA } from '../../iam/domain/roles.js';
 import { TTL_CACHE_ANALITICAS_MS } from '../../shared/cache/app-cache.module.js';
 import type { AnaliticasSede, OverviewSedes } from '../domain/analytics.types.js';
 import { claveAnaliticasOverview, claveAnaliticasSede } from '../domain/cache-keys.js';
+import { construirCsvAnaliticas } from '../domain/analytics-csv.js';
 
 @Injectable()
 export class AnalyticsService {
@@ -179,6 +180,15 @@ export class AnalyticsService {
       },
       rendimientoPorBarbero: Array.from(barberoMap.values()),
     };
+  }
+
+  /**
+   * Paso 13 · mismo cálculo que `getShopAnalytics`, serializado a CSV. La
+   * exportación no duplica métricas: si cambia el reporte, cambia el CSV.
+   */
+  async getShopAnalyticsCsv(barberiaId: string, desde?: string, hasta?: string): Promise<string> {
+    const data = await this.getShopAnalytics(barberiaId, desde, hasta);
+    return construirCsvAnaliticas(barberiaId, data);
   }
 
   private parseDate(s: string): Date {

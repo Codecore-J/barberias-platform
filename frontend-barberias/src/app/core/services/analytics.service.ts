@@ -81,6 +81,22 @@ export class AnalyticsService {
     return this.http.get<ShopAnalyticsResponse>(`${API_URL}/shops/${shopId}/analytics`, { params });
   }
 
+  /** Paso 13 · descarga el CSV del panel como blob (no JSON). */
+  exportAnalytics(desde?: string, hasta?: string): Observable<Blob> {
+    const shopId = this.tenantService.barberiaActivaId();
+    let params = new HttpParams();
+    if (desde) {
+      params = params.set('desde', desde);
+    }
+    if (hasta) {
+      params = params.set('hasta', hasta);
+    }
+    return this.http.get(`${API_URL}/shops/${shopId}/analytics/export`, {
+      params,
+      responseType: 'blob',
+    });
+  }
+
   getShopsOverview(desde?: string, hasta?: string): Observable<ShopsOverviewResponse> {
     let params = new HttpParams();
     if (desde) {
