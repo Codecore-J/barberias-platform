@@ -114,6 +114,14 @@ export const routes: Routes = [
           import('./features/admin/tickets/admin-tickets.component').then((m) => m.AdminTicketsComponent),
       },
       {
+        path: 'admin/analiticas',
+        canActivate: [tenantGuard, roleGuard(['ADMIN'])],
+        loadComponent: () =>
+          import('./features/admin/analytics/analytics-dashboard.component').then(
+            (m) => m.AnalyticsDashboardComponent,
+          ),
+      },
+      {
         // E3-12 · bandeja de plataforma de la 6.ª vinculación (D10).
         // SIN `tenantGuard`: es una pantalla TRANSVERSAL de la plataforma y el
         // ADMINISTRADOR no necesita sede activa para decidir sobre una sexta

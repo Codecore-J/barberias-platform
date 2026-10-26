@@ -129,6 +129,10 @@ import { NotificationService } from '../../core/services/notification.service';
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo
               </a>
+              <a routerLink="/admin/analiticas" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-chart-bar mr-1.5 text-xs text-amber-400/80"></i>Analíticas
+              </a>
               <!-- Dropdown Configuración -->
               <div class="relative" (mouseenter)="configDropdownOpen.set(true)" (mouseleave)="configDropdownOpen.set(false)">
                 <button class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all flex items-center gap-1">
@@ -173,6 +177,10 @@ import { NotificationService } from '../../core/services/notification.service';
               <a routerLink="/admin/usuarios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-id-card mr-1.5 text-xs text-amber-400/80"></i>Usuarios
+              </a>
+              <a routerLink="/admin/analiticas" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-chart-bar mr-1.5 text-xs text-amber-400/80"></i>Analíticas
               </a>
               <!-- Aprobaciones (pending actions placeholder) -->
               <a routerLink="/admin/agenda" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
