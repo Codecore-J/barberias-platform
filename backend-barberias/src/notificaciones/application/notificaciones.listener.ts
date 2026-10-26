@@ -61,6 +61,14 @@ export class NotificacionesListener {
           destinatario: evento.correoCliente,
           asunto: mensaje.asunto,
           cuerpo: mensaje.cuerpo,
+          // El adaptador de Resend pinta la plantilla según el hecho y la
+          // tarjeta de la cita; el Mock solo lo registra.
+          tipo: evento.tipo,
+          cita: {
+            sede: evento.nombreBarberia,
+            fecha: evento.fechaCita,
+            hora: evento.horaInicio,
+          },
         }),
       );
     }

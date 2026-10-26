@@ -75,6 +75,11 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // reinicio de la instancia.
   'GET /health/liveness,api/v1/health/liveness': TODOS,
   'GET /notificaciones/mis-notificaciones': TODOS,
+  // Fase 7 · el webhook de WhatsApp es `@Public` (lo llama un proveedor, no un
+  // navegador) y su autenticación es el secreto x-webhook-secret, que el
+  // RolesGuard no conoce: por eso la decisión del guard es «deja pasar a los
+  // cuatro», igual que el resto de rutas públicas.
+  'POST /webhooks/whatsapp/': TODOS,
 
   'GET /auditoria/': [ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA],
   'GET /auditoria/estadisticas': [ROL_ADMINISTRADOR],
@@ -450,10 +455,11 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // lista de espera (Carril B): 86. El listado de usuarios de plataforma suma
   // `GET /plataforma/usuarios`: 87. La bandeja de administración suma el alta
   // (`POST /plataforma/usuarios`) y el historial de una cuenta
-  // (`GET /plataforma/usuarios/:id/auditoria`): 89.
-  it('descubrir las 89 rutas del servidor y todas tienen decision', () => {
+  // (`GET /plataforma/usuarios/:id/auditoria`): 89. La Fase 7 suma el webhook de
+  // retención (`POST /webhooks/whatsapp`, @Public): 90.
+  it('descubrir las 90 rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(89);
+    expect(claves.length).toBe(90);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -561,8 +567,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // H68 suma las dos del recibo de cobros (historial y anulación): 85 × 4 = 340.
   // E4-02 suma el alta de la lista de espera: 86 × 4 = 344. El listado de
   // usuarios de plataforma suma la 87: 348. El alta de cuenta y su historial de
-  // auditoría suman las 88 y 89: 356.
-  expect(evaluaciones).toBe(356);
+  // auditoría suman las 88 y 89: 356. El webhook de WhatsApp de la Fase 7 suma
+  // la 90: 360.
+  expect(evaluaciones).toBe(360);
     expect(
       desviaciones.length === 0
         ? ''

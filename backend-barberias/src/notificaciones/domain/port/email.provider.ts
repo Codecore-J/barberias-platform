@@ -13,6 +13,14 @@ export interface MensajeEmail {
   destinatario: string;
   asunto: string;
   cuerpo: string;
+  /**
+   * Hecho de dominio que originó el mensaje (`reserva.recordatorio`, …).
+   * Lo usa el adaptador de Resend para elegir la cabecera y el color de la
+   * plantilla HTML; el adaptador Mock solo lo registra.
+   */
+  tipo?: string;
+  /** Datos de la cita para la tarjeta HTML: sede, fecha y hora locales. */
+  cita?: { sede: string; fecha: string; hora: string };
 }
 
 export interface IEmailProvider {
