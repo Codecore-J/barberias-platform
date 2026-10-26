@@ -3,6 +3,9 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { ROL_ADMIN_BARBERIA } from '../../iam/domain/roles.js';
+import { TTL_CACHE_ANALITICAS_MS } from '../../shared/cache/app-cache.module.js';
+import type { AnaliticasSede, OverviewSedes } from '../domain/analytics.types.js';
+import { claveAnaliticasOverview, claveAnaliticasSede } from '../domain/cache-keys.js';
 import { construirCsvAnaliticas } from '../domain/analytics-csv.js';
 
 @Injectable()
