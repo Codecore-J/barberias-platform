@@ -21,6 +21,11 @@ import { PlataformaUsuariosModule } from './iam/infrastructure/plataforma-usuari
 import { ListaEsperaModule } from './lista-espera/lista-espera.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+// Fase 7: bus de eventos de dominio (reserva.*) y scheduler de los recordatorios
+// preventivos. Se registran aquí, con la infraestructura transversal.
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
+import { NotificacionesModule } from './notificaciones/infrastructure/notificaciones.module.js';
 import Redis from 'ioredis';
 
 @Module({
@@ -44,6 +49,8 @@ import Redis from 'ioredis';
             port: parseInt(process.env.REDIS_PORT || '6379', 10),
           },
     }),
+    EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
     SharedModule,
     IamModule,
     BarberiaModule,
@@ -54,6 +61,9 @@ import Redis from 'ioredis';
     PagoModule,
     AntecedenteModule,
     NotificacionModule,
+    // Fase 7 · consumidor de `reserva.*` y cron de recordatorios de 2 h. No lo
+    // importa `ReservaModule`: el servicio solo publica en el bus.
+    NotificacionesModule,
     AuditoriaModule,
     // E4-02 · D22: Carril B. Este módulo expone el alta de la suscripción y,
     // además, es el consumidor de `HUECO_LIBERADO`: cuando `ReservaService`

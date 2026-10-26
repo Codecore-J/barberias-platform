@@ -323,6 +323,11 @@ model Reserva {
   cancelacionEspecialEstado String?  @map("cancelacion_especial_estado") @db.VarChar(20)
   cancelacionEspecialMotivo String?  @map("cancelacion_especial_motivo") @db.VarChar(40)
   cancelacionEspecialDetalle String? @map("cancelacion_especial_detalle") @db.Text
+  // Fase 7 · recordatorio preventivo de no-show. El cron lo marca ANTES de
+  // emitir `reserva.recordatorio`, y el `updateMany` condicionado a `false` es
+  // lo que impide que dos ejecuciones solapadas (o dos instancias del API)
+  // avisen dos veces de la misma cita.
+  recordatorioEnviado      Boolean   @default(false) @map("recordatorio_enviado")
 
   barberia     Barberia  @relation(fields: [barberiaId], references: [id])
   cliente      Usuario   @relation("ClienteReserva", fields: [clienteId], references: [id])

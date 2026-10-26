@@ -39,7 +39,17 @@ async function bootstrap() {
   // Render pueda apuntar `healthCheckPath` a /api/v1/health/liveness sin que un Redis
   // caído provoque reinicios de una instancia que sí está sirviendo.
   app.setGlobalPrefix('api/v1', {
-    exclude: ['health', 'api/v1/health', 'health/liveness', 'api/v1/health/liveness'],
+    exclude: [
+      'health',
+      'api/v1/health',
+      'health/liveness',
+      'api/v1/health/liveness',
+      // Fase 7 · el webhook de WhatsApp queda fuera del prefijo: la URL que se
+      // configura en Meta Cloud API o en el gateway es /webhooks/whatsapp y no
+      // debe cambiar cuando la versión del prefijo cambie.
+      'webhooks/whatsapp',
+      'api/v1/webhooks/whatsapp',
+    ],
   });
 
   // Configuración estricta de CORS (CONF-02):

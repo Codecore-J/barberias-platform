@@ -5,6 +5,7 @@ import { DisponibilidadService } from '../../agenda/application/disponibilidad.s
 import { Logger, ConflictException, ForbiddenException, BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { TiempoService, ZONA_POR_DEFECTO } from '../../shared/time/tiempo.service.js';
 import { ENCOLADO_TIMEOUT_MS } from '../../shared/queues/encolado-seguro.js';
 
@@ -72,6 +73,12 @@ describe('ReservaService', () => {
     registrarEvento: vi.fn(),
   };
 
+  // Fase 7: el bus de eventos. Se mockea para poder afirmar QUÉ se publica y
+  // cuándo; el envío real lo cubren los specs de `NotificacionesModule`.
+  const mockEventEmitter = {
+    emit: vi.fn(),
+  };
+
   beforeEach(async () => {
     vi.clearAllMocks();
 
@@ -83,6 +90,7 @@ describe('ReservaService', () => {
         { provide: getQueueToken('reservas-pendientes'), useValue: mockQueue },
         { provide: getQueueToken('lista-espera'), useValue: mockListaEsperaQueue },
         { provide: AuditoriaService, useValue: mockAuditoriaService },
+        { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
     }).compile();
 
@@ -206,6 +214,68 @@ describe('ReservaService', () => {
       expect(mockDisponibilidadService.calcularDisponibilidad).toHaveBeenCalledWith(
         expect.objectContaining({ margenRequerido: 12 }),
         expect.anything(),
+      );
+    });
+
+    it('Fase 7: publica reserva.creada tras el commit, con los datos de contacto', async () => {
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({
+        estaRestringido: false,
+      });
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
+        modoReserva: 'MANUAL',
+        nuevasReservasActivas: true,
+        aceptaIndividual: true,
+        margenGrupalMinutos: 10,
+      });
+      mockPrismaService.servicio.findMany.mockResolvedValue([
+        { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 0 },
+      ]);
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
+        { inicio: enSede('2026-10-10', 9), fin: enSede('2026-10-10', 10) },
+      ]);
+      mockPrismaService.reserva.create.mockResolvedValue({
+        id: 'uuid-reserva',
+        estado: 'PENDIENTE',
+      });
+      mockPrismaService.participanteReserva.create.mockResolvedValue({
+        id: 'uuid-part',
+      });
+      // Lo que devuelve la lectura posterior al commit (payload del evento).
+      mockPrismaService.reserva.findUnique.mockResolvedValue({
+        id: 'uuid-reserva',
+        barberiaId: 'uuid-barberia',
+        clienteId: 'uuid-cliente',
+        estado: 'PENDIENTE',
+        fechaCita: new Date('2026-10-10T00:00:00Z'),
+        horaInicio: hora(9, 0),
+        cliente: {
+          nombreCompleto: 'Ana Pérez',
+          correo: 'ana@test.com',
+          telefono: '+18095550000',
+        },
+        barberia: { nombre: 'Sede Centro', telefono: '+18095551111' },
+      });
+
+      await service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        fecha: '2026-10-10',
+        horaInicio: '09:00',
+        horaFin: '09:30',
+        serviciosIds: ['s1'],
+        precioTotalEsperado: 15,
+      });
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'reserva.creada',
+        expect.objectContaining({
+          tipo: 'reserva.creada',
+          reservaId: 'uuid-reserva',
+          nombreCliente: 'Ana Pérez',
+          correoCliente: 'ana@test.com',
+          telefonoCliente: '+18095550000',
+          nombreBarberia: 'Sede Centro',
+          fechaCita: '2026-10-10',
+          horaInicio: '09:00',
+        }),
       );
     });
 
@@ -942,6 +1012,26 @@ describe('ReservaService', () => {
         estado: 'CANCELADA',
         clienteId: 'uuid-cliente',
       });
+      // Lectura posterior al commit: de aquí sale el payload de `reserva.cancelada`.
+      mockPrismaService.reserva.findUnique.mockResolvedValue({
+        ...reservaVigente({ estado: 'CANCELADA' }),
+        cliente: {
+          nombreCompleto: 'Ana Pérez',
+          correo: 'ana@test.com',
+          telefono: '+18095550000',
+        },
+        barberia: { nombre: 'Sede Centro', telefono: '+18095551111' },
+      });
+      // Lectura posterior al commit: de aquí sale el payload de `reserva.cancelada`.
+      mockPrismaService.reserva.findUnique.mockResolvedValue({
+        ...reservaVigente({ estado: 'CANCELADA' }),
+        cliente: {
+          nombreCompleto: 'Ana Pérez',
+          correo: 'ana@test.com',
+          telefono: '+18095550000',
+        },
+        barberia: { nombre: 'Sede Centro', telefono: '+18095551111' },
+      });
       const remove = vi.fn().mockResolvedValue(undefined);
       mockQueue.getJob.mockResolvedValue({ remove });
 
@@ -966,6 +1056,19 @@ describe('ReservaService', () => {
       );
       expect(mockQueue.getJob).toHaveBeenCalledWith('expirar-reserva-uuid-reserva');
       expect(remove).toHaveBeenCalled();
+
+      // Fase 7: el hecho se publica después del commit, con la etiqueta de la
+      // cita tal como la ve la sede.
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'reserva.cancelada',
+        expect.objectContaining({
+          reservaId: 'uuid-reserva',
+          nombreCliente: 'Ana Pérez',
+          estado: 'CANCELADA',
+          fechaCita: '2026-10-10',
+          horaInicio: '10:00',
+        }),
+      );
     });
 
     it('ROJO: un CLIENTE no puede cancelar la reserva de OTRO cliente → 403 RESERVA_AJENA', async () => {
@@ -1930,6 +2033,7 @@ describe('ReservaService', () => {
           { provide: DisponibilidadService, useValue: mockDisponibilidadService },
           { provide: getQueueToken('reservas-pendientes'), useValue: mockQueue },
           { provide: AuditoriaService, useValue: mockAuditoriaService },
+          { provide: EventEmitter2, useValue: mockEventEmitter },
           { provide: TiempoService, useValue: new TiempoService(() => ahora) },
         ],
       }).compile();
