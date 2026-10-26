@@ -2,9 +2,24 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service.js';
 
+/** Caché en memoria con la misma forma que usa el servicio. */
+const crearCacheMock = () => {
+  const datos = new Map<string, unknown>();
+  return {
+    datos,
+    get: vi.fn(async (clave: string) => datos.get(clave)),
+    set: vi.fn(async (clave: string, valor: unknown) => {
+      datos.set(clave, valor);
+      return valor;
+    }),
+    del: vi.fn(async (clave: string) => datos.delete(clave)),
+  };
+};
+
 describe('AnalyticsService', () => {
   let service: AnalyticsService;
   let prisma: any;
+  let cache: ReturnType<typeof crearCacheMock>;
 
   beforeEach(() => {
     prisma = {
@@ -18,7 +33,8 @@ describe('AnalyticsService', () => {
         findMany: vi.fn(),
       },
     };
-    service = new AnalyticsService(prisma);
+    cache = crearCacheMock();
+    service = new AnalyticsService(prisma, cache as any);
   });
 
   it('valida que desde <= hasta', async () => {
@@ -27,6 +43,12 @@ describe('AnalyticsService', () => {
 
   it('rechaza rango mayor a 366 días', async () => {
     await expect(service.getShopAnalytics('shop-1', '2025-01-01', '2026-01-10')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('valida el rango antes de tocar el caché', async () => {
+    await expect(service.getShopAnalytics('shop-1', '2026-10-10', '2026-10-01')).rejects.toBeInstanceOf(BadRequestException);
+    expect(cache.get).not.toHaveBeenCalled();
+    expect(prisma.reserva.findMany).not.toHaveBeenCalled();
   });
 
   it('calcula tasas con denominador cero sin NaN', async () => {
@@ -57,6 +79,64 @@ describe('AnalyticsService', () => {
     expect(result.rendimientoPorBarbero[0].citasCompletadas).toBe(1);
     expect(result.rendimientoPorBarbero[0].inasistencias).toBe(1);
     expect(result.rendimientoPorBarbero[0].ingresosGenerados).toBe(1500);
+  });
+
+  it('el segundo llamado devuelve el valor cacheado sin consultar Prisma', async () => {
+    prisma.reserva.findMany.mockResolvedValue([
+      { id: 'r1', estado: 'COMPLETADA', barberoId: 'b1', recordatorioEnviado: true, barbero: { id: 'b1', nombreCompleto: 'Juan' } },
+    ]);
+    prisma.listaEspera.count.mockResolvedValue(1);
+    prisma.pago.findMany.mockResolvedValue([{ monto: 800, metodoPago: 'EFECTIVO', reserva: { barberoId: 'b1' } }]);
+
+    const primero = await service.getShopAnalytics('shop-1', '2026-10-01', '2026-10-31');
+
+    // La clave es la pactada y el TTL son los 15 minutos del requisito.
+    expect(cache.set).toHaveBeenCalledWith(
+      'analytics:shop:shop-1:2026-10-01-2026-10-31',
+      expect.objectContaining({ ingresos: expect.anything() }),
+      15 * 60 * 1000,
+    );
+
+    // Segundo escenario: Prisma no debe volver a ser consultado.
+    prisma.reserva.findMany.mockClear();
+    prisma.listaEspera.count.mockClear();
+    prisma.pago.findMany.mockClear();
+
+    const segundo = await service.getShopAnalytics('shop-1', '2026-10-01', '2026-10-31');
+
+    expect(segundo).toEqual(primero);
+    expect(prisma.reserva.findMany).not.toHaveBeenCalled();
+    expect(prisma.listaEspera.count).not.toHaveBeenCalled();
+    expect(prisma.pago.findMany).not.toHaveBeenCalled();
+  });
+
+  it('usa una clave distinta por rango de fechas', async () => {
+    prisma.reserva.findMany.mockResolvedValue([]);
+    prisma.listaEspera.count.mockResolvedValue(0);
+    prisma.pago.findMany.mockResolvedValue([]);
+
+    await service.getShopAnalytics('shop-1', '2026-10-01', '2026-10-07');
+    await service.getShopAnalytics('shop-1', '2026-10-01', '2026-10-31');
+
+    const claves = cache.set.mock.calls.map(([clave]: [string]) => clave);
+    expect(claves).toEqual([
+      'analytics:shop:shop-1:2026-10-01-2026-10-07',
+      'analytics:shop:shop-1:2026-10-01-2026-10-31',
+    ]);
+    expect(prisma.reserva.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('una caché caída no impide calcular: se degrada a Prisma', async () => {
+    cache.get.mockRejectedValueOnce(new Error('redis caído'));
+    cache.set.mockRejectedValueOnce(new Error('redis caído'));
+    prisma.reserva.findMany.mockResolvedValue([]);
+    prisma.listaEspera.count.mockResolvedValue(0);
+    prisma.pago.findMany.mockResolvedValue([]);
+
+    const result = await service.getShopAnalytics('shop-1', '2026-10-01', '2026-10-31');
+
+    expect(result.resumenCitas.total).toBe(0);
+    expect(prisma.reserva.findMany).toHaveBeenCalledTimes(1);
   });
 
   it('getShopsOverview: ADMIN_BARBERIA solo ve sus sedes vinculadas', async () => {
@@ -131,5 +211,54 @@ describe('AnalyticsService', () => {
     const user = { id: 'admin', roles: ['ADMINISTRADOR'], rolesDetallados: [] };
     const result = await service.getShopsOverview(user, '2026-10-01', '2026-10-31', true);
     expect(result.sedes.length).toBe(2);
+  });
+
+  it('getShopsOverview: el segundo llamado sale del caché y no repite las agregaciones', async () => {
+    prisma.usuarioRol = {
+      findMany: vi.fn().mockResolvedValue([{ barberiaId: 'shop-1' }]),
+    };
+    prisma.barberia = {
+      findMany: vi.fn().mockResolvedValue([{ id: 'shop-1', nombre: 'Sede 1', activa: true }]),
+    };
+    prisma.reserva.findMany.mockResolvedValue([{ estado: 'COMPLETADA', recordatorioEnviado: true }]);
+    prisma.pago.findMany.mockResolvedValue([{ monto: 500 }]);
+
+    const user = { id: 'u1', roles: ['ADMIN_BARBERIA'], rolesDetallados: [] };
+    const primero = await service.getShopsOverview(user, '2026-10-01', '2026-10-31', false);
+
+    expect(cache.set).toHaveBeenCalledWith(
+      'analytics:overview:u1:2026-10-01-2026-10-31',
+      expect.objectContaining({ sedes: expect.any(Array) }),
+      15 * 60 * 1000,
+    );
+
+    prisma.usuarioRol.findMany.mockClear();
+    prisma.barberia.findMany.mockClear();
+    prisma.reserva.findMany.mockClear();
+    prisma.pago.findMany.mockClear();
+
+    const segundo = await service.getShopsOverview(user, '2026-10-01', '2026-10-31', false);
+
+    expect(segundo).toEqual(primero);
+    expect(prisma.usuarioRol.findMany).not.toHaveBeenCalled();
+    expect(prisma.reserva.findMany).not.toHaveBeenCalled();
+  });
+
+  it('getShopsOverview: la clave incluye al usuario para no filtrar sedes ajenas', async () => {
+    prisma.usuarioRol = { findMany: vi.fn().mockResolvedValue([{ barberiaId: 'shop-1' }]) };
+    prisma.barberia = {
+      findMany: vi.fn().mockResolvedValue([{ id: 'shop-1', nombre: 'Sede 1', activa: true }]),
+    };
+    prisma.reserva.findMany.mockResolvedValue([]);
+    prisma.pago.findMany.mockResolvedValue([]);
+
+    await service.getShopsOverview({ id: 'u1', roles: [], rolesDetallados: [] }, '2026-10-01', '2026-10-31', false);
+    await service.getShopsOverview({ id: 'u2', roles: [], rolesDetallados: [] }, '2026-10-01', '2026-10-31', false);
+
+    const claves = cache.set.mock.calls.map(([clave]: [string]) => clave);
+    expect(claves).toEqual([
+      'analytics:overview:u1:2026-10-01-2026-10-31',
+      'analytics:overview:u2:2026-10-01-2026-10-31',
+    ]);
   });
 });
