@@ -4,10 +4,13 @@ process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '16';
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { WinstonModule } from 'nest-winston';
 import express from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module.js';
 import { PrismaExceptionFilter } from './shared/filters/prisma-exception.filter.js';
+import { opcionesLogger } from './shared/observability/logger.config.js';
+import { inicializarSentry } from './shared/observability/sentry.js';
 
 async function bootstrap() {
   const allowedEnvs = ['dev', 'staging', 'production'];
@@ -18,7 +21,18 @@ async function bootstrap() {
     process.exit(1);
   }
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Observabilidad · Sentry antes de construir la app: así también se capturan
+  // los fallos del arranque (conexión a la base, configuración inválida). Sin
+  // SENTRY_DSN no se inicializa y todo el pipeline de errores sigue igual.
+  await inicializarSentry();
+
+  // `bufferLogs` retiene lo que se emite durante el arranque (incluida la
+  // conexión de Prisma) hasta que el logger de Winston está en su sitio; sin él
+  // esas primeras líneas saldrían con el formato por defecto de Nest.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
+  app.useLogger(WinstonModule.createLogger(opcionesLogger()));
 
   // E1-10 · endurecimiento HTTP (punto 4 del backlog):
   // - `helmet()` añade las cabeceras de seguridad (X-Content-Type-Options,
