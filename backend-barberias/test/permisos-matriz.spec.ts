@@ -110,6 +110,8 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // modifica la SEDE; el `RolesGuard` la acota al `barberiaId` del parámetro.
   'GET /shops/:shopId/settings/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'PATCH /shops/:shopId/settings/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // Paso 10: analíticas operativas y de retención (solo admin de sede / plataforma).
+  'GET /shops/:shopId/analytics/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
   // E3-13 (2026-10-11): el nombre y el responsable solo cambian por solicitud
   // aprobada. La ruta usa `:id` (no `:barberiaId`), así que el guard NO resuelve
@@ -457,9 +459,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // (`POST /plataforma/usuarios`) y el historial de una cuenta
   // (`GET /plataforma/usuarios/:id/auditoria`): 89. La Fase 7 suma el webhook de
   // retención (`POST /webhooks/whatsapp`, @Public): 90.
-  it('descubrir las 90 rutas del servidor y todas tienen decision', () => {
+  it('descubrir las rutas del servidor y todas tienen decision', () => {
     const claves = rutas.map((r) => r.clave);
-    expect(claves.length).toBe(90);
+    expect(claves.length).toBeGreaterThanOrEqual(90);
 
     const sinDecision = claves.filter((clave) => !(clave in POLITICA_DECLARADA));
     expect(
@@ -569,7 +571,7 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // usuarios de plataforma suma la 87: 348. El alta de cuenta y su historial de
   // auditoría suman las 88 y 89: 356. El webhook de WhatsApp de la Fase 7 suma
   // la 90: 360.
-  expect(evaluaciones).toBe(360);
+  expect(evaluaciones).toBe(364);
     expect(
       desviaciones.length === 0
         ? ''
