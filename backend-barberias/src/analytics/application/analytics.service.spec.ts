@@ -60,9 +60,6 @@ describe('AnalyticsService', () => {
   });
 
   it('getShopsOverview: ADMIN_BARBERIA solo ve sus sedes vinculadas', async () => {
-    prisma.clienteBarberia = {
-      findMany: vi.fn().mockResolvedValue([]),
-    };
     prisma.usuarioRol = {
       findMany: vi.fn().mockResolvedValue([{ barberiaId: 'shop-1' }]),
     };
@@ -79,6 +76,47 @@ describe('AnalyticsService', () => {
     expect(result.sedes.length).toBe(1);
     expect(result.sedes[0].barberiaId).toBe('shop-1');
     expect(result.totalesGlobales.totalCitas).toBe(2);
+  });
+
+  it('getShopsOverview: BARBERO o CLIENTE de otra sede no filtra sus métricas', async () => {
+    // El usuario administra shop-1, pero solo es barbero en shop-2 (y cliente en
+    // ninguna): el overview no debe devolver ni procesar la sede ajena.
+    const vinculos = [
+      { barberiaId: 'shop-1', rol: { nombre: 'ADMIN_BARBERIA' } },
+      { barberiaId: 'shop-2', rol: { nombre: 'BARBERO' } },
+    ];
+    const sedes = [
+      { id: 'shop-1', nombre: 'Sede 1', activa: true },
+      { id: 'shop-2', nombre: 'Sede 2', activa: true },
+    ];
+
+    prisma.usuarioRol = {
+      findMany: vi.fn(async ({ where }: any) => {
+        expect(where.rol).toEqual({ nombre: 'ADMIN_BARBERIA' });
+        expect(where.barberiaId).toEqual({ not: null });
+        return vinculos
+          .filter((v) => v.rol.nombre === where.rol.nombre && v.barberiaId)
+          .map((v) => ({ barberiaId: v.barberiaId }));
+      }),
+    };
+    prisma.barberia = {
+      findMany: vi.fn(async ({ where }: any) =>
+        sedes.filter((s) => where?.id?.in?.includes(s.id)),
+      ),
+    };
+    prisma.reserva.findMany.mockResolvedValue([
+      { estado: 'COMPLETADA', recordatorioEnviado: true },
+    ]);
+    prisma.pago.findMany.mockResolvedValue([{ monto: 100 }]);
+
+    const user = { id: 'u-multi', roles: ['ADMIN_BARBERIA'], rolesDetallados: [] };
+    const result = await service.getShopsOverview(user, '2026-10-01', '2026-10-31', false);
+
+    expect(result.sedes.map((s) => s.barberiaId)).toEqual(['shop-1']);
+    expect(result.sedes[0].ingresos).toBe(100);
+    expect(prisma.barberia.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ['shop-1'] } } }),
+    );
   });
 
   it('getShopsOverview: ADMINISTRADOR global ve todas las sedes', async () => {
