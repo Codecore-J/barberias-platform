@@ -1,13 +1,9 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
- feature/frontend-analytics-dashboard
-import { AnalyticsService, ShopAnalyticsResponse } from '../../../core/services/analytics.service';
-
 import { Router } from '@angular/router';
 import { AnalyticsService, ShopAnalyticsResponse, ShopsOverviewResponse } from '../../../core/services/analytics.service';
 import { TenantService } from '../../../core/services/tenant.service';
- main
 
 @Component({
   selector: 'app-analytics-dashboard',
@@ -18,20 +14,12 @@ import { TenantService } from '../../../core/services/tenant.service';
 })
 export class AnalyticsDashboardComponent implements OnInit {
   data: ShopAnalyticsResponse | null = null;
- feature/frontend-analytics-dashboard
   overview: ShopsOverviewResponse | null = null;
- main
   loading = false;
   error: string | null = null;
 
   desde: string = '';
   hasta: string = '';
-
- feature/frontend-analytics-dashboard
-  constructor(private analyticsService: AnalyticsService) {}
-
-  ngOnInit(): void {
-    this.aplicarFiltroRapido('30');
 
   constructor(
     private analyticsService: AnalyticsService,
@@ -42,7 +30,6 @@ export class AnalyticsDashboardComponent implements OnInit {
   ngOnInit(): void {
     this.aplicarFiltroRapido('30');
     this.cargarOverview();
- main
   }
 
   aplicarFiltroRapido(dias: string): void {
@@ -61,6 +48,7 @@ export class AnalyticsDashboardComponent implements OnInit {
     this.desde = this.formatDate(desdeDate);
     this.hasta = this.formatDate(hastaDate);
     this.cargar();
+    this.cargarOverview();
   }
 
   cargar(): void {
@@ -74,6 +62,28 @@ export class AnalyticsDashboardComponent implements OnInit {
       error: (err) => {
         this.error = err?.error?.message || 'Error al cargar analíticas';
         this.loading = false;
+      },
+    });
+  }
+
+  cargarOverview(): void {
+    this.analyticsService.getShopsOverview(this.desde || undefined, this.hasta || undefined).subscribe({
+      next: (res) => {
+        this.overview = res;
+      },
+      error: () => {
+        this.overview = null;
+      },
+    });
+  }
+
+  irASede(barberiaId: string): void {
+    this.tenantService.seleccionarBarberia(barberiaId).subscribe({
+      next: () => {
+        this.router.navigate(['/admin/agenda']);
+      },
+      error: () => {
+        this.router.navigate(['/admin/agenda']);
       },
     });
   }

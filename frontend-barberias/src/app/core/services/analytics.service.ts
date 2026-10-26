@@ -38,8 +38,6 @@ export interface ShopAnalyticsResponse {
   rendimientoPorBarbero: RendimientoPorBarbero[];
 }
 
- feature/frontend-analytics-dashboard
-
 export interface SedeOverview {
   barberiaId: string;
   nombre: string;
@@ -62,7 +60,6 @@ export interface ShopsOverviewResponse {
   sedes: SedeOverview[];
 }
 
- main
 @Injectable({
   providedIn: 'root',
 })
@@ -83,8 +80,6 @@ export class AnalyticsService {
     }
     return this.http.get<ShopAnalyticsResponse>(`${API_URL}/shops/${shopId}/analytics`, { params });
   }
- feature/frontend-analytics-dashboard
-
 
   getShopsOverview(desde?: string, hasta?: string): Observable<ShopsOverviewResponse> {
     let params = new HttpParams();
@@ -96,5 +91,4 @@ export class AnalyticsService {
     }
     return this.http.get<ShopsOverviewResponse>(`${API_URL}/shops/overview`, { params });
   }
- main
 }
