@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { ROL_ADMIN_BARBERIA } from '../../iam/domain/roles.js';
 import { construirCsvAnaliticas } from '../domain/analytics-csv.js';
 
 @Injectable()
