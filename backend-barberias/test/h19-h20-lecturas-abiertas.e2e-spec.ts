@@ -5,6 +5,7 @@ import { Reflector } from '@nestjs/core';
 import request from 'supertest';
 import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module.js';
+import { AuthService } from '../src/iam/application/auth.service.js';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
 import { PrismaExceptionFilter } from '../src/shared/filters/prisma-exception.filter.js';
 
@@ -153,12 +154,16 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
       ],
     });
 
-    const login = async (correo: string) => {
-      const res = await request(app.getHttpServer())
-        .post('/api/v1/auth/login')
-        .send({ correo, password: 'Password1!' });
-      expect([200, 201], `login de ${correo}`).toContain(res.status);
-      return res.body.accessToken as string;
+    // Seis cuentas necesitan token, pero el endpoint de login admite 5 intentos
+    // por minuto por IP (SEC-02) y el sexto recibiría 429. Este ensayo prueba el
+    // aislamiento de tenants entre barberías, NO el rate limit — que tiene su
+    // propio archivo en throttler-rate-limit.e2e-spec.ts — así que los tokens se
+    // piden al AuthService directamente: misma validación de credenciales, sin
+    // pasar por el guard HTTP que aquí solo estorbaría.
+    const authService = app.get(AuthService);
+    const login = async (correo: string): Promise<string> => {
+      const { accessToken } = await authService.login({ correo, password: 'Password1!' });
+      return accessToken;
     };
 
     tokenAdminA = await login('admin.a.h19@test.com');
