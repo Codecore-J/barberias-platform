@@ -137,4 +137,20 @@ describe('ResendEmailProvider (Fase 7)', () => {
       new ResendEmailProvider({ apiKey: 're_abc', from: 'x@y.com' }).enviar(MENSAJE),
     ).rejects.toThrow(/espera/);
   });
+
+  it('formatea el correo de cupo liberado con cabecera azul', async () => {
+    fetchMock.mockResolvedValue(respuesta(true));
+
+    await new ResendEmailProvider({ apiKey: 're_abc', from: 'x@y.com' }).enviar({
+      destinatario: 'ana@test.com',
+      asunto: '¡Se liberó un turno en Sede Centro!',
+      cuerpo: '¡Hay un hueco disponible para ti en Sede Centro el 26/10/2026 de 12:00 a 13:00!',
+      tipo: 'lista_espera.cupo_disponible',
+    });
+
+    const html = cuerpoEnviado().html ?? '';
+    expect(html).toContain('¡Se liberó un turno en Sede Centro!');
+    expect(html).toContain('#4f46e5');
+    expect(html).toContain('26/10/2026');
+  });
 });

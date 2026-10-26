@@ -7,6 +7,10 @@ import {
   type EventoReserva,
   type TipoEventoReserva,
 } from '../domain/eventos-reserva.js';
+import {
+  EVENTOS_LISTA_ESPERA,
+  type EventoCupoLiberado,
+} from '../domain/eventos-lista-espera.js';
 
 function evento(
   tipo: TipoEventoReserva,
@@ -27,6 +31,28 @@ function evento(
     estado: 'CONFIRMADA',
     ...extra,
   };
+}
+
+function eventoCupoLiberado(
+  extra: Partial<EventoCupoLiberado> = {},
+): EventoCupoLiberado {
+  return {
+    tipo: EVENTOS_LISTA_ESPERA.CUPO_DISPONIBLE,
+    suscripcionId: 'espera-1',
+    usuarioId: 'cliente-1',
+    nombreCliente: 'Ana Pérez',
+    correoCliente: 'ana@test.com',
+    telefonoCliente: '+18095550000',
+    barberiaId: 'barberia-1',
+    nombreBarberia: 'Sede Centro',
+    fecha: '2026-10-26',
+    inicio: '2026-10-26T12:00:00.000Z',
+    fin: '2026-10-26T13:00:00.000Z',
+    horaInicio: '12:00',
+    horaFin: '13:00',
+    reservaId: 'reserva-origen',
+    ...extra,
+  } as EventoCupoLiberado;
 }
 
 describe('NotificacionesListener (Fase 7)', () => {
@@ -129,5 +155,20 @@ describe('NotificacionesListener (Fase 7)', () => {
 
     expect(mockEmail.enviar).not.toHaveBeenCalled();
     expect(mockWhatsApp.enviar).not.toHaveBeenCalled();
+  });
+
+  it('cupo liberado en lista de espera avisa por correo y WhatsApp', async () => {
+    await listener.alOcurrirCupoLiberadoListaEspera(eventoCupoLiberado());
+
+    expect(mockEmail.enviar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        destinatario: 'ana@test.com',
+        asunto: expect.stringContaining('¡Se liberó un turno'),
+        cuerpo: expect.stringContaining('Sede Centro'),
+      }),
+    );
+    expect(mockWhatsApp.enviar).toHaveBeenCalledTimes(1);
+    expect(mockWhatsApp.enviar.mock.calls[0][0].telefono).toBe('+18095550000');
+    expect(mockWhatsApp.enviar.mock.calls[0][0].texto).toContain('¡Se liberó un turno en Sede Centro');
   });
 });

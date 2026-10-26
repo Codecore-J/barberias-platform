@@ -37,6 +37,7 @@ const PRESENTACION: Record<string, { color: string; etiqueta: string }> = {
   'reserva.creada': { color: '#1d4ed8', etiqueta: 'Solicitud recibida' },
   'reserva.cancelada': { color: '#b91c1c', etiqueta: 'Cita cancelada' },
   'reserva.inasistencia': { color: '#6b7280', etiqueta: 'Inasistencia registrada' },
+  'lista_espera.cupo_disponible': { color: '#4f46e5', etiqueta: '¡Se liberó un turno!' },
 };
 
 /**

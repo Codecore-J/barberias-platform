@@ -10,6 +10,10 @@ import {
   type EventoReserva,
 } from '../domain/eventos-reserva.js';
 import {
+  EVENTOS_LISTA_ESPERA,
+  type EventoCupoDisponible,
+} from '../domain/eventos-lista-espera.js';
+import {
   componerMensaje,
   type CanalNotificacion,
   type MensajeNotificacion,
@@ -56,17 +60,58 @@ export class NotificacionesListener {
     }
 
     if (mensaje.canales.includes('EMAIL')) {
-      await this.entregar('EMAIL', evento, () =>
+      await this.entregar('EMAIL', evento as any, () =>
         this.email.enviar({
-          destinatario: evento.correoCliente,
+          destinatario: (evento as EventoReserva).correoCliente,
           asunto: mensaje.asunto,
           cuerpo: mensaje.cuerpo,
           // El adaptador de Resend pinta la plantilla según el hecho y la
           // tarjeta de la cita; el Mock solo lo registra.
+          tipo: (evento as EventoReserva).tipo,
+          cita: {
+            sede: (evento as EventoReserva).nombreBarberia,
+            fecha: (evento as EventoReserva).fechaCita,
+            hora: (evento as EventoReserva).horaInicio,
+          },
+        }),
+      );
+    }
+
+    if (mensaje.canales.includes('WHATSAPP')) {
+      await this.entregar('WHATSAPP', evento as any, () =>
+        this.whatsapp.enviar({
+          telefono: (evento as EventoReserva).telefonoCliente,
+          texto: mensaje.cuerpo,
+        }),
+      );
+    }
+  }
+
+  @OnEvent(EVENTOS_LISTA_ESPERA.CUPO_DISPONIBLE)
+  async alOcurrirCupoDisponible(evento: EventoCupoDisponible): Promise<void> {
+    let mensaje: MensajeNotificacion;
+
+    try {
+      mensaje = componerMensaje(evento);
+    } catch (error) {
+      this.logger.warn(
+        `Evento de lista de espera sin plantilla (${String(evento?.tipo)}): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return;
+    }
+
+    if (mensaje.canales.includes('EMAIL')) {
+      await this.entregar('EMAIL', evento as any, () =>
+        this.email.enviar({
+          destinatario: evento.correoCliente,
+          asunto: mensaje.asunto,
+          cuerpo: mensaje.cuerpo,
           tipo: evento.tipo,
           cita: {
             sede: evento.nombreBarberia,
-            fecha: evento.fechaCita,
+            fecha: evento.fecha,
             hora: evento.horaInicio,
           },
         }),
@@ -74,7 +119,7 @@ export class NotificacionesListener {
     }
 
     if (mensaje.canales.includes('WHATSAPP')) {
-      await this.entregar('WHATSAPP', evento, () =>
+      await this.entregar('WHATSAPP', evento as any, () =>
         this.whatsapp.enviar({
           telefono: evento.telefonoCliente,
           texto: mensaje.cuerpo,
@@ -83,16 +128,22 @@ export class NotificacionesListener {
     }
   }
 
+  async alOcurrirCupoLiberadoListaEspera(evento: EventoCupoDisponible): Promise<void> {
+    return this.alOcurrirCupoDisponible(evento);
+  }
+
   private async entregar(
     canal: CanalNotificacion,
-    evento: EventoReserva,
+    evento: any,
     envio: () => Promise<void>,
   ): Promise<void> {
     try {
       await envio();
     } catch (error) {
+      const identificador =
+        evento?.reservaId || evento?.suscripcionId || evento?.usuarioId || '';
       this.logger.warn(
-        `No se pudo entregar ${evento.tipo} de la reserva ${evento.reservaId} por ${canal}: ${
+        `No se pudo entregar ${evento?.tipo} ${identificador ? 'de ' + identificador : ''} por ${canal}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
