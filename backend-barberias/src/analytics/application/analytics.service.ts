@@ -179,4 +179,152 @@ export class AnalyticsService {
     nd.setDate(nd.getDate() + days);
     return nd;
   }
+
+  async getShopsOverview(user: any, desde?: string, hasta?: string, esGlobal = false) {
+    const hoy = new Date();
+    const hastaDate = hasta ? this.parseDate(hasta) : new Date(hoy);
+    const desdeDate = desde ? this.parseDate(desde) : this.addDays(new Date(hastaDate), -29);
+
+    const inicio = new Date(desdeDate);
+    inicio.setHours(0, 0, 0, 0);
+    const fin = new Date(hastaDate);
+    fin.setHours(23, 59, 59, 999);
+
+    if (inicio > fin) {
+      throw new BadRequestException('El rango de fechas es inválido');
+    }
+
+    const diffDays = Math.floor((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    if (diffDays > 366) {
+      throw new BadRequestException('El rango no puede superar los 366 días');
+    }
+
+    let barberiaIds: string[] = [];
+    if (esGlobal) {
+      const todas = await this.prisma.barberia.findMany({ select: { id: true } });
+      barberiaIds = todas.map((b) => b.id);
+    } else {
+      // Try ClienteBarberia for clients
+      const vinculosCliente = await this.prisma.clienteBarberia.findMany({
+        where: {
+          usuarioId: user.id,
+          estadoVinculacion: 'ACTIVO',
+        },
+        select: { barberiaId: true },
+      });
+      barberiaIds = vinculosCliente.map((v: any) => v.barberiaId);
+      // Also check UsuarioRol for staff/admin with barberiaId
+      const vinculosRol = await this.prisma.usuarioRol.findMany({
+        where: {
+          usuarioId: user.id,
+        },
+        select: { barberiaId: true },
+      });
+      for (const vr of vinculosRol) {
+        if (vr.barberiaId && !barberiaIds.includes(vr.barberiaId)) {
+          barberiaIds.push(vr.barberiaId);
+        }
+      }
+      // Also check rolesDetallados for ADMIN_BARBERIA with barberiaId
+      if (user?.rolesDetallados) {
+        for (const rol of user.rolesDetallados) {
+          if (rol.nombre === 'ADMIN_BARBERIA' && rol.barberiaId && !barberiaIds.includes(rol.barberiaId)) {
+            barberiaIds.push(rol.barberiaId);
+          }
+        }
+      }
+    }
+
+    const barberias = await this.prisma.barberia.findMany({
+      where: { id: { in: barberiaIds } },
+      select: { id: true, nombre: true, activa: true },
+    });
+
+    const sedes = [];
+    for (const barberia of barberias) {
+      const reservas = await this.prisma.reserva.findMany({
+        where: {
+          barberiaId: barberia.id,
+          fechaCita: { gte: inicio, lte: fin },
+        },
+        select: { estado: true, recordatorioEnviado: true },
+      });
+
+      const totalCitas = reservas.length;
+      const citasCompletadas = reservas.filter((r) => r.estado === 'COMPLETADA' || r.estado === 'ATENDIDA').length;
+      const inasistencias = reservas.filter((r) => r.estado === 'INASISTENCIA' || r.estado === 'NO_PRESENTADO').length;
+      const cerradas = reservas.filter((r) => ['COMPLETADA', 'ATENDIDA', 'CANCELADA', 'INASISTENCIA', 'NO_PRESENTADO', 'RECHAZADA'].includes(r.estado)).length;
+      const tasaInasistencia = cerradas > 0 ? Number(((inasistencias / cerradas) * 100).toFixed(2)) : 0;
+      const recordatoriosEnviados = reservas.filter((r) => r.recordatorioEnviado).length;
+
+      const pagos = await this.prisma.pago.findMany({
+        where: {
+          reserva: { barberiaId: barberia.id },
+          estadoPago: { not: 'ANULADO' },
+          registradoAt: { gte: inicio, lte: fin },
+        },
+        select: { monto: true },
+      });
+      const ingresos = pagos.reduce((sum, p) => sum + Number(p.monto || 0), 0);
+
+      sedes.push({
+        barberiaId: barberia.id,
+        nombre: barberia.nombre,
+        activa: barberia.activa,
+        ingresos: Number(ingresos.toFixed(2)),
+        totalCitas,
+        citasCompletadas,
+        tasaInasistencia,
+        recordatoriosEnviados,
+      });
+    }
+
+    const ingresosConsolidados = sedes.reduce((sum, s) => sum + s.ingresos, 0);
+    const totalCitasGlobal = sedes.reduce((sum, s) => sum + s.totalCitas, 0);
+    const inasistenciasGlobal = sedes.reduce((sum, s) => {
+      // approximate from tasa * cerradas not stored; better recompute
+      return sum;
+    }, 0);
+    // compute properly
+    let totalInasistencias = 0;
+    let totalCerradas = 0;
+    for (const barberia of barberias) {
+      const reservas = await this.prisma.reserva.findMany({
+        where: {
+          barberiaId: barberia.id,
+          fechaCita: { gte: inicio, lte: fin },
+        },
+        select: { estado: true },
+      });
+      totalInasistencias += reservas.filter((r) => r.estado === 'INASISTENCIA' || r.estado === 'NO_PRESENTADO').length;
+      totalCerradas += reservas.filter((r) => ['COMPLETADA', 'ATENDIDA', 'CANCELADA', 'INASISTENCIA', 'NO_PRESENTADO', 'RECHAZADA'].includes(r.estado)).length;
+    }
+    const tasaGlobalInasistencia = totalCerradas > 0 ? Number(((totalInasistencias / totalCerradas) * 100).toFixed(2)) : 0;
+    let totalCanceladas = 0;
+    for (const barberia of barberias) {
+      const reservas = await this.prisma.reserva.findMany({
+        where: {
+          barberiaId: barberia.id,
+          fechaCita: { gte: inicio, lte: fin },
+        },
+        select: { estado: true },
+      });
+      totalCanceladas += reservas.filter((r) => r.estado === 'CANCELADA').length;
+    }
+    const tasaGlobalCancelacion = totalCerradas > 0 ? Number(((totalCanceladas / totalCerradas) * 100).toFixed(2)) : 0;
+
+    return {
+      periodo: {
+        desde: inicio.toISOString().split('T')[0],
+        hasta: fin.toISOString().split('T')[0],
+      },
+      totalesGlobales: {
+        ingresosConsolidados: Number(ingresosConsolidados.toFixed(2)),
+        totalCitas: totalCitasGlobal,
+        tasaGlobalInasistencia,
+        tasaGlobalCancelacion,
+      },
+      sedes,
+    };
+  }
 }
