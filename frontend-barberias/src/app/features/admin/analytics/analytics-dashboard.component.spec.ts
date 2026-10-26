@@ -4,13 +4,17 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
 import { TenantService } from '../../../core/services/tenant.service';
 import { Router } from '@angular/router';
 import { of } from 'rxjs';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 
 describe('AnalyticsDashboardComponent', () => {
   let component: AnalyticsDashboardComponent;
   let fixture: ComponentFixture<AnalyticsDashboardComponent>;
-  let analyticsServiceSpy: any;
-  let tenantServiceSpy: any;
-  let routerSpy: any;
+  let analyticsServiceSpy: {
+    getAnalytics: (desde?: string, hasta?: string) => any;
+    getShopsOverview: (desde?: string, hasta?: string) => any;
+  };
+  let tenantServiceSpy: { barberiasVinculadas: () => any[]; seleccionarBarberia: (id: string) => any };
+  let routerSpy: { navigate: (commands: any[]) => Promise<boolean> };
 
   const mockData = {
     periodo: { desde: '2026-10-01', hasta: '2026-10-31' },
@@ -34,15 +38,15 @@ describe('AnalyticsDashboardComponent', () => {
 
   beforeEach(async () => {
     analyticsServiceSpy = {
-      getAnalytics: () => of(mockData),
-      getShopsOverview: () => of(mockOverview),
+      getAnalytics: vi.fn(() => of(mockData)),
+      getShopsOverview: vi.fn(() => of(mockOverview)),
     };
     tenantServiceSpy = {
-      barberiasVinculadas: () => [],
-      seleccionarBarberia: () => of({}),
+      barberiasVinculadas: vi.fn(() => []),
+      seleccionarBarberia: vi.fn(() => of({})),
     };
     routerSpy = {
-      navigate: () => Promise.resolve(true),
+      navigate: vi.fn(() => Promise.resolve(true)),
     };
 
     await TestBed.configureTestingModule({
@@ -64,6 +68,7 @@ describe('AnalyticsDashboardComponent', () => {
   });
 
   it('carga analíticas al inicializar', () => {
+    expect(analyticsServiceSpy.getAnalytics).toHaveBeenCalledTimes(1);
     expect(component.data).toEqual(mockData);
   });
 
