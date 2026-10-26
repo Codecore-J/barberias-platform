@@ -8,7 +8,62 @@
     <div class="date-filters">
       <label>Desde: <input type="date" [(ngModel)]="desde" /></label>
       <label>Hasta: <input type="date" [(ngModel)]="hasta" /></label>
+ feature/frontend-analytics-dashboard
       <button (click)="cargar()">Aplicar</button>
+
+      <button (click)="cargar(); cargarOverview()">Aplicar</button>
+    </div>
+  </div>
+
+  <div *ngIf="overview && overview.sedes && overview.sedes.length > 1" class="multisede-section">
+    <h2>Resumen Multisede</h2>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <h3>Ingresos consolidados</h3>
+        <p class="kpi-value">${{ overview.totalesGlobales.ingresosConsolidados | number:'1.2-2' }}</p>
+      </div>
+      <div class="kpi-card">
+        <h3>Total de citas</h3>
+        <p class="kpi-value">{{ overview.totalesGlobales.totalCitas }}</p>
+      </div>
+      <div class="kpi-card">
+        <h3>Tasa global de inasistencia</h3>
+        <p class="kpi-value">{{ overview.totalesGlobales.tasaGlobalInasistencia }}%</p>
+      </div>
+      <div class="kpi-card">
+        <h3>Tasa global de cancelación</h3>
+        <p class="kpi-value">{{ overview.totalesGlobales.tasaGlobalCancelacion }}%</p>
+      </div>
+    </div>
+    <div class="section">
+      <h3>Comparativa por sucursal</h3>
+      <table class="barbero-table">
+        <thead>
+          <tr>
+            <th>Sede</th>
+            <th>Activa</th>
+            <th>Ingresos</th>
+            <th>Total Citas</th>
+            <th>Citas Completadas</th>
+            <th>Tasa Inasistencia</th>
+            <th>Recordatorios Enviados</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let s of overview.sedes">
+            <td>{{ s.nombre }}</td>
+            <td>{{ s.activa ? 'Sí' : 'No' }}</td>
+            <td>${{ s.ingresos | number:'1.2-2' }}</td>
+            <td>{{ s.totalCitas }}</td>
+            <td>{{ s.citasCompletadas }}</td>
+            <td>{{ s.tasaInasistencia }}%</td>
+            <td>{{ s.recordatoriosEnviados }}</td>
+            <td><button (click)="irASede(s.barberiaId)">Ir a esta sede</button></td>
+          </tr>
+        </tbody>
+      </table>
+ main
     </div>
   </div>
 

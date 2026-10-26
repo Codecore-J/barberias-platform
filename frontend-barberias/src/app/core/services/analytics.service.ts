@@ -38,6 +38,31 @@ export interface ShopAnalyticsResponse {
   rendimientoPorBarbero: RendimientoPorBarbero[];
 }
 
+ feature/frontend-analytics-dashboard
+
+export interface SedeOverview {
+  barberiaId: string;
+  nombre: string;
+  activa: boolean;
+  ingresos: number;
+  totalCitas: number;
+  citasCompletadas: number;
+  tasaInasistencia: number;
+  recordatoriosEnviados: number;
+}
+
+export interface ShopsOverviewResponse {
+  periodo: { desde: string; hasta: string };
+  totalesGlobales: {
+    ingresosConsolidados: number;
+    totalCitas: number;
+    tasaGlobalInasistencia: number;
+    tasaGlobalCancelacion: number;
+  };
+  sedes: SedeOverview[];
+}
+
+ main
 @Injectable({
   providedIn: 'root',
 })
@@ -58,4 +83,18 @@ export class AnalyticsService {
     }
     return this.http.get<ShopAnalyticsResponse>(`${API_URL}/shops/${shopId}/analytics`, { params });
   }
+ feature/frontend-analytics-dashboard
+
+
+  getShopsOverview(desde?: string, hasta?: string): Observable<ShopsOverviewResponse> {
+    let params = new HttpParams();
+    if (desde) {
+      params = params.set('desde', desde);
+    }
+    if (hasta) {
+      params = params.set('hasta', hasta);
+    }
+    return this.http.get<ShopsOverviewResponse>(`${API_URL}/shops/overview`, { params });
+  }
+ main
 }

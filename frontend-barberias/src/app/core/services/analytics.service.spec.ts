@@ -1,7 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+ feature/frontend-analytics-dashboard
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+
+ main
 import { AnalyticsService } from './analytics.service';
 import { TenantService } from './tenant.service';
 import { API_URL } from '../constants/api.constants';
@@ -9,11 +12,19 @@ import { API_URL } from '../constants/api.constants';
 describe('AnalyticsService', () => {
   let service: AnalyticsService;
   let httpMock: HttpTestingController;
+ feature/frontend-analytics-dashboard
   let tenantServiceSpy: { barberiaActivaId: () => string | null };
 
   beforeEach(() => {
     tenantServiceSpy = {
       barberiaActivaId: vi.fn(() => 'shop-123'),
+
+  let tenantServiceSpy: any;
+
+  beforeEach(() => {
+    tenantServiceSpy = {
+      barberiaActivaId: () => 'shop-123',
+ main
     };
 
     TestBed.configureTestingModule({
@@ -46,6 +57,8 @@ describe('AnalyticsService', () => {
         r.params.get('hasta') === '2026-10-31',
     );
     expect(tenantServiceSpy.barberiaActivaId).toHaveBeenCalled();
+
+ main
     req.flush({
       periodo: { desde: '2026-10-01', hasta: '2026-10-31' },
       resumenCitas: { total: 10, porEstado: { COMPLETADA: 8 } },

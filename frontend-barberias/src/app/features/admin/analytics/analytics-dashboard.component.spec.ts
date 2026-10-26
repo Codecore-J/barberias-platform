@@ -1,13 +1,27 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+ feature/frontend-analytics-dashboard
 import { of } from 'rxjs';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { AnalyticsDashboardComponent } from './analytics-dashboard.component';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 
+import { AnalyticsDashboardComponent } from './analytics-dashboard.component';
+import { AnalyticsService } from '../../../core/services/analytics.service';
+import { TenantService } from '../../../core/services/tenant.service';
+import { Router } from '@angular/router';
+import { of } from 'rxjs';
+ main
+
 describe('AnalyticsDashboardComponent', () => {
   let component: AnalyticsDashboardComponent;
   let fixture: ComponentFixture<AnalyticsDashboardComponent>;
+ feature/frontend-analytics-dashboard
   let analyticsServiceSpy: { getAnalytics: (desde?: string, hasta?: string) => any };
+
+  let analyticsServiceSpy: any;
+  let tenantServiceSpy: any;
+  let routerSpy: any;
+ main
 
   const mockData = {
     periodo: { desde: '2026-10-01', hasta: '2026-10-31' },
@@ -20,14 +34,45 @@ describe('AnalyticsDashboardComponent', () => {
     ],
   };
 
+ feature/frontend-analytics-dashboard
   beforeEach(async () => {
     analyticsServiceSpy = {
       getAnalytics: vi.fn(() => of(mockData)),
+
+  const mockOverview = {
+    periodo: { desde: '2026-10-01', hasta: '2026-10-31' },
+    totalesGlobales: { ingresosConsolidados: 5000, totalCitas: 20, tasaGlobalInasistencia: 10, tasaGlobalCancelacion: 15 },
+    sedes: [
+      { barberiaId: 's1', nombre: 'Sede Norte', activa: true, ingresos: 2500, totalCitas: 10, citasCompletadas: 8, tasaInasistencia: 10, recordatoriosEnviados: 5 },
+      { barberiaId: 's2', nombre: 'Sede Sur', activa: true, ingresos: 2500, totalCitas: 10, citasCompletadas: 7, tasaInasistencia: 10, recordatoriosEnviados: 3 },
+    ],
+  };
+
+  beforeEach(async () => {
+    analyticsServiceSpy = {
+      getAnalytics: () => of(mockData),
+      getShopsOverview: () => of(mockOverview),
+    };
+    tenantServiceSpy = {
+      barberiasVinculadas: () => [],
+      seleccionarBarberia: () => of({}),
+    };
+    routerSpy = {
+      navigate: () => Promise.resolve(true),
+ main
     };
 
     await TestBed.configureTestingModule({
       imports: [AnalyticsDashboardComponent],
+ feature/frontend-analytics-dashboard
       providers: [{ provide: AnalyticsService, useValue: analyticsServiceSpy }],
+
+      providers: [
+        { provide: AnalyticsService, useValue: analyticsServiceSpy },
+        { provide: TenantService, useValue: tenantServiceSpy },
+        { provide: Router, useValue: routerSpy },
+      ],
+ main
     }).compileComponents();
 
     fixture = TestBed.createComponent(AnalyticsDashboardComponent);
@@ -40,7 +85,10 @@ describe('AnalyticsDashboardComponent', () => {
   });
 
   it('carga analíticas al inicializar', () => {
+ feature/frontend-analytics-dashboard
     expect(analyticsServiceSpy.getAnalytics).toHaveBeenCalledTimes(1);
+
+  } main
     expect(component.data).toEqual(mockData);
   });
 
@@ -55,4 +103,15 @@ describe('AnalyticsDashboardComponent', () => {
     expect(compiled.textContent).toContain('Carlos');
     expect(compiled.textContent).toContain('Luis');
   });
+ feature/frontend-analytics-dashboard
+
+
+  it('muestra resumen multisede cuando hay más de una sede', () => {
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('Resumen Multisede');
+    expect(compiled.textContent).toContain('Sede Norte');
+    expect(compiled.textContent).toContain('Sede Sur');
+    expect(compiled.textContent).toContain('Ir a esta sede');
+  });
+ main
 });
