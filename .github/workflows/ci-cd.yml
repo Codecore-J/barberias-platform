@@ -1,0 +1,204 @@
+# Pipeline CI/CD (Paso 18).
+#
+# Diferencia con ci.yml: aquí las imágenes de Docker se PUBLICAN en ghcr.io
+# tras validar, y los servicios (Postgres/Redis) son efímeros del propio job
+# en lugar de salir de docker-compose.yml.
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+# contents: leer el repo; packages: escribir en ghcr.io con el token nativo.
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # ── Job 1a · Validación · linting (paralelo con las suites) ────────────────
+  validacion-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # El lint es type-aware: necesita el cliente de Prisma para resolver los
+      # tipos que importa PrismaService.
+      - name: Generate Prisma Client
+        working-directory: ./backend-barberias
+        run: npx prisma generate
+
+      - name: Lint (Backend)
+        working-directory: ./backend-barberias
+        run: npm run lint
+
+      - name: Lint (Frontend)
+        working-directory: ./frontend-barberias
+        run: npm run lint
+
+  # ── Job 1b · Validación · suites unitarias y E2E (paralelo con el lint) ────
+  validacion-pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    # Servicios efímeros del job: mueren con él. Credenciales DUMMY locales,
+    # nunca valores reales.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: barberias_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barberias_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      APP_ENV: dev
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:password@localhost:5432/barberias_test
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: test_secret_key_for_ci_pipeline
+      FRONTEND_URL: http://localhost:4200
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        working-directory: ./backend-barberias
+        run: npx prisma generate
+
+      # Base de datos efímera: esquema listo antes de cualquier suite.
+      - name: Apply Prisma Migrations
+        working-directory: ./backend-barberias
+        run: npx prisma migrate deploy
+
+      - name: Seed Roles and Permissions
+        working-directory: ./backend-barberias
+        run: npm run seed
+
+      - name: Unit Tests (Backend)
+        working-directory: ./backend-barberias
+        run: npm run test
+
+      # Vitest separa `*.spec.ts` (unit) de `*.e2e-spec.ts`: estos corren aquí,
+      # con su propio config. APP_ENV=dev es obligatorio (guardia anti datos
+      # reales de test/setup.e2e.ts).
+      - name: E2E Tests (Backend)
+        working-directory: ./backend-barberias
+        run: npm run test:e2e
+
+      - name: Unit Tests (Frontend)
+        working-directory: ./frontend-barberias
+        run: npm test -- --watch=false
+
+      - name: Build Backend
+        working-directory: ./backend-barberias
+        run: npm run build
+
+      - name: Build Frontend
+        working-directory: ./frontend-barberias
+        run: npm run build
+
+  # ── Job 2 · Build & Push de las imágenes ───────────────────────────────────
+  build-push:
+    needs: [validacion-lint, validacion-pruebas]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # En pull requests solo se valida: las imágenes se publican al llegar a main.
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # metadata-action normaliza a minúsculas (ghcr.io exige nombres en
+      # minúsculas aunque el propietario sea Codecore-J) y etiqueta con :latest
+      # y el sha del commit.
+      - name: Backend image metadata
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/backend-barberias
+          tags: |
+            type=raw,value=latest
+            type=sha
+
+      - name: Frontend image metadata
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/frontend-barberias
+          tags: |
+            type=raw,value=latest
+            type=sha
+
+      # El contexto es la raíz del monorepo (npm workspaces), igual que en local.
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend-barberias/Dockerfile
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: frontend-barberias/Dockerfile
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

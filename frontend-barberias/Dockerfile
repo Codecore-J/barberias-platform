@@ -31,6 +31,12 @@ FROM nginx:alpine AS production
 COPY frontend-barberias/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/frontend-barberias/dist/frontend-barberias/browser /usr/share/nginx/html
 
+# Runtime config (Paso 18): al arrancar, escribe /assets/env.js con la API_URL
+# del contenedor y lanza nginx. La imagen, por tanto, NO lleva la URL de la API
+# compilada: el mismo artefacto sirve a cualquier entorno.
+COPY frontend-barberias/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/entrypoint.sh"]
