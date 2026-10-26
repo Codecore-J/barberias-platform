@@ -43,10 +43,15 @@ export class AuthController {
 
   /**
    * Autenticación de un usuario con credenciales (correo y contraseña).
-   * Rate Limit (SEC-02): Máximo 10 intentos de login por minuto por IP para mitigar fuerza bruta.
+   *
+   * Rate Limit (SEC-02): máximo 5 intentos de login por minuto por IP, la mitad
+   * del límite por defecto. Un humano que teclea mal su contraseña tres veces
+   * no se ve afectado; un ataque de fuerza bruta se queda sin presupuesto al
+   * quinto intento, antes de poder probar siquiera las 10 000 contraseñas más
+   * comunes de un diccionario.
    */
   @Public()
-  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(

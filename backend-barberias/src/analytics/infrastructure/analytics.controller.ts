@@ -9,6 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { AnalyticsService } from '../application/analytics.service.js';
 import { AnalyticsQueryDto } from '../dto/analytics-query.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
@@ -41,6 +42,11 @@ export class AnalyticsController {
    * descargue el balance ajeno pasando un `shopId` que no es el suyo.
    */
   @Get('export')
+  // Rate limiting (SEC-02): 10 descargas por minuto. La exportación NO usa el
+  // caché de analíticas (serializa a CSV y abre el flujo de respuesta), así que
+  // una ráfaga contra esta ruta es una lectura completa de reservas y pagos por
+  // petición: es el DoS más barato que existe y el más difícil de detectar.
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async exportCsv(
     @Param('shopId', ParseUUIDPipe) shopId: string,
     @Query() query: AnalyticsQueryDto,

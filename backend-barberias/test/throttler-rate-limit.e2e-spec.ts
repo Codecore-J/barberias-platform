@@ -25,25 +25,25 @@ describe('Rate Limiting / Anti-Brute-Force (SEC-02)', () => {
     await app.close();
   });
 
-  it('debe permitir hasta 10 intentos de login y bloquear el 11vo con HTTP 429 y cabecera Retry-After', async () => {
+  it('debe permitir hasta 5 intentos de login y bloquear el 6to con HTTP 429 y cabecera Retry-After', async () => {
     const loginPayload = {
       correo: 'bruteforce.test@example.com',
       password: 'WrongPassword123!',
     };
 
-    // Realizar 10 peticiones consecutivas (permitidas bajo el rate limit de login)
-    for (let i = 1; i <= 10; i++) {
+    // Realizar 5 peticiones consecutivas (permitidas bajo el rate limit de login)
+    for (let i = 1; i <= 5; i++) {
       const res = await request(app.getHttpServer())
         .post('/api/v1/auth/login')
         .send(loginPayload);
 
       // Debería responder 401 (Credenciales inválidas), pero NO 429 todavía
       expect(res.status).toBe(401);
-      expect(res.headers['x-ratelimit-limit']).toBe('10');
-      expect(Number(res.headers['x-ratelimit-remaining'])).toBe(10 - i);
+      expect(res.headers['x-ratelimit-limit']).toBe('5');
+      expect(Number(res.headers['x-ratelimit-remaining'])).toBe(5 - i);
     }
 
-    // El 11vo intento debe ser bloqueado inmediatamente por ThrottlerGuard con HTTP 429
+    // El 6to intento debe ser bloqueado inmediatamente por ThrottlerGuard con HTTP 429
     const blockedRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send(loginPayload);

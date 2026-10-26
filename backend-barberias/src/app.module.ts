@@ -30,6 +30,23 @@ import { NotificacionesModule } from './notificaciones/infrastructure/notificaci
 import { AppCacheModule } from './shared/cache/app-cache.module.js';
 import Redis from 'ioredis';
 
+/**
+ * Rate limiting (SEC-02) · ventana por defecto: 1 minuto.
+ *
+ * Constante, no literal, para que la suite pueda leerla sin tener que arrancar
+ * el módulo completo (eso exige base de datos y Redis).
+ */
+export const THROTTLER_TTL_MS = 60000;
+
+/**
+ * Cuenta máxima por IP en esa ventana, para el tráfico estándar.
+ *
+ * Las rutas caras o sensibles NO usan este valor: se declaran con su propio
+ * `@Throttle` (login 5/min, exportación de analíticas 10/min, webhook de
+ * WhatsApp 50/s) y las sondas de salud lo omiten con `@SkipThrottle`.
+ */
+export const THROTTLER_LIMITE_POR_DEFECTO = 120;
+
 @Module({
   imports: [
     HealthModule,
@@ -40,8 +57,8 @@ import Redis from 'ioredis';
       throttlers: [
         {
           name: 'default',
-          ttl: 60000, // 1 minuto
-          limit: 120, // 120 peticiones/min para tráfico estándar
+          ttl: THROTTLER_TTL_MS,
+          limit: THROTTLER_LIMITE_POR_DEFECTO,
         },
       ],
       errorMessage: 'Demasiadas solicitudes desde esta dirección IP. Por favor espere antes de reintentar.',
