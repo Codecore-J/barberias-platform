@@ -9,6 +9,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
+import { Throttle } from '@nestjs/throttler';
 import { Public } from '../../iam/infrastructure/public.decorator.js';
 import { ResponderRecordatorioDto } from '../application/dto/responder-recordatorio.dto.js';
 import { WhatsappWebhookService } from '../application/whatsapp-webhook.service.js';
@@ -51,6 +52,11 @@ export class NotificacionesWebhookController {
   constructor(private readonly servicio: WhatsappWebhookService) {}
 
   @Public()
+  // Rate limiting (SEC-02): 50 por segundo, NO el minuto del resto de la API.
+  // Meta entrega los webhooks en ráfagas (un recordatorio a 30 clientes llega
+  // como 30 peticiones casi simultáneas) y rechazarlas por ir a paso de minuto
+  // sería perder respuestas legítimas de clientes reales.
+  @Throttle({ default: { limit: 50, ttl: 1000 } })
   @Post()
   // 200 explícito: los gateways esperan la respuesta de «procesado», no la 201
   // por defecto de Nest (que reservaría para «recurso creado»).
