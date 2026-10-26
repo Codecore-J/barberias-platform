@@ -1,12 +1,13 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { of } from 'rxjs';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { AnalyticsDashboardComponent } from './analytics-dashboard.component';
 import { AnalyticsService } from '../../../core/services/analytics.service';
-import { of } from 'rxjs';
 
 describe('AnalyticsDashboardComponent', () => {
   let component: AnalyticsDashboardComponent;
   let fixture: ComponentFixture<AnalyticsDashboardComponent>;
-  let analyticsServiceSpy: any;
+  let analyticsServiceSpy: { getAnalytics: (desde?: string, hasta?: string) => any };
 
   const mockData = {
     periodo: { desde: '2026-10-01', hasta: '2026-10-31' },
@@ -21,7 +22,7 @@ describe('AnalyticsDashboardComponent', () => {
 
   beforeEach(async () => {
     analyticsServiceSpy = {
-      getAnalytics: () => of(mockData),
+      getAnalytics: vi.fn(() => of(mockData)),
     };
 
     await TestBed.configureTestingModule({
@@ -39,6 +40,7 @@ describe('AnalyticsDashboardComponent', () => {
   });
 
   it('carga analíticas al inicializar', () => {
+    expect(analyticsServiceSpy.getAnalytics).toHaveBeenCalledTimes(1);
     expect(component.data).toEqual(mockData);
   });
 
