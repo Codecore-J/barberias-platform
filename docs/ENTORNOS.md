@@ -34,7 +34,7 @@ Reglas:
 | `APP_ENV` | Entorno lógico de la plataforma. Valida al arrancar y protege los tests destructivos. | `dev` |
 | `DATABASE_URL` | Cadena de conexión PostgreSQL usada por Prisma (runtime y migraciones). | `postgresql://barberia_dev:clave_falsa@localhost:5432/barberias_dev?schema=public` |
 | `JWT_SECRET` | Secreto de firma/verificación de los JWT. En producción exige ≥ 32 caracteres y rechaza valores por defecto. | `dev_secreto_falso_de_64_caracteres_para_firmar_jwt_0123456789` |
-| `REDIS_URL` | Conexión de BullMQ (y del health check). Tiene prioridad sobre `REDIS_HOST`/`REDIS_PORT`. Obligatoria salvo que se usen estas dos. | `redis://default:clave_falsa@localhost:6379` |
+| `REDIS_URL` | Conexión de BullMQ, del health check y de la caché de analíticas (sin ella esa caché vive en memoria del proceso, que es lo que usan el desarrollo local y el CI). Tiene prioridad sobre `REDIS_HOST`/`REDIS_PORT`. Obligatoria salvo que se usen estas dos. | `redis://default:clave_falsa@localhost:6379` |
 
 ### 2.2 Recomendadas
 

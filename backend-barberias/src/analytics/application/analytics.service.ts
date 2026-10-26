@@ -1,35 +1,46 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { ROL_ADMIN_BARBERIA } from '../../iam/domain/roles.js';
 import { construirCsvAnaliticas } from '../domain/analytics-csv.js';
 
 @Injectable()
 export class AnalyticsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(AnalyticsService.name);
 
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(CACHE_MANAGER) private readonly cache: Cache,
+  ) {}
+
+  /**
+   * Analíticas de una sede, con caché delante de Prisma.
+   *
+   * La validación del rango corre ANTES de mirar la caché: un `desde > hasta`
+   * tiene que ser 400 siempre, no depender de lo que otra petición dejó escrito.
+   */
   async getShopAnalytics(
     barberiaId: string,
     desde?: string,
     hasta?: string,
-  ) {
-    const hoy = new Date();
-    const hastaDate = hasta ? this.parseDate(hasta) : new Date(hoy);
-    const desdeDate = desde ? this.parseDate(desde) : this.addDays(new Date(hastaDate), -29);
+  ): Promise<AnaliticasSede> {
+    const { inicio, fin } = this.resolverRango(desde, hasta);
+    const clave = claveAnaliticasSede(barberiaId, desde, hasta);
 
-    // Normalize to start/end of day
-    const inicio = new Date(desdeDate);
-    inicio.setHours(0, 0, 0, 0);
-    const fin = new Date(hastaDate);
-    fin.setHours(23, 59, 59, 999);
+    const cacheado = await this.leerCache<AnaliticasSede>(clave);
+    if (cacheado !== undefined) return cacheado;
 
-    if (inicio > fin) {
-      throw new BadRequestException('El rango de fechas es inválido');
-    }
+    const datos = await this.calcularShopAnalytics(barberiaId, inicio, fin);
+    await this.escribirCache(clave, datos);
+    return datos;
+  }
 
-    const diffDays = Math.floor((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    if (diffDays > 366) {
-      throw new BadRequestException('El rango no puede superar los 366 días');
-    }
+  private async calcularShopAnalytics(
+    barberiaId: string,
+    inicio: Date,
+    fin: Date,
+  ): Promise<AnaliticasSede> {
 
     // Reservations in period by fechaCita
     const reservas = await this.prisma.reserva.findMany({
@@ -191,11 +202,18 @@ export class AnalyticsService {
     return nd;
   }
 
-  async getShopsOverview(user: any, desde?: string, hasta?: string, esGlobal = false) {
+  /**
+   * Rango efectivo de la consulta, en días completos de la sede.
+   *
+   * Sin fechas: los últimos 30 días hasta hoy. El máximo de 366 impide que una
+   * query curiosa convierta una agregación en un barrido de años.
+   */
+  private resolverRango(desde?: string, hasta?: string): { inicio: Date; fin: Date } {
     const hoy = new Date();
     const hastaDate = hasta ? this.parseDate(hasta) : new Date(hoy);
     const desdeDate = desde ? this.parseDate(desde) : this.addDays(new Date(hastaDate), -29);
 
+    // Normalize to start/end of day
     const inicio = new Date(desdeDate);
     inicio.setHours(0, 0, 0, 0);
     const fin = new Date(hastaDate);
@@ -209,6 +227,68 @@ export class AnalyticsService {
     if (diffDays > 366) {
       throw new BadRequestException('El rango no puede superar los 366 días');
     }
+
+    return { inicio, fin };
+  }
+
+  /**
+   * Lectura de caché tolerante a fallos.
+   *
+   * Un Redis caído o lento no puede tumbar el panel: se anota y se sigue a
+   * Prisma. La caché es una optimización, no una dependencia de corrección.
+   */
+  private async leerCache<T>(clave: string): Promise<T | undefined> {
+    try {
+      const valor = await this.cache.get<T>(clave);
+      return valor ?? undefined;
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo leer ${clave} del caché: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return undefined;
+    }
+  }
+
+  private async escribirCache(clave: string, valor: unknown): Promise<void> {
+    try {
+      await this.cache.set(clave, valor, TTL_CACHE_ANALITICAS_MS);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo escribir ${clave} en el caché: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Resumen consolidado de las sedes que el usuario administra.
+   *
+   * La clave lleva el usuario (y `esGlobal`) porque el conjunto de sedes forma
+   * parte del resultado: compartirla entre dos administradores serviría el
+   * balance de una sede a quien no la administra.
+   */
+  async getShopsOverview(
+    user: any,
+    desde?: string,
+    hasta?: string,
+    esGlobal = false,
+  ): Promise<OverviewSedes> {
+    const { inicio, fin } = this.resolverRango(desde, hasta);
+    const clave = claveAnaliticasOverview(user.id, desde, hasta, esGlobal);
+
+    const cacheado = await this.leerCache<OverviewSedes>(clave);
+    if (cacheado !== undefined) return cacheado;
+
+    const datos = await this.calcularOverview(user, inicio, fin, esGlobal);
+    await this.escribirCache(clave, datos);
+    return datos;
+  }
+
+  private async calcularOverview(
+    user: any,
+    inicio: Date,
+    fin: Date,
+    esGlobal: boolean,
+  ): Promise<OverviewSedes> {
 
     let barberiaIds: string[] = [];
     if (esGlobal) {

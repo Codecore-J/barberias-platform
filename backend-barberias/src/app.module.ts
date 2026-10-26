@@ -27,11 +27,15 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { NotificacionesModule } from './notificaciones/infrastructure/notificaciones.module.js';
+import { AppCacheModule } from './shared/cache/app-cache.module.js';
 import Redis from 'ioredis';
 
 @Module({
   imports: [
     HealthModule,
+    // Caché de analíticas: Redis si hay REDIS_URL, memoria si no. `isGlobal`
+    // deja CACHE_MANAGER y CACHE_STORE disponibles en todo el árbol.
+    AppCacheModule,
     ThrottlerModule.forRoot({
       throttlers: [
         {
