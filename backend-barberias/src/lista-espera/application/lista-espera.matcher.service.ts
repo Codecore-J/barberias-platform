@@ -1,10 +1,15 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { TiempoService, ZONA_POR_DEFECTO } from '../../shared/time/tiempo.service.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
 import { ESTADOS_LISTA_ESPERA } from '../../shared/domain/estados.js';
 import type { HuecoLiberadoJobPayload } from '../../shared/queues/queue.constants.js';
 import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
+import {
+  EVENTOS_LISTA_ESPERA,
+  type EventoCupoDisponible,
+} from '../../notificaciones/domain/eventos-lista-espera.js';
 
 /** D42 · margen grupal por defecto cuando la sede aún no tiene configuración. */
 export const MARGEN_POR_DEFECTO_MINUTOS = 10;
@@ -64,6 +69,8 @@ export class ListaEsperaMatcherService {
     // E4-02: el aviso es best-effort. Sin el módulo de notificaciones (pruebas
     // unitarias del matcher) se registra en el log y nada más.
     @Optional() private readonly notificacionService?: NotificacionService,
+    // Fase 9: bus de eventos para el nuevo módulo de notificaciones.
+    @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   /**
@@ -99,6 +106,7 @@ export class ListaEsperaMatcherService {
       select: {
         nombre: true,
         zonaHoraria: true,
+        telefono: true,
         // D42: el margen del bloque nuevo sale de la configuración VIGENTE.
         configuracionBarberia: { select: { margenGrupalMinutos: true } },
       },
@@ -129,6 +137,13 @@ export class ListaEsperaMatcherService {
         usuarioId: true,
         creadoAt: true,
         servicios: { select: { id: true, nombre: true, duracionEstimada: true } },
+        usuario: {
+          select: {
+            nombreCompleto: true,
+            correo: true,
+            telefono: true,
+          },
+        },
       },
     });
 
@@ -155,6 +170,38 @@ export class ListaEsperaMatcherService {
       }
 
       await this.notificar(candidata, payload, barberia.nombre, barberia.zonaHoraria, requeridoMinutos);
+
+      // Fase 9: evento para el módulo de notificaciones nuevo (event-driven).
+      try {
+        if (this.eventEmitter && (candidata as any).usuario) {
+          const tz = barberia.zonaHoraria || ZONA_POR_DEFECTO;
+          const horaInicio = this.tiempo.desdeInstante(new Date(payload.inicio), tz).hora;
+          const horaFin = this.tiempo.desdeInstante(new Date(payload.fin), tz).hora;
+          const evento: EventoCupoDisponible = {
+            tipo: EVENTOS_LISTA_ESPERA.CUPO_DISPONIBLE,
+            suscripcionId: candidata.id,
+            barberiaId: payload.barberiaId,
+            nombreBarberia: barberia.nombre,
+            telefonoBarberia: (barberia as any).telefono ?? null,
+            fecha: payload.fecha,
+            inicio: payload.inicio,
+            fin: payload.fin,
+            horaInicio,
+            horaFin,
+            usuarioId: candidata.usuarioId,
+            nombreCliente: (candidata as any).usuario?.nombreCompleto || '',
+            correoCliente: (candidata as any).usuario?.correo || '',
+            telefonoCliente: (candidata as any).usuario?.telefono || '',
+          };
+          this.eventEmitter.emit(EVENTOS_LISTA_ESPERA.CUPO_DISPONIBLE, evento);
+        }
+      } catch (error) {
+        this.logger.warn(
+          `No se pudo emitir evento lista_espera.cupo_disponible para ${candidata.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
 
       return {
         resultado: 'NOTIFICADO',

@@ -1,4 +1,5 @@
 import { EVENTOS_RESERVA, type EventoReserva } from './eventos-reserva.js';
+import { EVENTOS_LISTA_ESPERA, type EventoCupoDisponible } from './eventos-lista-espera.js';
 
 /**
  * Fase 7 · Redacción de los avisos al cliente.
@@ -29,44 +30,59 @@ export function formatearFecha(fecha: string): string {
   return `${dia}/${mes}/${anio}`;
 }
 
-export function componerMensaje(evento: EventoReserva): MensajeNotificacion {
-  const cita = `${formatearFecha(evento.fechaCita)} a las ${evento.horaInicio}`;
-  const saludo = `Hola ${evento.nombreCliente}`;
+export function componerMensaje(
+  evento: EventoReserva | EventoCupoDisponible,
+): MensajeNotificacion {
+  // Fase 9: cupo liberado en lista de espera
+  if ((evento as EventoCupoDisponible).tipo === EVENTOS_LISTA_ESPERA.CUPO_DISPONIBLE) {
+    const ev = evento as EventoCupoDisponible;
+    const saludo = `Hola ${ev.nombreCliente || ''}`.trim();
+    const cita = `${formatearFecha(ev.fecha)} de ${ev.horaInicio} a ${ev.horaFin}`;
+    return {
+      asunto: `¡Se liberó un turno en ${ev.nombreBarberia}!`,
+      cuerpo: `${saludo ? saludo + ', ' : ''}¡Se liberó un turno en ${ev.nombreBarberia} para el ${cita}! Reserva antes de que lo tome otra persona.`,
+      canales: ['EMAIL', 'WHATSAPP'],
+    };
+  }
 
-  switch (evento.tipo) {
+  const evReserva = evento as EventoReserva;
+  const cita = `${formatearFecha(evReserva.fechaCita)} a las ${evReserva.horaInicio}`;
+  const saludo = `Hola ${evReserva.nombreCliente}`;
+
+  switch (evReserva.tipo) {
     case EVENTOS_RESERVA.CREADA:
       return {
-        asunto: `Solicitud de cita recibida · ${evento.nombreBarberia}`,
-        cuerpo: `${saludo}, recibimos tu solicitud en ${evento.nombreBarberia} para el ${cita}. Queda pendiente de confirmación por la sede.`,
+        asunto: `Solicitud de cita recibida · ${evReserva.nombreBarberia}`,
+        cuerpo: `${saludo}, recibimos tu solicitud en ${evReserva.nombreBarberia} para el ${cita}. Queda pendiente de confirmación por la sede.`,
         canales: ['EMAIL'],
       };
 
     case EVENTOS_RESERVA.CONFIRMADA:
       return {
-        asunto: `Tu cita está confirmada · ${evento.nombreBarberia}`,
-        cuerpo: `${saludo}, tu cita en ${evento.nombreBarberia} quedó confirmada para el ${cita}. Te esperamos.`,
+        asunto: `Tu cita está confirmada · ${evReserva.nombreBarberia}`,
+        cuerpo: `${saludo}, tu cita en ${evReserva.nombreBarberia} quedó confirmada para el ${cita}. Te esperamos.`,
         canales: ['EMAIL', 'WHATSAPP'],
       };
 
     case EVENTOS_RESERVA.CANCELADA:
       return {
-        asunto: `Cita cancelada · ${evento.nombreBarberia}`,
-        cuerpo: `${saludo}, tu cita del ${cita} en ${evento.nombreBarberia} quedó cancelada. Si quieres, puedes reservar otro horario desde la aplicación.`,
+        asunto: `Cita cancelada · ${evReserva.nombreBarberia}`,
+        cuerpo: `${saludo}, tu cita del ${cita} en ${evReserva.nombreBarberia} quedó cancelada. Si quieres, puedes reservar otro horario desde la aplicación.`,
         canales: ['EMAIL', 'WHATSAPP'],
       };
 
     case EVENTOS_RESERVA.INASISTENCIA:
       return {
-        asunto: `No pudimos atenderte · ${evento.nombreBarberia}`,
-        cuerpo: `${saludo}, registramos que no pudiste asistir a tu cita del ${cita} en ${evento.nombreBarberia}. Esta inasistencia cuenta en el límite de tu cuenta en esa sede.`,
+        asunto: `No pudimos atenderte · ${evReserva.nombreBarberia}`,
+        cuerpo: `${saludo}, registramos que no pudiste asistir a tu cita del ${cita} en ${evReserva.nombreBarberia}. Esta inasistencia cuenta en el límite de tu cuenta en esa sede.`,
         canales: ['EMAIL'],
       };
 
     case EVENTOS_RESERVA.RECORDATORIO: {
-      const horas = evento.horasAntelacion ?? 2;
+      const horas = evReserva.horasAntelacion ?? 2;
       return {
-        asunto: `Recordatorio de tu cita · ${evento.nombreBarberia}`,
-        cuerpo: `${saludo}, tu cita en ${evento.nombreBarberia} es en ${horas} horas (${cita}). Si no puedes asistir, cancela desde la aplicación para liberar el horario.`,
+        asunto: `Recordatorio de tu cita · ${evReserva.nombreBarberia}`,
+        cuerpo: `${saludo}, tu cita en ${evReserva.nombreBarberia} es en ${horas} horas (${cita}). Si no puedes asistir, cancela desde la aplicación para liberar el horario.`,
         canales: ['EMAIL', 'WHATSAPP'],
       };
     }
@@ -75,7 +91,7 @@ export function componerMensaje(evento: EventoReserva): MensajeNotificacion {
       // `EventoReserva.tipo` es un catálogo cerrado; esta rama existe para que
       // TypeScript detecte un tipo nuevo sin mensaje y para no emitir nada raro
       // si un publicador futuro manda algo desconocido.
-      const inesperado: never = evento.tipo;
+      const inesperado = evReserva.tipo as never;
       throw new Error(`Evento de reserva sin plantilla: ${String(inesperado)}`);
     }
   }

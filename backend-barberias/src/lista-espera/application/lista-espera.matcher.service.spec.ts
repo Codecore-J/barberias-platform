@@ -53,6 +53,11 @@ describe('ListaEsperaMatcherService · procesarHuecoLiberado (E4-02 · D22)', ()
       nombre: `Servicio ${indice}`,
       duracionEstimada,
     })),
+    usuario: {
+      nombreCompleto: `Cliente ${usuarioId.slice(0, 4)}`,
+      correo: `cliente-${usuarioId.slice(0, 4)}@test.com`,
+      telefono: '+18095550000',
+    },
   });
 
   beforeEach(() => {
@@ -114,6 +119,13 @@ describe('ListaEsperaMatcherService · procesarHuecoLiberado (E4-02 · D22)', ()
         usuarioId: true,
         creadoAt: true,
         servicios: { select: { id: true, nombre: true, duracionEstimada: true } },
+        usuario: {
+          select: {
+            nombreCompleto: true,
+            correo: true,
+            telefono: true,
+          },
+        },
       },
     });
   });
