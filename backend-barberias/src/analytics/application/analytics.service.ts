@@ -214,35 +214,32 @@ export class AnalyticsService {
       const todas = await this.prisma.barberia.findMany({ select: { id: true } });
       barberiaIds = todas.map((b) => b.id);
     } else {
-      // Try ClienteBarberia for clients
-      const vinculosCliente = await this.prisma.clienteBarberia.findMany({
-        where: {
-          usuarioId: user.id,
-          estadoVinculacion: 'ACTIVO',
-        },
-        select: { barberiaId: true },
-      });
-      barberiaIds = vinculosCliente.map((v: any) => v.barberiaId);
-      // Also check UsuarioRol for staff/admin with barberiaId
+      // Solo el rol gerencial de la sede (ADMIN_BARBERIA) habilita el balance
+      // financiero del overview. Ni un CLIENTE ni un BARBERO del mismo local
+      // deben poder auditar los ingresos de su sucursal.
       const vinculosRol = await this.prisma.usuarioRol.findMany({
         where: {
           usuarioId: user.id,
+          barberiaId: { not: null },
+          rol: { nombre: ROL_ADMIN_BARBERIA },
         },
         select: { barberiaId: true },
       });
+
+      const ids = new Set<string>();
       for (const vr of vinculosRol) {
-        if (vr.barberiaId && !barberiaIds.includes(vr.barberiaId)) {
-          barberiaIds.push(vr.barberiaId);
-        }
+        if (vr.barberiaId) ids.add(vr.barberiaId);
       }
-      // Also check rolesDetallados for ADMIN_BARBERIA with barberiaId
+      // Respaldo: las sedes que el propio token declara como administradas,
+      // siempre para el rol gerencial.
       if (user?.rolesDetallados) {
         for (const rol of user.rolesDetallados) {
-          if (rol.nombre === 'ADMIN_BARBERIA' && rol.barberiaId && !barberiaIds.includes(rol.barberiaId)) {
-            barberiaIds.push(rol.barberiaId);
+          if (rol.nombre === ROL_ADMIN_BARBERIA && rol.barberiaId) {
+            ids.add(rol.barberiaId);
           }
         }
       }
+      barberiaIds = Array.from(ids);
     }
 
     const barberias = await this.prisma.barberia.findMany({
