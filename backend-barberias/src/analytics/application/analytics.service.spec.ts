@@ -60,7 +60,10 @@ describe('AnalyticsService', () => {
   });
 
   it('getShopsOverview: ADMIN_BARBERIA solo ve sus sedes vinculadas', async () => {
-    prisma.usuarioBarberia = {
+    prisma.clienteBarberia = {
+      findMany: vi.fn().mockResolvedValue([]),
+    };
+    prisma.usuarioRol = {
       findMany: vi.fn().mockResolvedValue([{ barberiaId: 'shop-1' }]),
     };
     prisma.barberia = {

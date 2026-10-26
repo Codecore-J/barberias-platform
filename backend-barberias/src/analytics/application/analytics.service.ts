@@ -204,14 +204,27 @@ export class AnalyticsService {
       const todas = await this.prisma.barberia.findMany({ select: { id: true } });
       barberiaIds = todas.map((b) => b.id);
     } else {
-      const vinculos = await this.prisma.usuarioBarberia.findMany({
+      // Try ClienteBarberia for clients
+      const vinculosCliente = await this.prisma.clienteBarberia.findMany({
         where: {
           usuarioId: user.id,
-          estadoVinculacion: 'ACTIVA',
+          estadoVinculacion: 'ACTIVO',
         },
         select: { barberiaId: true },
       });
-      barberiaIds = vinculos.map((v: any) => v.barberiaId);
+      barberiaIds = vinculosCliente.map((v: any) => v.barberiaId);
+      // Also check UsuarioRol for staff/admin with barberiaId
+      const vinculosRol = await this.prisma.usuarioRol.findMany({
+        where: {
+          usuarioId: user.id,
+        },
+        select: { barberiaId: true },
+      });
+      for (const vr of vinculosRol) {
+        if (vr.barberiaId && !barberiaIds.includes(vr.barberiaId)) {
+          barberiaIds.push(vr.barberiaId);
+        }
+      }
       // Also check rolesDetallados for ADMIN_BARBERIA with barberiaId
       if (user?.rolesDetallados) {
         for (const rol of user.rolesDetallados) {

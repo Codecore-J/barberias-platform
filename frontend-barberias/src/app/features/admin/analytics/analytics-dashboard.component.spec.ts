@@ -38,7 +38,7 @@ describe('AnalyticsDashboardComponent', () => {
       getShopsOverview: () => of(mockOverview),
     };
     tenantServiceSpy = {
-      barberiasDisponibles: () => [],
+      barberiasVinculadas: () => [],
       seleccionarBarberia: () => of({}),
     };
     routerSpy = {

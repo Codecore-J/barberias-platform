@@ -78,22 +78,14 @@ export class AnalyticsDashboardComponent implements OnInit {
   }
 
   irASede(barberiaId: string): void {
-    const barberias = this.tenantService.barberiasDisponibles();
-    const barberia = barberias.find((b: any) => b.id === barberiaId);
-    if (barberia) {
-      this.tenantService.seleccionarBarberia(barberia).subscribe({
-        next: () => {
-          this.router.navigate(['/admin/agenda']);
-        },
-      });
-    } else {
-      // Try to set active by id
-      this.tenantService.seleccionarBarberia({ id: barberiaId } as any).subscribe({
-        next: () => {
-          this.router.navigate(['/admin/agenda']);
-        },
-      });
-    }
+    this.tenantService.seleccionarBarberia(barberiaId).subscribe({
+      next: () => {
+        this.router.navigate(['/admin/agenda']);
+      },
+      error: () => {
+        this.router.navigate(['/admin/agenda']);
+      },
+    });
   }
 
   private formatDate(date: Date): string {
