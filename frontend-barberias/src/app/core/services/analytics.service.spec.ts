@@ -62,6 +62,22 @@ describe('AnalyticsService', () => {
     req.flush({} as any);
   });
 
+  it('exportAnalytics pide el CSV como blob y con las fechas', () => {
+    service.exportAnalytics('2026-10-01', '2026-10-31').subscribe((blob) => {
+      expect(blob).toBeInstanceOf(Blob);
+    });
+
+    const req = httpMock.expectOne(
+      (r: any) =>
+        r.method === 'GET' &&
+        r.url === `${API_URL}/shops/shop-123/analytics/export` &&
+        r.params.get('desde') === '2026-10-01' &&
+        r.params.get('hasta') === '2026-10-31',
+    );
+    expect(req.request.responseType).toBe('blob');
+    req.flush(new Blob(['a,b'], { type: 'text/csv' }));
+  });
+
   it('getShopsOverview llama a /shops/overview con parámetros', () => {
     service.getShopsOverview('2026-10-01', '2026-10-31').subscribe((res) => {
       expect(res).toBeTruthy();

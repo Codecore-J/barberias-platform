@@ -1,5 +1,10 @@
 <div class="analytics-container">
-  <h1>Analíticas y Retención</h1>
+  <div class="panel-header">
+    <h1>Analíticas y Retención</h1>
+    <button class="export-button" (click)="exportarCsv()" [disabled]="exportando">
+      {{ exportando ? 'Exportando...' : 'Exportar CSV' }}
+    </button>
+  </div>
 
   <div class="filters">
     <button (click)="aplicarFiltroRapido('7')">Últimos 7 días</button>

@@ -16,6 +16,7 @@ export class AnalyticsDashboardComponent implements OnInit {
   data: ShopAnalyticsResponse | null = null;
   overview: ShopsOverviewResponse | null = null;
   loading = false;
+  exportando = false;
   error: string | null = null;
 
   desde: string = '';
@@ -75,6 +76,28 @@ export class AnalyticsDashboardComponent implements OnInit {
         this.overview = null;
       },
     });
+  }
+
+  /** Paso 13 · pide el CSV y lo entrega como descarga del navegador. */
+  exportarCsv(): void {
+    this.exportando = true;
+    this.analyticsService
+      .exportAnalytics(this.desde || undefined, this.hasta || undefined)
+      .subscribe({
+        next: (blob) => {
+          const url = window.URL.createObjectURL(blob);
+          const enlace = document.createElement('a');
+          enlace.href = url;
+          enlace.download = `reporte-barberia-${this.tenantService.barberiaActivaId() ?? 'sede'}.csv`;
+          enlace.click();
+          window.URL.revokeObjectURL(url);
+          this.exportando = false;
+        },
+        error: () => {
+          this.error = 'No se pudo exportar el reporte';
+          this.exportando = false;
+        },
+      });
   }
 
   irASede(barberiaId: string): void {
