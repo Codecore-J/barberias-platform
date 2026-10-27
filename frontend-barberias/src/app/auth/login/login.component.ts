@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, isDevMode, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService } from '../auth.service';
@@ -81,21 +81,29 @@ import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.dir
             
           </form>
 
-          <!-- Acceso Rápido Demo -->
-          <div class="mt-6 pt-5 border-t border-zinc-800/80 text-center transform translate-z-8">
-            <p class="text-[11px] font-semibold text-zinc-500 uppercase tracking-widest mb-2.5">Acceso Rápido Demo</p>
-            <div class="flex flex-wrap items-center justify-center gap-2">
-              <button type="button" (click)="fillDemo('cliente@demo.com')" class="px-2.5 py-1 text-xs rounded-lg bg-zinc-800/80 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-400 border border-zinc-700/60 hover:border-amber-500/40 transition-colors cursor-pointer">
-                👤 Cliente
-              </button>
-              <button type="button" (click)="fillDemo('barbero@demo.com')" class="px-2.5 py-1 text-xs rounded-lg bg-zinc-800/80 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-400 border border-zinc-700/60 hover:border-amber-500/40 transition-colors cursor-pointer">
-                ✂️ Barbero
-              </button>
-              <button type="button" (click)="fillDemo('admin@demo.com')" class="px-2.5 py-1 text-xs rounded-lg bg-zinc-800/80 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-400 border border-zinc-700/60 hover:border-amber-500/40 transition-colors cursor-pointer">
-                ⚡ Admin
-              </button>
+          <!--
+            Acceso Rápido Demo · SOLO desarrollo.
+            Estas cuentas las crea prisma/seed-demo-users.ts, que por E0-07 solo
+            corre con APP_ENV=dev: en producción no existen, así que pintar los
+            botones allí solo ofrecía credenciales que devuelven 401. isDevMode()
+            es false en el build de producción, de modo que el bloque ni se crea.
+          -->
+          @if (esModoDesarrollo) {
+            <div class="mt-6 pt-5 border-t border-zinc-800/80 text-center transform translate-z-8">
+              <p class="text-[11px] font-semibold text-zinc-500 uppercase tracking-widest mb-2.5">Acceso Rápido Demo</p>
+              <div class="flex flex-wrap items-center justify-center gap-2">
+                <button type="button" (click)="fillDemo('cliente@demo.com')" class="px-2.5 py-1 text-xs rounded-lg bg-zinc-800/80 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-400 border border-zinc-700/60 hover:border-amber-500/40 transition-colors cursor-pointer">
+                  👤 Cliente
+                </button>
+                <button type="button" (click)="fillDemo('barbero@demo.com')" class="px-2.5 py-1 text-xs rounded-lg bg-zinc-800/80 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-400 border border-zinc-700/60 hover:border-amber-500/40 transition-colors cursor-pointer">
+                  ✂️ Barbero
+                </button>
+                <button type="button" (click)="fillDemo('admin@demo.com')" class="px-2.5 py-1 text-xs rounded-lg bg-zinc-800/80 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-400 border border-zinc-700/60 hover:border-amber-500/40 transition-colors cursor-pointer">
+                  ⚡ Admin
+                </button>
+              </div>
             </div>
-          </div>
+          }
 
           <div class="mt-6 text-center transform translate-z-8">
             <p class="text-zinc-500 text-sm">
@@ -237,6 +245,14 @@ export class LoginComponent {
   get queryParamsDelRetorno(): Record<string, string> {
     return this.returnUrl ? { [PARAM_RETURN_URL]: this.returnUrl } : {};
   }
+
+  /**
+   * `true` solo en desarrollo (`ng serve`, tests). En el build de producción
+   * `isDevMode()` es `false` y el bloque de accesos demo no llega al DOM: sus
+   * cuentas viven únicamente en la base local del seed demo (regla E0-07), y
+   * mostrarlas en producción ofrecía credenciales que siempre daban 401.
+   */
+  readonly esModoDesarrollo = isDevMode();
 
   showPassword = signal(false);
   showRecoveryModal = signal(false);
