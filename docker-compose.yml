@@ -29,6 +29,9 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       WHATSAPP_API_URL: ${WHATSAPP_API_URL:-}
       WHATSAPP_API_TOKEN: ${WHATSAPP_API_TOKEN:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,6 +53,8 @@ services:
     container_name: barberias_frontend
     ports:
       - "${FRONTEND_PORT:-8080}:80"
+    environment:
+      API_URL: ${API_URL:-http://localhost:3000/api/v1}
     depends_on:
       - backend
     restart: unless-stopped
