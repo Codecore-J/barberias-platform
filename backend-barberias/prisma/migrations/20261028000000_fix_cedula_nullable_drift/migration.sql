@@ -1,0 +1,15 @@
+-- `cedula` tiene que aceptar NULL: el registro público y el alta desde
+-- plataforma la envían opcional, y `schema.prisma` la declara `String?`.
+--
+-- POR QUÉ HACE FALTA ESTA MIGRACIÓN, si ya existe `20261024152729_make_cedula_nullable`:
+-- en la base desplegada esa migración quedó registrada en `_prisma_migrations`
+-- ANTES de que su archivo incluyera el `ALTER` (el archivo se corrigió después),
+-- de modo que el ledger la da por aplicada mientras la columna sigue `NOT NULL`.
+-- Prisma nunca reejecuta una migración ya registrada, así que el desajuste es
+-- invisible para `migrate status` y solo se manifiesta en ejecución: un alta sin
+-- cédula revienta con P2011 («Null constraint violation on cedula»).
+--
+-- Repetir el cambio es seguro: sobre una columna que ya es nullable, PostgreSQL
+-- no hace nada. En una base nueva (CI) el `ALTER` de la migración anterior ya
+-- dejó la columna nullable y este segundo `ALTER` es igualmente inocuo.
+ALTER TABLE "usuarios" ALTER COLUMN "cedula" DROP NOT NULL;
