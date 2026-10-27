@@ -6,7 +6,11 @@ services:
     plan: free
     rootDir: backend-barberias
     buildCommand: rm -f ../package.json && npm install --include=dev && npm run build
-    preDeployCommand: npx prisma migrate deploy
+    # Migraciones + catálogo de roles/permisos. El seed es IDEMPOTENTE (solo
+    # upserts, sin borrados) y no es opcional en producción: `POST /auth/register`
+    # aborta con 500 si falta el rol CLIENTE y `npm run admin:create` exige el rol
+    # ADMINISTRADOR. Los dos pipelines de CI lo ejecutan por el mismo motivo.
+    preDeployCommand: npx prisma migrate deploy && npm run seed
     startCommand: npm run start:prod
     # H64: sonda de VIDA, no de preparación. `/health` comprueba Base de Datos Y
     # Redis, así que con la cola caída devolvía 503 y Render podía reiniciar en
