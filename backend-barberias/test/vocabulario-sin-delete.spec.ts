@@ -65,8 +65,6 @@ const BORRADOS_AUTORIZADOS: Record<string, string> = {
     'Purga por RETENCIÓN (T8.2): el rastro de auditoría no se desactiva, CADUCA. Se eliminan los registros anteriores a la fecha de corte (365 días por defecto) desde un job cron. Es la única forma de que el log no crezca sin límite y no representa un cambio de estado de ninguna entidad.',
   'barberia/application/solicitud-cambio.service.ts:usuarioRol.deleteMany':
     'El rol ADMIN_BARBERIA se MUEVE de un responsable al otro (E3-13): retirar el vínculo del anterior es la mitad del movimiento y va seguido del `upsert` del nuevo en la misma transacción. El filtro `usuarioId: { not: nuevo.id }` deja intacto al entrante, así que el vínculo nunca queda sin dueño.',
-  'analytics/application/analytics-cache.listener.ts:store.deleteMany':
-    'No toca la base: borra CLAVES de la caché de analíticas (Keyv) cuando un evento `reserva.*` cambia alguna cifra del panel. La fuente de verdad —reservas y pagos— no se modifica en absoluto; el TTL de 15 minutos las olvidaría igual y esto solo adelanta el olvido. Se purga para no servir un balance viejo, de modo que el borrado es la garantía de frescura, no una pérdida.',
 };
 
 /**

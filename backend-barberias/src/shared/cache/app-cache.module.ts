@@ -2,6 +2,7 @@ import { Global, Logger, Module } from '@nestjs/common';
 import { CacheModule, type CacheModuleOptions } from '@nestjs/cache-manager';
 import { createKeyvNonBlocking } from '@keyv/redis';
 import { Keyv } from 'keyv';
+import { CACHE_PURGER, crearPurgador } from './cache-purger.js';
 
 /**
  * TTL de las agregaciones de analíticas. Quince minutos es el compromiso: el
@@ -68,7 +69,17 @@ export function obtenerCacheStore(): Keyv {
       }),
     }),
   ],
-  providers: [{ provide: CACHE_STORE, useFactory: obtenerCacheStore }],
-  exports: [CACHE_STORE],
+  providers: [
+    { provide: CACHE_STORE, useFactory: obtenerCacheStore },
+    // La invalidación por prefijo NO puede usar `CACHE_STORE.iterator()`: en
+    // Redis recorre todo el keyspace y deserializa claves de BullMQ que no son
+    // JSON. El purgador filtra en Redis con `SCAN MATCH` y borra sin leer.
+    {
+      provide: CACHE_PURGER,
+      useFactory: (store: Keyv) => crearPurgador(store),
+      inject: [CACHE_STORE],
+    },
+  ],
+  exports: [CACHE_STORE, CACHE_PURGER],
 })
 export class AppCacheModule {}

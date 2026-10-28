@@ -1,7 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import type { Keyv } from 'keyv';
-import { CACHE_STORE } from '../../shared/cache/app-cache.module.js';
+import {
+  CACHE_PURGER,
+  type CachePurger,
+} from '../../shared/cache/cache-purger.js';
 import {
   PREFIJO_ANALITICAS_OVERVIEW,
   prefijoDeSede,
@@ -21,6 +23,10 @@ interface EventoConSede {
  * tasa, el recordatorio incrementa `recordatoriosEnviados`. Suscribirse solo a
  * dos dejaría el resto de métricas desfasadas hasta 15 minutos.
  *
+ * La purga la hace `CACHE_PURGER`, no el `Keyv` directamente: en Redis hay que
+ * filtrar con `SCAN MATCH` porque el keyspace está compartido con BullMQ y sus
+ * valores no son JSON. Ver `cache-purger.ts`.
+ *
  * `ReservaService` emite con `emit()` —sin `await`—, así que un fallo aquí se
  * perdería como *unhandled rejection*; de ahí el `try/catch` interno y el
  * `suppressErrors` del decorador.
@@ -29,7 +35,7 @@ interface EventoConSede {
 export class AnalyticsCacheListener {
   private readonly logger = new Logger(AnalyticsCacheListener.name);
 
-  constructor(@Inject(CACHE_STORE) private readonly store: Keyv) {}
+  constructor(@Inject(CACHE_PURGER) private readonly purger: CachePurger) {}
 
   @OnEvent('reserva.*', { suppressErrors: true })
   async alOcurrirEventoDeReserva(evento: EventoConSede): Promise<void> {
@@ -46,28 +52,17 @@ export class AnalyticsCacheListener {
   /**
    * Borra las entradas cuya clave empieza por `prefijo`.
    *
-   * `CACHE_MANAGER` no expone listado de claves —solo lectura por clave— así que
-   * se recorre el `Keyv` que hay debajo: en memoria itera el `Map` y en Redis
-   * usa `SCAN`, nunca `KEYS`. El conjunto de claves de analíticas está acotado
-   * por (sedes × combinaciones de rango), de modo que el recorrido es corto.
-   *
-   * Si el prefijo no tiene entradas no se llama a `deleteMany`: el caso normal
+   * Si el prefijo no tiene entradas el purgador no escribe nada: el caso normal
    * de un evento sobre una sede que nadie está mirando no debe costar un viaje
    * de escritura.
    */
   private async purgarPorPrefijo(prefijo: string): Promise<void> {
     try {
-      const claves: string[] = [];
-      for await (const [clave] of this.store.iterator()) {
-        if (typeof clave === 'string' && clave.startsWith(prefijo)) {
-          claves.push(clave);
-        }
+      const borradas = await this.purger.purgarPorPrefijo(prefijo);
+
+      if (borradas > 0) {
+        this.logger.debug(`Purgadas ${borradas} entradas de caché (${prefijo}).`);
       }
-
-      if (claves.length === 0) return;
-
-      await this.store.deleteMany(claves);
-      this.logger.debug(`Purgadas ${claves.length} entradas de caché (${prefijo}).`);
     } catch (error) {
       this.logger.warn(
         `No se pudo invalidar el caché de ${prefijo}: ${
