@@ -60,9 +60,11 @@ async function bootstrap() {
       'api/v1/health/liveness',
       // Fase 7 · el webhook de WhatsApp queda fuera del prefijo: la URL que se
       // configura en Meta Cloud API o en el gateway es /webhooks/whatsapp y no
-      // debe cambiar cuando la versión del prefijo cambie.
+      // debe cambiar cuando la versión del prefijo cambie. Solo se declara la
+      // ruta SIN prefijo: 'api/v1/webhooks/whatsapp' no existe —excluirla no
+      // crea la ruta— y su presencia aquí hacía creer que la versión con
+      // prefijo estaba publicada.
       'webhooks/whatsapp',
-      'api/v1/webhooks/whatsapp',
     ],
   });
 
