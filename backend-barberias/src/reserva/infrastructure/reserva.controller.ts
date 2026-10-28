@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   ParseUUIDPipe,
+  UseGuards,
 } from '@nestjs/common';
 import { ReservaService } from '../application/reserva.service.js';
 import { CreateReservaDto } from '../application/dto/create-reserva.dto.js';
@@ -16,6 +17,8 @@ import { CancelacionEspecialDto } from '../application/dto/cancelacion-especial.
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
+import { RequireVerification } from '../../iam/infrastructure/require-verification.decorator.js';
+import { VerificacionGuard } from '../../iam/infrastructure/verificacion.guard.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 @Controller('shops/:shopId/appointments')
@@ -58,8 +61,14 @@ export class ReservaController {
    * Hasta E3-03 este alias lo compartía el walk-in de la pantalla de agenda,
    * y por eso declaraba los cuatro roles; con la ruta walk-in separada, el
    * alias vuelve a lo que es: la reserva del propio CLIENTE.
+   *
+   * V2.1 · `VerificacionGuard`: sin teléfono verificado no hay cupo. La
+   * comprobación va en la creación —y no en el resto de la ruta— porque es el
+   * único punto donde un usuario sin verificar puede ocupar agenda.
    */
   @Roles('CLIENTE')
+  @RequireVerification()
+  @UseGuards(VerificacionGuard)
   @Post()
   crearReserva(
     @CurrentBarberiaId() barberiaId: string,

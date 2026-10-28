@@ -68,6 +68,12 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'GET /auth/me': TODOS,
   'POST /auth/forgot-password': TODOS,
   'POST /auth/reset-password': TODOS,
+  // V2.1 · verificación OTP: son rutas `@Autenticado`, sin lista de roles, así
+  // que admiten a los cuatro. Lo que las acota no es el rol sino la bandera de
+  // teléfono verificado, y esa comprobación la hace `VerificacionGuard` en las
+  // rutas de RESERVA, no aquí.
+  'POST /auth/send-otp': TODOS,
+  'POST /auth/verify-otp': TODOS,
   'GET /health,api/v1/health': TODOS,
   // H64 (2026-10-14): sonda de VIDA separada de la de preparación. Es `@Public`
   // como la otra (la consulta la infraestructura, sin token) y no comprueba nada
@@ -578,8 +584,10 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // usuarios de plataforma suma la 87: 348. El alta de cuenta y su historial de
   // auditoría suman las 88 y 89: 356. El webhook de WhatsApp de la Fase 7 suma
   // la 90: 360. El panel de analíticas (Pasos 10 y 12) sumó dos rutas: 92 × 4 =
-  // 368. La exportación CSV del Paso 13 suma la 93: 372.
-  expect(evaluaciones).toBe(372);
+  // 368. La exportación CSV del Paso 13 suma la 93: 372. V2.1 suma las dos
+  // rutas de verificación OTP (`send-otp` y `verify-otp`, ambas `@Autenticado`):
+  // 95 × 4 = 380.
+  expect(evaluaciones).toBe(380);
     expect(
       desviaciones.length === 0
         ? ''

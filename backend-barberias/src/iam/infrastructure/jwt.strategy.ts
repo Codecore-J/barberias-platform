@@ -30,6 +30,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         estadoCuenta: true,
         // D24/E4-03-5: la versión del token se compara en cada petición.
         tokenVersion: true,
+        // V2.1: las banderas de verificación OTP se leen aquí, en cada
+        // petición, para que `VerificacionGuard` no dependa de lo que el
+        // cliente tuviera en el token al entrar sesión.
+        telefonoVerificado: true,
+        correoVerificado: true,
         usuarioRoles: {
           select: {
             barberiaId: true,
@@ -69,6 +74,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       correo: usuario.correo,
       roles: rolesUnicos.length > 0 ? rolesUnicos : payload.roles,
       rolesDetallados,
+      telefonoVerificado: usuario.telefonoVerificado,
+      correoVerificado: usuario.correoVerificado,
     };
   }
 }

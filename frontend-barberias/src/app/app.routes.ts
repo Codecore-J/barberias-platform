@@ -14,6 +14,19 @@ export const routes: Routes = [
     loadComponent: () => import('./auth/register/register.component').then((m) => m.RegisterComponent),
   },
   {
+    //
+    // V2.1 · verificación OTP del teléfono (6 dígitos por WhatsApp).
+    //
+    // Va FUERA del `authGuard` a propósito: es el guard quien manda aquí a
+    // quien tiene sesión sin teléfono verificado, y proteger la propia pantalla
+    // con él cerraría el camino en bucle. El componente comprueba por su cuenta
+    // que haya token y manda al login si no lo hay.
+    //
+    path: 'auth/verify',
+    loadComponent: () =>
+      import('./auth/verify/verify-otp.component').then((m) => m.VerifyOtpComponent),
+  },
+  {
     path: '',
     loadComponent: () =>
       import('./shared/layout/app-layout.component').then((m) => m.AppLayoutComponent),

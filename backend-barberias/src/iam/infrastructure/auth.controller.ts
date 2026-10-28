@@ -12,6 +12,9 @@ import { RegisterDto } from '../application/dto/register.dto.js';
 import { LoginDto } from '../application/dto/login.dto.js';
 import { ForgotPasswordDto } from '../application/dto/forgot-password.dto.js';
 import { ResetPasswordDto } from '../application/dto/reset-password.dto.js';
+import { SendOtpDto } from '../application/dto/send-otp.dto.js';
+import { VerifyOtpDto } from '../application/dto/verify-otp.dto.js';
+import { OtpService } from '../application/otp.service.js';
 import { UsuarioResponseDto } from '../application/dto/usuario-response.dto.js';
 import { Public } from './public.decorator.js';
 import { CurrentUser } from './current-user.decorator.js';
@@ -21,7 +24,10 @@ import { Autenticado } from './autenticado.decorator.js';
 
 @Controller('auth')
 export class AuthController {
-  constructor(@Inject(AuthService) private readonly authService: AuthService) {}
+  constructor(
+    @Inject(AuthService) private readonly authService: AuthService,
+    @Inject(OtpService) private readonly otpService: OtpService,
+  ) {}
 
   /**
    * Registro de un nuevo usuario en la plataforma.
@@ -75,6 +81,47 @@ export class AuthController {
     @CurrentUser() user: UsuarioAutenticado,
   ): Promise<UsuarioResponseDto> {
     return this.authService.getProfile(user.id);
+  }
+
+  /**
+   * V2.1 · Envío del código OTP de verificación (6 dígitos, 10 minutos).
+   *
+   * El usuario sale del JWT: un cliente solo puede pedir un código para SU
+   * canal, y el `tipo` decide si sale por WhatsApp o por correo.
+   *
+   * Rate Limit (SEC-02): 3 envíos por minuto por IP. Un techo bajo porque un
+   * envío es un mensaje de WhatsApp real que alguien paga, y porque el propio
+   * frontend espera 60 s antes de habilitar «Reenviar».
+   */
+  @Autenticado()
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Post('send-otp')
+  @HttpCode(HttpStatus.OK)
+  async sendOtp(
+    @CurrentUser() user: UsuarioAutenticado,
+    @Body() dto: SendOtpDto,
+  ): Promise<{ mensaje: string; expiraEn: string }> {
+    return this.otpService.enviar(user.id, dto.tipo);
+  }
+
+  /**
+   * V2.1 · Validación del código OTP: al acertar, marca el canal como
+   * verificado en la misma transacción que consume el código.
+   *
+   * Rate Limit (SEC-02): 10 intentos por minuto por IP. Es el presupuesto de
+   * fuerza bruta: sobre 10⁶ combinaciones, 10 intentos por minuto dejan la
+   * ventana de 10 minutos en 100 intentos —una probabilidad de acierto de
+   * 1 en 10 000— y el siguiente código descarta lo probado.
+   */
+  @Autenticado()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Post('verify-otp')
+  @HttpCode(HttpStatus.OK)
+  async verifyOtp(
+    @CurrentUser() user: UsuarioAutenticado,
+    @Body() dto: VerifyOtpDto,
+  ): Promise<{ verificado: boolean; tipo: string }> {
+    return this.otpService.verificar(user.id, dto);
   }
 
   /**

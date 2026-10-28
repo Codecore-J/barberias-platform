@@ -18,6 +18,10 @@ model Usuario {
   // E4-03/5 · D24: versión del token. Suspender una cuenta la sube y con eso
   // quedan inválidos los JWT ya firmados (se cierran todas las sesiones).
   tokenVersion   Int       @default(0) @map("token_version")
+  // V2.1 · Verificación OTP: el correo y el teléfono se confirman con un código
+  // de 6 dígitos antes de poder ocupar agenda (`VerificacionGuard`).
+  correoVerificado   Boolean @default(false) @map("correo_verificado")
+  telefonoVerificado Boolean @default(false) @map("telefono_verificado")
   creadoAt       DateTime? @default(now()) @map("creado_at") @db.Timestamptz
 
   usuarioRoles       UsuarioRol[]
@@ -45,6 +49,8 @@ model Usuario {
   solicitudesResueltas   SolicitudCambioBarberia[] @relation("SolicitudResueltaPor")
   // E4-02/D22: suscripciones del cliente a huecos que se liberen (Carril B).
   listaEsperas           ListaEspera[]
+  // V2.1: códigos OTP de verificación de correo/teléfono.
+  otpConfirmaciones      OtpConfirmacion[]
 
   @@map("usuarios")
 }
@@ -588,4 +594,41 @@ model ListaEspera {
   @@index([usuarioId, barberiaId, fechaObjetivo, estado], name: "idx_lista_espera_usuario_fecha")
   @@index([barberiaId, fechaObjetivo, estado], name: "idx_lista_espera_barberia_fecha")
   @@map("lista_esperas")
+}
+
+/// V2.1 · Canal de verificación de un código OTP.
+///
+/// Vía de canal (correo o teléfono) sobre la que se emite el código: `tipo`
+/// decide si la salida va por WhatsApp o por correo y además separa la bandera
+/// que el código habilita (`telefono_verificado` / `correo_verificado`).
+enum TipoOtp {
+  TELEFONO
+  CORREO
+}
+
+/// V2.1 · Código de verificación de 6 dígitos (10 minutos de vida).
+///
+/// Un código solo sirve para su usuario y su canal: `tipo` marca qué bandera
+/// habilita al validarse. El alta invalida los anteriores no usados del mismo
+/// canal —no se borran, se marcan— para que solo haya un código vivo a la vez.
+///
+/// El código se guarda en claro porque su valor de negocio es un secreto de
+/// minutos con una sola lectura; el hash solo serviría para verificar, y aquí
+/// hay que REUTILIZARLO para enviarlo. Su protección real es la ventana de 10
+/// minutos, el `usado` de un solo disparo y el techo de envíos por minuto.
+model OtpConfirmacion {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId     String    @map("usuario_id") @db.Uuid
+  codigo        String    @db.VarChar(6)
+  tipo          TipoOtp
+  expiraEn      DateTime  @map("expira_en") @db.Timestamptz
+  usado         Boolean   @default(false)
+  creadoEn      DateTime? @default(now()) @map("creado_en") @db.Timestamptz
+  actualizadoEn DateTime? @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  // La validación siempre pregunta por usuario + canal + estado + ventana.
+  @@index([usuarioId, tipo, usado, expiraEn], name: "idx_otp_usuario_canal")
+  @@map("otp_confirmaciones")
 }

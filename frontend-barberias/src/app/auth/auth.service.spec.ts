@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { AuthResponseDto } from './interfaces/auth.interface';
 import { TenantService } from '../core/services/tenant.service';
 import { API_URL } from '../core/constants/api.constants.js';
+import { PARAM_RETURN_URL } from '../core/utils/return-url.util';
 
 /**
  * H75 · al volver del login, el destino pedido manda sobre el destino por rol.
@@ -165,7 +166,7 @@ describe('AuthService · H75 (el destino pedido sobrevive al login)', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/']);
   });
 
-  it('el registro también respeta el destino pedido', () => {
+  it('el registro manda a la verificación y conserva el destino pedido', () => {
     servicio
       .register(
         { correo: 'nuevo@demo.com', password: 'x', nombreCompleto: 'Nuevo', telefono: '300' },
@@ -175,10 +176,15 @@ describe('AuthService · H75 (el destino pedido sobrevive al login)', () => {
 
     http.expectOne(`${API_URL}/auth/register`).flush(respuesta(['CLIENTE']));
 
-    expect(router.navigateByUrl).toHaveBeenCalledWith('/unirse/imperial-ab12');
+    // V2.1 · la cuenta nueva entra primero por /auth/verify: sin teléfono
+    // confirmado el backend devuelve 403 en la creación de reservas.
+    expect(router.navigate).toHaveBeenCalledWith(['/auth/verify'], {
+      queryParams: { [PARAM_RETURN_URL]: '/unirse/imperial-ab12' },
+    });
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
   });
 
-  it('sin destino, el registro sigue yendo al dashboard', () => {
+  it('sin destino, el registro va a la verificación sin query', () => {
     servicio
       .register({
         correo: 'nuevo@demo.com',
@@ -190,6 +196,7 @@ describe('AuthService · H75 (el destino pedido sobrevive al login)', () => {
 
     http.expectOne(`${API_URL}/auth/register`).flush(respuesta(['CLIENTE']));
 
-    expect(router.navigateByUrl).toHaveBeenCalledWith('/');
+    expect(router.navigate).toHaveBeenCalledWith(['/auth/verify'], { queryParams: {} });
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
   });
 });

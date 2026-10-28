@@ -6,7 +6,10 @@ import {
   AuthResponseDto,
   LoginDto,
   RegisterDto,
-  UsuarioResponseDto
+  SendOtpResponseDto,
+  TipoOtp,
+  UsuarioResponseDto,
+  VerifyOtpResponseDto
 } from './interfaces/auth.interface';
 
 export interface AuthState {
@@ -18,7 +21,7 @@ export interface AuthState {
 
 import { API_URL } from '../core/constants/api.constants.js';
 import { TenantService } from '../core/services/tenant.service';
-import { returnUrlSeguro } from '../core/utils/return-url.util';
+import { PARAM_RETURN_URL, returnUrlSeguro } from '../core/utils/return-url.util';
 
 @Injectable({
   providedIn: 'root'
@@ -86,8 +89,13 @@ export class AuthService {
           error: null
         });
         // Una cuenta recién creada también puede venir de un enlace (el QR de
-        // una sede): si hay destino válido se respeta, si no, al dashboard.
-        this.router.navigateByUrl(returnUrlSeguro(returnUrl) ?? '/');
+        // una sede): V2.1 la manda PRIMERO a la verificación del teléfono y no
+        // al panel, porque sin teléfono confirmado no podrá reservar (el backend
+        // devuelve 403 en POST /shops/:id/appointments). El destino que traía
+        // viaja como query para retomarlo al acabar la verificación.
+        this.router.navigate(['/auth/verify'], {
+          queryParams: returnUrl ? { [PARAM_RETURN_URL]: returnUrl } : {},
+        });
       }),
       catchError(error => {
         const errorMsg = error.error?.message || 'Error en el registro';
@@ -217,6 +225,38 @@ export class AuthService {
 
   forgotPassword(correo: string): Observable<{ message: string; debugToken?: string }> {
     return this.http.post<{ message: string; debugToken?: string }>(`${this.apiUrl}/forgot-password`, { correo });
+  }
+
+  /**
+   * V2.1 · pide un código OTP por el canal indicado. El usuario sale del JWT
+   * en el backend, así que el cuerpo solo lleva el canal.
+   */
+  sendOtp(tipo: TipoOtp): Observable<SendOtpResponseDto> {
+    return this.http.post<SendOtpResponseDto>(`${this.apiUrl}/send-otp`, { tipo });
+  }
+
+  /**
+   * V2.1 · valida el código. Al acertar se refresca el usuario en memoria y se
+   * invalida la sesión cacheada (`sesionCargada$`), porque sin eso la siguiente
+   * consulta de guard seguiría leyendo el `telefonoVerificado: false` de
+   * antes y devolvería al usuario a la pantalla de verificación.
+   */
+  verifyOtp(codigo: string, tipo: TipoOtp): Observable<VerifyOtpResponseDto> {
+    return this.http
+      .post<VerifyOtpResponseDto>(`${this.apiUrl}/verify-otp`, { codigo, tipo })
+      .pipe(
+        tap(() => {
+          const usuario = this.authState().user;
+          // Solo se levanta la bandera del CANAL que se verificó: comprobar
+          // el correo no debe hacer pasar por teléfono verificado.
+          const bandera =
+            tipo === 'TELEFONO' ? { telefonoVerificado: true } : { correoVerificado: true };
+          this.updateState({
+            user: usuario ? { ...usuario, ...bandera } : usuario,
+          });
+          this.sesionCargada$ = null;
+        }),
+      );
   }
 
   resetPassword(token: string, newPassword: string): Observable<{ message: string }> {

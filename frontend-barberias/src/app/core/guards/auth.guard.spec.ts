@@ -1,7 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, RouterStateSnapshot, UrlTree, provideRouter } from '@angular/router';
+import { of, firstValueFrom, type Observable } from 'rxjs';
 import { authGuard } from './auth.guard';
 import { AuthService } from '../../auth/auth.service';
+import type { UsuarioResponseDto } from '../../auth/interfaces/auth.interface';
 import { PARAM_RETURN_URL, returnUrlSeguro } from '../utils/return-url.util';
 
 /**
@@ -18,10 +20,14 @@ function interceptar(url: string) {
 }
 
 describe('authGuard · H75 (la ruta pedida sobrevive al login)', () => {
-  let sesion: { autenticado: boolean; token: string | null };
+  let sesion: {
+    autenticado: boolean;
+    token: string | null;
+    usuario: UsuarioResponseDto | null;
+  };
 
   beforeEach(() => {
-    sesion = { autenticado: false, token: null };
+    sesion = { autenticado: false, token: null, usuario: null };
 
     TestBed.configureTestingModule({
       providers: [
@@ -30,16 +36,55 @@ describe('authGuard · H75 (la ruta pedida sobrevive al login)', () => {
           provide: AuthService,
           useValue: {
             authState: () => ({
-              user: null,
+              user: sesion.usuario,
               isAuthenticated: sesion.autenticado,
               isLoading: false,
               error: null,
             }),
             getToken: () => sesion.token,
+            // V2.1 · el guard espera esta hidratación cuando hay token pero
+            // el usuario todavía no llegó (F5). En el doble devuelve `null`,
+            // que el guard interpreta como «sin datos todavía, deja pasar».
+            cargarSesion: () => of(sesion.usuario),
           },
         },
       ],
     });
+  });
+
+  /** Usuario hidratado con el teléfono en el estado indicado. */
+  const usuarioCon = (telefonoVerificado: boolean | undefined): UsuarioResponseDto => ({
+    id: 'u1',
+    correo: 'cliente@demo.com',
+    nombreCompleto: 'Cliente Demo',
+    telefono: '8095550199',
+    estadoCuenta: 'ACTIVO',
+    roles: ['CLIENTE'],
+    telefonoVerificado,
+  });
+
+  it('V2.1 · manda a /auth/verify a quien tiene sesión sin teléfono verificado', () => {
+    sesion.autenticado = true;
+    sesion.token = 'token-en-local-storage';
+    sesion.usuario = usuarioCon(false);
+
+    const resultado = interceptar('/unirse/imperial-ab12');
+
+    expect(resultado instanceof UrlTree).toBe(true);
+    const arbol = resultado as UrlTree;
+    expect(arbol.root.children['primary'].segments.map((s) => s.path)).toEqual([
+      'auth',
+      'verify',
+    ]);
+    expect(arbol.queryParams[PARAM_RETURN_URL]).toBe('/unirse/imperial-ab12');
+  });
+
+  it('V2.1 · deja pasar a quien ya tiene el teléfono verificado', () => {
+    sesion.autenticado = true;
+    sesion.token = 'token-en-local-storage';
+    sesion.usuario = usuarioCon(true);
+
+    expect(interceptar('/unirse/imperial-ab12')).toBe(true);
   });
 
   it('deja pasar a quien ya tiene sesión', () => {
@@ -47,9 +92,16 @@ describe('authGuard · H75 (la ruta pedida sobrevive al login)', () => {
     expect(interceptar('/unirse/imperial-ab12')).toBe(true);
   });
 
-  it('deja pasar a quien tiene token aunque el /me todavía no haya respondido', () => {
+  it('deja pasar a quien tiene token aunque el /me todavía no haya respondido', async () => {
     sesion.token = 'token-en-local-storage';
-    expect(interceptar('/unirse/imperial-ab12')).toBe(true);
+    const resultado = interceptar('/unirse/imperial-ab12');
+
+    // V2.1 · ya no devuelve `true` al instante: con token pero sin usuario
+    // cargado, el guard ESPERA la hidratación compartida para poder mirar
+    // `telefonoVerificado`. Lo que no puede hacer es mandar a login —ese era
+    // el fallo H75 que cubría esta prueba— así que el resultado no es un UrlTree.
+    expect(resultado instanceof UrlTree).toBe(false);
+    expect(await firstValueFrom(resultado as Observable<boolean | UrlTree>)).toBe(true);
   });
 
   it('manda al login y guarda la ruta pedida en returnUrl', () => {
