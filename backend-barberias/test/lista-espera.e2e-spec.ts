@@ -52,6 +52,24 @@ async function esperarEstado(
   return estadoActual;
 }
 
+/**
+ * El aviso se persiste ANTES de encolar el envío, pero `notificar()` no se
+ * espera (un canal lento no puede atascar el matcher). El test tiene que
+ * sondear la fila, igual que `esperarEstado` hace con el estado: consultarla una
+ * sola vez lo hacía depender del orden de dos promesas y fallaba de forma
+ * intermitente en CI.
+ */
+async function esperarNotificacion(prisma: PrismaService, usuarioId: string, intentos = 20) {
+  for (let i = 0; i < intentos; i++) {
+    const fila = await prisma.notificacion.findFirst({
+      where: { usuarioId, tipo: 'LISTA_ESPERA_HUECO_LIBERADO' },
+    });
+    if (fila) return fila;
+    await new Promise((resolver) => setTimeout(resolver, 500));
+  }
+  return null;
+}
+
 describe('E4-02 · Carril B — el hueco liberado por una cancelación llega a la lista de espera', () => {
   let app: INestApplication;
   let prisma: PrismaService;
@@ -283,13 +301,7 @@ describe('E4-02 · Carril B — el hueco liberado por una cancelación llega a l
   it('el matcher deja trazabilidad del aviso: log estructurado y notificación persistida', async () => {
     // El aviso al cliente es best-effort y se persiste ANTES de encolar su
     // envío: la fila tiene que existir aunque el canal de correo esté caído.
-    const notificacion = await prisma.notificacion
-      .findFirst({
-        where: {
-          usuarioId: ids.clienteB,
-          tipo: 'LISTA_ESPERA_HUECO_LIBERADO',
-        },
-      });
+    const notificacion = await esperarNotificacion(prisma, ids.clienteB);
     expect(notificacion).not.toBeNull();
     expect(notificacion?.canal).toBe('EMAIL');
 

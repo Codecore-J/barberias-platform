@@ -335,9 +335,12 @@ export class AnalyticsService {
       barberiaIds = Array.from(ids);
     }
 
+    // E4-04: la columna de estado es `estado` (`ACTIVO`/`INACTIVO`), no `activa`.
+    // Seleccionar `activa` aquí compilaba —el select es un objeto— pero Prisma lo
+    // rechazaba en ejecución y el overview respondía 400 en producción.
     const barberias = await this.prisma.barberia.findMany({
       where: { id: { in: barberiaIds } },
-      select: { id: true, nombre: true, activa: true },
+      select: { id: true, nombre: true, estado: true },
     });
 
     const sedes = [];
@@ -370,7 +373,7 @@ export class AnalyticsService {
       sedes.push({
         barberiaId: barberia.id,
         nombre: barberia.nombre,
-        activa: barberia.activa,
+        activa: barberia.estado === 'ACTIVO',
         ingresos: Number(ingresos.toFixed(2)),
         totalCitas,
         citasCompletadas,

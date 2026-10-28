@@ -144,7 +144,7 @@ describe('AnalyticsService', () => {
       findMany: vi.fn().mockResolvedValue([{ barberiaId: 'shop-1' }]),
     };
     prisma.barberia = {
-      findMany: vi.fn().mockResolvedValue([{ id: 'shop-1', nombre: 'Sede 1', activa: true }]),
+      findMany: vi.fn().mockResolvedValue([{ id: 'shop-1', nombre: 'Sede 1', estado: 'ACTIVO' }]),
     };
     prisma.reserva.findMany.mockResolvedValue([
       { estado: 'COMPLETADA', recordatorioEnviado: true },
@@ -166,8 +166,8 @@ describe('AnalyticsService', () => {
       { barberiaId: 'shop-2', rol: { nombre: 'BARBERO' } },
     ];
     const sedes = [
-      { id: 'shop-1', nombre: 'Sede 1', activa: true },
-      { id: 'shop-2', nombre: 'Sede 2', activa: true },
+      { id: 'shop-1', nombre: 'Sede 1', estado: 'ACTIVO' },
+      { id: 'shop-2', nombre: 'Sede 2', estado: 'ACTIVO' },
     ];
 
     prisma.usuarioRol = {
@@ -199,11 +199,41 @@ describe('AnalyticsService', () => {
     );
   });
 
+  it('getShopsOverview: deriva `activa` del estado real de la sede', async () => {
+    // El global consulta primero los ids y después el detalle de cada sede.
+    let llamadas = 0;
+    prisma.barberia = {
+      findMany: vi.fn(async ({ select }: any) => {
+        llamadas += 1;
+        if (llamadas === 1) {
+          expect(select).toEqual({ id: true });
+          return [{ id: 'shop-1' }, { id: 'shop-2' }];
+        }
+        // Regresión del 400 de producción: `activa` no es columna de `barberias`.
+        expect(select).toEqual({ id: true, nombre: true, estado: true });
+        expect(select).not.toHaveProperty('activa');
+        return [
+          { id: 'shop-1', nombre: 'Sede 1', estado: 'ACTIVO' },
+          { id: 'shop-2', nombre: 'Sede 2', estado: 'INACTIVO' },
+        ];
+      }),
+    };
+    prisma.reserva.findMany.mockResolvedValue([]);
+    prisma.pago.findMany.mockResolvedValue([]);
+    const user = { id: 'admin', roles: ['ADMINISTRADOR'], rolesDetallados: [] };
+    const result = await service.getShopsOverview(user, '2026-10-01', '2026-10-31', true);
+
+    expect(result.sedes.map((s) => ({ id: s.barberiaId, activa: s.activa }))).toEqual([
+      { id: 'shop-1', activa: true },
+      { id: 'shop-2', activa: false },
+    ]);
+  });
+
   it('getShopsOverview: ADMINISTRADOR global ve todas las sedes', async () => {
     prisma.barberia = {
       findMany: vi.fn().mockResolvedValue([
-        { id: 'shop-1', nombre: 'Sede 1', activa: true },
-        { id: 'shop-2', nombre: 'Sede 2', activa: true },
+        { id: 'shop-1', nombre: 'Sede 1', estado: 'ACTIVO' },
+        { id: 'shop-2', nombre: 'Sede 2', estado: 'ACTIVO' },
       ]),
     };
     prisma.reserva.findMany.mockResolvedValue([]);
@@ -218,7 +248,7 @@ describe('AnalyticsService', () => {
       findMany: vi.fn().mockResolvedValue([{ barberiaId: 'shop-1' }]),
     };
     prisma.barberia = {
-      findMany: vi.fn().mockResolvedValue([{ id: 'shop-1', nombre: 'Sede 1', activa: true }]),
+      findMany: vi.fn().mockResolvedValue([{ id: 'shop-1', nombre: 'Sede 1', estado: 'ACTIVO' }]),
     };
     prisma.reserva.findMany.mockResolvedValue([{ estado: 'COMPLETADA', recordatorioEnviado: true }]);
     prisma.pago.findMany.mockResolvedValue([{ monto: 500 }]);
@@ -247,7 +277,7 @@ describe('AnalyticsService', () => {
   it('getShopsOverview: la clave incluye al usuario para no filtrar sedes ajenas', async () => {
     prisma.usuarioRol = { findMany: vi.fn().mockResolvedValue([{ barberiaId: 'shop-1' }]) };
     prisma.barberia = {
-      findMany: vi.fn().mockResolvedValue([{ id: 'shop-1', nombre: 'Sede 1', activa: true }]),
+      findMany: vi.fn().mockResolvedValue([{ id: 'shop-1', nombre: 'Sede 1', estado: 'ACTIVO' }]),
     };
     prisma.reserva.findMany.mockResolvedValue([]);
     prisma.pago.findMany.mockResolvedValue([]);
