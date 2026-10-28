@@ -118,6 +118,7 @@ describe('E3-12/3 · desvinculación por el cliente (D20/D21)', () => {
       (
         await prisma.usuario.create({
           data: {
+            telefonoVerificado: true,
             nombreCompleto: `${etiqueta} E312DS ${sufijo}`,
             correo: `${etiqueta}.e312ds.${sufijo}@test.com`,
             telefono,

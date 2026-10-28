@@ -175,6 +175,7 @@ describe('E3-06/E3-07 · reprogramación y reglas de cancelación del cliente', 
       correos.map((correo, i) =>
         prisma.usuario.create({
           data: {
+            telefonoVerificado: true,
             nombreCompleto: `E3067 ${i}`,
             correo,
             telefono: `9997${String(i).padStart(7, '0')}`,

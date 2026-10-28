@@ -67,6 +67,7 @@ describe('E3-09 · POST /cobros: el BARBERO solo cobra lo que tiene asignado', (
   async function crearUsuario(correo: string, nombre: string, telefono: string) {
     return prisma.usuario.create({
       data: {
+        telefonoVerificado: true,
         nombreCompleto: nombre,
         correo,
         telefono,

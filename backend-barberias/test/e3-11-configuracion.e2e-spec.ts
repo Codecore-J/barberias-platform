@@ -74,6 +74,7 @@ describe('E3-11 · configuración de la barbería', () => {
     const [admin, cliente] = await Promise.all([
       prisma.usuario.create({
         data: {
+          telefonoVerificado: true,
           nombreCompleto: `Admin E311 ${sufijo}`,
           correo: `admin.e311.${sufijo}@test.com`,
           telefono: `9${String(sufijo).slice(-9)}`,
@@ -83,6 +84,7 @@ describe('E3-11 · configuración de la barbería', () => {
       }),
       prisma.usuario.create({
         data: {
+          telefonoVerificado: true,
           nombreCompleto: `Cliente E311 ${sufijo}`,
           correo: `cliente.e311.${sufijo}@test.com`,
           telefono: `8${String(sufijo).slice(-9)}`,

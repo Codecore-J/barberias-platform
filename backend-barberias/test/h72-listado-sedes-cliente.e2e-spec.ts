@@ -117,6 +117,7 @@ describe('H72 · el cliente lista sus sedes (GET /mi-estado/barberias)', () => {
       (
         await prisma.usuario.create({
           data: {
+            telefonoVerificado: true,
             nombreCompleto: `${etiqueta} H72 ${sufijo}`,
             correo: `${etiqueta}.h72.${sufijo}@test.com`,
             telefono,

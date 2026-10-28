@@ -147,6 +147,7 @@ describe('E3-08 · cancelación especial y propuesta de horario', () => {
       correos.map((correo, i) =>
         prisma.usuario.create({
           data: {
+            telefonoVerificado: true,
             nombreCompleto: `E308 ${i}`,
             correo,
             telefono: `9928${String(i).padStart(7, '0')}`,

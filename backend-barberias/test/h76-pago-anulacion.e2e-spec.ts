@@ -119,6 +119,7 @@ describe('H76 · ciclo HTTP completo de la anulación de un cobro', () => {
   async function crearUsuario(correo: string, nombre: string, telefono: string) {
     return prisma.usuario.create({
       data: {
+        telefonoVerificado: true,
         nombreCompleto: nombre,
         correo,
         telefono,

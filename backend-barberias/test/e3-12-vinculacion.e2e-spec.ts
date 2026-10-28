@@ -120,6 +120,7 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
       (
         await prisma.usuario.create({
           data: {
+            telefonoVerificado: true,
             nombreCompleto: `${etiqueta} E312 ${sufijo}`,
             correo: `${etiqueta}.e312.${sufijo}@test.com`,
             telefono,

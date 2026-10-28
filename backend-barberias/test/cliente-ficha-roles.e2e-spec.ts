@@ -51,6 +51,7 @@ describe('Cliente · ficha y notas: qué rol entra de verdad', () => {
   async function crearUsuario(correo: string, nombre: string, telefono: string) {
     return prisma.usuario.create({
       data: {
+        telefonoVerificado: true,
         nombreCompleto: nombre,
         correo,
         telefono,

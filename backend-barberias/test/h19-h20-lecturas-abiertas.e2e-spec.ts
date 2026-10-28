@@ -43,7 +43,7 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
   async function crearUsuario(correo: string, nombre: string, telefono: string) {
     const hash = await bcrypt.hash('Password1!', 10);
     return prisma.usuario.create({
-      data: { nombreCompleto: nombre, correo, telefono, passwordHash: hash },
+      data: { telefonoVerificado: true, nombreCompleto: nombre, correo, telefono, passwordHash: hash },
     });
   }
 

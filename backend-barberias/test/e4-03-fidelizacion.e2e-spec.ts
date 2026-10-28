@@ -58,6 +58,11 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
       .post(`${api}/auth/register`)
       .send({ nombreCompleto: correo, correo, telefono: telefono(n), password: 'Password1!' });
     expect([200, 201, 409]).toContain(res.status);
+    // V2.1 · el fixture se da de alta con el teléfono VERIFICADO: sin esto
+    // `VerificacionGuard` respondería 403 en la creación de reserva y este
+    // test no mide la verificación OTP.
+    await prisma.usuario.update({ where: { correo }, data: { telefonoVerificado: true } });
+
   };
 
   const login = async (correo: string) => {

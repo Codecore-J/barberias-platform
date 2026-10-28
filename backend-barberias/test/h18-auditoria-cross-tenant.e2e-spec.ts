@@ -38,7 +38,7 @@ describe('E1-02 · GET /auditoria no cruza barberias (H18)', () => {
   async function crearAdmin(correo: string, nombre: string, telefono: string) {
     const hash = await bcrypt.hash('Password1!', 10);
     return prisma.usuario.create({
-      data: { nombreCompleto: nombre, correo, telefono, passwordHash: hash },
+      data: { telefonoVerificado: true, nombreCompleto: nombre, correo, telefono, passwordHash: hash },
     });
   }
 

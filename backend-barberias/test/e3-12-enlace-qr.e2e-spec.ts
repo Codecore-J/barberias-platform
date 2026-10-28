@@ -146,6 +146,7 @@ describe('E3-12/2 · enlace único y QR: la puerta de entrada del cliente (regla
       (
         await prisma.usuario.create({
           data: {
+            telefonoVerificado: true,
             nombreCompleto: `${etiqueta} E312QR ${sufijo}`,
             correo: `${etiqueta}.e312qr.${sufijo}@test.com`,
             telefono,
