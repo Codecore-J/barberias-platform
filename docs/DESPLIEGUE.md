@@ -191,6 +191,18 @@ Checklist:
 - **Liveness** (`/api/v1/health/liveness`): solo confirma que el proceso responde. Es la que debe usar Render; no depende de PostgreSQL ni Redis.
 - **Readiness** (`/api/v1/health`): comprueba PostgreSQL, Redis y heap (< 300 MB). Devuelve 503 si algo falta. Úsala para alertas y balanceadores, **no** como `healthCheckPath` (un Redis caído no debe reiniciar una instancia sana).
 
+### 6.3 Webhook de WhatsApp (URL canónica)
+
+El webhook de retención está **fuera** del prefijo global `api/v1` (exclusión en `src/main.ts`), así que la URL que se configura en el portal de Meta Cloud API —o en el gateway que haga de puente— es exactamente:
+
+```text
+https://barberias-api-p3br.onrender.com/webhooks/whatsapp
+```
+
+Sin el prefijo `/api/v1`. `POST /api/v1/webhooks/whatsapp` **no existe** y responde `404 Cannot POST`: si Meta apunta ahí, cada entrega del cliente (CONFIRMAR / CANCELAR) se pierde y el recordatorio queda sin respuesta.
+
+La puerta del endpoint es el secreto compartido, no el JWT: la cabecera `x-webhook-secret` debe coincidir con `WHATSAPP_WEBHOOK_SECRET`. Sin la variable, el endpoint responde **503** `WEBHOOK_NO_CONFIGURADO` (nunca queda abierto); con un secreto ausente o distinto, **401** `WEBHOOK_SECRETO_INVALIDO`. Un `200` implica que la firma pasó y la reserva cambió de estado; un `404 Reserva no encontrada` con secreto válido solo indica que el `reservaId` no existe.
+
 ---
 
 ## 7. Workers de BullMQ en producción
