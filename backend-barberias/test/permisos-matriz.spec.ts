@@ -115,8 +115,10 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // Paso 13: descarga CSV del mismo panel. Es el mismo balance financiero, así
   // que la política es idéntica y el guard vuelve a acotar la sede del parámetro.
   'GET /shops/:shopId/analytics/export': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  // Paso 12: resumen consolidado multisede / franquicia.
-  'GET /shops/overview/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // Paso 12: resumen consolidado multisede / franquicia. E4-04: la ruta vive en
+  // `BarberiaController` (antes que `:shopId`), así que ya no lleva la barra
+  // final que arrastraba el controlador propio con `@Controller('shops/overview')`.
+  'GET /shops/overview': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
   // E3-13 (2026-10-11): el nombre y el responsable solo cambian por solicitud
   // aprobada. La ruta usa `:id` (no `:barberiaId`), así que el guard NO resuelve

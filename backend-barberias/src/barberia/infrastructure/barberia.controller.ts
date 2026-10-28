@@ -8,8 +8,11 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { BarberiaService } from '../application/barberia.service.js';
+import { AnalyticsService } from '../../analytics/application/analytics.service.js';
+import { AnalyticsQueryDto } from '../../analytics/dto/analytics-query.dto.js';
 import { SolicitudCambioService } from '../application/solicitud-cambio.service.js';
 import { CreateBarberiaDto } from '../application/dto/create-barberia.dto.js';
 import { CreateSolicitudCambioDto } from '../application/dto/create-solicitud-cambio.dto.js';
@@ -27,6 +30,7 @@ export class BarberiaController {
   constructor(
     private readonly barberiaService: BarberiaService,
     private readonly solicitudCambioService: SolicitudCambioService,
+    private readonly analyticsService: AnalyticsService,
   ) {}
 
   /**
@@ -86,6 +90,36 @@ export class BarberiaController {
   @Roles('ADMINISTRADOR')
   findAll() {
     return this.barberiaService.findAll();
+  }
+
+  /**
+   * GET /shops/overview · E4-04
+   *
+   * Consolidado multisede del panel. Vive AQUÍ, y no en un controlador aparte
+   * con la ruta `shops/overview`, porque Express resuelve por orden de
+   * declaración: un controlador distinto se registraba después de
+   * `@Get(':shopId')` y `overview` entraba por el comodín, que respondía
+   * `400 Validation failed (uuid is expected)` antes de llegar al handler.
+   *
+   * Dentro de este controlador basta con declararlo ANTES de `findOne`: el orden
+   * de los métodos es el orden de las rutas. El mismo criterio que ya usa
+   * `GET /shops/all`.
+   *
+   * El alcance lo decide el servicio: el ADMIN_BARBERIA solo ve las sedes que
+   * administra y el ADMINISTRADOR ve el consolidado global.
+   */
+  @Get('overview')
+  @Roles('ADMINISTRADOR', 'ADMIN_BARBERIA')
+  obtenerOverview(
+    @Query() query: AnalyticsQueryDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.analyticsService.getShopsOverview(
+      user,
+      query.desde,
+      query.hasta,
+      esAdministradorGlobal(user),
+    );
   }
 
   /**

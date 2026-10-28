@@ -25,6 +25,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 // Fase 7: bus de eventos de dominio (reserva.*) y scheduler de los recordatorios
 // preventivos. Se registran aquí, con la infraestructura transversal.
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { OPCIONES_EVENT_EMITTER } from './shared/events/event-emitter.options.js';
 import { ScheduleModule } from '@nestjs/schedule';
 import { NotificacionesModule } from './notificaciones/infrastructure/notificaciones.module.js';
 import { AppCacheModule } from './shared/cache/app-cache.module.js';
@@ -72,7 +73,10 @@ export const THROTTLER_LIMITE_POR_DEFECTO = 120;
             port: parseInt(process.env.REDIS_PORT || '6379', 10),
           },
     }),
-    EventEmitterModule.forRoot(),
+    // `wildcard: true` es lo que hace que `reserva.*` sea un PATRÓN y no un
+    // nombre literal: sin él los listeners del caché de analíticas y de las
+    // notificaciones no se ejecutaban (ver event-emitter.options.ts).
+    EventEmitterModule.forRoot(OPCIONES_EVENT_EMITTER),
     ScheduleModule.forRoot(),
     SharedModule,
     IamModule,
