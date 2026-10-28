@@ -18,9 +18,13 @@ import { AuditoriaModule } from '../auditoria/infrastructure/auditoria.module.js
 // best-effort (`@Optional` en el servicio), pero el módulo tiene que exponerla.
 import { NotificacionModule } from '../notificacion/infrastructure/notificacion.module.js';
 import { SharedModule } from '../shared/shared.module.js';
+// E4-04: `GET /shops/overview` se declara en `BarberiaController` para que la
+// ruta estática quede registrada antes de `/shops/:shopId`. Solo aporta el
+// `AnalyticsService`.
+import { AnalyticsModule } from '../analytics/analytics.module.js';
 
 @Module({
-  imports: [SharedModule, AuditoriaModule, NotificacionModule],
+  imports: [SharedModule, AuditoriaModule, NotificacionModule, AnalyticsModule],
   controllers: [
     BarberiaController,
     ConfiguracionBarberiaController,

@@ -3,12 +3,14 @@ import { vi } from 'vitest';
 import { BarberiaController } from './barberia.controller.js';
 import { BarberiaService } from '../application/barberia.service.js';
 import { SolicitudCambioService } from '../application/solicitud-cambio.service.js';
+import { AnalyticsService } from '../../analytics/application/analytics.service.js';
 import { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 describe('BarberiaController', () => {
   let controller: BarberiaController;
   let service: BarberiaService;
   let solicitudCambio: SolicitudCambioService;
+  let analytics: AnalyticsService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -32,12 +34,17 @@ describe('BarberiaController', () => {
           provide: SolicitudCambioService,
           useValue: { crearSolicitud: vi.fn(), listar: vi.fn(), resolver: vi.fn() },
         },
+        {
+          provide: AnalyticsService,
+          useValue: { getShopsOverview: vi.fn().mockResolvedValue({ ok: true }) },
+        },
       ],
     }).compile();
 
     controller = module.get<BarberiaController>(BarberiaController);
     service = module.get<BarberiaService>(BarberiaService);
     solicitudCambio = module.get<SolicitudCambioService>(SolicitudCambioService);
+    analytics = module.get<AnalyticsService>(AnalyticsService);
   });
 
   it('should be defined', () => {
@@ -207,6 +214,53 @@ describe('BarberiaController', () => {
       await controller.cambiarEstado('uuid-barberia', { estado: 'ACTIVO' }, user);
 
       expect(service.cambiarEstado).toHaveBeenCalledWith('uuid-barberia', user.id, 'ACTIVO', false);
+    });
+  });
+
+  describe('GET /shops/overview (E4-04)', () => {
+    /**
+     * Regresión del 400 real medido en producción: `overview` entraba por
+     * `@Get(':shopId')` porque el handler vivía en un controlador que se
+     * registraba después. Express resuelve por orden de declaración, así que la
+     * ruta estática tiene que estar ANTES del comodín en el prototipo.
+     */
+    it('declara la ruta estática antes que el comodín :shopId', () => {
+      const metodos = Object.getOwnPropertyNames(BarberiaController.prototype);
+      expect(metodos.indexOf('obtenerOverview')).toBeGreaterThanOrEqual(0);
+      expect(metodos.indexOf('obtenerOverview')).toBeLessThan(metodos.indexOf('findOne'));
+    });
+
+    it('delega en el servicio con el usuario y el rango, sin marcar esGlobal a un ADMIN_BARBERIA', async () => {
+      const user: UsuarioAutenticado = {
+        id: 'uuid-admin-sede',
+        correo: 'sede@test.com',
+        roles: ['ADMIN_BARBERIA'],
+      };
+
+      const result = await controller.obtenerOverview(
+        { desde: '2026-10-01', hasta: '2026-10-31' } as any,
+        user,
+      );
+
+      expect(result).toEqual({ ok: true });
+      expect(analytics.getShopsOverview).toHaveBeenCalledWith(
+        user,
+        '2026-10-01',
+        '2026-10-31',
+        false,
+      );
+    });
+
+    it('marca esGlobal true para ADMINISTRADOR', async () => {
+      const user: UsuarioAutenticado = {
+        id: 'uuid-global',
+        correo: 'global@test.com',
+        roles: ['ADMINISTRADOR'],
+      };
+
+      await controller.obtenerOverview({} as any, user);
+
+      expect(analytics.getShopsOverview).toHaveBeenCalledWith(user, undefined, undefined, true);
     });
   });
 });
