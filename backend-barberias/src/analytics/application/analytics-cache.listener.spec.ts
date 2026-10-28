@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AnalyticsCacheListener } from './analytics-cache.listener.js';
+import { crearPurgador } from '../../shared/cache/cache-purger.js';
 
-/** Store mínimo: `iterator` + `deleteMany` son lo único que usa el listener. */
+/**
+ * Store mínimo en memoria: `iterator` + `deleteMany` son lo único que usa el
+ * purgador cuando no hay Redis (el fake no tiene `.store` con `getMasterNodes`).
+ */
 const crearStore = (claves: string[]) => {
   const restantes = new Set(claves);
   return {
@@ -24,7 +28,7 @@ describe('AnalyticsCacheListener (Paso 14)', () => {
 
   beforeEach(() => {
     store = crearStore([]);
-    listener = new AnalyticsCacheListener(store as any);
+    listener = new AnalyticsCacheListener(crearPurgador(store as any));
   });
 
   it('purga solo las claves de la sede del evento', async () => {
@@ -34,7 +38,7 @@ describe('AnalyticsCacheListener (Paso 14)', () => {
       'analytics:shop:shop-2:2026-10-01-2026-10-31',
       'otra:clave',
     ]);
-    listener = new AnalyticsCacheListener(store as any);
+    listener = new AnalyticsCacheListener(crearPurgador(store as any));
 
     await listener.alOcurrirEventoDeReserva({ barberiaId: 'shop-1' });
 
@@ -52,7 +56,7 @@ describe('AnalyticsCacheListener (Paso 14)', () => {
       'analytics:overview:u1:all-all',
       'analytics:overview:global:all-all',
     ]);
-    listener = new AnalyticsCacheListener(store as any);
+    listener = new AnalyticsCacheListener(crearPurgador(store as any));
 
     await listener.alOcurrirEventoDeReserva({ barberiaId: 'shop-1' });
 
@@ -61,7 +65,7 @@ describe('AnalyticsCacheListener (Paso 14)', () => {
 
   it('no escribe nada si el prefijo no tiene entradas', async () => {
     store = crearStore(['analytics:overview:u1:all-all']);
-    listener = new AnalyticsCacheListener(store as any);
+    listener = new AnalyticsCacheListener(crearPurgador(store as any));
 
     // La sede no tiene nada cacheado: solo se purga el overview.
     await listener.alOcurrirEventoDeReserva({ barberiaId: 'shop-9' });
@@ -72,7 +76,7 @@ describe('AnalyticsCacheListener (Paso 14)', () => {
 
   it('ignora eventos sin barberiaId', async () => {
     store = crearStore(['analytics:shop:shop-1:all-all']);
-    listener = new AnalyticsCacheListener(store as any);
+    listener = new AnalyticsCacheListener(crearPurgador(store as any));
 
     await listener.alOcurrirEventoDeReserva({});
 
@@ -86,7 +90,7 @@ describe('AnalyticsCacheListener (Paso 14)', () => {
       },
       deleteMany: vi.fn(),
     };
-    listener = new AnalyticsCacheListener(roto as any);
+    listener = new AnalyticsCacheListener(crearPurgador(roto as any));
 
     await expect(listener.alOcurrirEventoDeReserva({ barberiaId: 'shop-1' })).resolves.toBeUndefined();
   });
