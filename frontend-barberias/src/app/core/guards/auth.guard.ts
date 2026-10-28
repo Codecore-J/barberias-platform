@@ -18,10 +18,29 @@ import { PARAM_RETURN_URL } from '../utils/return-url.util';
  *     al formulario de reserva para recibir un 403 sería peor experiencia que
  *     resolverlo al entrar.
  *
+ *     Esa puerta es del CLIENTE, no del personal. `ADMINISTRADOR`,
+ *     `ADMIN_BARBERIA` y `BARBERO` no reservan como consumidores y sus cuentas
+ *     se crean desde la plataforma o desde `npm run admin:create` SIN teléfono
+ *     confirmado: aplicarles la redirección les cerraría su propio panel —
+ *     exactamente lo que rompía el test de UI de CI en `/admin/usuarios`.
+ *     Quien crea una reserva sigue necesitando el teléfono verificado, venga el
+ *     rol que venga: eso lo decide el backend, no este guard.
+ *
  * `/auth/verify` NO se protege con este guard a propósito: si lo hiciera, un
  * usuario sin verificar reenviaría la navegación a la misma URL en bucle. Esa
  * pantalla comprueba por su cuenta que haya token y redirige al login si no.
  */
+/**
+ * V2.1 · roles que OPERAN la sede (`roleGuard` llama ADMIN a los tres primeros).
+ * No están en el alcance de la verificación: gestionan la agenda, no la ocupan
+ * reservando, y el backend les exige el teléfono solo si crean una reserva.
+ */
+const ROLES_DE_OPERACION = new Set(['ADMINISTRADOR', 'ADMIN_BARBERIA', 'BARBERO', 'ADMIN']);
+
+/** V2.1 · ¿pertenece a alguno de esos roles? Sin roles no es personal: se verifica. */
+const esPersonal = (usuario: UsuarioResponseDto): boolean =>
+  usuario.roles?.some((rol) => ROLES_DE_OPERACION.has(rol)) ?? false;
+
 export const authGuard: CanActivateFn = (_route, state) => {
   const authService = inject(AuthService);
   const router = inject(Router);
@@ -48,7 +67,7 @@ export const authGuard: CanActivateFn = (_route, state) => {
     });
 
   const decidir = (usuario: UsuarioResponseDto | null): boolean | ReturnType<typeof aVerificacion> => {
-    if (usuario && !usuario.telefonoVerificado) {
+    if (usuario && !usuario.telefonoVerificado && !esPersonal(usuario)) {
       return aVerificacion();
     }
     return true;

@@ -87,6 +87,30 @@ describe('authGuard · H75 (la ruta pedida sobrevive al login)', () => {
     expect(interceptar('/unirse/imperial-ab12')).toBe(true);
   });
 
+  it('V2.1 · el personal de la sede sin teléfono verificado NO va a /auth/verify', () => {
+    // Su cuenta la crea la plataforma o `npm run admin:create`, sin teléfono
+    // confirmado: mandarla a verificar le cerraría su propio panel.
+    sesion.autenticado = true;
+    sesion.token = 'token-en-local-storage';
+    sesion.usuario = { ...usuarioCon(false), roles: ['ADMINISTRADOR'] };
+
+    expect(interceptar('/admin/usuarios')).toBe(true);
+  });
+
+  it('V2.1 · sin rol alguno sí se verifica: es una cuenta recién registrada', () => {
+    sesion.autenticado = true;
+    sesion.token = 'token-en-local-storage';
+    sesion.usuario = { ...usuarioCon(false), roles: [] };
+
+    const resultado = interceptar('/reservar');
+
+    expect(resultado instanceof UrlTree).toBe(true);
+    expect((resultado as UrlTree).root.children['primary'].segments.map((s) => s.path)).toEqual([
+      'auth',
+      'verify',
+    ]);
+  });
+
   it('deja pasar a quien ya tiene sesión', () => {
     sesion.autenticado = true;
     expect(interceptar('/unirse/imperial-ab12')).toBe(true);
