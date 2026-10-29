@@ -319,6 +319,34 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // guard solo filtra el rol. El ADMINISTRADOR global entra por jerarquía
   // (E1-04), que MATRIZ_ESPERADA añade solo.
   'POST /lista-espera/': [ROL_CLIENTE],
+  // V3 · catálogo híbrido (2026-10-29). La taxonomía es de la SEDE: las
+  // categorías las crea y edita su ADMIN_BARBERIA —OperadorBarberiaGuard cierra
+  // el paso del ADMINISTRADOR global por jerarquía, igual que en el catálogo de
+  // E1-05— y el BARBERO solo las lee para publicar dentro.
+  'POST /shops/:shopId/categorias/': [ROL_ADMIN_BARBERIA],
+  'GET /shops/:shopId/categorias/': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
+  'PATCH /shops/:shopId/categorias/:id': [ROL_ADMIN_BARBERIA],
+
+  // V3 · el catálogo anidado que consume el frontend del cliente. Se declaran los
+  // cuatro roles porque es la vitrina (como GET /shops/:shopId/services): la
+  // pertenencia a la sede la exige VinculoBarberiaGuard, no la lista de roles.
+  'GET /shops/:shopId/servicios': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+
+  // V3 · servicios PROPIOS del barbero. Solo BARBERO: el barberoId sale del JWT
+  // y SoloBarberoGuard impide que el ADMINISTRADOR global (jerarquía de E1-04) o
+  // el ADMIN_BARBERIA publiquen «en su nombre». El ADMINISTRADOR aparece en la
+  // matriz esperada porque el guard global lo deja pasar; la denegación efectiva
+  // es del guard de la ruta, que la matriz no modela.
+  'POST /shops/:shopId/mis-servicios': [ROL_BARBERO],
+  'GET /shops/:shopId/mis-servicios': [ROL_BARBERO],
+  'PATCH /shops/:shopId/mis-servicios/:id': [ROL_BARBERO],
+
+  // V3 · reasignar barbero. Es una decisión de la SEDE (D02), como aceptar o
+  // reprogramar. La ruta NO lleva :shopId, así que el guard solo filtra el rol y
+  // la pertenencia la exige ReservaService.asignarBarbero contra la sede de la
+  // reserva (403 RESERVA_AJENA); mismo patrón que la anulación de un cobro (H68).
+  'PATCH /reservas/:id/asignar-barbero': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+
 };
 
 /**
@@ -586,8 +614,8 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // la 90: 360. El panel de analíticas (Pasos 10 y 12) sumó dos rutas: 92 × 4 =
   // 368. La exportación CSV del Paso 13 suma la 93: 372. V2.1 suma las dos
   // rutas de verificación OTP (`send-otp` y `verify-otp`, ambas `@Autenticado`):
-  // 95 × 4 = 380.
-  expect(evaluaciones).toBe(380);
+  // 95 × 4 = 380. V3 suma ocho rutas del catálogo híbrido y la asignación: 412.
+  expect(evaluaciones).toBe(412);
     expect(
       desviaciones.length === 0
         ? ''

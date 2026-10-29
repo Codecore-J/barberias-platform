@@ -26,6 +26,7 @@ import {
   type MotivoRechazo,
 } from './dto/rechazar-reserva.dto.js';
 import { ReprogramarReservaDto } from './dto/reprogramar-reserva.dto.js';
+import { AsignarBarberoDto } from './dto/asignar-barbero.dto.js';
 import {
   CancelacionEspecialDto,
   MOTIVOS_CANCELACION_ESPECIAL,
@@ -69,6 +70,7 @@ import { NotificacionService } from '../../notificacion/application/notificacion
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import {
   alcanceCumple,
+  esAdministradorGlobal,
   esAdministradorGlobalPorId,
   ROL_ADMINISTRADOR,
   ROL_ADMIN_BARBERIA,
@@ -109,6 +111,16 @@ export const ESTADOS_CANCELABLES = [
  * `NO_PRESENTADO`, `COMPLETADA`) no tiene agenda que reprogramar.
  */
 export const ESTADOS_REPROGRAMABLES = ESTADOS_CANCELABLES;
+
+/**
+ * V3 · estados en los que se puede reasignar el barbero de una reserva.
+ *
+ * Son los mismos en los que la reserva sigue «viva» para la agenda: una cita
+ * terminal (`EXPIRADA`, `CANCELADA`, `RECHAZADA`, `NO_PRESENTADO`, `COMPLETADA`)
+ * ya no ocupa hueco, así que moverle el barbero no significa nada y se responde
+ * 409 `ESTADO_INVALIDO` como en el resto de operaciones de §5.2.
+ */
+export const ESTADOS_ASIGNABLES: readonly string[] = [...ESTADOS_CANCELABLES];
 
 /**
  * E3-07 §5.7 · ventana del CLIENTE para cancelar por su cuenta una cita ya
@@ -2561,6 +2573,268 @@ export class ReservaService {
    * E3-03 a E3-08 son los únicos caminos, cada uno con sus condiciones (ventana
    * de 30 minutos, motivo obligatorio, bandera D17, revalidación del hueco).
    */
+
+  /**
+   * V3 · Reasignar el barbero de una reserva viva.
+   *
+   * Era la limitación funcional de la agenda: una cita «Sin Asignar» solo se
+   * podía resolver cancelándola y volviéndola a crear. Moverla de barbero es una
+   * escritura de AGENDA, así que va bajo el mismo lock de sede que crear, aceptar
+   * o reprogramar.
+   *
+   * Dentro de la transacción se comprueba que el destino esté libre: dos citas
+   * del mismo barbero en el mismo rango no caben en la agenda aunque las horas y
+   * los estados sean válidos por separado. Se miran las reservas que OCUPAN
+   * agenda (§5.3) y los bloqueos de la sede —propios del barbero o de toda la
+   * sede—, porque la sede puede haber cerrado esa franja después de agendar.
+   *
+   * La ruta no lleva `:shopId` (`PATCH /reservas/:id/asignar-barbero`), así que
+   * `RolesGuard` solo filtra el rol: la pertenencia la exige
+   * `exigirDecisionDeSede` contra la sede de LA RESERVA, y un ADMIN_BARBERIA de
+   * otra sede recibe 403.
+   *
+   * Es idempotente: si el destino ya es el barbero actual se devuelve la reserva
+   * sin escribir ni volver a notificar.
+   */
+  async asignarBarbero(
+    reservaId: string,
+    dto: AsignarBarberoDto,
+    user: UsuarioAutenticado,
+  ) {
+    const reserva = await this.prisma.reserva.findUnique({
+      where: { id: reservaId },
+      select: {
+        id: true,
+        barberiaId: true,
+        barberoId: true,
+        estado: true,
+        fechaCita: true,
+        horaInicio: true,
+        horaFin: true,
+        barberia: { select: { nombre: true } },
+      },
+    });
+
+    if (!reserva) {
+      throw new NotFoundException('Reserva no encontrada');
+    }
+
+    this.exigirDecisionDeSede(user, reserva.barberiaId);
+
+    // El destino tiene que ser BARBERO (o ADMIN_BARBERIA que también atiende) de
+    // la MISMA sede. Un `barberoId` de otra sede o de un CLIENTE no existe como
+    // destino válido, y la respuesta lo dice sin revelar datos de otras sedes.
+    const destino = await this.prisma.usuarioRol.findFirst({
+      where: {
+        usuarioId: dto.barberoId,
+        barberiaId: reserva.barberiaId,
+        rol: { nombre: { in: [ROL_BARBERO, ROL_ADMIN_BARBERIA] } },
+      },
+      select: {
+        rol: { select: { nombre: true } },
+        usuario: { select: { nombreCompleto: true, estadoCuenta: true } },
+      },
+    });
+
+    if (!destino) {
+      throw reglaDeNegocio(
+        'BARBERO_NO_PERTENECE_A_SEDE',
+        'El barbero indicado no presta servicio en la sede de esta reserva.',
+        { reservaId: reserva.id },
+      );
+    }
+
+    if (destino.usuario?.estadoCuenta && destino.usuario.estadoCuenta !== 'ACTIVO') {
+      throw reglaDeNegocio(
+        'BARBERO_INACTIVO',
+        `La cuenta de ${destino.usuario.nombreCompleto} no está activa: no se le puede asignar una cita.`,
+        { reservaId: reserva.id },
+      );
+    }
+
+    if (reserva.barberoId === dto.barberoId) {
+      return {
+        id: reserva.id,
+        barberoId: reserva.barberoId,
+        estado: reserva.estado,
+        barbero: { id: dto.barberoId, nombre: destino.usuario?.nombreCompleto ?? '' },
+        reasignada: false,
+      };
+    }
+
+    const resultado = await withSerializableTransaction(this.prisma, async (tx) => {
+      await this.bloquearSedeParaEscritura(tx, reserva.barberiaId);
+
+      const actual = await tx.reserva.findFirst({
+        where: { id: reservaId, barberiaId: reserva.barberiaId },
+        select: {
+          id: true,
+          estado: true,
+          barberoId: true,
+          fechaCita: true,
+          horaInicio: true,
+          horaFin: true,
+        },
+      });
+
+      if (!actual) {
+        throw new NotFoundException('Reserva no encontrada');
+      }
+
+      // Se revalida DENTRO del lock: el estado pudo cambiar entre la lectura de
+      // arriba y la transacción.
+      if (!ESTADOS_ASIGNABLES.includes(actual.estado)) {
+        throw errorDeConflicto(
+          'ESTADO_INVALIDO',
+          `No se puede reasignar el barbero de una reserva en estado ${actual.estado}.`,
+        );
+      }
+
+      if (actual.barberoId === dto.barberoId) {
+        return {
+          id: actual.id,
+          barberoId: actual.barberoId,
+          estado: actual.estado,
+          barbero: { id: dto.barberoId, nombre: destino.usuario?.nombreCompleto ?? '' },
+          reasignada: false,
+        };
+      }
+
+      await this.exigirBarberoLibre(tx, reserva.barberiaId, dto.barberoId, actual);
+
+      const guardada = await tx.reserva.update({
+        where: { id: actual.id },
+        data: { barberoId: dto.barberoId },
+        select: {
+          id: true,
+          barberoId: true,
+          estado: true,
+          barbero: { select: { id: true, nombreCompleto: true } },
+        },
+      });
+
+      await this.auditoriaService.registrarEvento(
+        {
+          usuarioId: user.id,
+          accion: 'RESERVA_BARBERO_ASIGNADO',
+          entidad: 'Reserva',
+          entidadId: actual.id,
+          contexto: {
+            barberiaId: reserva.barberiaId,
+            barberoAnterior: actual.barberoId,
+            barberoNuevo: dto.barberoId,
+            estado: actual.estado,
+          },
+        },
+        tx,
+      );
+
+      return {
+        id: guardada.id,
+        barberoId: guardada.barberoId,
+        estado: guardada.estado,
+        barbero: guardada.barbero
+          ? { id: guardada.barbero.id, nombre: guardada.barbero.nombreCompleto }
+          : null,
+        reasignada: true,
+      };
+    });
+
+    // El cliente NO recibe aviso: su cita no cambió de hora ni de estado. Quien
+    // necesita enterarse es el barbero que acaba de recibir el turno.
+    if (resultado.reasignada && this.notificacionService) {
+      this.notificacionService
+        .enviarNotificacion({
+          usuarioId: dto.barberoId,
+          tipo: 'RESERVA_ASIGNADA',
+          contenido: `Se te asignó una cita el ${this.fechaISO(reserva.fechaCita)} a las ${this.horaHHMM(reserva.horaInicio)} en ${reserva.barberia.nombre}.`,
+        })
+        .catch((err) =>
+          this.logger.warn(`No se pudo notificar al barbero asignado: ${err.message}`),
+        );
+    }
+
+    return resultado;
+  }
+
+  /**
+   * V3 · la reasignación la decide la SEDE de la reserva (mismo criterio que
+   * aceptar, rechazar o reprogramar). `RolesGuard` no puede verlo porque la ruta
+   * no lleva `:shopId`, así que la comprobación vive aquí.
+   */
+  private exigirDecisionDeSede(user: UsuarioAutenticado, barberiaId: string): void {
+    if (esAdministradorGlobal(user)) {
+      return;
+    }
+
+    const esStaff = user.rolesDetallados?.some(
+      (rol) =>
+        rol.barberiaId === barberiaId &&
+        (rol.nombre === ROL_ADMIN_BARBERIA || rol.nombre === ROL_ADMINISTRADOR),
+    );
+
+    if (!esStaff) {
+      throw errorDePermiso(
+        'RESERVA_AJENA',
+        'La asignación de barbero la decide la sede de la reserva: tu cuenta no administra esa barbería.',
+      );
+    }
+  }
+
+  /**
+   * V3 · el destino tiene que estar libre en ESE rango. Mira lo que ocupa agenda
+   * (§5.3) y los bloqueos no liberados, propios del barbero o de toda la sede.
+   */
+  private async exigirBarberoLibre(
+    tx: Prisma.TransactionClient,
+    barberiaId: string,
+    barberoId: string,
+    bloque: { id: string; fechaCita: Date; horaInicio: Date; horaFin: Date },
+  ): Promise<void> {
+    const choque = await tx.reserva.findFirst({
+      where: {
+        barberiaId,
+        barberoId,
+        id: { not: bloque.id },
+        fechaCita: bloque.fechaCita,
+        estado: {
+          in: [ESTADOS.PENDIENTE, ESTADOS.CONFIRMADA, ESTADOS.PROPUESTA_PENDIENTE],
+        },
+        horaInicio: { lt: bloque.horaFin },
+        horaFin: { gt: bloque.horaInicio },
+      },
+      select: { id: true, horaInicio: true, horaFin: true },
+    });
+
+    if (choque) {
+      throw errorDeConflicto(
+        'BARBERO_OCUPADO',
+        `El barbero ya tiene una cita de ${this.horaHHMM(choque.horaInicio)} a ${this.horaHHMM(choque.horaFin)} ese día.`,
+        { reservaEnConflicto: choque.id },
+      );
+    }
+
+    const bloqueo = await tx.bloqueosAgenda.findFirst({
+      where: {
+        barberiaId,
+        fecha: bloque.fechaCita,
+        liberadoAt: null,
+        OR: [{ barberoId }, { barberoId: null }],
+        horaInicio: { lt: bloque.horaFin },
+        horaFin: { gt: bloque.horaInicio },
+      },
+      select: { id: true, horaInicio: true, horaFin: true },
+    });
+
+    if (bloqueo) {
+      throw errorDeConflicto(
+        'BARBERO_BLOQUEADO',
+        `La sede tiene bloqueada la franja de ${this.horaHHMM(bloqueo.horaInicio)} a ${this.horaHHMM(bloqueo.horaFin)} para ese barbero.`,
+        { bloqueoId: bloqueo.id },
+      );
+    }
+  }
+
   /**
    * Fase 7 · publica un hecho de la reserva en el bus con los datos de contacto
    * ya resueltos (nombre, correo y teléfono del cliente; nombre de la sede).
