@@ -453,6 +453,9 @@ export class PagoService {
                       // catálogo de hoy (los precios confirmados se congelan).
                       precioHistorico: true,
                       servicio: { select: { nombre: true } },
+                      // V3 fase 4 · el recibo también cubre las reservas hechas
+                      // con el catálogo propio de un barbero.
+                      servicioBarbero: { select: { nombrePersonalizado: true } },
                     },
                   },
                 },
@@ -498,7 +501,10 @@ export class PagoService {
       servicios: (fila.reserva?.participantes ?? [])
         .flatMap((participante: any) => participante.participanteServicios ?? [])
         .map((linea: any) => ({
-          nombre: linea.servicio?.nombre ?? 'Servicio',
+          nombre:
+            linea.servicio?.nombre ??
+            linea.servicioBarbero?.nombrePersonalizado ??
+            'Servicio',
           precio: Number(linea.precioHistorico ?? 0),
         })),
     };

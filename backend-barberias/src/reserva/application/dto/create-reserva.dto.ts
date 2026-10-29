@@ -51,14 +51,41 @@ export class CreateReservaDto {
   /**
    * E4-01: en la reserva GRUPAL los servicios viven dentro de cada participante
    * (`participantes[].servicios`), así que esta lista solo se exige en el flujo
-   * individual. La validación es condicional y NO se relaja: sin `tipo` —o con
-   * cualquier otro tipo— sigue siendo obligatoria y no vacía.
+   * individual.
+   *
+   * V3 fase 4: en el flujo individual con catálogo HÍBRIDO los servicios llegan
+   * en `serviciosBarberoIds`, así que tampoco se exige aquí. La regla sigue
+   * siendo estricta: una reserva individual sin NINGUNO de los dos catálogos se
+   * rechaza en `ReservaService.crearReserva` con 400, porque un DTO que se
+   * relajara a `@IsOptional()` a secas aceptaría una reserva de cero servicios.
    */
-  @ValidateIf((o: CreateReservaDto) => o.tipo !== 'GRUPAL')
+  @ValidateIf(
+    (o: CreateReservaDto) =>
+      o.tipo !== 'GRUPAL' && !(o.serviciosBarberoIds && o.serviciosBarberoIds.length > 0),
+  )
   @IsArray()
   @ArrayNotEmpty({ message: 'Debe incluir al menos un servicio en la reserva' })
   @IsUUID('4', { each: true })
-  serviciosIds: string[];
+  serviciosIds?: string[];
+
+  /**
+   * V3 fase 4 · servicios del catálogo híbrido (`servicios_barbero`).
+   *
+   * Cada barbero publica los suyos con su precio y su duración, así que la
+   * reserva tiene que decir de QUIÉN son: el servicio y `barberoId` forman una
+   * pareja indivisible y el servicio comprueba que cada id pertenece a ese
+   * barbero y a esa sede. El precio y la duración NO se aceptan del cliente:
+   * se calculan en el servidor sumando los valores del catálogo.
+   *
+   * Es excluyente con `serviciosIds` (una reserva mezcla catálogos o no los
+   * mezcla): si llegan los dos, `crearReserva` responde 400
+   * `CATALOGO_AMBIGUO`. La reserva GRUPAL sigue usando el catálogo heredado.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty({ message: 'serviciosBarberoIds no puede ir vacío si se envía' })
+  @IsUUID('4', { each: true, message: 'Cada servicio del catálogo híbrido debe ser un UUID válido' })
+  serviciosBarberoIds?: string[];
 
   @IsNumber()
   @Min(0, { message: 'El precio total esperado no puede ser negativo' })

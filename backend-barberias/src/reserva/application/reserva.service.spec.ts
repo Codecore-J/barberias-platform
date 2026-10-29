@@ -43,6 +43,8 @@ describe('ReservaService', () => {
     participanteReserva: { create: vi.fn() },
     participanteServicio: { createMany: vi.fn(), findMany: vi.fn() },
     servicio: { findMany: vi.fn() },
+    // V3 fase 4 · catálogo propio del barbero.
+    servicioBarbero: { findMany: vi.fn() },
     barberia: { findUnique: vi.fn() },
     usuarioRol: { findFirst: vi.fn(), findMany: vi.fn() },
     antecedente: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
@@ -442,6 +444,197 @@ describe('ReservaService', () => {
           precioTotalEsperado: 15,
         }),
       ).rejects.toThrowError(ConflictException);
+    });
+  });
+
+  /**
+   * V3 fase 4 · checkout con el catálogo híbrido.
+   *
+   * El cliente reserva servicios que publicó SU barbero: el servidor valida la
+   * pareja servicio–barbero–sede, calcula precio y duración con los valores del
+   * catálogo y guarda el snapshot apuntando a `servicio_barbero_id`.
+   */
+  describe('V3 · crearReserva con el catálogo híbrido', () => {
+    const configHibrida = {
+      modoReserva: 'MANUAL',
+      nuevasReservasActivas: true,
+      aceptaIndividual: true,
+      margenGrupalMinutos: 10,
+    };
+
+    const serviciosDelBarbero = [
+      { id: 'sb1', nombrePersonalizado: 'Corte', precio: 20, duracionMinutos: 25 },
+      { id: 'sb2', nombrePersonalizado: 'Barba', precio: 10, duracionMinutos: 15 },
+    ];
+
+    function prepararAltaHibrida(): void {
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue(configHibrida);
+      mockPrismaService.servicioBarbero.findMany.mockResolvedValue(serviciosDelBarbero);
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
+        { inicio: enSede('2026-10-10', 9), fin: enSede('2026-10-10', 10) },
+      ]);
+      mockPrismaService.reserva.create.mockResolvedValue({ id: 'uuid-reserva' });
+      mockPrismaService.participanteReserva.create.mockResolvedValue({ id: 'uuid-part' });
+    }
+
+    it('congela el snapshot en `servicioBarberoId` y calcula el precio con el catálogo del barbero', async () => {
+      prepararAltaHibrida();
+
+      await service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        fecha: '2026-10-10',
+        horaInicio: '09:00',
+        horaFin: '09:40',
+        serviciosBarberoIds: ['sb1', 'sb2'],
+        barberoId: 'uuid-barbero',
+        // El cliente miente en el total: el servidor suma el catálogo (30).
+        precioTotalEsperado: 1,
+      });
+
+      expect(mockPrismaService.servicioBarbero.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            barberoId: 'uuid-barbero',
+            activo: true,
+            categoria: { barberiaId: 'uuid-barberia', activa: true },
+          }),
+        }),
+      );
+
+      // El catálogo heredado no se consulta en este flujo.
+      expect(mockPrismaService.servicio.findMany).not.toHaveBeenCalled();
+
+      // Σ duraciones = 40 min → el fin lo fija el servidor, no el DTO.
+      expect(mockPrismaService.reserva.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            totalPagar: 30,
+            horaFin: hora(9, 40),
+            margenGrupalHistorico: 10,
+          }),
+        }),
+      );
+
+      expect(mockPrismaService.participanteServicio.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            participanteId: 'uuid-part',
+            servicioBarberoId: 'sb1',
+            precioHistorico: 20,
+            duracionHistorica: 25,
+            margenHistorico: 0,
+          },
+          {
+            participanteId: 'uuid-part',
+            servicioBarberoId: 'sb2',
+            precioHistorico: 10,
+            duracionHistorica: 15,
+            margenHistorico: 0,
+          },
+        ],
+      });
+    });
+
+    it('rechaza con 400 SERVICIO_FUERA_DE_BARBERIA si algún id no es de ese barbero en esta sede', async () => {
+      prepararAltaHibrida();
+      // El backend devuelve uno menos: el segundo id es de otro barbero u otra sede.
+      mockPrismaService.servicioBarbero.findMany.mockResolvedValue([serviciosDelBarbero[0]]);
+
+      await expect(
+        service.crearReserva('uuid-cliente', 'uuid-barberia', {
+          fecha: '2026-10-10',
+          horaInicio: '09:00',
+          horaFin: '09:40',
+          serviciosBarberoIds: ['sb1', 'sb2'],
+          barberoId: 'uuid-barbero',
+          precioTotalEsperado: 30,
+        }),
+      ).rejects.toMatchObject({
+        response: { statusCode: 400, codigo: 'SERVICIO_FUERA_DE_BARBERIA' },
+      });
+
+      expect(mockPrismaService.reserva.create).not.toHaveBeenCalled();
+    });
+
+    it('rechaza con 400 CATALOGO_AMBIGUO si llegan los dos catálogos a la vez', async () => {
+      await expect(
+        service.crearReserva('uuid-cliente', 'uuid-barberia', {
+          fecha: '2026-10-10',
+          horaInicio: '09:00',
+          horaFin: '09:40',
+          serviciosIds: ['s1'],
+          serviciosBarberoIds: ['sb1'],
+          barberoId: 'uuid-barbero',
+          precioTotalEsperado: 30,
+        }),
+      ).rejects.toMatchObject({
+        response: { statusCode: 400, codigo: 'CATALOGO_AMBIGUO' },
+      });
+    });
+
+    it('rechaza con 400 BARBERO_REQUERIDO si se piden servicios propios sin decir de quién son', async () => {
+      await expect(
+        service.crearReserva('uuid-cliente', 'uuid-barberia', {
+          fecha: '2026-10-10',
+          horaInicio: '09:00',
+          horaFin: '09:40',
+          serviciosBarberoIds: ['sb1'],
+          precioTotalEsperado: 20,
+        }),
+      ).rejects.toMatchObject({
+        response: { statusCode: 400, codigo: 'BARBERO_REQUERIDO' },
+      });
+    });
+
+    it('rechaza con 400 SERVICIOS_REQUERIDOS una reserva individual sin servicios', async () => {
+      await expect(
+        service.crearReserva('uuid-cliente', 'uuid-barberia', {
+          fecha: '2026-10-10',
+          horaInicio: '09:00',
+          horaFin: '09:40',
+          precioTotalEsperado: 0,
+        }),
+      ).rejects.toMatchObject({
+        response: { statusCode: 400, codigo: 'SERVICIOS_REQUERIDOS' },
+      });
+    });
+
+    it('cotizar también calcula bloque y precio con el catálogo del barbero', async () => {
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue(configHibrida);
+      mockPrismaService.servicioBarbero.findMany.mockResolvedValue(serviciosDelBarbero);
+
+      const cotizacion = await service.cotizar('uuid-barberia', {
+        fecha: '2026-10-10',
+        horaInicio: '09:00',
+        horaFin: '09:40',
+        serviciosBarberoIds: ['sb1', 'sb2'],
+        barberoId: 'uuid-barbero',
+        precioTotalEsperado: 1,
+        tipo: 'INDIVIDUAL',
+      } as any);
+
+      expect(cotizacion.horaFin).toBe('09:40');
+      expect(cotizacion.bloqueTotal).toEqual({
+        duracionTotal: 50, // Σ 40 + margen de la sede 10
+        margenTotal: 10,
+        precioTotal: 30,
+      });
+      expect(cotizacion.desgloseServicios).toEqual([
+        {
+          servicioBarberoId: 'sb1',
+          nombre: 'Corte',
+          precio: 20,
+          duracionEstimada: 25,
+          margenOperativo: 0,
+        },
+        {
+          servicioBarberoId: 'sb2',
+          nombre: 'Barba',
+          precio: 10,
+          duracionEstimada: 15,
+          margenOperativo: 0,
+        },
+      ]);
     });
   });
 
