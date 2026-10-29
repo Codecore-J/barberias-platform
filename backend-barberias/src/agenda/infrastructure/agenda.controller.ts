@@ -39,6 +39,9 @@ export class AgendaController {
     @CurrentUser() user: UsuarioAutenticado,
     @Query('fecha') fecha: string,
     @Query('duracionMinutos') duracionMinutos?: string,
+    // V3 fase 5: el asistente del cliente pregunta por un barbero concreto para
+    // que no le ofrezcan huecos dentro de su descanso.
+    @Query('barberoId', new ParseUUIDPipe({ optional: true })) barberoId?: string,
   ) {
     const duracion = duracionMinutos ? parseInt(duracionMinutos, 10) : 30;
     return this.disponibilidadService.calcularDisponibilidadDeSolicitante(
@@ -50,6 +53,7 @@ export class AgendaController {
         fecha,
         duracionTotal: duracion,
         margenRequerido: 0,
+        barberoId,
       },
       user.id,
     );
@@ -131,6 +135,7 @@ export class AgendaController {
         fecha: dto.fecha,
         duracionTotal: dto.duracionTotal,
         margenRequerido: dto.margenRequerido ?? 0,
+        barberoId: dto.barberoId,
       },
       user.id,
     );
