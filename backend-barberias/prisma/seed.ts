@@ -1,16 +1,81 @@
 /**
- * SEED INICIAL — Roles y Permisos de la Plataforma
+ * SEED — Categorías oficiales de la sede + roles y permisos de la plataforma.
  *
- * Inserta los 4 roles del sistema y sus permisos base.
- * Ejecutar con: npm run seed (usa `tsx`, el runner del proyecto).
+ * - `seedCategoriasOficiales(barberiaId)` se ejecuta tras la creación de la barbería
+ *   (donde el `barberiaId` ya se conoce) y también en un cron/seed de proveedores.
+ *   `ON CONFLICT DO NOTHING` (vía `createMany({ skipDuplicates: true })`) garantiza
+ *   que nunca se reescriben categorías existentes ni se dupliquen.
+ * - El resto del seed (roles, permisos, asignación) era el original de la plataforma.
+ *   Ejecutar con: `npm run seed` (tsx, runner del proyecto).
  *
  * Regla de negocio (Sección 3.1):
  * Autorización jerárquica: Permisos → Roles → Usuario.
- * Nunca un campo simple tipo `usuario.tipo = "admin"`.
+ * Nunca un campo simple tipo `usuario.tipo = \"admin\"`.
  */
 import { PrismaClient } from '@prisma/client';
 
+/** Categorías oficiales de la sede: ellas vinculan los servicios que publica el barbero. */
+const CATEGORIAS_OFICIALES = [
+  {
+    nombre: 'Cortes Premium y Degradados',
+    descripcion: 'Fade, Taper, Moicano, Mullet y cortes texturizados.',
+  },
+  {
+    nombre: 'Cortes Básicos y Tradicionales',
+    descripcion: 'Solo rebajar, corte clásico a tijera y tradicional.',
+  },
+  {
+    nombre: 'Arreglos Rápidos y Mantenimiento',
+    descripcion: 'Rapado (clavos), solo cerquillo, diseños y Bigen.',
+  },
+  {
+    nombre: 'Barba y Afeitado',
+    descripcion: 'Perfilado de barba, afeitado con navaja y ritual con toalla caliente.',
+  },
+  {
+    nombre: 'Combos (Corte + Barba)',
+    descripcion: 'Paquetes combinados de corte de cabello y arreglo de barba.',
+  },
+  {
+    nombre: 'Extras y Cuidado Personal',
+    descripcion: 'Cejas, mascarilla negra, limpieza facial, lavado y colorimetría.',
+  },
+  {
+    nombre: 'Cortes Infantiles',
+    descripcion: 'Cortes y degradados para niños.',
+  },
+];
+
 const prisma = new PrismaClient();
+
+/**
+ * Seed idempotente de las 7 categorías oficiales de la sede.
+ *
+ * Se ejecuta tras la creación de la barbería (el `barberiaId` lo pone quien cree
+ * la cita) y también en un cron/seed de proveedores: `ON CONFLICT DO NOTHING`
+ * garantiza que una categoría que ya existe —con su descripción y su código—
+ * no se reescriba y que la barbería nunca duplique categorías.
+ */	export async function seedCategoriasOficiales(barberiaId: string): Promise<void> {
+  console.log(`🌱 Seed de categorías oficiales para ${barberiaId}...`);
+
+  const categoriasInsercion = CATEGORIAS_OFICIALES.map((categoría) => ({
+    barberiaId,
+    nombre: categoría.nombre,
+    descripcion: categoría.descripcion,
+  }));
+
+  /**
+   * `skipDuplicates: true` equivale a `ON CONFLICT DO NOTHING`: si ya hay una categoría
+   * con ese `barberiaId` + `nombre` (clave única de la sede) no se inserte de nuevo,
+   * teniendo así una función de seguridad y cero side effects en sedes que ya la ejecutaron.
+   */
+  const inserted = await prisma.categoriaServicio.createMany({
+    data: categoriasInsercion,
+    skipDuplicates: true,
+  });
+
+  console.log(`✅ ${inserted.count} categoría(s) de las 7 pusas (idempotente).`);
+}
 
 async function main() {
   console.log('🌱 Iniciando seed de roles y permisos...');
