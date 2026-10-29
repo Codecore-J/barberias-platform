@@ -1,6 +1,7 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { AntecedentesService, Antecedente } from '../../../core/services/antecedentes.service';
 import { TenantService } from '../../../core/services/tenant.service';
 import { FichaClienteDrawerComponent } from '../../clientes/components/ficha-cliente-drawer/ficha-cliente-drawer.component';
@@ -8,7 +9,7 @@ import { FichaClienteDrawerComponent } from '../../clientes/components/ficha-cli
 @Component({
   selector: 'app-admin-antecedentes',
   standalone: true,
-  imports: [CommonModule, FormsModule, DatePipe, FichaClienteDrawerComponent],
+  imports: [CommonModule, FormsModule, DatePipe, RouterLink, FichaClienteDrawerComponent],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-5xl mx-auto space-y-8 bg-ambient-mesh">
       
@@ -29,6 +30,17 @@ import { FichaClienteDrawerComponent } from '../../clientes/components/ficha-cli
         </button>
       </div>
 
+      <!-- Cómo llegan los antecedentes aquí -->
+      <div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200 flex items-start gap-3 relative z-10">
+        <i class="pi pi-info-circle text-amber-400 text-base mt-0.5 shrink-0"></i>
+        <p class="leading-relaxed">
+          Los barberos reportan un antecedente desde la <strong class="text-amber-300">ficha del cliente</strong>,
+          en la agenda del día (ícono de identificación en cada turno). El reporte llega aquí en estado
+          <strong class="text-amber-300">pendiente</strong>; al aprobarlo queda visible en la ficha técnica y en las
+          próximas citas del cliente.
+        </p>
+      </div>
+
       <!-- Estado de carga -->
       @if (cargando()) {
         <div class="flex justify-center items-center py-20 relative z-10">
@@ -45,6 +57,17 @@ import { FichaClienteDrawerComponent } from '../../clientes/components/ficha-cli
           <div>
             <h3 class="text-xl font-bold text-white">Todo al día</h3>
             <p class="text-zinc-400 text-sm mt-1">No hay antecedentes pendientes de aprobación médica o técnica en esta sede.</p>
+            <p class="text-zinc-500 text-xs mt-1">Cuando un barbero reporte una alergia o condición desde la ficha de un cliente, aparecerá aquí.</p>
+          </div>
+          <div class="flex flex-wrap justify-center gap-3 pt-2">
+            <a routerLink="/admin/agenda"
+               class="px-5 py-2.5 rounded-xl text-xs font-bold text-zinc-950 gold-gradient-bg hover:brightness-110 transition-all flex items-center gap-2">
+              <i class="pi pi-calendar"></i> Ir a la agenda
+            </a>
+            <a routerLink="/admin/usuarios"
+               class="px-5 py-2.5 rounded-xl text-xs font-semibold text-zinc-300 bg-zinc-800 border border-zinc-700 hover:border-amber-500/40 hover:text-amber-300 transition-colors flex items-center gap-2">
+              <i class="pi pi-users"></i> Ver usuarios y fichas
+            </a>
           </div>
         </div>
       }

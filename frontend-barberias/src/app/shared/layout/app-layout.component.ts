@@ -104,11 +104,6 @@ import { NotificationService } from '../../core/services/notification.service';
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo
               </a>
-              <!-- E3-12: BARBERO puede ver catálogo pero no crear/editar (modo solo lectura) -->
-              <a routerLink="/catalogo" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
-                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo
-              </a>
               <a routerLink="/barberias" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-building mr-1.5 text-xs text-amber-400/80"></i>Mi Barbería
@@ -140,15 +135,39 @@ import { NotificationService } from '../../core/services/notification.service';
                   <i class="pi pi-chevron-down text-[9px] text-zinc-500"></i>
                 </button>
                 @if (configDropdownOpen()) {
-                  <div class="absolute left-0 top-full mt-1 w-52 glass-panel rounded-xl p-1.5 border border-amber-500/20 shadow-2xl z-50 animate-in fade-in duration-150">
+                  <div class="absolute left-0 top-full mt-1 w-72 glass-panel rounded-xl p-1.5 border border-amber-500/20 shadow-2xl z-50 animate-in fade-in duration-150">
                     <a routerLink="/admin/horarios" (click)="configDropdownOpen.set(false)"
-                       class="flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 rounded-lg transition-colors">
-                      <i class="pi pi-clock text-amber-400/70"></i>Horarios
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-clock text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Horarios</span>
+                        <span class="text-[10px] text-zinc-500">Apertura, cierres y bloqueos</span>
+                      </span>
+                    </a>
+                    <a routerLink="/admin/servicios" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-list text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Servicios</span>
+                        <span class="text-[10px] text-zinc-500">Catálogo y precios</span>
+                      </span>
+                    </a>
+                    <a routerLink="/admin/tickets" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-receipt text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Pagos</span>
+                        <span class="text-[10px] text-zinc-500">Cobros, historial y anulaciones</span>
+                      </span>
                     </a>
                     <div class="border-t border-zinc-800 my-1"></div>
-                    <a routerLink="/admin/tickets" (click)="configDropdownOpen.set(false)"
-                       class="flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 rounded-lg transition-colors">
-                      <i class="pi pi-receipt text-amber-400/70"></i>Pagos
+                    <a routerLink="/barberias" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-cog text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Ajustes de Sede</span>
+                        <span class="text-[10px] text-zinc-500">Datos, logo y equipo de la sede</span>
+                      </span>
                     </a>
                   </div>
                 }
@@ -174,18 +193,13 @@ import { NotificationService } from '../../core/services/notification.service';
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-user-plus mr-1.5 text-xs text-amber-400/80"></i>Vinculaciones
               </a>
-              <a routerLink="/admin/usuarios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
-                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-id-card mr-1.5 text-xs text-amber-400/80"></i>Usuarios
-              </a>
               <a routerLink="/admin/analiticas" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-chart-bar mr-1.5 text-xs text-amber-400/80"></i>Analíticas
               </a>
-              <!-- Aprobaciones (pending actions placeholder) -->
               <a routerLink="/admin/agenda" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-calendar mr-1.5 text-xs text-amber-400/80"></i>Aprobaciones
+                <i class="pi pi-calendar mr-1.5 text-xs text-amber-400/80"></i>Agenda de Sede
               </a>
               <!-- Dropdown Configuración -->
               <div class="relative" (mouseenter)="configDropdownOpen.set(true)" (mouseleave)="configDropdownOpen.set(false)">
@@ -194,19 +208,47 @@ import { NotificationService } from '../../core/services/notification.service';
                   <i class="pi pi-chevron-down text-[9px] text-zinc-500"></i>
                 </button>
                 @if (configDropdownOpen()) {
-                  <div class="absolute left-0 top-full mt-1 w-52 glass-panel rounded-xl p-1.5 border border-amber-500/20 shadow-2xl z-50 animate-in fade-in duration-150">
+                  <div class="absolute left-0 top-full mt-1 w-72 glass-panel rounded-xl p-1.5 border border-amber-500/20 shadow-2xl z-50 animate-in fade-in duration-150">
                     <a routerLink="/admin/horarios" (click)="configDropdownOpen.set(false)"
-                       class="flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 rounded-lg transition-colors">
-                      <i class="pi pi-clock text-amber-400/70"></i>Horarios
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-clock text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Horarios</span>
+                        <span class="text-[10px] text-zinc-500">Apertura, excepciones y bloqueos</span>
+                      </span>
+                    </a>
+                    <a routerLink="/admin/servicios" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-list text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Servicios</span>
+                        <span class="text-[10px] text-zinc-500">Catálogo, combos y precios</span>
+                      </span>
                     </a>
                     <a routerLink="/admin/antecedentes" (click)="configDropdownOpen.set(false)"
-                       class="flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 rounded-lg transition-colors">
-                      <i class="pi pi-shield text-amber-400/70"></i>Antecedentes
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-shield text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Antecedentes</span>
+                        <span class="text-[10px] text-zinc-500">Reportes del equipo pendientes</span>
+                      </span>
+                    </a>
+                    <a routerLink="/admin/tickets" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-receipt text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Pagos</span>
+                        <span class="text-[10px] text-zinc-500">Cobros, historial y auditoría</span>
+                      </span>
                     </a>
                     <div class="border-t border-zinc-800 my-1"></div>
-                    <a routerLink="/admin/tickets" (click)="configDropdownOpen.set(false)"
-                       class="flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 rounded-lg transition-colors">
-                      <i class="pi pi-receipt text-amber-400/70"></i>Pagos
+                    <a routerLink="/barberias" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-cog text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Ajustes de Sede</span>
+                        <span class="text-[10px] text-zinc-500">Datos, logo y sedes vinculadas</span>
+                      </span>
                     </a>
                   </div>
                 }

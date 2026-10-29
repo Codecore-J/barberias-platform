@@ -60,6 +60,16 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
         }
       </div>
 
+      <!-- AVISO DE ALCANCE: el horario semanal es el de la SEDE, no el del barbero -->
+      <div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-xs sm:text-sm text-amber-200 flex items-start gap-3">
+        <i class="pi pi-info-circle text-amber-400 text-base mt-0.5 shrink-0"></i>
+        <p class="leading-relaxed">
+          Estás configurando el horario de apertura general para la sede:
+          <strong class="text-amber-300">{{ tenantService.nombreBarberiaActiva() || 'sin sede activa' }}</strong>.
+          Fuera de este horario no se podrán agendar citas.
+        </p>
+      </div>
+
       <!-- NOTIFICACIONES FEEDBACK -->
       @if (mensajeExito()) {
         <div class="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm flex items-center gap-2 animate-in fade-in">
@@ -228,7 +238,7 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
                         </td>
                         <td class="py-3.5 px-4 text-zinc-300">
                           @if (exc.tipo === 'HORARIO_ESPECIAL') {
-                            <span class="font-medium text-amber-300">{{ exc.horaInicio }} - {{ exc.horaFin }}</span>
+                            <span class="font-medium text-amber-300">{{ formatearHora(exc.horaInicio) }} - {{ formatearHora(exc.horaFin) }}</span>
                           } @else {
                             <span class="text-zinc-500">Todo el día</span>
                           }
@@ -300,7 +310,7 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
                         <td class="py-3.5 px-4">
                           <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-zinc-800 border border-zinc-700 text-amber-400">
                             <i class="pi pi-clock text-[10px]"></i>
-                            {{ b.horaInicio }} - {{ b.horaFin }}
+                            {{ formatearHora(b.horaInicio) }} - {{ formatearHora(b.horaFin) }}
                           </span>
                         </td>
                         <td class="py-3.5 px-4 text-zinc-300">
@@ -477,7 +487,7 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
   `
 })
 export class AdminHorariosComponent implements OnInit {
-  private tenantService = inject(TenantService);
+  protected tenantService = inject(TenantService);
   private horariosService = inject(HorariosService);
 
   // Pestaña activa
@@ -549,14 +559,52 @@ export class AdminHorariosComponent implements OnInit {
             const config = this.diasConfig.find(d => d.dia === h.diaSemana);
             if (config) {
               config.activo = true;
-              config.horaInicio = h.horaInicio;
-              config.horaFin = h.horaFin;
+              // El backend puede devolver la hora como ISO (`1970-01-01T08:00:00.000Z`).
+              // Un `<input type="time">` solo acepta `HH:mm`; sin normalizar, el
+              // navegador descarta el valor y deja `--:--` además de escupir un
+              // error de formato por cada input en la consola.
+              config.horaInicio = this.toTimeInputFormat(h.horaInicio);
+              config.horaFin = this.toTimeInputFormat(h.horaFin);
             }
           });
         }
       },
-      error: () => {}
+      error: (err) => {
+        this.mostrarError(err?.error?.message || 'No se pudieron cargar los horarios de la sede.');
+      }
     });
+  }
+
+  /**
+   * Normaliza cualquier representación de hora a `HH:mm`, que es lo único que
+   * `<input type="time">` acepta. Cubre `"08:00"`, `"08:00:00"` y el ISO que
+   * serializa Prisma (`"1970-01-01T08:00:00.000Z"`) sin reinterpretarlo en la
+   * zona del navegador: la hora que se configura es la hora de la sede.
+   */
+  toTimeInputFormat(valor: string | null | undefined): string {
+    if (!valor) return '';
+    const texto = String(valor).trim();
+
+    if (/^\d{1,2}:\d{2}$/.test(texto)) {
+      return texto.padStart(5, '0');
+    }
+
+    const iso = /T(\d{2}):(\d{2})/.exec(texto);
+    if (iso) {
+      return `${iso[1]}:${iso[2]}`;
+    }
+
+    const conSegundos = /^(\d{1,2}):(\d{2}):\d{2}/.exec(texto);
+    if (conSegundos) {
+      return `${conSegundos[1].padStart(2, '0')}:${conSegundos[2]}`;
+    }
+
+    return texto;
+  }
+
+  /** Igual que `toTimeInputFormat`, pero tolera `undefined` para pintar tablas. */
+  formatearHora(valor?: string): string {
+    return this.toTimeInputFormat(valor) || '—';
   }
 
   toggleDia(dia: DiaConfig) {

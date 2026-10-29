@@ -148,6 +148,42 @@ export class ReservasService {
   }
 
   /**
+   * E3-04 · confirma una solicitud MANUAL: `PENDIENTE → CONFIRMADA`.
+   * Solo la sede y el ADMINISTRADOR global; el backend responde 403 al barbero.
+   */
+  aceptarReserva(reservaId: string): Observable<any> {
+    this.isLoading.set(true);
+    this.error.set(null);
+
+    return this.http.post(`${this.appointmentsUrl}/${reservaId}/accept`, {}).pipe(
+      tap(() => this.isLoading.set(false)),
+      catchError(err => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.mensaje || err.error?.message || 'No se pudo confirmar la reserva');
+        return throwError(() => err);
+      })
+    );
+  }
+
+  /**
+   * E3-05 · cancela una reserva vigente: `→ CANCELADA`.
+   * La sede cancela por teléfono o mostrador; el cliente solo las suyas.
+   */
+  cancelarReserva(reservaId: string): Observable<any> {
+    this.isLoading.set(true);
+    this.error.set(null);
+
+    return this.http.post(`${this.appointmentsUrl}/${reservaId}/cancel`, {}).pipe(
+      tap(() => this.isLoading.set(false)),
+      catchError(err => {
+        this.isLoading.set(false);
+        this.error.set(err.error?.mensaje || err.error?.message || 'No se pudo cancelar la reserva');
+        return throwError(() => err);
+      })
+    );
+  }
+
+  /**
    * Marca un turno como no presentado (D02).
    *
    * E2-02: antes esto llamaba a `PATCH /reservas/:id/estado`, un endpoint

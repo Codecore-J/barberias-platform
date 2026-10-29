@@ -1,145 +1,347 @@
-<div class="analytics-container">
-  <div class="panel-header">
-    <h1>Analíticas y Retención</h1>
-    <button class="export-button" (click)="exportarCsv()" [disabled]="exportando">
-      {{ exportando ? 'Exportando...' : 'Exportar CSV' }}
+<div class="analytics-container space-y-8 pb-12">
+  <!-- Encabezado -->
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div>
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold uppercase tracking-wider mb-1">
+        <i class="pi pi-chart-bar text-xs"></i>
+        <span>Rendimiento de la Sede</span>
+      </div>
+      <h1 class="text-3xl font-display font-bold text-white">Analíticas y <span class="text-amber-400">Retención</span></h1>
+      <p class="text-sm text-zinc-400">
+        Ingresos, ocupación y comportamiento de los clientes en {{ tenantService.nombreBarberiaActiva() || 'la sede activa' }}.
+      </p>
+    </div>
+
+    <button
+      type="button"
+      data-testid="export-csv"
+      (click)="exportarCsv()"
+      [disabled]="exportando || loading"
+      class="px-5 py-2.5 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_4px_16px_rgba(212,175,55,0.25)] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+    >
+      <i class="pi" [ngClass]="exportando ? 'pi-spin pi-spinner' : 'pi-download'"></i>
+      <span>{{ exportando ? 'Exportando...' : 'Exportar CSV' }}</span>
     </button>
   </div>
 
-  <div class="filters">
-    <button (click)="aplicarFiltroRapido('7')">Últimos 7 días</button>
-    <button (click)="aplicarFiltroRapido('30')">Últimos 30 días</button>
-    <button (click)="aplicarFiltroRapido('mes')">Este mes</button>
-    <div class="date-filters">
-      <label>Desde: <input type="date" [(ngModel)]="desde" /></label>
-      <label>Hasta: <input type="date" [(ngModel)]="hasta" /></label>
-      <button (click)="cargar(); cargarOverview()">Aplicar</button>
+  <!-- Filtros -->
+  <div class="glass-panel rounded-3xl border border-white/5 p-5 space-y-4">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mr-1">Rango rápido</span>
+
+      <button
+        type="button"
+        (click)="aplicarFiltroRapido('7')"
+        [disabled]="loading"
+        class="px-4 py-2 rounded-full text-xs font-semibold border transition-all disabled:opacity-50"
+        [ngClass]="filtroActivo === '7'
+          ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/10'
+          : 'bg-zinc-950/70 text-zinc-300 border-zinc-700 hover:border-amber-500/40 hover:text-amber-300'"
+      >
+        Últimos 7 días
+      </button>
+
+      <button
+        type="button"
+        (click)="aplicarFiltroRapido('30')"
+        [disabled]="loading"
+        class="px-4 py-2 rounded-full text-xs font-semibold border transition-all disabled:opacity-50"
+        [ngClass]="filtroActivo === '30'
+          ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/10'
+          : 'bg-zinc-950/70 text-zinc-300 border-zinc-700 hover:border-amber-500/40 hover:text-amber-300'"
+      >
+        Últimos 30 días
+      </button>
+
+      <button
+        type="button"
+        (click)="aplicarFiltroRapido('mes')"
+        [disabled]="loading"
+        class="px-4 py-2 rounded-full text-xs font-semibold border transition-all disabled:opacity-50"
+        [ngClass]="filtroActivo === 'mes'
+          ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/10'
+          : 'bg-zinc-950/70 text-zinc-300 border-zinc-700 hover:border-amber-500/40 hover:text-amber-300'"
+      >
+        Este mes
+      </button>
     </div>
+
+    <div class="flex flex-col lg:flex-row lg:items-end gap-3 pt-3 border-t border-white/5">
+      <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label class="block">
+          <span class="block text-[11px] font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Desde</span>
+          <input
+            type="date"
+            [(ngModel)]="desde"
+            [disabled]="loading"
+            class="w-full bg-zinc-950/80 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 disabled:opacity-60 transition-colors [color-scheme:dark]"
+          />
+        </label>
+
+        <label class="block">
+          <span class="block text-[11px] font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Hasta</span>
+          <input
+            type="date"
+            [(ngModel)]="hasta"
+            [disabled]="loading"
+            class="w-full bg-zinc-950/80 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 disabled:opacity-60 transition-colors [color-scheme:dark]"
+          />
+        </label>
+      </div>
+
+      <button
+        type="button"
+        (click)="aplicarRangoManual()"
+        [disabled]="loading"
+        class="px-5 py-2.5 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_4px_16px_rgba(212,175,55,0.25)] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shrink-0"
+      >
+        <i class="pi pi-filter"></i>
+        <span>{{ loading ? 'Cargando...' : 'Aplicar' }}</span>
+      </button>
+    </div>
+
+    @if (data?.periodo; as periodo) {
+      <p class="text-[11px] text-zinc-500">
+        Periodo consultado: <span class="text-zinc-300">{{ periodo.desde | date:'dd MMM yyyy' }}</span>
+        al <span class="text-zinc-300">{{ periodo.hasta | date:'dd MMM yyyy' }}</span>
+      </p>
+    }
   </div>
 
-  <div *ngIf="overview && overview.sedes && overview.sedes.length > 1" class="multisede-section">
-    <h2>Resumen Multisede</h2>
-    <div class="kpi-grid">
-      <div class="kpi-card">
-        <h3>Ingresos consolidados</h3>
-        <p class="kpi-value">${{ overview.totalesGlobales.ingresosConsolidados | number:'1.2-2' }}</p>
+  <!-- Error de la sede -->
+  @if (error) {
+    <div class="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <span class="flex items-center gap-2">
+        <i class="pi pi-exclamation-triangle"></i> {{ error }}
+      </span>
+      <button type="button" (click)="recargar()" class="px-3 py-1.5 rounded-lg text-xs font-bold text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition-colors shrink-0">
+        Reintentar
+      </button>
+    </div>
+  }
+
+  <!-- Cargando -->
+  @if (loading) {
+    <div class="glass-panel rounded-3xl border border-white/5 py-20 flex flex-col items-center justify-center gap-3">
+      <i class="pi pi-spin pi-spinner text-4xl text-amber-500"></i>
+      <p class="text-sm text-zinc-400">Cargando analíticas...</p>
+    </div>
+  }
+
+  <!-- Sin datos -->
+  @if (!loading && !error && !data) {
+    <div class="glass-panel rounded-3xl border border-white/5 py-20 text-center space-y-3">
+      <div class="w-16 h-16 mx-auto rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
+        <i class="pi pi-chart-bar text-2xl"></i>
       </div>
-      <div class="kpi-card">
-        <h3>Total de citas</h3>
-        <p class="kpi-value">{{ overview.totalesGlobales.totalCitas }}</p>
-      </div>
-      <div class="kpi-card">
-        <h3>Tasa global de inasistencia</h3>
-        <p class="kpi-value">{{ overview.totalesGlobales.tasaGlobalInasistencia }}%</p>
-      </div>
-      <div class="kpi-card">
-        <h3>Tasa global de cancelación</h3>
-        <p class="kpi-value">{{ overview.totalesGlobales.tasaGlobalCancelacion }}%</p>
+      <div>
+        <p class="text-white font-semibold">Todavía no hay información para este periodo</p>
+        <p class="text-xs text-zinc-500 mt-1">Cambia el rango de fechas o registra citas y cobros para ver las métricas.</p>
       </div>
     </div>
-    <div class="section">
-      <h3>Comparativa por sucursal</h3>
-      <table class="barbero-table">
-        <thead>
-          <tr>
-            <th>Sede</th>
-            <th>Activa</th>
-            <th>Ingresos</th>
-            <th>Total Citas</th>
-            <th>Citas Completadas</th>
-            <th>Tasa Inasistencia</th>
-            <th>Recordatorios Enviados</th>
-            <th>Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let s of overview.sedes">
-            <td>{{ s.nombre }}</td>
-            <td>{{ s.activa ? 'Sí' : 'No' }}</td>
-            <td>${{ s.ingresos | number:'1.2-2' }}</td>
-            <td>{{ s.totalCitas }}</td>
-            <td>{{ s.citasCompletadas }}</td>
-            <td>{{ s.tasaInasistencia }}%</td>
-            <td>{{ s.recordatoriosEnviados }}</td>
-            <td><button (click)="irASede(s.barberiaId)">Ir a esta sede</button></td>
-          </tr>
-        </tbody>
-      </table>
+  }
+
+  <!-- Resumen multisede -->
+  @if (overview; as ov) {
+    @if (ov.sedes && ov.sedes.length > 1) {
+      <section class="space-y-4">
+        <div>
+          <h2 class="text-xl font-display font-bold text-white">Resumen Multisede</h2>
+          <p class="text-xs text-zinc-500">Comparativa consolidada de todas las sedes que administras.</p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div class="glass-panel rounded-2xl border border-white/5 p-5">
+            <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Ingresos consolidados</p>
+            <p class="text-2xl font-bold text-emerald-400 mt-1">${{ ov.totalesGlobales.ingresosConsolidados | number:'1.2-2' }}</p>
+          </div>
+          <div class="glass-panel rounded-2xl border border-white/5 p-5">
+            <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Total de citas</p>
+            <p class="text-2xl font-bold text-white mt-1">{{ ov.totalesGlobales.totalCitas }}</p>
+          </div>
+          <div class="glass-panel rounded-2xl border border-white/5 p-5">
+            <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Inasistencia global</p>
+            <p class="text-2xl font-bold text-amber-400 mt-1">{{ ov.totalesGlobales.tasaGlobalInasistencia }}%</p>
+          </div>
+          <div class="glass-panel rounded-2xl border border-white/5 p-5">
+            <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Cancelación global</p>
+            <p class="text-2xl font-bold text-rose-400 mt-1">{{ ov.totalesGlobales.tasaGlobalCancelacion }}%</p>
+          </div>
+        </div>
+
+        <div class="glass-panel rounded-3xl border border-white/5 p-5">
+          <h3 class="text-sm font-semibold text-white mb-4">Comparativa por sucursal</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-max text-left text-xs">
+              <thead>
+                <tr class="border-b border-zinc-800 text-amber-400 uppercase tracking-widest">
+                  <th class="py-3 px-4 font-bold whitespace-nowrap">Sede</th>
+                  <th class="py-3 px-4 font-bold whitespace-nowrap">Activa</th>
+                  <th class="py-3 px-4 font-bold whitespace-nowrap">Ingresos</th>
+                  <th class="py-3 px-4 font-bold whitespace-nowrap">Total citas</th>
+                  <th class="py-3 px-4 font-bold whitespace-nowrap">Completadas</th>
+                  <th class="py-3 px-4 font-bold whitespace-nowrap">Inasistencia</th>
+                  <th class="py-3 px-4 font-bold whitespace-nowrap">Recordatorios</th>
+                  <th class="py-3 px-4 font-bold text-right whitespace-nowrap">Acción</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-white/5 text-zinc-300">
+                @for (s of ov.sedes; track s.barberiaId) {
+                  <tr class="hover:bg-white/5 transition-colors">
+                    <td class="py-3.5 px-4 font-semibold text-white">{{ s.nombre }}</td>
+                    <td class="py-3.5 px-4">
+                      <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border"
+                            [ngClass]="s.activa
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : 'bg-zinc-800 text-zinc-400 border-zinc-700'">
+                        {{ s.activa ? 'Sí' : 'No' }}
+                      </span>
+                    </td>
+                    <td class="py-3.5 px-4">${{ s.ingresos | number:'1.2-2' }}</td>
+                    <td class="py-3.5 px-4">{{ s.totalCitas }}</td>
+                    <td class="py-3.5 px-4">{{ s.citasCompletadas }}</td>
+                    <td class="py-3.5 px-4">{{ s.tasaInasistencia }}%</td>
+                    <td class="py-3.5 px-4">{{ s.recordatoriosEnviados }}</td>
+                    <td class="py-3.5 px-4 text-right">
+                      <button type="button" (click)="irASede(s.barberiaId)"
+                              class="px-3 py-1.5 rounded-lg text-[11px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 transition-colors whitespace-nowrap">
+                        Ir a esta sede
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    }
+  }
+
+  @if (errorOverview) {
+    <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-center gap-2">
+      <i class="pi pi-info-circle"></i> {{ errorOverview }}
     </div>
-  </div>
+  }
 
-  <div *ngIf="loading" class="loading">Cargando...</div>
-  <div *ngIf="error" class="error">{{ error }}</div>
+  <!-- Métricas de la sede activa -->
+  @if (!loading) {
+    @if (data; as d) {
+    <section class="space-y-4">
+      <div>
+        <h2 class="text-xl font-display font-bold text-white">Métricas de la sede</h2>
+        <p class="text-xs text-zinc-500">Indicadores del periodo seleccionado.</p>
+      </div>
 
-  <div *ngIf="data && !loading">
-    <div class="kpi-grid">
-      <div class="kpi-card">
-        <h3>Ingresos totales</h3>
-        <p class="kpi-value">${{ data.ingresos.totalRecaudado | number:'1.2-2' }}</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div class="glass-panel rounded-2xl border border-white/5 p-5">
+          <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Ingresos totales</p>
+          <p class="text-2xl font-bold text-emerald-400 mt-1">${{ d.ingresos.totalRecaudado | number:'1.2-2' }}</p>
+        </div>
+        <div class="glass-panel rounded-2xl border border-white/5 p-5">
+          <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Ticket promedio</p>
+          <p class="text-2xl font-bold text-amber-400 mt-1">${{ d.ingresos.ticketPromedio | number:'1.2-2' }}</p>
+        </div>
+        <div class="glass-panel rounded-2xl border border-white/5 p-5">
+          <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Tasa de inasistencia</p>
+          <p class="text-2xl font-bold text-white mt-1">{{ d.retencion.tasaInasistencia }}%</p>
+        </div>
+        <div class="glass-panel rounded-2xl border border-white/5 p-5">
+          <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Tasa de cancelación</p>
+          <p class="text-2xl font-bold text-rose-400 mt-1">{{ d.retencion.tasaCancelacion }}%</p>
+        </div>
+        <div class="glass-panel rounded-2xl border border-white/5 p-5">
+          <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Recordatorios enviados</p>
+          <p class="text-2xl font-bold text-white mt-1">{{ d.retencion.recordatoriosEnviados }}</p>
+        </div>
+        <div class="glass-panel rounded-2xl border border-white/5 p-5">
+          <p class="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Cupos de lista de espera notificados</p>
+          <p class="text-2xl font-bold text-white mt-1">{{ d.retencion.cuposListaEsperaNotificados }}</p>
+        </div>
       </div>
-      <div class="kpi-card">
-        <h3>Ticket promedio</h3>
-        <p class="kpi-value">${{ data.ingresos.ticketPromedio | number:'1.2-2' }}</p>
+    </section>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div class="glass-panel rounded-3xl border border-white/5 p-5">
+        <h3 class="text-sm font-semibold text-white mb-4">Citas por estado</h3>
+        @if (getObjectKeys(d.resumenCitas.porEstado).length === 0) {
+          <div class="py-10 text-center">
+            <i class="pi pi-inbox text-3xl text-zinc-600 mb-2 block"></i>
+            <p class="text-xs text-zinc-500">No hay citas registradas en este periodo.</p>
+          </div>
+        } @else {
+          <ul class="space-y-2">
+            @for (key of getObjectKeys(d.resumenCitas.porEstado); track key) {
+              <li class="flex items-center justify-between p-3 rounded-xl bg-zinc-950/60 border border-white/5 text-xs">
+                <span class="text-zinc-300 font-medium">{{ key }}</span>
+                <span class="text-amber-400 font-bold">{{ d.resumenCitas.porEstado[key] }}</span>
+              </li>
+            }
+          </ul>
+          <p class="text-xs text-zinc-500 mt-3">
+            Total del periodo: <strong class="text-white">{{ d.resumenCitas.total }}</strong>
+          </p>
+        }
       </div>
-      <div class="kpi-card">
-        <h3>Tasa de Inasistencia</h3>
-        <p class="kpi-value">{{ data.retencion.tasaInasistencia }}%</p>
-      </div>
-      <div class="kpi-card">
-        <h3>Tasa de Cancelación</h3>
-        <p class="kpi-value">{{ data.retencion.tasaCancelacion }}%</p>
-      </div>
-      <div class="kpi-card">
-        <h3>Recordatorios enviados</h3>
-        <p class="kpi-value">{{ data.retencion.recordatoriosEnviados }}</p>
-      </div>
-      <div class="kpi-card">
-        <h3>Cupos de lista de espera notificados</h3>
-        <p class="kpi-value">{{ data.retencion.cuposListaEsperaNotificados }}</p>
+
+      <div class="glass-panel rounded-3xl border border-white/5 p-5">
+        <h3 class="text-sm font-semibold text-white mb-4">Recaudación por método de pago</h3>
+        @if (getObjectKeys(d.ingresos.porMetodoPago).length === 0) {
+          <div class="py-10 text-center">
+            <i class="pi pi-wallet text-3xl text-zinc-600 mb-2 block"></i>
+            <p class="text-xs text-zinc-500">Aún no hay cobros registrados en este periodo.</p>
+          </div>
+        } @else {
+          <ul class="space-y-2">
+            @for (key of getObjectKeys(d.ingresos.porMetodoPago); track key) {
+              <li class="flex items-center justify-between p-3 rounded-xl bg-zinc-950/60 border border-white/5 text-xs">
+                <span class="text-zinc-300 font-medium">{{ key }}</span>
+                <span class="text-emerald-400 font-bold">${{ d.ingresos.porMetodoPago[key] | number:'1.2-2' }}</span>
+              </li>
+            }
+          </ul>
+        }
       </div>
     </div>
 
-    <div class="sections">
-      <div class="section">
-        <h2>Citas por estado</h2>
-        <ul>
-          <li *ngFor="let key of getObjectKeys(data.resumenCitas.porEstado)">
-            {{ key }}: {{ data.resumenCitas.porEstado[key] }}
-          </li>
-        </ul>
-        <p><strong>Total:</strong> {{ data.resumenCitas.total }}</p>
-      </div>
+    <div class="glass-panel rounded-3xl border border-white/5 p-5">
+      <h3 class="text-sm font-semibold text-white mb-4">Rendimiento por barbero</h3>
 
-      <div class="section">
-        <h2>Recaudación por método de pago</h2>
-        <ul>
-          <li *ngFor="let key of getObjectKeys(data.ingresos.porMetodoPago)">
-            {{ key }}: ${{ data.ingresos.porMetodoPago[key] | number:'1.2-2' }}
-          </li>
-        </ul>
-      </div>
+      @if (d.rendimientoPorBarbero.length === 0) {
+        <div class="py-12 text-center">
+          <i class="pi pi-users text-3xl text-zinc-600 mb-2 block"></i>
+          <p class="text-sm text-zinc-400 font-medium">No hay barberos con actividad en este periodo</p>
+          <p class="text-xs text-zinc-500 mt-1">Asigna barberos a las citas para ver su rendimiento aquí.</p>
+        </div>
+      } @else {
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-max text-left text-xs">
+            <thead>
+              <tr class="border-b border-zinc-800 text-amber-400 uppercase tracking-widest">
+                <th class="py-3 px-4 font-bold whitespace-nowrap">Nombre</th>
+                <th class="py-3 px-4 font-bold whitespace-nowrap">Citas completadas</th>
+                <th class="py-3 px-4 font-bold whitespace-nowrap">Inasistencias</th>
+                <th class="py-3 px-4 font-bold text-right whitespace-nowrap">Ingresos generados</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-zinc-300">
+              @for (b of d.rendimientoPorBarbero; track b.barberoId) {
+                <tr class="hover:bg-white/5 transition-colors">
+                  <td class="py-3.5 px-4 font-semibold text-white">{{ b.nombre }}</td>
+                  <td class="py-3.5 px-4">{{ b.citasCompletadas }}</td>
+                  <td class="py-3.5 px-4">
+                    <span [ngClass]="b.inasistencias > 0 ? 'text-rose-400 font-semibold' : 'text-zinc-500'">
+                      {{ b.inasistencias }}
+                    </span>
+                  </td>
+                  <td class="py-3.5 px-4 text-right text-emerald-400 font-semibold">${{ b.ingresosGenerados | number:'1.2-2' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
     </div>
-
-    <div class="section">
-      <h2>Rendimiento por Barbero</h2>
-      <table class="barbero-table">
-        <thead>
-          <tr>
-            <th>Nombre</th>
-            <th>Citas Completadas</th>
-            <th>Inasistencias</th>
-            <th>Ingresos Generados</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let b of data.rendimientoPorBarbero">
-            <td>{{ b.nombre }}</td>
-            <td>{{ b.citasCompletadas }}</td>
-            <td>{{ b.inasistencias }}</td>
-            <td>${{ b.ingresosGenerados | number:'1.2-2' }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+    }
+  }
 </div>

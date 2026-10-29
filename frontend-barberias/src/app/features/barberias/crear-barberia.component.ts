@@ -2,7 +2,6 @@ import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, Router } from '@angular/router';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { AuthService } from '../../auth/auth.service';
 import { TenantService } from '../../core/services/tenant.service';
 
 @Component({
@@ -35,10 +34,12 @@ import { TenantService } from '../../core/services/tenant.service';
                 <div class="relative">
                   <i class="pi pi-building absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
                   <input type="text" formControlName="nombre" placeholder="Ej: The Gentlemen's Barbershop"
-                    class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner"
-                    [disabled]="isAdmin()"
-                    readonly>
+                    maxlength="150"
+                    class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
                 </div>
+                @if (form.get('nombre')?.touched && form.get('nombre')?.invalid) {
+                  <p class="text-[11px] text-red-400 pl-1">El nombre debe tener al menos 3 caracteres.</p>
+                }
               </div>
 
               <!-- Responsable -->
@@ -46,14 +47,11 @@ import { TenantService } from '../../core/services/tenant.service';
                 <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">Responsable</label>
                 <div class="relative">
                   <i class="pi pi-user absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
-                  <input type="text" formControlName="responsable"
-                    class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner"
-                    [disabled]="isAdmin()"
-                    readonly>
+                  <input type="text" formControlName="responsable" placeholder="Nombre de quien responde por la sede"
+                    maxlength="150"
+                    class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
                 </div>
-                @if (isAdmin()) {
-                  <p class="text-[10px] text-zinc-500 text-xs uppercase tracking-wider">Solo ADMINISTRADOR puede modificar este campo</p>
-                }
+                <p class="text-[11px] text-zinc-500 pl-1">Opcional · queda registrado como referencia de la sede.</p>
               </div>
 
               <!-- Teléfono -->
@@ -76,8 +74,12 @@ import { TenantService } from '../../core/services/tenant.service';
                 <div class="relative">
                   <i class="pi pi-map-marker absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
                   <input type="text" formControlName="ubicacion" placeholder="Madrid, España"
+                    maxlength="500"
                     class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
                 </div>
+                @if (form.get('ubicacion')?.touched && form.get('ubicacion')?.invalid) {
+                  <p class="text-[11px] text-red-400 pl-1">Indica la ubicación o ciudad de la sede.</p>
+                }
               </div>
 
               <!-- Descripción -->
@@ -95,9 +97,10 @@ import { TenantService } from '../../core/services/tenant.service';
                 <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">Logo (URL o base64)</label>
                 <div class="relative">
                   <i class="pi pi-image absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
-                  <input type="text" formControlName="logo"
+                  <input type="url" formControlName="logo" placeholder="https://..."
                     class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
                 </div>
+                <p class="text-[11px] text-zinc-500 pl-1">Opcional · se puede ajustar después desde la configuración de la sede.</p>
               </div>
             </div>
 
@@ -114,9 +117,9 @@ import { TenantService } from '../../core/services/tenant.service';
               <button type="submit" [disabled]="form.invalid || isSubmitting()"
                 class="flex-[2] px-6 py-4 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_10px_30px_rgba(212,175,55,0.3)] hover:shadow-[0_15px_40px_rgba(212,175,55,0.5)] disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-1 transition-all flex items-center justify-center gap-2">
                 @if (isSubmitting()) {
-                  <i class="pi pi-spin pi-spinner text-lg"></i> Creando Espacio...
+                  <i class="pi pi-spin pi-spinner text-lg"></i> Guardando...
                 } @else {
-                  <i class="pi pi-check text-lg"></i> Registrar Barbería
+                  <i class="pi pi-check text-lg"></i> Crear Barbería
                 }
               </button>
             </div>
@@ -131,20 +134,22 @@ export class CrearBarberiaComponent {
   private readonly fb = inject(FormBuilder);
   protected readonly tenantService = inject(TenantService);
   private readonly router = inject(Router);
-  private readonly authService = inject(AuthService);
 
   isSubmitting = signal(false);
 
-  readonly isAdmin = signal(this.authService.authState().user?.roles.includes('ADMINISTRADOR') ?? false);
-
+  /**
+   * Todos los `formControlName` del template viven aquí desde la construcción.
+   * Un control ausente (`logo`) hacía que Angular intentara enlazar contra un
+   * control `null` y lanzara `Cannot read properties of null (_rawValidators)`.
+   */
   form: FormGroup = this.fb.group({
     nombre: ['', [Validators.required, Validators.minLength(3)]],
     // Mismo contrato que `CreateBarberiaDto`: 10 dígitos exactos, sin formato.
     telefono: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
     ubicacion: ['', [Validators.required]],
     descripcion: [''],
-    // Responsable: solo editable por ADMINISTRADOR Global; ADMIN_BARBERIA y BARBERO ven deshabilitado
-    responsable: ['']
+    responsable: [''],
+    logo: ['']
   });
 
   /** Solo dígitos y máximo 10: el backend rechaza cualquier otra cosa con 400. */
@@ -158,10 +163,18 @@ export class CrearBarberiaComponent {
   }
 
   onSubmit() {
-    if (this.form.invalid) return;
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
+    }
+
+    // El `ValidationPipe` del backend usa `forbidNonWhitelisted`: mandar
+    // `responsable` o `logo` (que `CreateBarberiaDto` no declara) devolvía 400 y
+    // la sede nunca se creaba. Se envía solo el contrato aceptado.
+    const { nombre, telefono, ubicacion, descripcion } = this.form.value;
 
     this.isSubmitting.set(true);
-    this.tenantService.crearBarberia(this.form.value).subscribe({
+    this.tenantService.crearBarberia({ nombre, telefono, ubicacion, descripcion }).subscribe({
       next: () => {
         this.isSubmitting.set(false);
         this.router.navigate(['/barberias']); // Redirigir al Hub donde ya estará activa

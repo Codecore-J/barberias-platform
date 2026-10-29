@@ -339,6 +339,21 @@ import { SedeCardComponent } from '../barberias/components/sede-card/sede-card.c
               }
             </div>
           </section>
+        } @else if (userRole() === 'CLIENTE') {
+          <section class="max-w-6xl mx-auto transform-style-3d">
+            <div class="glass-card rounded-3xl p-12 sm:p-8 text-center transform translate-z-12">
+              <div class="w-20 h-20 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-6">
+                <i class="pi pi-building text-amber-400 text-4xl"></i>
+              </div>
+              <h2 class="text-3xl font-display font-bold text-white mb-4">No tienes barberías vinculadas</h2>
+              <p class="text-zinc-400 text-sm mb-8">No has vinculado ninguna barbería a tu cuenta aún.</p>
+              <button routerLink="/barberias"
+                      class="px-8 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_10px_30px_rgba(212,175,55,0.3)] hover:shadow-[0_15px_40px_rgba(212,175,55,0.5)] hover:-translate-y-1 transition-all flex items-center justify-center gap-2">
+                <i class="pi pi-calendar-plus"></i>
+                Agendar mi primera cita
+              </button>
+            </div>
+          </section>
         }
 
         <!-- DASHBOARD ADMIN: MÉTRICAS FINANCIERAS -->

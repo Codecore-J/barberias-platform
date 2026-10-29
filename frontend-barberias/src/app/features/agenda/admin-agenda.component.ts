@@ -102,17 +102,34 @@ import { FichaClienteDrawerComponent } from '../clientes/components/ficha-client
         <!-- FILTROS POR ESTADO -->
         <div class="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
           <span class="text-zinc-500 font-medium mr-1">Filtrar:</span>
-          @for (f of ['TODOS', 'PENDIENTE', 'COMPLETADA', 'CANCELADA']; track f) {
-            <button (click)="filtroEstado.set(f)"
-                    class="px-3 py-1 rounded-lg font-medium transition-all"
-                    [ngClass]="filtroEstado() === f 
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm' 
+          @for (f of FILTROS_ESTADO; track f.valor) {
+            <button (click)="filtroEstado.set(f.valor)"
+                    class="px-3 py-1 rounded-lg font-medium transition-all whitespace-nowrap"
+                    [ngClass]="filtroEstado() === f.valor
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'">
-              {{ f === 'TODOS' ? 'Todos los turnos' : f }}
+              {{ f.etiqueta }}
             </button>
           }
         </div>
       </div>
+
+      @if (mensajeAccion()) {
+        <div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm flex items-center gap-2 relative z-10">
+          <i class="pi pi-check-circle"></i> {{ mensajeAccion() }}
+        </div>
+      }
+
+      <!-- Aviso de error al cargar o al actuar sobre una reserva -->
+      @if (errorAccion()) {
+        <div class="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm flex items-start gap-2 relative z-10">
+          <i class="pi pi-exclamation-triangle mt-0.5"></i>
+          <span class="flex-1">{{ errorAccion() }}</span>
+          <button (click)="errorAccion.set(null)" class="text-rose-300 hover:text-white transition-colors">
+            <i class="pi pi-times"></i>
+          </button>
+        </div>
+      }
 
       <!-- Estado de Carga -->
       @if (cargando()) {
@@ -154,12 +171,8 @@ import { FichaClienteDrawerComponent } from '../clientes/components/ficha-client
                       <div class="flex items-center gap-2">
                         <span class="text-lg font-bold text-white tracking-tight">{{ turno.fechaHoraInicio | date:'HH:mm' }}</span>
                         <span class="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 rounded bg-zinc-800"
-                              [ngClass]="{
-                                'text-amber-400': turno.estado === 'PENDIENTE',
-                                'text-emerald-400': turno.estado === 'COMPLETADA',
-                                'text-red-400': turno.estado === 'CANCELADA' || turno.estado === 'NO_ASISTIO'
-                              }">
-                          {{ turno.estado }}
+                              [ngClass]="claseEstadoTurno(turno.estado)">
+                          {{ etiquetaEstado(turno.estado) }}
                         </span>
                       </div>
                       <div class="text-sm font-bold text-emerald-400">
@@ -194,23 +207,40 @@ import { FichaClienteDrawerComponent } from '../clientes/components/ficha-client
                     </div>
 
                     <!-- Acciones Rápidas del Turno -->
-                    @if (turno.estado === 'PENDIENTE') {
-                      <div class="flex items-center justify-end gap-2 pt-2 mt-2 border-t border-white/5">
-                         <button (click)="iniciarCobro(turno)" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors">
-                           Cobrar
-                         </button>
-                      </div>
-                    }
-                    <!-- E2-02: el no presentado de §5.2 solo existe desde CONFIRMADA
-                         (la sede RECHAZA una PENDIENTE); antes el botón aparecía en
-                         PENDIENTE y el backend lo aceptaba desde cualquier estado. -->
-                    @if (turno.estado === 'CONFIRMADA' && puedeMarcarInasistencia()) {
-                      <div class="flex items-center justify-end gap-2 pt-2 mt-2 border-t border-white/5">
+                    <div class="flex flex-wrap items-center justify-end gap-2 pt-2 mt-2 border-t border-white/5">
+                      @if (esPendiente(turno.estado) && puedeGestionarSede()) {
+                        <button (click)="confirmarTurno(turno)"
+                                [disabled]="procesandoId() === turno.id"
+                                class="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
+                          <i class="pi" [ngClass]="procesandoId() === turno.id ? 'pi-spin pi-spinner' : 'pi-check'"></i>
+                          Confirmar
+                        </button>
+                      }
+
+                      @if (turno.estado === 'PENDIENTE') {
+                        <button (click)="iniciarCobro(turno)"
+                                class="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors flex items-center gap-1.5">
+                          <i class="pi pi-wallet"></i> Cobrar
+                        </button>
+                      }
+
+                      <!-- E2-02: el no presentado de §5.2 solo existe desde CONFIRMADA
+                           (la sede RECHAZA una PENDIENTE); antes el botón aparecía en
+                           PENDIENTE y el backend lo aceptaba desde cualquier estado. -->
+                      @if (turno.estado === 'CONFIRMADA' && puedeMarcarInasistencia()) {
                         <button (click)="marcarInasistencia(turno.id)" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
                           No Asistió
                         </button>
-                      </div>
-                    }
+                      }
+
+                      @if (puedeCancelar(turno.estado) && puedeGestionarSede()) {
+                        <button (click)="cancelarTurno(turno)"
+                                [disabled]="procesandoId() === turno.id"
+                                class="text-xs font-bold px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-300 border border-zinc-700 hover:border-rose-500/40 hover:text-rose-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
+                          <i class="pi pi-times"></i> Cancelar
+                        </button>
+                      }
+                    </div>
                   </div>
                 } @empty {
                   <div class="text-center py-10 border border-dashed border-white/10 rounded-2xl">
@@ -235,13 +265,43 @@ import { FichaClienteDrawerComponent } from '../clientes/components/ficha-client
               
               <div class="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar">
                 @for (turno of turnosSinAsignar(); track turno.id) {
-                  <!-- Igual que arriba -->
+                  <!-- Igual que la columna del barbero, pero sin barbero asignado -->
                   <div class="bg-zinc-900/80 p-4 rounded-2xl border-l-4 border-zinc-500 flex flex-col gap-2">
                     <div class="flex justify-between items-start">
                       <span class="text-lg font-bold text-white tracking-tight">{{ turno.fechaHoraInicio | date:'HH:mm' }}</span>
-                      <span class="text-[9px] uppercase font-bold px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">PENDIENTE</span>
+                      <span class="text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 rounded bg-zinc-800"
+                            [ngClass]="claseEstadoTurno(turno.estado)">
+                        {{ etiquetaEstado(turno.estado) }}
+                      </span>
                     </div>
-                    <div class="text-sm text-zinc-300 font-medium">{{ turno.cliente.nombre }}</div>
+                    <div class="text-sm text-zinc-300 font-medium flex items-center justify-between gap-2">
+                      <span>{{ turno.cliente.nombre }}</span>
+                      <span class="text-sm font-bold text-emerald-400">
+                        {{ turno.precioTotalHist | currency:'USD':'symbol':'1.0-0' }}
+                      </span>
+                    </div>
+                    <p class="text-[11px] text-zinc-500 flex items-center gap-1.5">
+                      <i class="pi pi-info-circle"></i>
+                      Sin barbero asignado · confirma o cancela el turno
+                    </p>
+
+                    <div class="flex flex-wrap items-center justify-end gap-2 pt-2 mt-1 border-t border-white/5">
+                      @if (esPendiente(turno.estado) && puedeGestionarSede()) {
+                        <button (click)="confirmarTurno(turno)"
+                                [disabled]="procesandoId() === turno.id"
+                                class="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
+                          <i class="pi" [ngClass]="procesandoId() === turno.id ? 'pi-spin pi-spinner' : 'pi-check'"></i>
+                          Confirmar
+                        </button>
+                      }
+                      @if (puedeCancelar(turno.estado) && puedeGestionarSede()) {
+                        <button (click)="cancelarTurno(turno)"
+                                [disabled]="procesandoId() === turno.id"
+                                class="text-xs font-bold px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-300 border border-zinc-700 hover:border-rose-500/40 hover:text-rose-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
+                          <i class="pi pi-times"></i> Cancelar
+                        </button>
+                      }
+                    </div>
                   </div>
                 }
               </div>
@@ -283,6 +343,25 @@ export class AdminAgendaComponent implements OnInit {
   turnoACobrar = signal<any | null>(null);
   clienteSeleccionado = signal<any | null>(null);
 
+  /** Id del turno con una acción en vuelo, para bloquear solo esa tarjeta. */
+  procesandoId = signal<string | null>(null);
+  errorAccion = signal<string | null>(null);
+  mensajeAccion = signal<string | null>(null);
+
+  readonly FILTROS_ESTADO = [
+    { valor: 'TODOS', etiqueta: 'Todos los turnos' },
+    { valor: 'PENDIENTE', etiqueta: 'Pendientes' },
+    { valor: 'CONFIRMADA', etiqueta: 'Confirmadas' },
+    { valor: 'COMPLETADA', etiqueta: 'Completadas' },
+    { valor: 'CANCELADA', etiqueta: 'Canceladas' },
+  ];
+
+  /** Aceptar y cancelar son decisiones de la SEDE (D02), no del barbero. */
+  puedeGestionarSede = computed(() => {
+    const roles = this.authService.authState().user?.roles ?? [];
+    return roles.includes('ADMIN_BARBERIA') || roles.includes('ADMINISTRADOR');
+  });
+
   // E1-05 · D02: el no presentado (`POST /reservas/:id/inasistencia` desde
   // E2-02) es del ADMIN_BARBERIA y del ADMINISTRADOR global, así que el barbero
   // no ve el botón «No Asistió» (la pantalla le deja cobrar y registrar el
@@ -292,13 +371,19 @@ export class AdminAgendaComponent implements OnInit {
     return !roles.includes('BARBERO') || roles.includes('ADMIN_BARBERIA') || roles.includes('ADMINISTRADOR');
   });
 
-  // Métricas computadas del día
+  /**
+   * Métricas del día. Se calculan sobre TODA la agenda (`turnos`), que ya
+   * incluye los turnos sin barbero: la columna «Sin Asignar» es la misma lista
+   * filtrada, no una fuente aparte. Antes el KPI se leía como contradictorio
+   * porque la tarjeta de «Sin Asignar» pintaba `PENDIENTE` fijo aunque el turno
+   * estuviera en otro estado; ahora la tarjeta muestra el estado real.
+   */
   totalTurnosDia = computed(() => this.turnos().length);
-  pendientesDia = computed(() => this.turnos().filter(t => t.estado === 'PENDIENTE').length);
+  pendientesDia = computed(() => this.turnos().filter(t => this.esPendiente(t.estado)).length);
   completadasDia = computed(() => this.turnos().filter(t => t.estado === 'COMPLETADA').length);
   ingresosEstimadosDia = computed(() => {
     return this.turnos()
-      .filter(t => t.estado === 'COMPLETADA' || t.estado === 'PENDIENTE')
+      .filter(t => t.estado === 'COMPLETADA' || t.estado === 'PENDIENTE' || t.estado === 'CONFIRMADA')
       .reduce((acc, t) => acc + (Number(t.precioTotalHist) || 0), 0);
   });
 
@@ -323,6 +408,7 @@ export class AdminAgendaComponent implements OnInit {
     if (!barberia || !this.fechaFiltro) return;
 
     this.cargando.set(true);
+    this.errorAccion.set(null);
 
     // Cargar personal y agenda simultáneamente
     this.personalService.obtenerPersonal(barberia.id).subscribe({
@@ -333,13 +419,92 @@ export class AdminAgendaComponent implements OnInit {
         
         this.reservasService.obtenerAgendaDiaria(this.fechaFiltro).subscribe({
           next: (turnos) => {
-            this.turnos.set(turnos);
+            this.turnos.set(turnos ?? []);
             this.cargando.set(false);
           },
-          error: () => this.cargando.set(false)
+          error: (err) => {
+            this.turnos.set([]);
+            this.cargando.set(false);
+            this.errorAccion.set(err?.error?.mensaje || err?.error?.message || 'No se pudo cargar la agenda del día.');
+          }
         });
       },
-      error: () => this.cargando.set(false)
+      error: (err) => {
+        this.cargando.set(false);
+        this.errorAccion.set(err?.error?.mensaje || err?.error?.message || 'No se pudo cargar el equipo de la sede.');
+      }
+    });
+  }
+
+  /** `PROPUESTA_PENDIENTE` también espera una decisión de la sede. */
+  esPendiente(estado: string | undefined): boolean {
+    return estado === 'PENDIENTE' || estado === 'PROPUESTA_PENDIENTE';
+  }
+
+  /** Estados terminales: ya no se pueden cancelar ni confirmar. */
+  puedeCancelar(estado: string | undefined): boolean {
+    const terminales = ['CANCELADA', 'COMPLETADA', 'RECHAZADA', 'EXPIRADA', 'NO_PRESENTADO', 'NO_ASISTIO'];
+    return !!estado && !terminales.includes(estado);
+  }
+
+  etiquetaEstado(estado: string | undefined): string {
+    return (estado || 'SIN ESTADO').replace(/_/g, ' ');
+  }
+
+  claseEstadoTurno(estado: string | undefined): Record<string, boolean> {
+    return {
+      'text-amber-400': this.esPendiente(estado),
+      'text-sky-400': estado === 'CONFIRMADA',
+      'text-emerald-400': estado === 'COMPLETADA',
+      'text-red-400':
+        estado === 'CANCELADA' ||
+        estado === 'RECHAZADA' ||
+        estado === 'EXPIRADA' ||
+        estado === 'NO_PRESENTADO' ||
+        estado === 'NO_ASISTIO',
+    };
+  }
+
+  confirmarTurno(turno: any) {
+    const hora = new Date(turno.fechaHoraInicio).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    if (!confirm(`¿Confirmar el turno de ${turno.cliente?.nombre ?? 'este cliente'} a las ${hora}?`)) return;
+
+    this.procesandoId.set(turno.id);
+    this.errorAccion.set(null);
+    this.reservasService.aceptarReserva(turno.id).subscribe({
+      next: () => {
+        this.procesandoId.set(null);
+        this.mensajeAccion.set('Turno confirmado correctamente.');
+        setTimeout(() => this.mensajeAccion.set(null), 4000);
+        this.cargarDatos();
+      },
+      error: (err) => {
+        this.procesandoId.set(null);
+        this.errorAccion.set(
+          err?.error?.mensaje || err?.error?.message || 'No se pudo confirmar el turno.',
+        );
+      },
+    });
+  }
+
+  cancelarTurno(turno: any) {
+    if (!confirm(`¿Cancelar el turno de ${turno.cliente?.nombre ?? 'este cliente'}? La cita dejará de ocupar la agenda.`)) return;
+
+    this.procesandoId.set(turno.id);
+    this.errorAccion.set(null);
+    this.reservasService.cancelarReserva(turno.id).subscribe({
+      next: () => {
+        this.procesandoId.set(null);
+        this.mensajeAccion.set('Turno cancelado. La franja quedó liberada.');
+        setTimeout(() => this.mensajeAccion.set(null), 4000);
+        this.cargarDatos();
+      },
+      error: (err) => {
+        this.procesandoId.set(null);
+        this.errorAccion.set(
+          err?.error?.mensaje || err?.error?.message || 'No se pudo cancelar el turno.',
+        );
+      },
     });
   }
 

@@ -106,6 +106,26 @@ html.modal-abierto .transform-style-3d {
   box-shadow: 0 0 20px rgba(212, 175, 55, 0.15);
 }
 
+/*
+ * Autocompletado del navegador.
+ *
+ * Chrome pinta su propio fondo (blanco/amarillo) en los campos que rellena y
+ * ignora `background-color`. Eso hacía que «Nombre completo», «Teléfono» y
+ * «Cédula» del modal de alta de usuario aparecieran claros mientras «Correo» y
+ * «Contraseña» seguían oscuros. El `box-shadow` interno es la única forma de
+ * mantener el tema oscuro sin desactivar el autocompletado.
+ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 30px #171717 inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #ffffff;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 /* Ambient 3D Grid */
 .bg-ambient-mesh {
   background-image: 
