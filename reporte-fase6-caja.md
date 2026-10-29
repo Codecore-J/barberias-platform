@@ -131,11 +131,17 @@ Pruebas añadidas:
 - `pago.service.spec.ts` (+2): **monto distinto → 422 `MONTO_NO_COINCIDE`** y la
   sede/método por defecto que se guardan en el cobro.
 
-## 5 · Limitación
+## 5 · Limitación → Resuelto
 
-`prisma migrate status` muestra **pendientes** las migraciones
-`20261029180000_reserva_catalogo_hibrido`, `20261029190000_v3_horarios_barbero` y
-`20261029200000_v3_pagos_cierre`. No se ejecutó `migrate dev`: la base configurada
-es la compartida de Neon y esa orden, ante cualquier deriva, puede ofrecer un
-`reset` que borraría datos. El SQL queda versionado para `migrate deploy` en el
-pipeline.
+> **Actualización 2026-10-29 — aplicado en `neondb`.**
+>
+> Las migraciones `20261029180000_reserva_catalogo_hibrido`,
+> `20261029190000_v3_horarios_barbero` y `20261029200000_v3_pagos_cierre`
+> **ya están aplicadas con éxito en `neondb`** mediante `prisma migrate deploy`
+> en el pipeline de CI (PR #116 y PR #117, fusionados en `main`).
+>
+> Las 7 categorías oficiales de la sede se sembraron de forma idempotente en las
+> 27 barberías existentes (189 filas en `categorias_servicio`, 7 por sede,
+> 0 duplicados). Desde PR #117, `BarberiaService.create()` siembra
+> automáticamente las categorías al registrar una nueva sede, dentro de la misma
+> transacción SERIALIZABLE.
