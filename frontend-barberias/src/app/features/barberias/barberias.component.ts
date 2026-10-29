@@ -20,13 +20,23 @@ import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.dir
     <div class="space-y-12 py-8 perspective-1200 bg-ambient-mesh min-h-screen">
       
       <!-- Título de la sección -->
-      <section class="max-w-6xl mx-auto px-4 text-center space-y-4">
-        <h2 class="text-4xl sm:text-5xl font-display font-extrabold text-white transform translate-z-12">
-          Tus <span class="gold-gradient-text">Barberías</span>
-        </h2>
-        <p class="text-zinc-400 max-w-2xl mx-auto text-sm sm:text-base">
-          Gestiona las barberías a las que tienes acceso. Selecciona una para activar tu sesión y acceder al catálogo y agendamiento.
-        </p>
+      <section class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div class="space-y-2">
+          <h2 class="text-4xl sm:text-5xl font-display font-extrabold text-white transform translate-z-12">
+            Tus <span class="gold-gradient-text">Barberías</span>
+          </h2>
+          <p class="text-zinc-400 max-w-2xl text-sm sm:text-base">
+            Gestiona las barberías a las que tienes acceso. Selecciona una para activar tu sesión y acceder al catálogo y agendamiento.
+          </p>
+        </div>
+
+        @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'ADMINISTRADOR') {
+          <button routerLink="/barberias/nueva"
+                  class="px-5 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg shadow-amber-500/20 hover:scale-105 transition-all flex items-center justify-center gap-2 shrink-0">
+            <i class="pi pi-plus"></i>
+            <span>Crear Nueva Barbería</span>
+          </button>
+        }
       </section>
 
       <!--
@@ -41,26 +51,28 @@ import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.dir
       -->
       @if (puedeVerCodigoInvitacion()) {
         <section class="max-w-6xl mx-auto px-4">
-          <div class="p-6 rounded-xl bg-zinc-900/60 border border-zinc-700/50 backdrop-blur">
-            <h3 class="text-lg font-bold text-white mb-1 flex items-center gap-2">
-              <i class="pi pi-link text-amber-400"></i>
-              Invitación de la Sede
-            </h3>
-            <p class="text-xs text-zinc-400 mb-5">
-              Comparte el código o el enlace para que tus clientes se unan
-              @if (invitacion(); as inv) { a <span class="text-amber-400 font-semibold">{{ inv.nombre }}</span>. }
-              @else { a tu sede. }
-            </p>
+          <div class="p-4 sm:p-5 rounded-2xl bg-zinc-900/60 border border-zinc-700/50 backdrop-blur">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-3">
+              <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                <i class="pi pi-link text-amber-400"></i>
+                Invitación de la Sede
+              </h3>
+              <p class="text-[11px] text-zinc-400">
+                Comparte el código o el enlace para que tus clientes se unan
+                @if (invitacion(); as inv) { a <span class="text-amber-400 font-semibold">{{ inv.nombre }}</span>. }
+                @else { a tu sede. }
+              </p>
+            </div>
 
             @if (invitacion(); as inv) {
-              <div class="flex flex-col lg:flex-row gap-6 lg:items-center">
-                <div class="flex-1 space-y-4">
+              <div class="flex flex-col lg:flex-row gap-4 lg:items-center">
+                <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <span class="text-[11px] uppercase tracking-widest text-zinc-500 font-semibold">Código de acceso</span>
-                    <div class="flex flex-wrap items-center gap-3 mt-1.5">
-                      <code class="px-4 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-amber-400 font-mono text-lg tracking-wider">{{ inv.codigoAcceso }}</code>
+                    <span class="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">Código de acceso</span>
+                    <div class="flex flex-wrap items-center gap-2 mt-1">
+                      <code class="px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-amber-400 font-mono text-base tracking-wider">{{ inv.codigoAcceso }}</code>
                       <button (click)="copiar(inv.codigoAcceso, 'codigo')"
-                              class="px-4 py-2 rounded-lg bg-amber-500 text-zinc-950 font-semibold hover:bg-amber-400 transition-colors flex items-center gap-2">
+                              class="px-3 py-1.5 rounded-lg text-xs bg-amber-500 text-zinc-950 font-semibold hover:bg-amber-400 transition-colors flex items-center gap-1.5">
                         <i class="pi pi-copy"></i>
                         {{ copiado() === 'codigo' ? 'Copiado' : 'Copiar' }}
                       </button>
@@ -68,11 +80,11 @@ import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.dir
                   </div>
 
                   <div>
-                    <span class="text-[11px] uppercase tracking-widest text-zinc-500 font-semibold">Enlace de invitación</span>
-                    <div class="flex flex-wrap items-center gap-3 mt-1.5">
-                      <code class="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs break-all">{{ urlInvitacion() }}</code>
+                    <span class="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">Enlace de invitación</span>
+                    <div class="flex flex-wrap items-center gap-2 mt-1">
+                      <code class="px-2.5 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-[11px] break-all max-w-full">{{ urlInvitacion() }}</code>
                       <button (click)="copiar(urlInvitacion(), 'enlace')"
-                              class="px-4 py-2 rounded-lg text-xs font-semibold text-zinc-200 bg-zinc-800 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center gap-2">
+                              class="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-zinc-200 bg-zinc-800 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center gap-1.5">
                         <i class="pi pi-copy"></i>
                         {{ copiado() === 'enlace' ? 'Copiado' : 'Copiar Enlace' }}
                       </button>
@@ -80,11 +92,11 @@ import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.dir
                   </div>
                 </div>
 
-                <div class="flex flex-col items-center gap-2 shrink-0">
+                <div class="flex lg:flex-col items-center gap-2 shrink-0 self-center">
                   <img [src]="qrInvitacion()"
                        alt="Código QR de invitación a la sede"
-                       class="w-40 h-40 rounded-xl bg-white p-2 shadow-lg">
-                  <span class="text-[11px] text-zinc-500">Escanéalo para unirte</span>
+                       class="w-24 h-24 sm:w-28 sm:h-28 rounded-xl bg-white p-1.5 shadow-lg">
+                  <span class="text-[10px] text-zinc-500">Escanéalo para unirte</span>
                 </div>
               </div>
             } @else {
@@ -218,13 +230,6 @@ import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.dir
       <!-- Acciones de Grid (Cuando ya hay barberías) -->
       @if (!tenantService.isLoading() && tenantService.barberiasVinculadas().length > 0) {
         <div class="max-w-6xl mx-auto px-4 pt-10 flex flex-wrap justify-center gap-4 transform translate-z-12">
-          @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'ADMINISTRADOR') {
-            <button routerLink="/barberias/nueva" 
-                    class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg shadow-amber-500/20 hover:scale-105 transition-all flex items-center gap-2">
-              <i class="pi pi-plus"></i>
-              <span>Crear Nueva Barbería</span>
-            </button>
-          }
           @if (userRole() === 'CLIENTE') {
             <button (click)="showVincularModal.set(true)" 
                     class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 bg-zinc-800/90 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center gap-2">

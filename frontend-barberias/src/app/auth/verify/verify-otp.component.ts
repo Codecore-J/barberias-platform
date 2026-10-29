@@ -44,7 +44,7 @@ import { PARAM_RETURN_URL, returnUrlSeguro } from '../../core/utils/return-url.u
             </div>
             <h1 class="text-3xl font-display font-extrabold text-white tracking-wide">VERIFICA TU <span class="gold-gradient-text">TELÉFONO</span></h1>
             <p class="text-zinc-400 text-sm">
-              Te enviamos un código de 6 dígitos por WhatsApp. Es necesario para poder reservar.
+              Ingresa el código de 6 dígitos que enviamos a tu WhatsApp
             </p>
           </div>
 

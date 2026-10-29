@@ -18,6 +18,7 @@ describe('AnalyticsDashboardComponent', () => {
     barberiasVinculadas: () => any[];
     seleccionarBarberia: (id: string) => any;
     barberiaActivaId: () => string | null;
+    nombreBarberiaActiva: () => string;
   };
   let routerSpy: { navigate: (commands: any[]) => Promise<boolean> };
 
@@ -51,6 +52,7 @@ describe('AnalyticsDashboardComponent', () => {
       barberiasVinculadas: vi.fn(() => []),
       seleccionarBarberia: vi.fn(() => of({})),
       barberiaActivaId: vi.fn(() => 's1'),
+      nombreBarberiaActiva: vi.fn(() => 'Sede Norte'),
     };
     routerSpy = {
       navigate: vi.fn(() => Promise.resolve(true)),
@@ -83,8 +85,8 @@ describe('AnalyticsDashboardComponent', () => {
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.textContent).toContain('Ingresos totales');
     expect(compiled.textContent).toContain('Ticket promedio');
-    expect(compiled.textContent).toContain('Tasa de Inasistencia');
-    expect(compiled.textContent).toContain('Tasa de Cancelación');
+    expect(compiled.textContent).toContain('Tasa de inasistencia');
+    expect(compiled.textContent).toContain('Tasa de cancelación');
     expect(compiled.textContent).toContain('Recordatorios enviados');
     expect(compiled.textContent).toContain('Cupos de lista de espera notificados');
     expect(compiled.textContent).toContain('Carlos');
@@ -102,7 +104,7 @@ describe('AnalyticsDashboardComponent', () => {
     (window.URL as any).revokeObjectURL = revokeObjectURL;
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
 
-    const boton = fixture.nativeElement.querySelector('.export-button') as HTMLButtonElement;
+    const boton = fixture.nativeElement.querySelector('[data-testid="export-csv"]') as HTMLButtonElement;
     boton.click();
 
     expect(analyticsServiceSpy.exportAnalytics).toHaveBeenCalled();

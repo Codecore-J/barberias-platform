@@ -250,7 +250,11 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                     <td class="p-4">
                       <div class="font-bold text-white">{{ usuario.nombreCompleto }}</div>
                     </td>
-                    <td class="p-4 text-zinc-300 break-all">{{ usuario.correo }}</td>
+                    <td class="p-4 text-zinc-300">
+                      <span class="block max-w-[220px] truncate" [title]="usuario.correo">
+                        {{ usuario.correo }}
+                      </span>
+                    </td>
                     <td class="p-4 text-zinc-400 font-mono">
                       {{ usuario.telefono || '—' }}
                     </td>

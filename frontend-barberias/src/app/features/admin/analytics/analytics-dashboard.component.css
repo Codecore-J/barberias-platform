@@ -1,126 +1,15 @@
+/*
+ * Estilos base del panel de analíticas.
+ *
+ * El tema (tarjetas, filtros y tablas) vive en el template con utilidades de
+ * Tailwind; aquí solo queda el contenedor. Antes esta hoja traía estilos claros
+ * (`#f5f5f5`, `#fff`) que chocaban con el resto del panel oscuro.
+ */
 .analytics-container {
-  padding: 2rem;
+  padding: 2rem 0;
 }
 
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-bottom: 1rem;
-}
-
-.panel-header h1 {
-  margin: 0;
-}
-
-.export-button {
-  padding: 0.5rem 1rem;
-  border: 1px solid #444;
-  border-radius: 6px;
-  background: #1f1f1f;
-  color: #fff;
-  font-weight: 600;
+input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(0.8) sepia(1) saturate(3) hue-rotate(5deg);
   cursor: pointer;
-}
-
-.export-button:disabled {
-  opacity: 0.6;
-  cursor: progress;
-}
-
-.filters {
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-bottom: 2rem;
-  align-items: center;
-}
-
-.filters button {
-  padding: 0.5rem 1rem;
-  cursor: pointer;
-}
-
-.date-filters {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.kpi-card {
-  background: #f5f5f5;
-  padding: 1.5rem;
-  border-radius: 8px;
-  text-align: center;
-}
-
-.kpi-card h3 {
-  margin: 0 0 0.5rem 0;
-  font-size: 0.9rem;
-  color: #666;
-}
-
-.kpi-value {
-  font-size: 1.8rem;
-  font-weight: bold;
-  margin: 0;
-}
-
-.sections {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.section {
-  background: #fff;
-  padding: 1.5rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-}
-
-.section h2 {
-  margin-top: 0;
-}
-
-.multisede-section {
-  margin-bottom: 2rem;
-}
-
-.barbero-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.barbero-table th,
-.barbero-table td {
-  padding: 0.75rem;
-  text-align: left;
-  border-bottom: 1px solid #ddd;
-}
-
-.barbero-table th {
-  background: #f5f5f5;
-}
-
-.loading {
-  text-align: center;
-  padding: 2rem;
-}
-
-.error {
-  color: red;
-  padding: 1rem;
-  background: #fee;
-  border-radius: 4px;
 }
