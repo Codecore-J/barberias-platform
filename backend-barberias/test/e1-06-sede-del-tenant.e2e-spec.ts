@@ -50,7 +50,7 @@ describe('E1-06 · la sede sale de la ruta, nunca de una cabecera', () => {
   async function crearUsuario(correo: string, nombre: string, telefono: string) {
     const hash = await bcrypt.hash('Password1!', 10);
     return prisma.usuario.create({
-      data: { nombreCompleto: nombre, correo, telefono, passwordHash: hash },
+      data: { telefonoVerificado: true, nombreCompleto: nombre, correo, telefono, passwordHash: hash },
     });
   }
 

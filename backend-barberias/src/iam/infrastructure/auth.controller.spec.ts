@@ -4,10 +4,12 @@ import { AuthService } from '../application/auth.service.js';
 import { RegisterDto } from '../application/dto/register.dto.js';
 import { LoginDto } from '../application/dto/login.dto.js';
 import { UsuarioResponseDto } from '../application/dto/usuario-response.dto.js';
+import { OtpService } from '../application/otp.service.js';
 
 describe('AuthController', () => {
   let controller: AuthController;
   let authService: AuthService;
+  let otpService: OtpService;
 
   const mockUsuarioResponse: UsuarioResponseDto = {
     id: 'user-uuid-1',
@@ -18,6 +20,8 @@ describe('AuthController', () => {
     estadoCuenta: 'ACTIVO',
     creadoAt: new Date(),
     roles: ['CLIENTE'],
+    telefonoVerificado: false,
+    correoVerificado: false,
     passwordHash: 'hash-excluido',
   };
 
@@ -28,7 +32,12 @@ describe('AuthController', () => {
       getProfile: vi.fn(),
     } as any;
 
-    controller = new AuthController(authService);
+    otpService = {
+      enviar: vi.fn(),
+      verificar: vi.fn(),
+    } as any;
+
+    controller = new AuthController(authService, otpService);
   });
 
   describe('register', () => {

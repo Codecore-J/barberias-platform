@@ -61,6 +61,11 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
       .post(`${api}/auth/register`)
       .send({ nombreCompleto: correo, correo, telefono, password: 'Password1!' });
     expect([200, 201, 409]).toContain(r.status);
+
+    // V2.1 · el fixture se da de alta con el teléfono VERIFICADO: sin esto
+    // `VerificacionGuard` respondería 403 en la creación de reserva y este
+    // test no mide la verificación OTP.
+    await prisma.usuario.update({ where: { correo }, data: { telefonoVerificado: true } });
     const l = await request(app.getHttpServer())
       .post(`${api}/auth/login`)
       .send({ correo, password: 'Password1!' });

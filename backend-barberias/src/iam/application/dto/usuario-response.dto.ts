@@ -24,6 +24,14 @@ export class UsuarioResponseDto {
   @Expose()
   estadoCuenta: string;
 
+  // V2.1 · verificación OTP. El frontend los usa para decidir si manda al
+  // usuario a /auth/verify antes de dejarle entrar en el panel.
+  @Expose()
+  telefonoVerificado: boolean;
+
+  @Expose()
+  correoVerificado: boolean;
+
   @Expose()
   creadoAt: Date | null;
 

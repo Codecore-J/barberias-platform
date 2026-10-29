@@ -68,6 +68,7 @@ describe('Hallazgo 16 - RolesGuard Global (e2e)', () => {
     // 3. Crear usuario con rol CLIENTE exclusivamente (usa el rol creado arriba)
     const cliente = await prisma.usuario.create({
       data: {
+        telefonoVerificado: true,
         nombreCompleto: 'Cliente Hallazgo 16',
         correo: 'test_hallazgo16@demo.com',
         telefono: '99988877716',

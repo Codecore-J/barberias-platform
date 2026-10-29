@@ -283,6 +283,7 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
     secuenciaTelefono += 1;
     const usuario = await prisma.usuario.create({
       data: {
+        telefonoVerificado: true,
         nombreCompleto: `Matriz ${correo}`,
         correo,
         telefono: `6${String(secuenciaTelefono).padStart(9, '0')}`,

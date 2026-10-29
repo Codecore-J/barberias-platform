@@ -159,6 +159,7 @@ describe('E3-05 · expiración automática y cancelación manual', () => {
       correos.map((correo, i) =>
         prisma.usuario.create({
           data: {
+            telefonoVerificado: true,
             nombreCompleto: `E305 ${i}`,
             correo,
             telefono: `9998${String(i).padStart(7, '0')}`,

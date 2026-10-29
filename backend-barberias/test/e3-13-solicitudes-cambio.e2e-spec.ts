@@ -102,6 +102,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       (
         await prisma.usuario.create({
           data: {
+            telefonoVerificado: true,
             nombreCompleto: `${etiqueta} E313 ${sufijo}`,
             correo: `${etiqueta}.e313.${sufijo}@test.com`,
             telefono,

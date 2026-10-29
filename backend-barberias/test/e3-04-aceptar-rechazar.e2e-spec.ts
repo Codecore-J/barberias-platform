@@ -145,6 +145,7 @@ describe('E3-04 · aceptar y rechazar solicitudes MANUALES', () => {
       correos.slice(0, 4).map((correo, i) =>
         prisma.usuario.create({
           data: {
+            telefonoVerificado: true,
             nombreCompleto: `E304 ${i}`,
             correo,
             telefono: `9997${String(i).padStart(7, '0')}`,
@@ -156,6 +157,7 @@ describe('E3-04 · aceptar y rechazar solicitudes MANUALES', () => {
     );
     const global = await prisma.usuario.create({
       data: {
+        telefonoVerificado: true,
         nombreCompleto: 'E304 global',
         correo: correos[4],
         telefono: '99970000004',

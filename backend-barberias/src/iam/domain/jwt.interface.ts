@@ -32,4 +32,12 @@ export interface UsuarioAutenticado {
   correo: string;
   roles: string[];
   rolesDetallados?: RolAsignado[];
+  /**
+   * V2.1 · banderas de verificación OTP, leídas de la base en CADA petición
+   * por `JwtStrategy` (no viajan dentro del token, así no envejecen con él).
+   * `VerificacionGuard` las exige para crear reservas y para entrar en la
+   * lista de espera.
+   */
+  telefonoVerificado?: boolean;
+  correoVerificado?: boolean;
 }

@@ -142,6 +142,7 @@ describe('E3-03 · partición de POST /reservas: cliente vs walk-in', () => {
       correos.map((correo, i) =>
         prisma.usuario.create({
           data: {
+            telefonoVerificado: true,
             nombreCompleto: `Split E303 ${i}`,
             correo,
             telefono: `9998${String(i).padStart(7, '0')}`,

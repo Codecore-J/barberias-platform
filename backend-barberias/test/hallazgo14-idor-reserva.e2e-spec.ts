@@ -165,6 +165,16 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     clienteBToken = cBRes.body.accessToken;
     clienteBId = cBRes.body.usuario.id;
 
+    // V2.1 · los tres usuarios del fixture quedan con el teléfono VERIFICADO:
+    // `VerificacionGuard` exige el código OTP para crear reservas y este test
+    // mide el IDOR, no la verificación OTP.
+    await prisma.usuario.updateMany({
+      where: {
+        correo: { in: ['owner.idor@test.com', 'clienta.idor@test.com', 'clientb.idor@test.com'] },
+      },
+      data: { telefonoVerificado: true },
+    });
+
     // Vincular y dar rol CLIENTE a Cliente A y B
     const rolCliente = await prisma.rol.findFirst({ where: { nombre: 'CLIENTE' } });
     
