@@ -2,6 +2,7 @@ import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { PagosService, PagoHistorial } from '../../../core/services/pagos.service';
+import { CajaService } from '../../../core/services/caja.service';
 import { TenantService } from '../../../core/services/tenant.service';
 import { AuthService } from '../../../auth/auth.service';
 
@@ -48,6 +49,123 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
           <i class="pi pi-check-circle"></i> {{ mensajeExito() }}
         </div>
       }
+
+      <!-- V3 fase 6 · CAJA DEL DÍA -->
+      <section
+        class="glass-panel rounded-3xl border p-5 sm:p-6 space-y-5 relative z-10"
+        [class.border-emerald-500/30]="cajaService.caja()?.estado === 'CERRADO'"
+        [class.border-white/10]="cajaService.caja()?.estado !== 'CERRADO'"
+      >
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div>
+            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+              <i class="pi pi-lock-open text-amber-400 text-sm"></i>
+              Caja del día
+            </h3>
+            <p class="text-xs text-zinc-400">
+              Acumulado de cobros vivos por método
+              @if (cajaService.caja()?.fecha) {
+                · {{ cajaService.caja()!.fecha }}
+              }
+            </p>
+          </div>
+
+          @if (cajaService.caja(); as caja) {
+            <span
+              class="text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border inline-flex items-center gap-1.5"
+              [ngClass]="caja.estado === 'CERRADO'
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                : 'bg-amber-500/10 text-amber-300 border-amber-500/30'"
+            >
+              <i [class]="caja.estado === 'CERRADO' ? 'pi pi-lock' : 'pi pi-clock'"></i>
+              {{ caja.estado === 'CERRADO' ? 'Caja cerrada' : 'Caja abierta' }}
+            </span>
+          }
+        </div>
+
+        @if (cajaService.cargando() && !cajaService.caja()) {
+          <div class="flex flex-col items-center justify-center py-10 gap-2">
+            <i class="pi pi-spin pi-spinner text-3xl text-amber-500/70"></i>
+            <p class="text-xs text-zinc-500">Calculando el arqueo del día...</p>
+          </div>
+        } @else if (cajaService.caja(); as caja) {
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="rounded-2xl bg-zinc-950/60 border border-white/5 p-4">
+              <p class="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold flex items-center gap-1.5">
+                <i class="pi pi-money-bill text-emerald-400"></i> Efectivo
+              </p>
+              <p class="text-2xl font-bold text-emerald-400 mt-1">
+                {{ caja.totales.efectivo | currency: 'USD' : 'symbol' : '1.2-2' }}
+              </p>
+            </div>
+            <div class="rounded-2xl bg-zinc-950/60 border border-white/5 p-4">
+              <p class="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold flex items-center gap-1.5">
+                <i class="pi pi-credit-card text-sky-400"></i> Tarjeta
+              </p>
+              <p class="text-2xl font-bold text-sky-300 mt-1">
+                {{ caja.totales.tarjeta | currency: 'USD' : 'symbol' : '1.2-2' }}
+              </p>
+            </div>
+            <div class="rounded-2xl bg-zinc-950/60 border border-white/5 p-4">
+              <p class="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold flex items-center gap-1.5">
+                <i class="pi pi-mobile text-violet-400"></i> Transferencia
+              </p>
+              <p class="text-2xl font-bold text-violet-300 mt-1">
+                {{ caja.totales.transferencia | currency: 'USD' : 'symbol' : '1.2-2' }}
+              </p>
+            </div>
+            <div class="rounded-2xl bg-amber-500/10 border border-amber-500/25 p-4">
+              <p class="text-[11px] uppercase tracking-wider text-amber-300/80 font-semibold flex items-center gap-1.5">
+                <i class="pi pi-chart-line"></i> Total del día
+              </p>
+              <p class="text-2xl font-bold text-amber-300 mt-1">
+                {{ caja.totales.general | currency: 'USD' : 'symbol' : '1.2-2' }}
+              </p>
+              @if (caja.totales.cantidadPagos !== null) {
+                <p class="text-[10px] text-amber-200/60 mt-0.5">
+                  {{ caja.totales.cantidadPagos }} cobro(s)
+                </p>
+              }
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-white/5">
+            @if (caja.estado === 'CERRADO') {
+              <p class="text-xs text-emerald-300/90 flex items-center gap-2">
+                <i class="pi pi-check-circle"></i>
+                Caja cerrada por hoy{{ caja.cerradoAt ? (' a las ' + (caja.cerradoAt | date: 'HH:mm')) : '' }}.
+                Los totales quedaron sellados y no cambian con anulaciones posteriores.
+              </p>
+              <span class="px-4 py-2 rounded-xl text-xs font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30">
+                Arqueo completado
+              </span>
+            } @else {
+              <p class="text-xs text-zinc-400 flex items-start gap-2">
+                <i class="pi pi-info-circle mt-0.5 text-amber-400"></i>
+                <span>
+                  Cerrar la caja sella los totales de hoy y no se puede repetir. Revisa que el efectivo
+                  físico coincida con el acumulado.
+                </span>
+              </p>
+              <button
+                (click)="abrirModalCierre()"
+                [disabled]="cajaService.cerrando()"
+                class="px-5 py-2.5 rounded-xl font-bold text-xs text-zinc-950 gold-gradient-bg shadow-[0_4px_16px_rgba(212,175,55,0.25)] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 whitespace-nowrap"
+              >
+                <i class="pi pi-lock"></i> Ejecutar Cierre de Caja
+              </button>
+            }
+          </div>
+        }
+
+        @if (cajaService.error()) {
+          <div class="rounded-xl bg-rose-500/10 border border-rose-500/30 p-3 text-xs text-rose-300 flex items-start gap-2" role="alert">
+            <i class="pi pi-exclamation-triangle mt-0.5"></i>
+            <span class="flex-1">{{ cajaService.error() }}</span>
+            <button (click)="cargarCaja()" class="underline text-rose-200">Reintentar</button>
+          </div>
+        }
+      </section>
 
       <!-- MÉTRICAS RESUMEN -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 relative z-10">
@@ -300,6 +418,65 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
         </div>
       }
 
+      <!-- MODAL CIERRE DE CAJA (V3 fase 6) -->
+      @if (modalCierreAbierto()) {
+        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
+          <div class="bg-zinc-900 border border-amber-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div class="p-6 space-y-5">
+              <div class="flex justify-between items-start">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                    <i class="pi pi-lock text-lg"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-lg font-bold text-white">Cerrar la caja del día</h3>
+                    <p class="text-xs text-zinc-400">Esta acción sella el arqueo</p>
+                  </div>
+                </div>
+                <button (click)="cerrarModalCierre()" [disabled]="cajaService.cerrando()" class="text-zinc-500 hover:text-white transition-colors">
+                  <i class="pi pi-times text-xl"></i>
+                </button>
+              </div>
+
+              <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200 space-y-1">
+                <p class="font-semibold flex items-center gap-1.5">
+                  <i class="pi pi-exclamation-triangle"></i> Los datos financieros del día se sellarán
+                </p>
+                <p class="text-amber-200/80">
+                  Después del cierre no se puede volver a ejecutar para esta fecha y sede. Los totales se
+                  congelan: una anulación posterior ya no cambiará este arqueo.
+                </p>
+              </div>
+
+              @if (cajaService.caja(); as caja) {
+                <div class="rounded-xl bg-zinc-950/70 border border-white/5 p-4 text-xs space-y-1.5">
+                  <div class="flex justify-between text-zinc-400"><span>Efectivo</span><span class="text-emerald-400 font-semibold">{{ caja.totales.efectivo | currency: 'USD' : 'symbol' : '1.2-2' }}</span></div>
+                  <div class="flex justify-between text-zinc-400"><span>Tarjeta</span><span class="text-sky-300 font-semibold">{{ caja.totales.tarjeta | currency: 'USD' : 'symbol' : '1.2-2' }}</span></div>
+                  <div class="flex justify-between text-zinc-400"><span>Transferencia</span><span class="text-violet-300 font-semibold">{{ caja.totales.transferencia | currency: 'USD' : 'symbol' : '1.2-2' }}</span></div>
+                  <div class="flex justify-between pt-1.5 border-t border-white/5 text-white font-bold"><span>Total</span><span>{{ caja.totales.general | currency: 'USD' : 'symbol' : '1.2-2' }}</span></div>
+                </div>
+              }
+
+              @if (cajaService.error()) {
+                <div class="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                  {{ cajaService.error() }}
+                </div>
+              }
+
+              <div class="flex gap-3 pt-2 border-t border-zinc-800">
+                <button (click)="cerrarModalCierre()" [disabled]="cajaService.cerrando()" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 disabled:opacity-50 transition-colors">
+                  Cancelar
+                </button>
+                <button (click)="confirmarCierre()" [disabled]="cajaService.cerrando()" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-zinc-950 gold-gradient-bg hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2">
+                  <i class="pi" [ngClass]="cajaService.cerrando() ? 'pi-spin pi-spinner' : 'pi-lock'"></i>
+                  <span>{{ cajaService.cerrando() ? 'Sellando...' : 'Sí, cerrar caja' }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+
       <!-- MODAL PURGA AUDITORÍA (ADMINISTRADOR) -->
       @if (modalPurgaAbierto()) {
         <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
@@ -367,12 +544,16 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
 })
 export class AdminTicketsComponent implements OnInit {
   protected pagosService = inject(PagosService);
+  // V3 fase 6 · arqueo del día y cierre.
+  protected cajaService = inject(CajaService);
   protected tenantService = inject(TenantService);
   protected authService = inject(AuthService);
 
   filtroMetodo = signal<string>('TODOS');
   busquedaTexto = '';
   modalPurgaAbierto = signal(false);
+  /** Confirmación del cierre de caja: los totales se sellan y no se repiten. */
+  modalCierreAbierto = signal(false);
   purgando = signal(false);
   diasPurga = 365;
   mensajeExito = signal('');
@@ -452,10 +633,37 @@ export class AdminTicketsComponent implements OnInit {
 
   ngOnInit() {
     this.cargarTickets();
+    this.cargarCaja();
   }
 
   cargarTickets() {
     this.pagosService.obtenerHistorial().subscribe();
+  }
+
+  cargarCaja() {
+    this.cajaService.cargarHoy().subscribe();
+  }
+
+  abrirModalCierre() {
+    this.cajaService.error.set(null);
+    this.modalCierreAbierto.set(true);
+  }
+
+  cerrarModalCierre() {
+    if (this.cajaService.cerrando()) return;
+    this.modalCierreAbierto.set(false);
+  }
+
+  confirmarCierre() {
+    this.cajaService.cerrarCaja().subscribe((caja) => {
+      if (!caja) return;
+      this.modalCierreAbierto.set(false);
+      this.mensajeExito.set('Caja cerrada: los totales del día quedaron sellados.');
+      setTimeout(() => this.mensajeExito.set(''), 5000);
+      // El historial no cambia, pero el estado del cierre sí: se refresca todo
+      // para que la pantalla no muestre «caja abierta» después de sellarla.
+      this.cargarTickets();
+    });
   }
 
   resetFiltros() {

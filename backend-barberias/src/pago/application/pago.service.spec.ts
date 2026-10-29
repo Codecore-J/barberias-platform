@@ -190,6 +190,67 @@ describe('PagoService', () => {
       );
     });
 
+    it('V3 fase 6: rechaza un monto que no coincide con el total de la reserva', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({
+        responsableId: usuarioId,
+      });
+      mockPrismaService.reserva.findFirst.mockResolvedValue({
+        id: reservaId,
+        barberiaId,
+        clienteId: 'uuid-cliente',
+        estado: 'CONFIRMADA',
+        totalPagar: 35.5,
+        pago: null,
+        fechaCita: CITA_FECHA,
+        horaInicio: CITA_HORA,
+        barberia: { zonaHoraria: TZ_SEDE },
+      });
+
+      await expect(
+        service.registrarPagoEnPersona(usuarioId, barberiaId, {
+          reservaId,
+          monto: 30,
+          metodoPago: 'TARJETA',
+        }),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: { codigo: 'MONTO_NO_COINCIDE' },
+      });
+
+      // El pago no llegó a escribirse: la validación corre antes del upsert.
+      expect(mockPrismaService.pago.upsert).not.toHaveBeenCalled();
+    });
+
+    it('V3 fase 6: guarda la sede del cobro y el método EFECTIVO por defecto', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({
+        responsableId: usuarioId,
+      });
+      mockPrismaService.reserva.findFirst.mockResolvedValue({
+        id: reservaId,
+        barberiaId,
+        clienteId: 'uuid-cliente',
+        estado: 'CONFIRMADA',
+        totalPagar: 25,
+        pago: null,
+        fechaCita: CITA_FECHA,
+        horaInicio: CITA_HORA,
+        barberia: { zonaHoraria: TZ_SEDE },
+      });
+      mockPrismaService.pago.upsert.mockResolvedValue({ id: 'uuid-pago', monto: 25 });
+      mockPrismaService.reserva.update.mockResolvedValue({ id: reservaId });
+
+      await service.registrarPagoEnPersona(usuarioId, barberiaId, { reservaId });
+
+      expect(mockPrismaService.pago.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            barberiaId,
+            metodoPago: 'EFECTIVO',
+          }),
+        }),
+      );
+    });
+
     it('debe lanzar ForbiddenException si el usuario no tiene permisos', async () => {
       mockPrismaService.barberia.findUnique.mockResolvedValue({
         responsableId: 'otro-usuario',

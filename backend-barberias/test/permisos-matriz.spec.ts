@@ -242,6 +242,11 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // `PagoService.anularPago` con la sede del PAGO (403 `ANULACION_SOLO_ADMIN` si
   // quien anula es barbero de esa sede, 404 si el cobro es de otra sede).
   'GET /shops/:shopId/payments/history': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // V3 fase 6: el cobro desde la agenda (mismos roles que la caja histórica) y
+  // el arqueo diario, que es decisión de la sede.
+  'POST /pagos/cobrar': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /caja/hoy': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /caja/cierre': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'POST /shops/:shopId/payments/:id/void': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
   // E3-03 (2026-10): la única fila de cuatro roles se parte en dos. El alias
@@ -620,8 +625,8 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // rutas de verificación OTP (`send-otp` y `verify-otp`, ambas `@Autenticado`):
   // 95 × 4 = 380. V3 suma ocho rutas del catálogo híbrido y la asignación: 103
   // × 4 = 412. V3 fase 5 suma `mi-horario` (GET y PUT, solo BARBERO): 105 × 4 =
-  // 420.
-  expect(evaluaciones).toBe(420);
+  // 420. V3 fase 6 suma el cobro de la agenda y las dos de caja: 108 × 4 = 432.
+  expect(evaluaciones).toBe(432);
     expect(
       desviaciones.length === 0
         ? ''

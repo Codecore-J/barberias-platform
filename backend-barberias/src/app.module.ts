@@ -14,6 +14,7 @@ import { AgendaModule } from './agenda/infrastructure/agenda.module.js';
 import { BullModule } from '@nestjs/bullmq';
 import { ReservaModule } from './reserva/infrastructure/reserva.module.js';
 import { PagoModule } from './pago/infrastructure/pago.module.js';
+import { CajaModule } from './caja/infrastructure/caja.module.js';
 import { AntecedenteModule } from './antecedente/infrastructure/antecedente.module.js';
 import { NotificacionModule } from './notificacion/infrastructure/notificacion.module.js';
 import { AuditoriaModule } from './auditoria/infrastructure/auditoria.module.js';
@@ -86,6 +87,8 @@ export const THROTTLER_LIMITE_POR_DEFECTO = 120;
     AgendaModule,
     ReservaModule,
     PagoModule,
+    // V3 fase 6: arqueo diario y cierre de caja (foto del día por sede).
+    CajaModule,
     AntecedenteModule,
     NotificacionModule,
     // Fase 7 · consumidor de `reserva.*` y cron de recordatorios de 2 h. No lo
