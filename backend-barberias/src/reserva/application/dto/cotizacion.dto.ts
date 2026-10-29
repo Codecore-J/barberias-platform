@@ -18,7 +18,14 @@
  * Desglose de un servicio dentro de la cotización.
  */
 export interface ServicioDesglose {
-  servicioId: string;
+  /** Catálogo heredado (`servicios`). Ausente en el desglose híbrido. */
+  servicioId?: string;
+  /**
+   * V3 fase 4 · catálogo híbrido (`servicios_barbero`). Es el id que el cliente
+   * devuelve en `serviciosBarberoIds` al crear la reserva. Ausente en el
+   * desglose heredado.
+   */
+  servicioBarberoId?: string;
   nombre: string;
   precio: number;
   duracionEstimada: number;

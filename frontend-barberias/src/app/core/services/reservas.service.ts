@@ -21,7 +21,13 @@ export interface CrearReservaDto {
   fecha: string;
   horaInicio: string;
   horaFin: string;
-  serviciosIds: string[];
+  /** Catálogo heredado de la sede. Excluyente con `serviciosBarberoIds`. */
+  serviciosIds?: string[];
+  /**
+   * V3 fase 4 · servicios propios de un barbero. El backend exige además
+   * `barberoId` y calcula el precio y la duración sumando su catálogo.
+   */
+  serviciosBarberoIds?: string[];
   precioTotalEsperado: number;
   barberoId?: string | null;
   nombreInvitado?: string;

@@ -349,14 +349,76 @@ export class ReservaService {
       };
     }
 
+    // V3 fase 4 · cotización del catálogo híbrido: mismo contrato de respuesta
+    // que la heredada, pero el bloque, el precio y el desglose salen del catálogo
+    // del barbero. El margen de la sede sigue siendo el único margen del bloque
+    // (D42), igual que en la reserva que se va a crear.
+    const idsHibridos = dto.serviciosBarberoIds ?? [];
+    if (idsHibridos.length > 0) {
+      if ((dto.serviciosIds?.length ?? 0) > 0) {
+        throw errorDeSolicitud(
+          'CATALOGO_AMBIGUO',
+          'Una reserva no puede mezclar servicios del catálogo de la sede con servicios propios de un barbero.',
+        );
+      }
+      if (!dto.barberoId) {
+        throw errorDeSolicitud(
+          'BARBERO_REQUERIDO',
+          'Los servicios propios pertenecen a un barbero: hay que indicar cuál los realiza.',
+        );
+      }
+
+      const serviciosHibridos = await this.prisma.servicioBarbero.findMany({
+        where: {
+          id: { in: idsHibridos },
+          barberoId: dto.barberoId,
+          activo: true,
+          categoria: { barberiaId, activa: true },
+        },
+      });
+
+      if (serviciosHibridos.length !== idsHibridos.length) {
+        throw errorDeSolicitud(
+          'SERVICIO_FUERA_DE_BARBERIA',
+          'Uno o más servicios del barbero no existen, no pertenecen a su catálogo en esta sede o están inactivos.',
+        );
+      }
+
+      const margenHibrido = config.margenGrupalMinutos ?? 10;
+      const duracionHibrida = serviciosHibridos.reduce((acc, s) => acc + s.duracionMinutos, 0);
+      const precioHibrido = serviciosHibridos.reduce((acc, s) => acc + Number(s.precio), 0);
+
+      const [hInicioHibrido, mInicioHibrido] = dto.horaInicio.split(':').map(Number);
+      const finHibridoEnMinutos = hInicioHibrido * 60 + mInicioHibrido + duracionHibrida;
+      const horaFinHibrida = `${String(Math.floor(finHibridoEnMinutos / 60) % 24).padStart(2, '0')}:${String(finHibridoEnMinutos % 60).padStart(2, '0')}`;
+
+      return {
+        barberiaId,
+        fecha: dto.fecha,
+        horaFin: horaFinHibrida,
+        bloqueTotal: {
+          duracionTotal: duracionHibrida + margenHibrido,
+          margenTotal: margenHibrido,
+          precioTotal: precioHibrido,
+        },
+        desgloseServicios: serviciosHibridos.map((s) => ({
+          servicioBarberoId: s.id,
+          nombre: s.nombrePersonalizado,
+          precio: Number(s.precio),
+          duracionEstimada: s.duracionMinutos,
+          margenOperativo: 0,
+        })),
+      };
+    }
+
     const serviciosCatalogo = await this.prisma.servicio.findMany({
       where: {
-        id: { in: dto.serviciosIds },
+        id: { in: dto.serviciosIds ?? [] },
         barberiaId,
         estado: 'ACTIVO',
       },
     });
-    if (serviciosCatalogo.length !== dto.serviciosIds.length) {
+    if (serviciosCatalogo.length !== (dto.serviciosIds ?? []).length) {
       throw errorDeSolicitud(
         'SERVICIO_FUERA_DE_BARBERIA',
         'Uno o más servicios seleccionados no existen, no pertenecen a esta barbería o están inactivos.',
@@ -545,6 +607,40 @@ export class ReservaService {
 
     const duracionSolicitada = (fin.getTime() - inicio.getTime()) / 60000;
 
+    // V3 fase 4 · el catálogo híbrido es una ALTERNATIVA al catálogo heredado, no
+    // un añadido. Estas cuatro comprobaciones son de forma y se resuelven antes
+    // de la transacción: un rechazo no necesita serializar la sede entera.
+    const idsHibridos = dto.serviciosBarberoIds ?? [];
+    const esHibrido = idsHibridos.length > 0;
+
+    if (esHibrido && dto.tipo === 'GRUPAL') {
+      throw errorDeSolicitud(
+        'CATALOGO_HIBRIDO_GRUPAL',
+        'La reserva grupal sigue usando el catálogo de la sede; los servicios propios de un barbero son para reservas individuales.',
+      );
+    }
+
+    if (esHibrido && (dto.serviciosIds?.length ?? 0) > 0) {
+      throw errorDeSolicitud(
+        'CATALOGO_AMBIGUO',
+        'Una reserva no puede mezclar servicios del catálogo de la sede con servicios propios de un barbero.',
+      );
+    }
+
+    if (!esHibrido && dto.tipo !== 'GRUPAL' && (dto.serviciosIds?.length ?? 0) === 0) {
+      throw errorDeSolicitud(
+        'SERVICIOS_REQUERIDOS',
+        'Debe indicar al menos un servicio del catálogo de la sede o del catálogo de un barbero.',
+      );
+    }
+
+    if (esHibrido && !dto.barberoId) {
+      throw errorDeSolicitud(
+        'BARBERO_REQUERIDO',
+        'Los servicios propios pertenecen a un barbero: hay que indicar cuál los realiza.',
+      );
+    }
+
     const creada = await withSerializableTransaction(this.prisma, async (tx) => {
       // 0. Orden de validaciones (principio 9): sesión → rol → DTO → sede
       //    ACTIVA (P-SD-4) → vinculación ACTIVO con esa barbería → no restringido
@@ -684,20 +780,45 @@ export class ReservaService {
       //    la petición es solo la ventana del cliente, nunca el bloque (D44).
       const idsSolicitados = esGrupal
         ? [...new Set(participantesGrupales.flatMap((p) => p.servicios))]
-        : dto.serviciosIds;
+        : (dto.serviciosIds ?? []);
 
-      const serviciosCatalogo = await tx.servicio.findMany({
-        where: {
-          id: { in: idsSolicitados },
-          barberiaId,
-          estado: 'ACTIVO',
-        },
-      });
+      const serviciosCatalogo = esHibrido
+        ? []
+        : await tx.servicio.findMany({
+            where: {
+              id: { in: idsSolicitados },
+              barberiaId,
+              estado: 'ACTIVO',
+            },
+          });
 
-      if (serviciosCatalogo.length !== idsSolicitados.length) {
+      if (!esHibrido && serviciosCatalogo.length !== idsSolicitados.length) {
         throw errorDeSolicitud(
           'SERVICIO_FUERA_DE_BARBERIA',
           'Uno o más servicios seleccionados no existen, no pertenecen a esta barbería o están inactivos.',
+        );
+      }
+
+      // V3 fase 4 · el catálogo del barbero se valida con TRES condiciones que el
+      // cliente no puede saltarse: el servicio es de ese barbero, está activo y
+      // su categoría pertenece a ESTA sede y está activa. Sin la condición de la
+      // categoría, un id de otra sede se colaría y el snapshot quedaría con un
+      // precio de un negocio ajeno.
+      const serviciosHibridos = esHibrido
+        ? await tx.servicioBarbero.findMany({
+            where: {
+              id: { in: idsHibridos },
+              barberoId: dto.barberoId as string,
+              activo: true,
+              categoria: { barberiaId, activa: true },
+            },
+          })
+        : [];
+
+      if (esHibrido && serviciosHibridos.length !== idsHibridos.length) {
+        throw errorDeSolicitud(
+          'SERVICIO_FUERA_DE_BARBERIA',
+          'Uno o más servicios del barbero no existen, no pertenecen a su catálogo en esta sede o están inactivos.',
         );
       }
 
@@ -723,12 +844,19 @@ export class ReservaService {
         ? calcularBloqueGrupal(participantesResueltos, config.margenGrupalMinutos ?? 10)
         : null;
 
+      // V3 fase 4 · en el flujo híbrido la duración y el precio salen del catálogo
+      // del BARBERO, nunca de lo que mande el cliente: es el servidor quien
+      // decide cuánto se tarda y cuánto se cobra.
       const duracionTotalServicios = bloqueGrupal
         ? bloqueGrupal.duracionServicios
-        : serviciosCatalogo.reduce((acc, s) => acc + s.duracionEstimada, 0);
+        : esHibrido
+          ? serviciosHibridos.reduce((acc, s) => acc + s.duracionMinutos, 0)
+          : serviciosCatalogo.reduce((acc, s) => acc + s.duracionEstimada, 0);
       const precioTotalCatalogo = bloqueGrupal
         ? bloqueGrupal.precioTotal
-        : serviciosCatalogo.reduce((acc, s) => acc + Number(s.precio), 0);
+        : esHibrido
+          ? serviciosHibridos.reduce((acc, s) => acc + Number(s.precio), 0)
+          : serviciosCatalogo.reduce((acc, s) => acc + Number(s.precio), 0);
       if (duracionSolicitada < duracionTotalServicios) {
         throw new BadRequestException(
           `La duración solicitada (${duracionSolicitada} min) es insuficiente para los servicios seleccionados (mínimo ${duracionTotalServicios} min)`,
@@ -747,7 +875,11 @@ export class ReservaService {
       //    E4-01: en grupales se mide contra el bloque CALCULADO (Σ duraciones),
       //    no contra la ventana tecleada; así el único margen del grupo cierra el
       //    bloque igual que en la cotización y en la agenda (D42/§5.4).
-      const duracionParaDisponibilidad = esGrupal ? duracionTotalServicios : duracionSolicitada;
+      //    V3 fase 4: el híbrido se mide igual —el fin lo fija el catálogo del
+      //    barbero, así que la ventana tecleada puede quedarse corta pero nunca
+      //    alargar el bloque—.
+      const duracionParaDisponibilidad =
+        esGrupal || esHibrido ? duracionTotalServicios : duracionSolicitada;
 
       const disponibilidades = await this.disponibilidadService.calcularDisponibilidad({
         barberiaId,
@@ -764,9 +896,10 @@ export class ReservaService {
       // E4-01 §5: el fin de los SERVICIOS se deriva de Σ duraciones (el margen va
       // aparte en `margen_grupal_historico`), de modo que la agenda sigue
       // ocupando `Σ + un margen` y nunca un margen por participante.
-      const horaFinServicios = esGrupal
-        ? new Date(inicio.getTime() + duracionTotalServicios * 60000)
-        : fin;
+      const horaFinServicios =
+        esGrupal || esHibrido
+          ? new Date(inicio.getTime() + duracionTotalServicios * 60000)
+          : fin;
 
       const inicioCita = this.tiempo.aInstante(dto.fecha, dto.horaInicio, tz);
       const finCita = this.tiempo.aInstante(dto.fecha, horaRelojHHMM(horaFinServicios), tz);
@@ -869,13 +1002,26 @@ export class ReservaService {
           }
         });
 
-        const serviciosData = serviciosCatalogo.map((s) => ({
-          participanteId: participante.id,
-          servicioId: s.id,
-          precioHistorico: s.precio,
-          duracionHistorica: s.duracionEstimada,
-          margenHistorico: s.margenOperativo ?? 0,
-        }));
+        // El snapshot apunta a UNO de los dos catálogos: `servicio_id` en el
+        // heredado, `servicio_barbero_id` en el híbrido. El CHECK de la migración
+        // impide las dos columnas a la vez y la fila vacía.
+        const serviciosData = esHibrido
+          ? serviciosHibridos.map((s) => ({
+              participanteId: participante.id,
+              servicioBarberoId: s.id,
+              precioHistorico: s.precio,
+              duracionHistorica: s.duracionMinutos,
+              // El híbrido no tiene «margen operativo»: ese margen es del
+              // catálogo heredado. El de la sede vive en la reserva.
+              margenHistorico: 0,
+            }))
+          : serviciosCatalogo.map((s) => ({
+              participanteId: participante.id,
+              servicioId: s.id,
+              precioHistorico: s.precio,
+              duracionHistorica: s.duracionEstimada,
+              margenHistorico: s.margenOperativo ?? 0,
+            }));
 
         await tx.participanteServicio.createMany({
           data: serviciosData,
@@ -993,6 +1139,14 @@ export class ReservaService {
                   select: {
                     id: true,
                     nombre: true,
+                  },
+                },
+                // V3 fase 4 · el snapshot puede apuntar al catálogo híbrido; la
+                // pantalla necesita el nombre igual que antes.
+                servicioBarbero: {
+                  select: {
+                    id: true,
+                    nombrePersonalizado: true,
                   },
                 },
               },
@@ -1247,6 +1401,14 @@ export class ReservaService {
                     nombre: true,
                   },
                 },
+                // V3 fase 4 · el snapshot puede apuntar al catálogo híbrido; la
+                // pantalla necesita el nombre igual que antes.
+                servicioBarbero: {
+                  select: {
+                    id: true,
+                    nombrePersonalizado: true,
+                  },
+                },
               },
             },
           },
@@ -1283,7 +1445,8 @@ export class ReservaService {
         detalles: (r.participantes || []).flatMap((p) =>
           (p.participanteServicios || []).map((ps) => ({
             id: ps.id,
-            nombreServicioHist: ps.servicio?.nombre || 'Servicio',
+            nombreServicioHist:
+              ps.servicio?.nombre ?? ps.servicioBarbero?.nombrePersonalizado ?? 'Servicio',
             duracionMinutosHist: ps.duracionHistorica,
             precioHistorico: Number(ps.precioHistorico),
           }))
@@ -1314,6 +1477,14 @@ export class ReservaService {
                     nombre: true,
                   },
                 },
+                // V3 fase 4 · el snapshot puede apuntar al catálogo híbrido; la
+                // pantalla necesita el nombre igual que antes.
+                servicioBarbero: {
+                  select: {
+                    id: true,
+                    nombrePersonalizado: true,
+                  },
+                },
               },
             },
           },
@@ -1337,7 +1508,8 @@ export class ReservaService {
         detalles: (r.participantes || []).flatMap((p) =>
           (p.participanteServicios || []).map((ps) => ({
             id: ps.id,
-            nombreServicioHist: ps.servicio?.nombre || 'Servicio',
+            nombreServicioHist:
+              ps.servicio?.nombre ?? ps.servicioBarbero?.nombrePersonalizado ?? 'Servicio',
             duracionMinutosHist: ps.duracionHistorica,
             precioHistorico: Number(ps.precioHistorico),
           }))

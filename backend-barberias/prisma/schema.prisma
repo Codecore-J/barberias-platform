@@ -239,6 +239,10 @@ model ServicioBarbero {
   categoria CategoriaServicio @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
   barbero   Usuario           @relation("ServiciosDeBarbero", fields: [barberoId], references: [id], onDelete: Cascade)
 
+  // V3 fase 4 · snapshot de las reservas creadas con este servicio: la otra
+  // mitad del vínculo opcional de `participante_servicios`.
+  participanteServicios ParticipanteServicio[]
+
   @@unique([barberoId, categoriaId, nombrePersonalizado], name: "uk_servicio_barbero_categoria_nombre")
   @@index([categoriaId, activo], name: "idx_servicios_barbero_categoria")
   @@index([barberoId, activo], name: "idx_servicios_barbero_barbero")
@@ -444,17 +448,32 @@ model ParticipanteReserva {
   @@map("participantes_reserva")
 }
 
+/// Snapshot financiero e histórico de UN servicio dentro de una reserva.
+///
+/// V3 fase 4 · el catálogo dejó de ser único: una fila apunta al `Servicio`
+/// heredado (`servicio_id`) o al `ServicioBarbero` del catálogo híbrido
+/// (`servicio_barbero_id`), nunca a los dos y nunca a ninguno. Las dos columnas
+/// son opcionales en Prisma porque Postgres no sabe expresar «exactamente uno»
+/// con `NOT NULL`; la regla vive en el CHECK
+/// `participante_servicios_un_solo_servicio_check` de la migración.
+///
+/// El nombre, el precio y la duración se congelan aquí: desactivar el servicio
+/// después (§9) no altera la reserva ya creada.
 model ParticipanteServicio {
   id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   participanteId    String  @map("participante_id") @db.Uuid
-  servicioId        String  @map("servicio_id") @db.Uuid
+  servicioId        String? @map("servicio_id") @db.Uuid
+  servicioBarberoId String? @map("servicio_barbero_id") @db.Uuid
   precioHistorico   Decimal @map("precio_historico") @db.Decimal(10, 2)
   duracionHistorica Int     @map("duracion_historica")
   margenHistorico   Int     @map("margen_historico")
 
-  participante ParticipanteReserva @relation(fields: [participanteId], references: [id], onDelete: Cascade)
-  servicio     Servicio            @relation(fields: [servicioId], references: [id])
+  participante    ParticipanteReserva @relation(fields: [participanteId], references: [id], onDelete: Cascade)
+  servicio        Servicio?           @relation(fields: [servicioId], references: [id])
+  servicioBarbero ServicioBarbero?    @relation(fields: [servicioBarberoId], references: [id], onDelete: Restrict)
 
+  @@index([servicioId], name: "idx_participante_servicios_servicio")
+  @@index([servicioBarberoId], name: "idx_participante_servicios_barbero")
   @@map("participante_servicios")
 }
 
