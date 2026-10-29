@@ -4,6 +4,8 @@ import { ReservaService } from '../application/reserva.service.js';
 import { ReservaProcessor } from '../application/reserva.processor.js';
 import { ExpiracionReservaService } from '../application/expiracion-reserva.service.js';
 import { ReservaController } from './reserva.controller.js';
+// V3 · reasignación de barbero: contrato `PATCH /reservas/:id/asignar-barbero`.
+import { ReservaAsignacionController } from './reserva-asignacion.controller.js';
 import { AgendaModule } from '../../agenda/infrastructure/agenda.module.js';
 import { NotificacionModule } from '../../notificacion/infrastructure/notificacion.module.js';
 // E3-04: aceptar y rechazar auditan (RESERVA_CONFIRMADA / RESERVA_RECHAZADA).
@@ -29,7 +31,7 @@ import { QUEUES } from '../../shared/queues/queue.constants.js';
       name: QUEUES.LISTA_ESPERA,
     }),
   ],
-  controllers: [ReservaController],
+  controllers: [ReservaController, ReservaAsignacionController],
   providers: [ReservaService, ReservaProcessor, ExpiracionReservaService],
   exports: [ReservaService],
 })

@@ -51,6 +51,9 @@ model Usuario {
   listaEsperas           ListaEspera[]
   // V2.1: códigos OTP de verificación de correo/teléfono.
   otpConfirmaciones      OtpConfirmacion[]
+  // V3 · catálogo híbrido: servicios que el propio BARBERO publica en las
+  // categorías de la sede.
+  serviciosBarbero       ServicioBarbero[]         @relation("ServiciosDeBarbero")
 
   @@map("usuarios")
 }
@@ -132,6 +135,9 @@ model Barberia {
   auditorias            Auditoria[]
   clienteBarberias      ClienteBarberia[]
   servicios             Servicio[]
+  // V3 · catálogo híbrido: las categorías las crea el ADMIN_BARBERIA de la sede
+  // y los barberos publican sus servicios dentro de ellas.
+  categoriasServicio    CategoriaServicio[]
   combos                Combo[]
   horarios              Horario[]
   excepcionesHorario    ExcepcionHorario[]
@@ -184,6 +190,59 @@ model Servicio {
   listaEsperas          ListaEspera[]
 
   @@map("servicios")
+}
+
+/// V3 · categoría de servicio de una sede (nomenclatura del negocio).
+///
+/// «Categorización estricta con nomenclatura libre»: el ADMIN_BARBERIA decide
+/// las categorías de SU sede (Corte, Barba, Color...) y cada BARBERO publica
+/// dentro de ellas sus propios servicios con precio y duración. La categoría
+/// nunca se borra (§9): se desactiva con `activa = false` y deja de ofrecerse.
+model CategoriaServicio {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId    String   @map("barberia_id") @db.Uuid
+  nombre        String   @db.VarChar(100)
+  descripcion   String?  @db.Text
+  activa        Boolean  @default(true)
+  creadoAt      DateTime @default(now()) @map("creado_at") @db.Timestamptz
+  actualizadoAt DateTime @default(now()) @updatedAt @map("actualizado_at") @db.Timestamptz
+
+  barberia Barberia          @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
+  servicios ServicioBarbero[]
+
+  // Nomenclatura única por sede: dos «Corte» en la misma sede confundirían al
+  // cliente y al barbero que elige dónde publicar.
+  @@unique([barberiaId, nombre], name: "uk_categoria_sede_nombre")
+  @@map("categorias_servicio")
+}
+
+/// V3 · servicio que un BARBERO publica dentro de una categoría de la sede.
+///
+/// Es el catálogo «híbrido»: la categoría es del negocio, el nombre, el precio y
+/// la duración son del barbero (`nombrePersonalizado`). La fila no se borra, se
+/// desactiva con `activo = false` (§9), y las reservas ya confirmadas no dependen
+/// de ella porque guardan su snapshot en `participante_servicios`.
+model ServicioBarbero {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  categoriaId         String   @map("categoria_id") @db.Uuid
+  barberoId           String   @map("barbero_id") @db.Uuid
+  nombrePersonalizado String   @map("nombre_personalizado") @db.VarChar(100)
+  precio              Decimal  @db.Decimal(10, 2)
+  duracionMinutos     Int      @map("duracion_minutos")
+  activo              Boolean  @default(true)
+  creadoAt            DateTime @default(now()) @map("creado_at") @db.Timestamptz
+  actualizadoAt       DateTime @default(now()) @updatedAt @map("actualizado_at") @db.Timestamptz
+
+  // RESTRICT en la categoría: si algún día se intentara un borrado real de una
+  // categoría con servicios, la integridad referencial lo impide. El camino
+  // normal es desactivarla (`activa = false`).
+  categoria CategoriaServicio @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
+  barbero   Usuario           @relation("ServiciosDeBarbero", fields: [barberoId], references: [id], onDelete: Cascade)
+
+  @@unique([barberoId, categoriaId, nombrePersonalizado], name: "uk_servicio_barbero_categoria_nombre")
+  @@index([categoriaId, activo], name: "idx_servicios_barbero_categoria")
+  @@index([barberoId, activo], name: "idx_servicios_barbero_barbero")
+  @@map("servicios_barbero")
 }
 
 model Combo {
