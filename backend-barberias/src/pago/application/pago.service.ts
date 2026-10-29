@@ -21,6 +21,7 @@ import { AnularPagoDto } from './dto/anular-pago.dto.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import { esAdministradorGlobal, esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
+import { METODO_PAGO_POR_DEFECTO } from '../domain/metodos-pago.js';
 
 @Injectable()
 export class PagoService {
@@ -92,10 +93,13 @@ export class PagoService {
    */
   async registrarPagoEnPersona(
     usuarioId: string,
-    barberiaId: string,
+    barberiaId: string | null,
     dto: RegistrarPagoDto,
   ) {
-    let targetBarberiaId = barberiaId;
+    // `null` es legítimo: `POST /pagos/cobrar` no lleva sede en la ruta y la
+    // resuelve de la propia reserva, la única fuente fiable de a qué sede
+    // pertenece el cobro.
+    let targetBarberiaId: string | null = barberiaId;
     if (!targetBarberiaId) {
       const reservaPrevia = await this.prisma.reserva.findUnique({
         where: { id: dto.reservaId },
@@ -192,8 +196,20 @@ export class PagoService {
         );
       }
 
-      const montoFinal = dto.monto ?? Number(reserva.totalPagar);
-      const metodoPago = dto.metodoPago ?? 'EN_PERSONA';
+      const totalReserva = Number(reserva.totalPagar);
+      const montoFinal = dto.monto ?? totalReserva;
+      const metodoPago = dto.metodoPago ?? METODO_PAGO_POR_DEFECTO;
+
+      // V3 fase 6: no hay cobros parciales. La reserva guarda el total congelado
+      // de sus servicios y cobrar otra cifra deja la caja cuadrando «de más» o
+      // «de menos» sin que nadie pueda explicarlo después. Se tolera el redondeo
+      // de dos decimales, que es la precisión de la columna.
+      if (Math.abs(montoFinal - totalReserva) > 0.005) {
+        throw reglaDeNegocio(
+          'MONTO_NO_COINCIDE',
+          `El monto recibido (${montoFinal.toFixed(2)}) no coincide con el total de la reserva (${totalReserva.toFixed(2)}).`,
+        );
+      }
 
       // 1. Crear o actualizar registro de Pago. La reanudación de un cobro
       //    anulado vuelve a PAGADA sobre la MISMA fila: el `reserva_id` es
@@ -205,12 +221,16 @@ export class PagoService {
         where: { reservaId: reserva.id },
         create: {
           reservaId: reserva.id,
+          // V3 fase 6: la sede se copia de la reserva para que el arqueo diario
+          // filtre por `barberia_id` sin unir tablas.
+          barberiaId: reserva.barberiaId,
           estadoPago: 'PAGADA',
           monto: montoFinal,
           metodoPago,
           registradoPor: usuarioId,
         },
         update: {
+          barberiaId: reserva.barberiaId,
           estadoPago: 'PAGADA',
           monto: montoFinal,
           metodoPago,
@@ -245,7 +265,7 @@ export class PagoService {
             monto: montoFinal,
             metodo: metodoPago,
             clienteId: reserva.clienteId,
-            barberiaId,
+            barberiaId: reserva.barberiaId,
             fechaPago: new Date().toISOString(),
             estadoPrevioPago: reserva.pago?.estadoPago ?? 'PENDIENTE_DE_PAGO',
             nuevoEstadoPago: 'PAGADA',

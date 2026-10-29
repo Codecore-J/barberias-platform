@@ -54,6 +54,9 @@ model Usuario {
   // V3 · catálogo híbrido: servicios que el propio BARBERO publica en las
   // categorías de la sede.
   serviciosBarbero       ServicioBarbero[]         @relation("ServiciosDeBarbero")
+  // V3 fase 6 · caja diaria: quién abrió el turno y quién lo selló.
+  cierresCajaAbiertos    CierreCaja[]              @relation("CierreAbiertoPor")
+  cierresCajaCerrados    CierreCaja[]              @relation("CierreCerradoPor")
 
   @@map("usuarios")
 }
@@ -149,6 +152,10 @@ model Barberia {
   horariosBarbero       HorarioBarbero[]
   excepcionesBarbero    ExcepcionHorarioBarbero[]
   solicitudesCambio     SolicitudCambioBarberia[]
+  // V3 fase 6 · caja: los cobros pertenecen a la SEDE (no solo a su reserva),
+  // así el arqueo diario no depende de recorrer reservas.
+  pagos                 Pago[]
+  cierresCaja           CierreCaja[]
   // E4-02/D22: clientes esperando un hueco liberado en esta sede y fecha.
   listaEsperas          ListaEspera[]
 
@@ -498,6 +505,11 @@ model ParticipanteServicio {
 model Pago {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   reservaId     String    @unique @map("reserva_id") @db.Uuid
+  // V3 fase 6: la sede del cobro, copiada de la reserva en la misma
+  // transacción. El arqueo diario filtra por ella y por `registrado_at`; sin
+  // esta columna la caja tendría que unir `pagos` con `reservas` en cada
+  // consulta.
+  barberiaId    String    @map("barberia_id") @db.Uuid
   // H68: `ANULADO` es un estado del catálogo, no un borrado. El CHECK vive en la
   // migración `h68_anulacion_pagos`; Prisma no sabe expresarlo.
   estadoPago    String    @default("PENDIENTE_DE_PAGO") @map("estado_pago") @db.VarChar(20)
@@ -515,10 +527,46 @@ model Pago {
   motivoAnulacion String?   @map("motivo_anulacion") @db.Text
 
   reserva     Reserva  @relation(fields: [reservaId], references: [id])
+  barberia    Barberia @relation(fields: [barberiaId], references: [id])
   registrador Usuario? @relation("RegistradoPor", fields: [registradoPor], references: [id])
   anulador    Usuario? @relation("AnuladoPorPago", fields: [anuladoPor], references: [id])
 
+  @@index([barberiaId, registradoAt], name: "idx_pagos_barberia_fecha")
   @@map("pagos")
+}
+
+/// V3 fase 6 · cierre de caja diario de una sede.
+///
+/// Es una FOTO: los totales son los del día en que se ejecutó el cierre y no se
+/// recalculan después. Un pago anulado más tarde ya no altera el arqueo porque
+/// el arqueo dejó de mirar la tabla de pagos: guarda sus cifras.
+///
+/// `abierto_por` y `cerrado_por` son el mismo usuario en el flujo actual (no hay
+/// apertura explícita de turno): se conservan los dos porque el contrato los
+/// pide y porque permiten añadir la apertura sin migrar la tabla.
+model CierreCaja {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId         String   @map("barberia_id") @db.Uuid
+  /// Etiqueta de calendario (DATE) del día arqueado en la zona de la sede.
+  fechaArqueo        DateTime @map("fecha_arqueo") @db.Date
+  totalEfectivo      Decimal  @default(0) @map("total_efectivo") @db.Decimal(12, 2)
+  totalTarjeta       Decimal  @default(0) @map("total_tarjeta") @db.Decimal(12, 2)
+  totalTransferencia Decimal  @default(0) @map("total_transferencia") @db.Decimal(12, 2)
+  totalGeneral       Decimal  @default(0) @map("total_general") @db.Decimal(12, 2)
+  estado             String   @default("CERRADO") @db.VarChar(20)
+  abiertoPor         String?  @map("abierto_por") @db.Uuid
+  cerradoPor         String?  @map("cerrado_por") @db.Uuid
+  abiertoAt          DateTime? @map("abierto_at") @db.Timestamptz
+  cerradoAt          DateTime? @map("cerrado_at") @db.Timestamptz
+  creadoAt           DateTime  @default(now()) @map("creado_at") @db.Timestamptz
+
+  barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
+  abridor  Usuario? @relation("CierreAbiertoPor", fields: [abiertoPor], references: [id])
+  cerrador Usuario? @relation("CierreCerradoPor", fields: [cerradoPor], references: [id])
+
+  @@unique([barberiaId, fechaArqueo], name: "uk_cierre_caja_sede_fecha")
+  @@index([barberiaId, fechaArqueo], name: "idx_cierre_caja_sede_fecha")
+  @@map("cierres_caja")
 }
 
 model Antecedente {

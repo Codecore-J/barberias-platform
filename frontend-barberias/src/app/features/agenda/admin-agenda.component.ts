@@ -7,11 +7,20 @@ import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
 import { FichaClienteDrawerComponent } from '../clientes/components/ficha-cliente-drawer/ficha-cliente-drawer.component';
 import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.directive';
+import { CobroModalComponent } from './components/cobro-modal/cobro-modal.component';
 
 @Component({
   selector: 'app-admin-agenda',
   standalone: true,
-  imports: [CommonModule, FormsModule, CurrencyPipe, DatePipe, FichaClienteDrawerComponent, ModalOverlayDirective],
+  imports: [
+    CommonModule,
+    FormsModule,
+    CurrencyPipe,
+    DatePipe,
+    FichaClienteDrawerComponent,
+    ModalOverlayDirective,
+    CobroModalComponent,
+  ],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-[1400px] mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
       
@@ -405,7 +414,16 @@ import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.dir
         </div>
       }
 
-      <!-- Modal de Cobro -->
+      <!-- V3 fase 6 · Modal de Cobro: método de pago + total de la reserva.
+           Al cerrar con éxito la tarjeta se recarga la agenda y el turno pasa a
+           COMPLETADA en su columna. -->
+      @if (turnoACobrar(); as turno) {
+        <app-cobro-modal
+          [reserva]="turno"
+          (cobrado)="onCobroExitoso()"
+          (cerrar)="turnoACobrar.set(null)"
+        />
+      }
 
       <!-- Drawer de Ficha de Cliente -->
       @if (clienteSeleccionado()) {
@@ -714,6 +732,8 @@ export class AdminAgendaComponent implements OnInit {
 
   onCobroExitoso() {
     this.turnoACobrar.set(null);
+    this.mensajeAccion.set('Cobro registrado: la cita quedó COMPLETADA.');
+    setTimeout(() => this.mensajeAccion.set(null), 4000);
     this.cargarDatos();
   }
 
