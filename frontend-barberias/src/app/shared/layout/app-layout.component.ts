@@ -96,9 +96,13 @@ import { NotificationService } from '../../core/services/notification.service';
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-calendar mr-1.5 text-xs text-amber-400/80"></i>Mi Agenda
               </a>
+              <a routerLink="/barbero/servicios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
+                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
+                <i class="pi pi-briefcase mr-1.5 text-xs text-amber-400/80"></i>Mis Servicios
+              </a>
               <a routerLink="/admin/servicios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-cog mr-1.5 text-xs text-amber-400/80"></i>Mis Servicios
+                <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo de Sede
               </a>
               <a routerLink="/catalogo" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
@@ -150,6 +154,14 @@ import { NotificationService } from '../../core/services/notification.service';
                       <span class="flex flex-col">
                         <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Servicios</span>
                         <span class="text-[10px] text-zinc-500">Catálogo y precios</span>
+                      </span>
+                    </a>
+                    <a routerLink="/admin/categorias" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-tags text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Categorías</span>
+                        <span class="text-[10px] text-zinc-500">Taxonomía donde publican los barberos</span>
                       </span>
                     </a>
                     <a routerLink="/admin/tickets" (click)="configDropdownOpen.set(false)"
@@ -381,8 +393,11 @@ import { NotificationService } from '../../core/services/notification.service';
                 <a routerLink="/admin/agenda" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-calendar text-amber-400"></i>Mi Agenda
                 </a>
+                <a routerLink="/barbero/servicios" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-briefcase text-amber-400"></i>Mis Servicios
+                </a>
                 <a routerLink="/admin/servicios" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
-                  <i class="pi pi-cog text-amber-400"></i>Mis Servicios
+                  <i class="pi pi-list text-amber-400"></i>Catálogo de Sede
                 </a>
                 <a routerLink="/catalogo" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-list text-amber-400"></i>Catálogo de Servicios
@@ -404,6 +419,9 @@ import { NotificationService } from '../../core/services/notification.service';
                 </a>
                 <a routerLink="/admin/tickets" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-receipt text-amber-400"></i>Pagos
+                </a>
+                <a routerLink="/admin/categorias" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-tags text-amber-400"></i>Categorías
                 </a>
               }
 

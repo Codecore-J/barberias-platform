@@ -165,6 +165,35 @@ export const routes: Routes = [
         canActivate: [tenantGuard, roleGuard(['BARBERO'])],
         loadComponent: () =>
           import('./features/barbero/horarios/barbero-horarios.component').then((m) => m.BarberoHorariosComponent),
+      },
+      {
+        //
+        // V3 · catálogo híbrido: las CATEGORÍAS son de la sede y las define su
+        // ADMIN_BARBERIA. La ruta se limita a ese rol porque el backend también:
+        // `CategoriasController` declara `@Roles('ADMIN_BARBERIA')` en escritura
+        // y `('ADMIN_BARBERIA', 'BARBERO')` en lectura. Dejar entrar al
+        // ADMINISTRADOR global (la jerarquía del guard lo permitía) solo servía
+        // para enseñarle un 403 en pantalla.
+        //
+        path: 'admin/categorias',
+        canActivate: [tenantGuard, roleGuard(['ADMIN_BARBERIA'])],
+        loadComponent: () =>
+          import('./features/admin/categorias/admin-categorias.component').then(
+            (m) => m.AdminCategoriasComponent,
+          ),
+      },
+      {
+        //
+        // V3 · servicios PROPIOS del barbero: él pone nombre, precio y duración
+        // dentro de las categorías de la sede. Solo el rol BARBERO (el
+        // `barberoId` sale del JWT en el backend).
+        //
+        path: 'barbero/servicios',
+        canActivate: [tenantGuard, roleGuard(['BARBERO'])],
+        loadComponent: () =>
+          import('./features/barbero/servicios/barbero-servicios.component').then(
+            (m) => m.BarberoServiciosComponent,
+          ),
       }
     ],
   },
