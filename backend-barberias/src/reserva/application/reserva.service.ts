@@ -473,6 +473,8 @@ export class ReservaService {
       tipo?: string;
       /** Participantes del grupo, para medir el bloque real (D46/D42). */
       participantes?: readonly { servicios: readonly string[] }[];
+      /** V3 fase 5 · barbero de la cita: sus alternativas respetan su horario. */
+      barberoId?: string;
       /** Reprogramar: la reserva de origen de su margen histórico. */
       reservaId?: string;
     },
@@ -519,6 +521,7 @@ export class ReservaService {
       fecha: contexto.fecha,
       duracionRequeridaMinutos: bloque.duracionServicios + bloque.margen,
       horaObjetivo: contexto.horaInicio,
+      barberoId: contexto.barberoId,
     });
 
     if (alternativas.length === 0) {
@@ -881,11 +884,15 @@ export class ReservaService {
       const duracionParaDisponibilidad =
         esGrupal || esHibrido ? duracionTotalServicios : duracionSolicitada;
 
+      // V3 fase 5: si la cita lleva barbero, su horario y su descanso cuentan.
+      // Sin esto, un cliente podía reservar justo en el almuerzo del barbero que
+      // había elegido y la agenda de la sede lo aceptaba como hueco libre.
       const disponibilidades = await this.disponibilidadService.calcularDisponibilidad({
         barberiaId,
         fecha,
         duracionTotal: duracionParaDisponibilidad,
         margenRequerido: margenFinal,
+        barberoId: dto.barberoId ?? undefined,
       }, tx);
 
       // E2-04/H36: el bloque solicitado se compone como INSTANTE en la zona de la
@@ -1112,6 +1119,7 @@ export class ReservaService {
         horaFin: dto.horaFin,
         tipo: dto.tipo,
         participantes: dto.participantes,
+        barberoId: dto.barberoId ?? undefined,
       }),
     );
 
@@ -1576,6 +1584,9 @@ export class ReservaService {
           // La reserva sigue PENDIENTE mientras se revalida: sin excluirla se
           // bloquearía a sí misma y ningún aceptar legítimo cabría.
           excluirReservaId: actual.id,
+          // V3 fase 5: aceptar también respeta el horario y el descanso del
+          // barbero asignado.
+          barberoId: actual.barberoId ?? undefined,
         },
         tx,
       );
@@ -2119,6 +2130,9 @@ export class ReservaService {
           duracionTotal: duracionSolicitada,
           margenRequerido: margenFinal,
           excluirReservaId: actual.id,
+          // V3 fase 5 · mover una cita también tiene que caber en el horario
+          // del barbero que la atiende, no solo en el de la sede.
+          barberoId: actual.barberoId ?? undefined,
         },
         tx,
       );

@@ -308,17 +308,35 @@ model ExcepcionHorario {
   @@map("excepciones_horario")
 }
 
+/// V3 fase 5 · horario semanal propio del barbero dentro de una sede.
+///
+/// `dia_semana` sigue la convención ISO que ya usa TODO el motor: 1 = lunes …
+/// 7 = domingo (`TiempoService.diaSemana` devuelve el `weekday` de Luxon). Cambiarla
+/// a 0 = domingo obligaría a reescribir horarios, excepciones y agenda.
+///
+/// El motor de disponibilidad INTERSECTA este horario con el de la sede: el
+/// rango efectivo es el más restrictivo de los dos. Si el barbero no tiene
+/// ninguna fila en la sede se hereda el horario de la sede (retrocompatible);
+/// si tiene filas, los días sin fila quedan libres.
+///
+/// `hora_inicio`/`hora_fin` son nulos solo en un día libre. Los descansos son
+/// opcionales y viven dentro de la jornada; el CHECK de la migración lo impone
+/// además de la validación del DTO.
 model HorarioBarbero {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  barberiaId String   @map("barberia_id") @db.Uuid
-  barberoId  String   @map("barbero_id") @db.Uuid
-  diaSemana  Int      @map("dia_semana") @db.SmallInt
-  horaInicio DateTime @map("hora_inicio") @db.Time
-  horaFin    DateTime @map("hora_fin") @db.Time
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId        String    @map("barberia_id") @db.Uuid
+  barberoId         String    @map("barbero_id") @db.Uuid
+  diaSemana         Int       @map("dia_semana") @db.SmallInt
+  horaInicio        DateTime? @map("hora_inicio") @db.Time
+  horaFin           DateTime? @map("hora_fin") @db.Time
+  horaInicioDescanso DateTime? @map("hora_inicio_descanso") @db.Time
+  horaFinDescanso    DateTime? @map("hora_fin_descanso") @db.Time
+  esDiaLibre        Boolean   @default(false) @map("es_dia_libre")
 
   barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
   barbero  Usuario  @relation("HorarioDeBarbero", fields: [barberoId], references: [id], onDelete: Cascade)
 
+  @@unique([barberiaId, barberoId, diaSemana], name: "uk_horario_barbero_dia")
   @@map("horarios_barbero")
 }
 

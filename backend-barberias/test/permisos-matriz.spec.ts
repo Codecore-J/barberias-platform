@@ -217,6 +217,10 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /shops/:shopId/hours/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /shops/:shopId/hours/mine': [ROL_BARBERO],
   'POST /shops/:shopId/hours/mine': [ROL_BARBERO],
+  // V3 fase 5 · semana propia del barbero (días libres y descansos). El
+  // `barberoId` sale del JWT: la ruta no lo lleva ni en la ruta ni en el cuerpo.
+  'GET /shops/:shopId/mi-horario/': [ROL_BARBERO],
+  'PUT /shops/:shopId/mi-horario/': [ROL_BARBERO],
   'GET /shops/:shopId/hours/exceptions': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'POST /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'POST /shops/:shopId/hours/barbers/:barberoId/exceptions': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -614,8 +618,10 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // la 90: 360. El panel de analíticas (Pasos 10 y 12) sumó dos rutas: 92 × 4 =
   // 368. La exportación CSV del Paso 13 suma la 93: 372. V2.1 suma las dos
   // rutas de verificación OTP (`send-otp` y `verify-otp`, ambas `@Autenticado`):
-  // 95 × 4 = 380. V3 suma ocho rutas del catálogo híbrido y la asignación: 412.
-  expect(evaluaciones).toBe(412);
+  // 95 × 4 = 380. V3 suma ocho rutas del catálogo híbrido y la asignación: 103
+  // × 4 = 412. V3 fase 5 suma `mi-horario` (GET y PUT, solo BARBERO): 105 × 4 =
+  // 420.
+  expect(evaluaciones).toBe(420);
     expect(
       desviaciones.length === 0
         ? ''

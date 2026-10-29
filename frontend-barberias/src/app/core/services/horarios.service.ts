@@ -5,9 +5,32 @@ import { Observable } from 'rxjs';
 
 export interface Horario {
   id?: string;
-  diaSemana: number; // 1 (Lunes) a 7 (Domingo)
+  diaSemana: number; // ISO: 1 (Lunes) a 7 (Domingo)
   horaInicio: string; // HH:mm
   horaFin: string; // HH:mm
+}
+
+/**
+ * V3 fase 5 · un día de la semana propia del barbero.
+ *
+ * Las horas llegan ya como `HH:mm` (el backend las normaliza desde el `TIME` de
+ * Postgres), que es el único formato que acepta un `<input type="time">`.
+ */
+export interface DiaHorarioBarbero {
+  diaSemana: number; // ISO: 1 = lunes … 7 = domingo
+  esDiaLibre: boolean;
+  horaInicio: string | null;
+  horaFin: string | null;
+  horaInicioDescanso: string | null;
+  horaFinDescanso: string | null;
+}
+
+export interface MiHorarioSemana {
+  barberiaId: string;
+  barberoId: string;
+  /** `true` si el barbero aún no guardó nada: el motor usa el horario de la sede. */
+  heredaHorarioSede: boolean;
+  dias: DiaHorarioBarbero[];
 }
 
 export interface ExcepcionHorario {
@@ -53,12 +76,19 @@ export class HorariosService {
     return this.http.post<Horario[]>(`${API_URL}/shops/${barberiaId}/hours`, horarios);
   }
 
-  obtenerMiHorario(barberiaId: string): Observable<Horario[]> {
-    return this.http.get<Horario[]>(`${API_URL}/shops/${barberiaId}/hours/mine`);
+  /** Semana propia del barbero (días libres y descansos). */
+  obtenerMiSemana(barberiaId: string): Observable<MiHorarioSemana> {
+    return this.http.get<MiHorarioSemana>(`${API_URL}/shops/${barberiaId}/mi-horario`);
   }
 
-  configurarMiHorario(barberiaId: string, horarios: Omit<Horario, 'id'>[]): Observable<Horario[]> {
-    return this.http.post<Horario[]>(`${API_URL}/shops/${barberiaId}/hours/mine`, horarios);
+  /**
+   * `PUT` porque reemplaza la semana completa: repetir el guardado deja el mismo
+   * estado y nunca duplica filas. El `barberoId` lo pone el backend desde el JWT.
+   */
+  guardarMiSemana(barberiaId: string, dias: DiaHorarioBarbero[]): Observable<MiHorarioSemana> {
+    return this.http.put<MiHorarioSemana>(`${API_URL}/shops/${barberiaId}/mi-horario`, {
+      dias,
+    });
   }
 
   obtenerExcepciones(barberiaId: string, from?: string, to?: string): Observable<ExcepcionHorario[]> {

@@ -30,6 +30,17 @@ export interface SolicitudDisponibilidad {
   duracionTotal: number; // en minutos
   margenRequerido: number; // en minutos (solo al final de todo el bloque)
   /**
+   * V3 fase 5 · barbero cuya agenda se consulta.
+   *
+   * Con `barberoId`, la jornada del día es la INTERSECCIÓN entre el horario de
+   * la sede y el del barbero, y su descanso se resta de los huecos. Si el
+   * barbero no tiene ninguna fila en la sede, se hereda el horario de la sede
+   * (retrocompatible con los barberos que nunca configuraron el suyo).
+   *
+   * Sin `barberoId` el cálculo es el de siempre: la sede entera.
+   */
+  barberoId?: string;
+  /**
    * E3-04: reserva que NO debe contar como ocupación.
    *
    * Aceptar una solicitud revalida su propio hueco bajo el lock de la sede, y
@@ -142,7 +153,13 @@ export class DisponibilidadService {
    * la jornada efectiva (horario base, sobrescrito por una excepción) y las
    * ocupaciones según §5.3 (D37): bloqueos y reservas `PENDIENTE`/`CONFIRMADA`.
    */
-  private async datosDelDia(db: any, barberiaId: string, fecha?: Date | string, excluirReservaId?: string) {
+  private async datosDelDia(
+    db: any,
+    barberiaId: string,
+    fecha?: Date | string,
+    excluirReservaId?: string,
+    barberoId?: string,
+  ) {
     const tz = await this.zonaDeSede(db, barberiaId);
 
     // E2-04: la fecha es una ETIQUETA de calendario. Si llega como cadena se usa
@@ -188,6 +205,66 @@ export class DisponibilidadService {
       return { tz, fechaIso, fechaEtiqueta, jornada: null as Intervalo | null, ocupados: [] as Intervalo[] };
     }
 
+    // V3 fase 5 · el horario PROPIO del barbero manda dentro del de la sede.
+    //
+    // La jornada efectiva es el rango más restrictivo de los dos: si el barbero
+    // entra más tarde o sale antes, se recorta; si se pisa con la sede pero no
+    // contiene el bloque pedido, la intersección lo deja fuera. Un día libre
+    // (`es_dia_libre`) borra la jornada entera del barbero, no la de la sede.
+    //
+    // Señal de compatibilidad: si NO hay ninguna fila del barbero en esa sede se
+    // hereda el horario de la sede. Así los barberos que nunca entraron a esta
+    // pantalla no pierden su agenda el día del despliegue.
+    let descansoBarbero: Intervalo | null = null;
+
+    if (barberoId) {
+      const filasBarbero = await db.horarioBarbero.findMany({
+        where: { barberiaId, barberoId },
+      });
+
+      if (filasBarbero.length > 0) {
+        const dia = filasBarbero.find((fila: any) => fila.diaSemana === diaSemana);
+
+        if (!dia || dia.esDiaLibre || !dia.horaInicio || !dia.horaFin) {
+          return {
+            tz,
+            fechaIso,
+            fechaEtiqueta,
+            jornada: null as Intervalo | null,
+            ocupados: [] as Intervalo[],
+          };
+        }
+
+        const inicioBarbero = this.instanteDeEtiqueta(fechaIso, dia.horaInicio, tz);
+        const finBarbero = this.instanteDeEtiqueta(fechaIso, dia.horaFin, tz);
+
+        const inicioIntersectado = new Date(
+          Math.max(inicioJornada.getTime(), inicioBarbero.getTime()),
+        );
+        const finIntersectado = new Date(Math.min(finJornada.getTime(), finBarbero.getTime()));
+
+        if (inicioIntersectado.getTime() >= finIntersectado.getTime()) {
+          return {
+            tz,
+            fechaIso,
+            fechaEtiqueta,
+            jornada: null as Intervalo | null,
+            ocupados: [] as Intervalo[],
+          };
+        }
+
+        inicioJornada = inicioIntersectado;
+        finJornada = finIntersectado;
+
+        if (dia.horaInicioDescanso && dia.horaFinDescanso) {
+          descansoBarbero = {
+            inicio: this.instanteDeEtiqueta(fechaIso, dia.horaInicioDescanso, tz),
+            fin: this.instanteDeEtiqueta(fechaIso, dia.horaFinDescanso, tz),
+          };
+        }
+      }
+    }
+
     // 3. Obtener bloqueos de agenda
     // E2-07 · D29: un bloqueo LIBERADO ya no ocupa agenda. La fila se conserva
     // (para la auditoría), así que el filtro tiene que ser explícito.
@@ -221,6 +298,12 @@ export class DisponibilidadService {
       });
     }
 
+    // El almuerzo/descanso del barbero ocupa agenda igual que una reserva: el
+    // cliente no ve huecos dentro de él.
+    if (descansoBarbero) {
+      ocupados.push(descansoBarbero);
+    }
+
     for (const r of reservas) {
       const inicioOcupado = this.instanteDeEtiqueta(fechaIso, r.horaInicio, tz);
       const finBase = this.instanteDeEtiqueta(fechaIso, r.horaFin, tz);
@@ -250,7 +333,13 @@ export class DisponibilidadService {
     const { barberiaId, fecha, duracionTotal, margenRequerido, excluirReservaId } = solicitud;
     const duracionConMargen = duracionTotal + margenRequerido;
 
-    const datos = await this.datosDelDia(db, barberiaId, fecha, excluirReservaId);
+    const datos = await this.datosDelDia(
+      db,
+      barberiaId,
+      fecha,
+      excluirReservaId,
+      solicitud.barberoId,
+    );
     if (!datos.jornada) {
       return [];
     }
@@ -333,7 +422,13 @@ export class DisponibilidadService {
    * D47: usa el MISMO cálculo que la disponibilidad y la misma proyección pura.
    */
   async buscarAlternativas(solicitud: SolicitudDeAlternativas): Promise<AlternativaEtiquetada[]> {
-    const datos = await this.datosDelDia(this.prisma, solicitud.barberiaId, solicitud.fecha);
+    const datos = await this.datosDelDia(
+      this.prisma,
+      solicitud.barberiaId,
+      solicitud.fecha,
+      undefined,
+      solicitud.barberoId,
+    );
     if (!datos.jornada) {
       return [];
     }

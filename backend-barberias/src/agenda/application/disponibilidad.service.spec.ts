@@ -323,3 +323,154 @@ describe('DisponibilidadService · prioridad de las excepciones (regla 4.3 · H6
     expect(diaSiguiente).toHaveLength(18);
   });
 });
+/**
+ * V3 fase 5 · control de tiempo del barbero.
+ *
+ * La jornada de un día con `barberoId` es la INTERSECCIÓN del horario de la sede
+ * con el del barbero, su descanso ocupa agenda y un día libre no devuelve
+ * huecos. La retrocompatibilidad es explícita: un barbero sin ninguna fila en la
+ * sede hereda el horario de la sede, para que el despliegue no vacíe agendas.
+ *
+ * `2026-10-05` es lunes (ISO 1) y la sede abre de 09:00 a 18:00 en
+ * `America/Santo_Domingo`; con paso de 30 min son 18 huecos de 30 minutos.
+ */
+describe('DisponibilidadService · horario propio del barbero (V3 fase 5)', () => {
+  const tz = ZONA_POR_DEFECTO;
+  const tiempo = new TiempoService();
+  const FECHA = '2026-10-05';
+  const LUNES = 1;
+
+  function time(h: number, m: number): Date {
+    const d = new Date('1970-01-01T00:00:00Z');
+    d.setUTCHours(h, m, 0, 0);
+    return d;
+  }
+
+  function fila(diaSemana: number, horas: Record<string, unknown> = {}) {
+    return {
+      diaSemana,
+      esDiaLibre: false,
+      horaInicio: time(9, 0),
+      horaFin: time(18, 0),
+      horaInicioDescanso: null,
+      horaFinDescanso: null,
+      ...horas,
+    };
+  }
+
+  function prismaConBarbero(filas: any[]) {
+    return {
+      barberia: { findUnique: async () => ({ zonaHoraria: tz }) },
+      horario: { findFirst: async () => ({ horaInicio: time(9, 0), horaFin: time(18, 0) }) },
+      excepcionHorario: { findFirst: async () => null },
+      horarioBarbero: { findMany: async () => filas },
+      bloqueosAgenda: { findMany: async () => [] },
+      reserva: { findMany: async () => [] },
+    } as any;
+  }
+
+  const consulta = {
+    barberiaId: 'sede',
+    fecha: FECHA,
+    duracionTotal: 30,
+    margenRequerido: 0,
+    barberoId: 'barbero-1',
+  };
+
+  function etiquetas(slots: { inicio: Date; fin: Date }[]): string[] {
+    return slots.map(
+      (s) =>
+        `${tiempo.desdeInstante(s.inicio, tz).hora}-${tiempo.desdeInstante(s.fin, tz).hora}`,
+    );
+  }
+
+  it('control: sin horario propio del barbero se hereda el de la sede', async () => {
+    const slots = await new DisponibilidadService(prismaConBarbero([])).calcularDisponibilidad(
+      consulta,
+    );
+
+    expect(slots).toHaveLength(18);
+    expect(etiquetas([slots[0]])).toEqual(['09:00-09:30']);
+  });
+
+  it('un día libre no devuelve ningún hueco', async () => {
+    const prisma = prismaConBarbero([
+      fila(LUNES, { esDiaLibre: true, horaInicio: null, horaFin: null }),
+    ]);
+
+    await expect(
+      new DisponibilidadService(prisma).calcularDisponibilidad(consulta),
+    ).resolves.toEqual([]);
+  });
+
+  it('la jornada efectiva es la intersección: sede 09–18 y barbero 10–14', async () => {
+    const prisma = prismaConBarbero([
+      fila(LUNES, { horaInicio: time(10, 0), horaFin: time(14, 0) }),
+    ]);
+
+    const slots = await new DisponibilidadService(prisma).calcularDisponibilidad(consulta);
+
+    expect(slots).toHaveLength(8);
+    expect(etiquetas([slots[0]])).toEqual(['10:00-10:30']);
+    expect(etiquetas([slots[slots.length - 1]])).toEqual(['13:30-14:00']);
+    expect(etiquetas(slots)).not.toContain('09:00-09:30');
+    expect(etiquetas(slots)).not.toContain('14:00-14:30');
+  });
+
+  it('un barbero que entra antes que la sede no puede ampliarla: manda el rango más restrictivo', async () => {
+    const prisma = prismaConBarbero([
+      fila(LUNES, { horaInicio: time(7, 0), horaFin: time(20, 0) }),
+    ]);
+
+    const slots = await new DisponibilidadService(prisma).calcularDisponibilidad(consulta);
+
+    expect(slots).toHaveLength(18);
+    expect(etiquetas([slots[0]])).toEqual(['09:00-09:30']);
+    expect(etiquetas([slots[slots.length - 1]])).toEqual(['17:30-18:00']);
+  });
+
+  it('el descanso del barbero ocupa agenda: 12:00–13:00 queda sin huecos', async () => {
+    const prisma = prismaConBarbero([
+      fila(LUNES, { horaInicioDescanso: time(12, 0), horaFinDescanso: time(13, 0) }),
+    ]);
+
+    const slots = await new DisponibilidadService(prisma).calcularDisponibilidad(consulta);
+    const horas = etiquetas(slots);
+
+    expect(slots).toHaveLength(16);
+    expect(horas).toContain('11:30-12:00');
+    expect(horas).toContain('13:00-13:30');
+    expect(horas).not.toContain('12:00-12:30');
+    expect(horas).not.toContain('12:30-13:00');
+  });
+
+  it('un día sin fila en una semana ya configurada cuenta como libre', async () => {
+    const prisma = prismaConBarbero([
+      // Solo el martes está configurado; el lunes (día consultado) no.
+      fila(2, { horaInicio: time(10, 0), horaFin: time(14, 0) }),
+    ]);
+
+    await expect(
+      new DisponibilidadService(prisma).calcularDisponibilidad(consulta),
+    ).resolves.toEqual([]);
+  });
+
+  it('las alternativas del error también respetan el descanso', async () => {
+    const prisma = prismaConBarbero([
+      fila(LUNES, { horaInicioDescanso: time(12, 0), horaFinDescanso: time(13, 0) }),
+    ]);
+
+    const alternativas = await new DisponibilidadService(prisma).buscarAlternativas({
+      barberiaId: 'sede',
+      fecha: FECHA,
+      duracionRequeridaMinutos: 30,
+      horaObjetivo: '12:30',
+      barberoId: 'barbero-1',
+      maximo: 3,
+    });
+
+    expect(alternativas.every((a) => a.horaInicio < '12:00' || a.horaInicio >= '13:00')).toBe(
+      true,
+    );
+  });
+});
