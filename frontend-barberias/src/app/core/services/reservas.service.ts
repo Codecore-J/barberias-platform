@@ -208,6 +208,33 @@ export class ReservasService {
   /**
    * Registra el cobro de una reserva y la marca como COMPLETADA
    */
+  /**
+   * V3 · reasigna el barbero de una reserva viva (antes solo se podía cancelar
+   * y volver a crear la cita).
+   *
+   * Es la ÚNICA ruta del recurso que no cuelga de `/shops/:shopId`: el backend
+   * saca la sede de la PROPIA reserva, así que aquí no viaja el `barberiaId`. El
+   * 403 (otra sede) y el 409 (barbero ocupado o bloqueado) llegan con el mensaje
+   * del contrato D40 y la agenda los muestra en el modal.
+   */
+  asignarBarbero(reservaId: string, barberoId: string): Observable<any> {
+    this.isLoading.set(true);
+    this.error.set(null);
+
+    return this.http
+      .patch(`${API_URL}/reservas/${reservaId}/asignar-barbero`, { barberoId })
+      .pipe(
+        tap(() => this.isLoading.set(false)),
+        catchError((err) => {
+          this.isLoading.set(false);
+          this.error.set(
+            err.error?.mensaje || err.error?.message || 'No se pudo asignar el barbero',
+          );
+          return throwError(() => err);
+        }),
+      );
+  }
+
   registrarCobro(reservaId: string, metodoPago: string, monto?: number): Observable<any> {
     this.isLoading.set(true);
     this.error.set(null);

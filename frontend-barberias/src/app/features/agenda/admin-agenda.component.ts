@@ -6,11 +6,12 @@ import { PersonalService, Personal } from '../../core/services/personal.service'
 import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
 import { FichaClienteDrawerComponent } from '../clientes/components/ficha-cliente-drawer/ficha-cliente-drawer.component';
+import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.directive';
 
 @Component({
   selector: 'app-admin-agenda',
   standalone: true,
-  imports: [CommonModule, FormsModule, CurrencyPipe, DatePipe, FichaClienteDrawerComponent],
+  imports: [CommonModule, FormsModule, CurrencyPipe, DatePipe, FichaClienteDrawerComponent, ModalOverlayDirective],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-[1400px] mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
       
@@ -233,6 +234,18 @@ import { FichaClienteDrawerComponent } from '../clientes/components/ficha-client
                         </button>
                       }
 
+                      <!-- V3 · el turno «Sin Asignar» ya se puede resolver sin cancelar y recrear
+                           la cita: el modal elige un barbero de la sede y el backend revalida
+                           que esté libre en ese rango. -->
+                      @if (puedeAsignar(turno) && puedeGestionarSede()) {
+                        <button (click)="abrirAsignacion(turno)"
+                                [disabled]="procesandoId() === turno.id"
+                                class="text-xs font-bold px-3 py-1.5 rounded-lg bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
+                          <i class="pi pi-user-edit"></i>
+                          {{ turno.barbero ? 'Reasignar' : 'Asignar Barbero' }}
+                        </button>
+                      }
+
                       @if (puedeCancelar(turno.estado) && puedeGestionarSede()) {
                         <button (click)="cancelarTurno(turno)"
                                 [disabled]="procesandoId() === turno.id"
@@ -294,6 +307,18 @@ import { FichaClienteDrawerComponent } from '../clientes/components/ficha-client
                           Confirmar
                         </button>
                       }
+                      <!-- V3 · el turno «Sin Asignar» ya se puede resolver sin cancelar y recrear
+                           la cita: el modal elige un barbero de la sede y el backend revalida
+                           que esté libre en ese rango. -->
+                      @if (puedeAsignar(turno) && puedeGestionarSede()) {
+                        <button (click)="abrirAsignacion(turno)"
+                                [disabled]="procesandoId() === turno.id"
+                                class="text-xs font-bold px-3 py-1.5 rounded-lg bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
+                          <i class="pi pi-user-edit"></i>
+                          {{ turno.barbero ? 'Reasignar' : 'Asignar Barbero' }}
+                        </button>
+                      }
+
                       @if (puedeCancelar(turno.estado) && puedeGestionarSede()) {
                         <button (click)="cancelarTurno(turno)"
                                 [disabled]="procesandoId() === turno.id"
@@ -308,6 +333,75 @@ import { FichaClienteDrawerComponent } from '../clientes/components/ficha-client
             </div>
           }
 
+        </div>
+      }
+
+      <!-- V3 · Modal de asignación de barbero -->
+      @if (turnoAAsignar()) {
+        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div class="bg-zinc-900 border border-amber-500/25 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div class="p-6 space-y-5">
+              <div class="flex justify-between items-start">
+                <div>
+                  <h3 class="text-xl font-bold text-white">Asignar Barbero</h3>
+                  <p class="text-xs text-zinc-400 mt-1">
+                    {{ turnoAAsignar()!.cliente?.nombre }} ·
+                    {{ turnoAAsignar()!.fechaHoraInicio | date: 'HH:mm' }}
+                  </p>
+                </div>
+                <button (click)="cerrarAsignacion()" class="text-zinc-500 hover:text-white transition-colors" aria-label="Cerrar">
+                  <i class="pi pi-times text-xl"></i>
+                </button>
+              </div>
+
+              @if (errorAsignacion()) {
+                <div class="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 flex items-start gap-2" role="alert">
+                  <i class="pi pi-exclamation-triangle mt-0.5"></i>
+                  <span>{{ errorAsignacion() }}</span>
+                </div>
+              }
+
+              <div class="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-1">
+                @for (miembro of staffAsignable(); track miembro.id) {
+                  <button (click)="barberoDestino.set(miembro.id)"
+                          class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors text-left"
+                          [ngClass]="barberoDestino() === miembro.id ? 'border-amber-500/60 bg-amber-500/10' : 'border-white/5 bg-zinc-900/60 hover:bg-zinc-800/70'">
+                    <span class="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400/25 to-amber-600/25 border border-amber-500/30 flex items-center justify-center text-amber-300 text-xs font-bold">
+                      {{ miembro.nombreCompleto.charAt(0).toUpperCase() }}
+                    </span>
+                    <span class="flex-1 min-w-0">
+                      <span class="block text-sm font-semibold text-zinc-100 truncate">{{ miembro.nombreCompleto }}</span>
+                      <span class="block text-[10px] text-zinc-500">{{ miembro.roles.join(' · ') }}</span>
+                    </span>
+                    @if (miembro.id === turnoAAsignar()!.barbero?.id) {
+                      <span class="text-[9px] uppercase tracking-wider font-bold text-emerald-400">Actual</span>
+                    }
+                    @if (barberoDestino() === miembro.id) {
+                      <i class="pi pi-check-circle text-amber-400"></i>
+                    }
+                  </button>
+                } @empty {
+                  <p class="text-xs text-zinc-500 text-center py-6">
+                    No hay barberos activos en esta sede.
+                  </p>
+                }
+              </div>
+
+              <div class="flex gap-3 pt-4 border-t border-white/5">
+                <button (click)="cerrarAsignacion()" class="flex-1 py-3 rounded-xl font-medium text-sm text-zinc-300 bg-white/5 hover:bg-white/10 transition-colors">
+                  Cancelar
+                </button>
+                <button (click)="confirmarAsignacion()" [disabled]="!barberoDestino() || asignando()"
+                        class="flex-1 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                  @if (asignando()) {
+                    <i class="pi pi-spin pi-spinner"></i> Asignando...
+                  } @else {
+                    <i class="pi pi-check"></i> Asignar
+                  }
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       }
 
@@ -341,6 +435,14 @@ export class AdminAgendaComponent implements OnInit {
   filtroEstado = signal<string>('TODOS');
 
   turnoACobrar = signal<any | null>(null);
+
+  /** V3 · turno cuyo barbero se está asignando, destino elegido y su estado. */
+  readonly turnoAAsignar = signal<any | null>(null);
+  readonly barberoDestino = signal<string | null>(null);
+  readonly asignando = signal(false);
+  readonly errorAsignacion = signal<string | null>(null);
+  /** Destinos válidos del backend: BARBERO o ADMIN_BARBERIA de la sede. */
+  readonly staffAsignable = signal<Personal[]>([]);
   clienteSeleccionado = signal<any | null>(null);
 
   /** Id del turno con una acción en vuelo, para bloquear solo esa tarjeta. */
@@ -416,6 +518,17 @@ export class AdminAgendaComponent implements OnInit {
         // Filtrar solo los que tienen rol BARBERO (o mostrarlos todos)
         const soloBarberos = personal.filter(p => p.roles.includes('BARBERO'));
         this.barberos.set(soloBarberos.length > 0 ? soloBarberos : personal);
+        // V3 · el backend acepta BARBERO o ADMIN_BARBERIA como destino de una
+        // reasignación, así que el modal ofrece ese mismo conjunto. Las cuentas
+        // no ACTIVAS se dejan fuera: `asignarBarbero` responde 422
+        // `BARBERO_INACTIVO` y ofrecerlas sería pintar un error garantizado.
+        this.staffAsignable.set(
+          personal.filter(
+            (p) =>
+              p.estado === 'ACTIVO' &&
+              (p.roles.includes('BARBERO') || p.roles.includes('ADMIN_BARBERIA')),
+          ),
+        );
         
         this.reservasService.obtenerAgendaDiaria(this.fechaFiltro).subscribe({
           next: (turnos) => {
@@ -540,6 +653,59 @@ export class AdminAgendaComponent implements OnInit {
         this.cargarDatos();
       });
     }
+  }
+
+  /**
+   * V3 · solo se reasigna una reserva viva. Los estados terminales los rechaza
+   * el backend con 409 `ESTADO_INVALIDO`; aquí ni siquiera se ofrece el botón.
+   */
+  puedeAsignar(turno: any): boolean {
+    return ['PENDIENTE', 'PROPUESTA_PENDIENTE', 'CONFIRMADA'].includes(turno?.estado);
+  }
+
+  abrirAsignacion(turno: any): void {
+    if (!this.puedeGestionarSede()) return;
+    this.errorAsignacion.set(null);
+    this.barberoDestino.set(null);
+    this.turnoAAsignar.set(turno);
+  }
+
+  cerrarAsignacion(): void {
+    this.turnoAAsignar.set(null);
+    this.barberoDestino.set(null);
+    this.errorAsignacion.set(null);
+  }
+
+  /**
+   * Al confirmar se recarga la agenda: la tarjeta se mueve sola a la columna del
+   * barbero porque `turnosPorBarbero` filtra por `turno.barbero.id` y el backend
+   * ya devuelve el barbero nuevo en la lista del día.
+   */
+  confirmarAsignacion(): void {
+    const turno = this.turnoAAsignar();
+    const destino = this.barberoDestino();
+    if (!turno || !destino || this.asignando()) return;
+
+    this.asignando.set(true);
+    this.errorAsignacion.set(null);
+
+    this.reservasService.asignarBarbero(turno.id, destino).subscribe({
+      next: (resultado) => {
+        this.asignando.set(false);
+        this.cerrarAsignacion();
+        this.mensajeAccion.set(`Turno asignado a ${resultado?.barbero?.nombre ?? 'el barbero'}.`);
+        setTimeout(() => this.mensajeAccion.set(null), 4000);
+        this.cargarDatos();
+      },
+      error: (err) => {
+        this.asignando.set(false);
+        // 403 (otra sede) y 409 (barbero ocupado o bloqueado) llegan con el
+        // mensaje D40 del backend; se muestran tal cual en el modal.
+        this.errorAsignacion.set(
+          err?.error?.mensaje || err?.error?.message || 'No se pudo asignar el barbero.',
+        );
+      },
+    });
   }
 
   iniciarCobro(turno: any) {
