@@ -36,6 +36,42 @@ import { NotificacionService } from '../../notificacion/application/notificacion
 // vinculación, compartidos con el flujo que las resuelve (VinculacionService).
 import { ESTADOS_VINCULACION, LIMITE_VINCULACIONES } from '../domain/vinculacion.js';
 
+/**
+ * Catálogo de las 7 categorías oficiales que toda sede recibe al nacer.
+ * `skipDuplicates: true` (≡ ON CONFLICT DO NOTHING) garantiza que una segunda
+ * llamada con las mismas filas no las reescriba ni duplique.
+ */
+const CATEGORIAS_OFICIALES_SEDE = [
+  {
+    nombre: 'Cortes Premium y Degradados',
+    descripcion: 'Fade, Taper, Moicano, Mullet y cortes texturizados.',
+  },
+  {
+    nombre: 'Cortes Básicos y Tradicionales',
+    descripcion: 'Solo rebajar, corte clásico a tijera y tradicional.',
+  },
+  {
+    nombre: 'Arreglos Rápidos y Mantenimiento',
+    descripcion: 'Rapado (clavos), solo cerquillo, diseños y Bigen.',
+  },
+  {
+    nombre: 'Barba y Afeitado',
+    descripcion: 'Perfilado de barba, afeitado con navaja y ritual con toalla caliente.',
+  },
+  {
+    nombre: 'Combos (Corte + Barba)',
+    descripcion: 'Paquetes combinados de corte de cabello y arreglo de barba.',
+  },
+  {
+    nombre: 'Extras y Cuidado Personal',
+    descripcion: 'Cejas, mascarilla negra, limpieza facial, lavado y colorimetría.',
+  },
+  {
+    nombre: 'Cortes Infantiles',
+    descripcion: 'Cortes y degradados para niños.',
+  },
+] as const;
+
 /** Genera un slug URL-safe de hasta `maxLen` caracteres */
 function generateSlug(text: string, maxLen = 40): string {
   const slug = text
@@ -236,8 +272,20 @@ export class BarberiaService {
       await tx.configuracionBarberia.create({
         data: { barberiaId: barberia.id },
       });
+      // 7. Siembra las 7 categorías oficiales de la sede (ON CONFLICT DO NOTHING).
+      //    skipDuplicates: true es equivalente a INSERT ... ON CONFLICT DO NOTHING:
+      //    si la sede ya tiene alguna categoría con ese nombre no se sobrescribe ni se
+      //    duplica. Invariante: toda sede nueva nace con su catálogo completo.
+      await tx.categoriaServicio.createMany({
+        data: CATEGORIAS_OFICIALES_SEDE.map((c) => ({
+          barberiaId: barberia.id,
+          nombre: c.nombre,
+          descripcion: c.descripcion,
+        })),
+        skipDuplicates: true,
+      });
 
-      // 7. E1-07: auditoría en la MISMA transacción. `barberiaId` va en la
+      // 8. E1-07: auditoría en la MISMA transacción. `barberiaId` va en la
       //    columna propia (no solo en el JSON) para que la consulta por sede
       //    use el índice y no dependa de que cada llamador recuerde la clave.
       await this.auditoria.registrarEvento(

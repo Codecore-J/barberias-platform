@@ -129,6 +129,9 @@ describe('BarberiaService', () => {
             },
             configuracionBarberia: {
               create: vi.fn(),
+            },
+            categoriaServicio: {
+              createMany: vi.fn().mockResolvedValue({ count: 7 }),
             },              clienteBarberia: {
                 findMany: vi.fn(),
                 findUnique: vi.fn(),
@@ -261,6 +264,34 @@ describe('BarberiaService', () => {
       await service.create(responsableId, dto);
 
       expect(prisma.usuarioRol.upsert).not.toHaveBeenCalled();
+    });
+
+    it('siembra las 7 categorías oficiales al crear la sede (V3 · ON CONFLICT DO NOTHING)', async () => {
+      await service.create(responsableId, dto);
+
+      expect(prisma.categoriaServicio.createMany).toHaveBeenCalledOnce();
+      expect(prisma.categoriaServicio.createMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skipDuplicates: true,
+          data: expect.arrayContaining([
+            expect.objectContaining({ barberiaId: 'sede-nueva', nombre: 'Cortes Premium y Degradados' }),
+            expect.objectContaining({ barberiaId: 'sede-nueva', nombre: 'Cortes Básicos y Tradicionales' }),
+            expect.objectContaining({ barberiaId: 'sede-nueva', nombre: 'Arreglos Rápidos y Mantenimiento' }),
+            expect.objectContaining({ barberiaId: 'sede-nueva', nombre: 'Barba y Afeitado' }),
+            expect.objectContaining({ barberiaId: 'sede-nueva', nombre: 'Combos (Corte + Barba)' }),
+            expect.objectContaining({ barberiaId: 'sede-nueva', nombre: 'Extras y Cuidado Personal' }),
+            expect.objectContaining({ barberiaId: 'sede-nueva', nombre: 'Cortes Infantiles' }),
+          ]),
+        }),
+      );
+    });
+
+    it('las 7 categorías NO se crean si la barbería no llega a persistirse (límite E1-07)', async () => {
+      vi.mocked(prisma.barberia.count).mockResolvedValue(2);
+
+      await capturarError(service.create(responsableId, dto));
+
+      expect(prisma.categoriaServicio.createMany).not.toHaveBeenCalled();
     });
   });
 
