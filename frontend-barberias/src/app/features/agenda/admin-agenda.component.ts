@@ -227,7 +227,15 @@ import { CobroModalComponent } from './components/cobro-modal/cobro-modal.compon
                         </button>
                       }
 
-                      @if (turno.estado === 'PENDIENTE') {
+                      <!--
+                        E3-09 · el cobro es CONFIRMADA → COMPLETADA para el actor
+                        STAFF (ReservaStateMachine.assertTransition) y además exige
+                        ahora >= hora_inicio. Antes el botón se pintaba en PENDIENTE:
+                        el backend respondía 409 ESTADO_INVALIDO y, tras confirmar la
+                        cita, la caja se quedaba sin ninguna entrada al cobro. El
+                        botón sigue al estado que el backend acepta.
+                      -->
+                      @if (turno.estado === 'CONFIRMADA') {
                         <button (click)="iniciarCobro(turno)"
                                 class="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors flex items-center gap-1.5">
                           <i class="pi pi-wallet"></i> Cobrar

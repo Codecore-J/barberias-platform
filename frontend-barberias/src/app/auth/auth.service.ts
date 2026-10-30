@@ -23,6 +23,13 @@ import { API_URL } from '../core/constants/api.constants.js';
 import { TenantService } from '../core/services/tenant.service';
 import { PARAM_RETURN_URL, returnUrlSeguro } from '../core/utils/return-url.util';
 
+/**
+ * Clave bajo la que vive el JWT. Se exporta porque `authInterceptor` la lee
+ * directamente en lugar de pedirle el token a este servicio: inyectarlo allí
+ * crea un ciclo real (ver el comentario del interceptor).
+ */
+export const ACCESS_TOKEN_KEY = 'access_token';
+
 @Injectable({
   providedIn: 'root'
 })
@@ -31,7 +38,7 @@ export class AuthService {
   private readonly router = inject(Router);
   private readonly tenantService = inject(TenantService);
   private readonly apiUrl = `${API_URL}/auth`;
-  private readonly tokenKey = 'access_token';
+  private readonly tokenKey = ACCESS_TOKEN_KEY;
 
   /**
    * H-02 · hidratación de la sesión COMARTIDA: una sola petición `GET /me` por
