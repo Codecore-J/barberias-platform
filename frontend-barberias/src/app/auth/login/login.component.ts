@@ -5,12 +5,12 @@ import { AuthService } from '../auth.service';
 import { CommonModule } from '@angular/common';
 import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
 
-import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.directive';
+import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.component';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink, ModalOverlayDirective],
+  imports: [CommonModule, ReactiveFormsModule, RouterLink, ModalShellComponent],
   template: `
     <div class="min-h-screen flex items-center justify-center bg-ambient-mesh p-4 perspective-1200 overflow-hidden">
       
@@ -117,28 +117,17 @@ import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.dir
         </div>
 
         <!-- Modal de Recuperación de Contraseña (SEC-01) -->
-        @if (showRecoveryModal()) {
-          <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in-up">
-            <div class="relative w-full max-w-md bg-zinc-950/95 border border-amber-500/40 rounded-3xl p-6 sm:p-8 shadow-[0_25px_60px_rgba(0,0,0,0.8)]">
-              
-              <button type="button" (click)="closeRecoveryModal()" class="absolute top-5 right-5 text-zinc-400 hover:text-white transition-colors cursor-pointer">
-                <i class="pi pi-times text-lg"></i>
-              </button>
-
-              <div class="text-center mb-6">
-                <div class="w-12 h-12 mx-auto rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-3">
-                  <i class="pi pi-key text-amber-400 text-xl"></i>
-                </div>
-                <h2 class="text-xl font-display font-bold text-white">Recuperar Contraseña</h2>
-                <p class="text-xs text-zinc-400 mt-1">
-                  @if (recoveryStep() === 1) {
-                    Ingresa tu correo para recibir un enlace/token de restablecimiento.
-                  } @else {
-                    Ingresa el token recibido y tu nueva contraseña.
-                  }
-                </p>
-              </div>
-
+        <app-modal-shell
+          [visible]="showRecoveryModal()"
+          titulo="Recuperar Contraseña"
+          [subtitulo]="
+            recoveryStep() === 1
+              ? 'Ingresa tu correo para recibir un enlace/token de restablecimiento.'
+              : 'Ingresa el token recibido y tu nueva contraseña.'
+          "
+          icono="pi pi-key"
+          [cerrarBloqueado]="isRecoveryLoading()"
+          (cerrar)="closeRecoveryModal()">
               @if (recoverySuccessMsg()) {
                 <div class="mb-4 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 flex items-center gap-2">
                   <i class="pi pi-check-circle text-base"></i> {{ recoverySuccessMsg() }}
@@ -204,10 +193,7 @@ import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.dir
                   </div>
                 </form>
               }
-
-            </div>
-          </div>
-        }
+        </app-modal-shell>
 
       </div>
     </div>

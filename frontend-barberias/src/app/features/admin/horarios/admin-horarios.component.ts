@@ -14,13 +14,13 @@ interface DiaConfig {
 
 type TabActiva = 'semanal' | 'excepciones' | 'bloqueos';
 
-import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
+import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component';
 import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service';
 
 @Component({
   selector: 'app-admin-horarios',
   standalone: true,
-  imports: [CommonModule, FormsModule, ModalOverlayDirective],
+  imports: [CommonModule, FormsModule, ModalShellComponent],
   template: `
     <div class="space-y-8 pb-12 animate-fade-in relative z-10">
       
@@ -344,145 +344,125 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
       }
 
       <!-- ================= MODAL NUEVA EXCEPCIÓN ================= -->
-      @if (modalExcepcionAbierto()) {
-        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
-          <div class="bg-zinc-900 border border-amber-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div class="p-6 space-y-6">
-              <div class="flex justify-between items-start">
-                <div>
-                  <h3 class="text-xl font-bold text-white">Nueva Excepción de Horario</h3>
-                  <p class="text-xs text-zinc-400">Feriados, días festivos o jornada especial</p>
-                </div>
-                <button (click)="cerrarModalExcepcion()" class="text-zinc-500 hover:text-white transition-colors">
-                  <i class="pi pi-times text-xl"></i>
-                </button>
+      <app-modal-shell
+        [visible]="modalExcepcionAbierto()"
+        titulo="Nueva Excepción de Horario"
+        subtitulo="Feriados, días festivos o jornada especial"
+        icono="pi pi-calendar-times"
+        [cerrarBloqueado]="guardandoExcepcion()"
+        (cerrar)="cerrarModalExcepcion()">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Fecha</label>
+            <input type="date" [(ngModel)]="excepcionModel.fecha"
+                   class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Tipo de Excepción</label>
+            <select [(ngModel)]="excepcionModel.tipo"
+                    class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+              <option value="CERRADA">Sede Cerrada (Todo el día no laborable)</option>
+              <option value="HORARIO_ESPECIAL">Horario Especial (Apertura y Cierre personalizado)</option>
+            </select>
+          </div>
+
+          @if (excepcionModel.tipo === 'HORARIO_ESPECIAL') {
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Inicio</label>
+                <input type="time" [(ngModel)]="excepcionModel.horaInicio"
+                       class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
               </div>
-
-              <div class="space-y-4">
-                <div>
-                  <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Fecha</label>
-                  <input type="date" [(ngModel)]="excepcionModel.fecha"
-                         class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
-                </div>
-
-                <div>
-                  <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Tipo de Excepción</label>
-                  <select [(ngModel)]="excepcionModel.tipo"
-                          class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
-                    <option value="CERRADA">Sede Cerrada (Todo el día no laborable)</option>
-                    <option value="HORARIO_ESPECIAL">Horario Especial (Apertura y Cierre personalizado)</option>
-                  </select>
-                </div>
-
-                @if (excepcionModel.tipo === 'HORARIO_ESPECIAL') {
-                  <div class="grid grid-cols-2 gap-3">
-                    <div>
-                      <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Inicio</label>
-                      <input type="time" [(ngModel)]="excepcionModel.horaInicio"
-                             class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
-                    </div>
-                    <div>
-                      <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Fin</label>
-                      <input type="time" [(ngModel)]="excepcionModel.horaFin"
-                             class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
-                    </div>
-                  </div>
-                }
-
-                <div>
-                  <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo o Justificación</label>
-                  <input type="text" [(ngModel)]="excepcionModel.motivo" placeholder="Ej. Navidad, Año Nuevo, Fumigación..."
-                         class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
-                </div>
-              </div>
-
-              <div class="flex gap-3 pt-4 border-t border-zinc-800">
-                <button (click)="cerrarModalExcepcion()"
-                        class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
-                  Cancelar
-                </button>
-                <button (click)="guardarExcepcion()"
-                        [disabled]="guardandoExcepcion()"
-                        class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-zinc-950 gold-gradient-bg hover:brightness-110 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
-                  <i class="pi" [ngClass]="guardandoExcepcion() ? 'pi-spin pi-spinner' : 'pi-check'"></i>
-                  <span>{{ guardandoExcepcion() ? 'Guardando...' : 'Guardar Excepción' }}</span>
-                </button>
+              <div>
+                <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Fin</label>
+                <input type="time" [(ngModel)]="excepcionModel.horaFin"
+                       class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
               </div>
             </div>
+          }
+
+          <div>
+            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo o Justificación</label>
+            <input type="text" [(ngModel)]="excepcionModel.motivo" placeholder="Ej. Navidad, Año Nuevo, Fumigación..."
+                   class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
           </div>
         </div>
-      }
+
+        <div modal-footer class="flex gap-3 pt-4 border-t border-zinc-800">
+          <button (click)="cerrarModalExcepcion()"
+                  class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
+            Cancelar
+          </button>
+          <button (click)="guardarExcepcion()"
+                  [disabled]="guardandoExcepcion()"
+                  class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-zinc-950 gold-gradient-bg hover:brightness-110 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+            <i class="pi" [ngClass]="guardandoExcepcion() ? 'pi-spin pi-spinner' : 'pi-check'"></i>
+            <span>{{ guardandoExcepcion() ? 'Guardando...' : 'Guardar Excepción' }}</span>
+          </button>
+        </div>
+      </app-modal-shell>
 
       <!-- ================= MODAL NUEVO BLOQUEO ================= -->
-      @if (modalBloqueoAbierto()) {
-        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
-          <div class="bg-zinc-900 border border-amber-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div class="p-6 space-y-6">
-              <div class="flex justify-between items-start">
-                <div>
-                  <h3 class="text-xl font-bold text-white">Nuevo Bloqueo de Franja</h3>
-                  <p class="text-xs text-zinc-400">Bloquea turnos temporales en la agenda</p>
-                </div>
-                <button (click)="cerrarModalBloqueo()" class="text-zinc-500 hover:text-white transition-colors">
-                  <i class="pi pi-times text-xl"></i>
-                </button>
-              </div>
+      <app-modal-shell
+        [visible]="modalBloqueoAbierto()"
+        titulo="Nuevo Bloqueo de Franja"
+        subtitulo="Bloquea turnos temporales en la agenda"
+        icono="pi pi-clock"
+        [cerrarBloqueado]="guardandoBloqueo()"
+        (cerrar)="cerrarModalBloqueo()">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Fecha</label>
+            <input type="date" [(ngModel)]="bloqueoModel.fecha"
+                   class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+          </div>
 
-              <div class="space-y-4">
-                <div>
-                  <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Fecha</label>
-                  <input type="date" [(ngModel)]="bloqueoModel.fecha"
-                         class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                  <div>
-                    <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Inicio</label>
-                    <input type="time" [(ngModel)]="bloqueoModel.horaInicio"
-                           class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
-                  </div>
-                  <div>
-                    <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Fin</label>
-                    <input type="time" [(ngModel)]="bloqueoModel.horaFin"
-                           class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
-                  </div>
-                </div>
-
-                <div>
-                  <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo</label>
-                  <input type="text" [(ngModel)]="bloqueoModel.motivo" placeholder="Ej. Almuerzo general, Reparación de equipos..."
-                         class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
-                </div>
-
-                <div>
-                  <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Auto-liberación (BullMQ)</label>
-                  <select [(ngModel)]="bloqueoModel.liberacionAutomaticaMinutos"
-                          class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
-                    <option [ngValue]="undefined">Manual (Hasta que se elimine)</option>
-                    <option [ngValue]="15">Liberar en 15 minutos</option>
-                    <option [ngValue]="30">Liberar en 30 minutos</option>
-                    <option [ngValue]="60">Liberar en 1 hora</option>
-                    <option [ngValue]="120">Liberar en 2 horas</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="flex gap-3 pt-4 border-t border-zinc-800">
-                <button (click)="cerrarModalBloqueo()"
-                        class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
-                  Cancelar
-                </button>
-                <button (click)="guardarBloqueo()"
-                        [disabled]="guardandoBloqueo()"
-                        class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-zinc-950 gold-gradient-bg hover:brightness-110 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
-                  <i class="pi" [ngClass]="guardandoBloqueo() ? 'pi-spin pi-spinner' : 'pi-check'"></i>
-                  <span>{{ guardandoBloqueo() ? 'Creando...' : 'Crear Bloqueo' }}</span>
-                </button>
-              </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Inicio</label>
+              <input type="time" [(ngModel)]="bloqueoModel.horaInicio"
+                     class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Fin</label>
+              <input type="time" [(ngModel)]="bloqueoModel.horaFin"
+                     class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
             </div>
           </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo</label>
+            <input type="text" [(ngModel)]="bloqueoModel.motivo" placeholder="Ej. Almuerzo general, Reparación de equipos..."
+                   class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Auto-liberación (BullMQ)</label>
+            <select [(ngModel)]="bloqueoModel.liberacionAutomaticaMinutos"
+                    class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+              <option [ngValue]="undefined">Manual (Hasta que se elimine)</option>
+              <option [ngValue]="15">Liberar en 15 minutos</option>
+              <option [ngValue]="30">Liberar en 30 minutos</option>
+              <option [ngValue]="60">Liberar en 1 hora</option>
+              <option [ngValue]="120">Liberar en 2 horas</option>
+            </select>
+          </div>
         </div>
-      }
+
+        <div modal-footer class="flex gap-3 pt-4 border-t border-zinc-800">
+          <button (click)="cerrarModalBloqueo()"
+                  class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
+            Cancelar
+          </button>
+          <button (click)="guardarBloqueo()"
+                  [disabled]="guardandoBloqueo()"
+                  class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-zinc-950 gold-gradient-bg hover:brightness-110 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+            <i class="pi" [ngClass]="guardandoBloqueo() ? 'pi-spin pi-spinner' : 'pi-check'"></i>
+            <span>{{ guardandoBloqueo() ? 'Creando...' : 'Crear Bloqueo' }}</span>
+          </button>
+        </div>
+      </app-modal-shell>
 
     </div>
   `

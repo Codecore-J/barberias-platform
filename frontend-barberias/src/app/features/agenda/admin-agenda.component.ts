@@ -14,7 +14,7 @@ import { PersonalService, Personal } from '../../core/services/personal.service'
 import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
 import { FichaClienteDrawerComponent } from '../clientes/components/ficha-cliente-drawer/ficha-cliente-drawer.component';
-import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.directive';
+import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.component';
 import { CobroModalComponent } from './components/cobro-modal/cobro-modal.component';
 import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
 
@@ -27,7 +27,7 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
     CurrencyPipe,
     DatePipe,
     FichaClienteDrawerComponent,
-    ModalOverlayDirective,
+    ModalShellComponent,
     CobroModalComponent,
   ],
   template: `
@@ -374,72 +374,61 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
       }
 
       <!-- V3 · Modal de asignación de barbero -->
-      @if (turnoAAsignar()) {
-        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div class="bg-zinc-900 border border-amber-500/25 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
-            <div class="p-6 space-y-5">
-              <div class="flex justify-between items-start">
-                <div>
-                  <h3 class="text-xl font-bold text-white">Asignar Barbero</h3>
-                  <p class="text-xs text-zinc-400 mt-1">
-                    {{ turnoAAsignar()!.cliente?.nombre }} ·
-                    {{ turnoAAsignar()!.fechaHoraInicio | date: 'HH:mm' }}
-                  </p>
-                </div>
-                <button (click)="cerrarAsignacion()" class="text-zinc-500 hover:text-white transition-colors" aria-label="Cerrar">
-                  <i class="pi pi-times text-xl"></i>
-                </button>
-              </div>
-
-              @if (errorAsignacion()) {
-                <div class="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 flex items-start gap-2" role="alert">
-                  <i class="pi pi-exclamation-triangle mt-0.5"></i>
-                  <span>{{ errorAsignacion() }}</span>
-                </div>
-              }
-
-              <div class="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-1">
-                @for (miembro of staffAsignable(); track miembro.id) {
-                  <button (click)="barberoDestino.set(miembro.id)"
-                          class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors text-left"
-                          [ngClass]="barberoDestino() === miembro.id ? 'border-amber-500/60 bg-amber-500/10' : 'border-white/5 bg-zinc-900/60 hover:bg-zinc-800/70'">
-                    <span class="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400/25 to-amber-600/25 border border-amber-500/30 flex items-center justify-center text-amber-300 text-xs font-bold">
-                      {{ miembro.nombreCompleto.charAt(0).toUpperCase() }}
-                    </span>
-                    <span class="flex-1 min-w-0">
-                      <span class="block text-sm font-semibold text-zinc-100 truncate">{{ miembro.nombreCompleto }}</span>
-                      <span class="block text-[10px] text-zinc-500">{{ miembro.roles.join(' · ') }}</span>
-                    </span>
-                    @if (miembro.id === turnoAAsignar()!.barbero?.id) {
-                      <span class="text-[9px] uppercase tracking-wider font-bold text-emerald-400">Actual</span>
-                    }
-                    @if (barberoDestino() === miembro.id) {
-                      <i class="pi pi-check-circle text-amber-400"></i>
-                    }
-                  </button>
-                } @empty {
-                  <p class="text-xs text-zinc-500 text-center py-6">
-                    No hay barberos activos en esta sede.
-                  </p>
-                }
-              </div>
-
-              <div class="flex gap-3 pt-4 border-t border-white/5">
-                <button (click)="cerrarAsignacion()" class="flex-1 py-3 rounded-xl font-medium text-sm text-zinc-300 bg-white/5 hover:bg-white/10 transition-colors">
-                  Cancelar
-                </button>
-                <button (click)="confirmarAsignacion()" [disabled]="!barberoDestino() || asignando()"
-                        class="flex-1 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                  @if (asignando()) {
-                    <i class="pi pi-spin pi-spinner"></i> Asignando...
-                  } @else {
-                    <i class="pi pi-check"></i> Asignar
-                  }
-                </button>
-              </div>
+      @if (turnoAAsignar(); as turno) {
+        <app-modal-shell
+          [visible]="true"
+          titulo="Asignar Barbero"
+          [subtitulo]="turno.cliente.nombre + ' · ' + (turno.fechaHoraInicio | date: 'HH:mm')"
+          icono="pi pi-user-edit"
+          [cerrarBloqueado]="asignando()"
+          (cerrar)="cerrarAsignacion()">
+          @if (errorAsignacion()) {
+            <div class="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 flex items-start gap-2" role="alert">
+              <i class="pi pi-exclamation-triangle mt-0.5"></i>
+              <span>{{ errorAsignacion() }}</span>
             </div>
+          }
+
+          <div class="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-1">
+            @for (miembro of staffAsignable(); track miembro.id) {
+              <button (click)="barberoDestino.set(miembro.id)"
+                      class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors text-left"
+                      [ngClass]="barberoDestino() === miembro.id ? 'border-amber-500/60 bg-amber-500/10' : 'border-white/5 bg-zinc-900/60 hover:bg-zinc-800/70'">
+                <span class="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400/25 to-amber-600/25 border border-amber-500/30 flex items-center justify-center text-amber-300 text-xs font-bold">
+                  {{ miembro.nombreCompleto.charAt(0).toUpperCase() }}
+                </span>
+                <span class="flex-1 min-w-0">
+                  <span class="block text-sm font-semibold text-zinc-100 truncate">{{ miembro.nombreCompleto }}</span>
+                  <span class="block text-[10px] text-zinc-500">{{ miembro.roles.join(' · ') }}</span>
+                </span>
+                @if (miembro.id === turno.barbero?.id) {
+                  <span class="text-[9px] uppercase tracking-wider font-bold text-emerald-400">Actual</span>
+                }
+                @if (barberoDestino() === miembro.id) {
+                  <i class="pi pi-check-circle text-amber-400"></i>
+                }
+              </button>
+            } @empty {
+              <p class="text-xs text-zinc-500 text-center py-6">
+                No hay barberos activos en esta sede.
+              </p>
+            }
           </div>
-        </div>
+
+          <div modal-footer class="flex gap-3 pt-4 border-t border-white/5">
+            <button (click)="cerrarAsignacion()" class="flex-1 py-3 rounded-xl font-medium text-sm text-zinc-300 bg-white/5 hover:bg-white/10 transition-colors">
+              Cancelar
+            </button>
+            <button (click)="confirmarAsignacion()" [disabled]="!barberoDestino() || asignando()"
+                    class="flex-1 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+              @if (asignando()) {
+                <i class="pi pi-spin pi-spinner"></i> Asignando...
+              } @else {
+                <i class="pi pi-check"></i> Asignar
+              }
+            </button>
+          </div>
+        </app-modal-shell>
       }
 
       <!-- V3 fase 6 · Modal de Cobro: método de pago + total de la reserva.

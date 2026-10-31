@@ -5,14 +5,14 @@ import { PersonalService, Personal } from '../../../core/services/personal.servi
 import { HorariosService, ExcepcionHorario } from '../../../core/services/horarios.service';
 import { TenantService } from '../../../core/services/tenant.service';
 
-import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
+import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component';
 import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 
 @Component({
   selector: 'app-admin-personal',
   standalone: true,
-  imports: [CommonModule, FormsModule, ModalOverlayDirective],
+  imports: [CommonModule, FormsModule, ModalShellComponent],
   template: `
     <div class="space-y-8 pb-12 animate-fade-in relative z-10">
       
@@ -88,20 +88,12 @@ import { ToastService } from '../../../shared/ui/toast/toast.service';
       </div>
 
       <!-- Modal Excepción -->
-      @if (modalAbierto()) {
-        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div class="p-6 space-y-6">
-              <div class="flex justify-between items-start">
-                <div>
-                  <h3 class="text-xl font-bold text-white">Nueva Excepción</h3>
-                  <p class="text-sm text-zinc-400">Para {{ barberoSeleccionado()?.nombreCompleto }}</p>
-                </div>
-                <button (click)="cerrarModal()" class="text-zinc-500 hover:text-white transition-colors">
-                  <i class="pi pi-times text-xl"></i>
-                </button>
-              </div>
-
+      <app-modal-shell
+        [visible]="modalAbierto()"
+        titulo="Nueva Excepción"
+        [subtitulo]="'Para ' + (barberoSeleccionado()?.nombreCompleto ?? '')"
+        icono="pi pi-calendar-plus"
+        (cerrar)="cerrarModal()">
               <div class="space-y-4">
                 <div>
                   <label class="block text-xs font-medium text-zinc-400 mb-1">Fecha</label>
@@ -135,7 +127,7 @@ import { ToastService } from '../../../shared/ui/toast/toast.service';
                 </div>
               </div>
 
-              <div class="flex gap-3 pt-4 border-t border-white/5">
+              <div modal-footer class="flex gap-3 pt-4 border-t border-white/5">
                 <button (click)="cerrarModal()" class="flex-1 py-3 px-4 rounded-xl font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
                   Cancelar
                 </button>
@@ -143,10 +135,7 @@ import { ToastService } from '../../../shared/ui/toast/toast.service';
                   <i class="pi pi-check mr-2"></i>Guardar
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      }
+      </app-modal-shell>
 
     </div>
   `

@@ -10,7 +10,7 @@ import {
   UsuarioListResponse,
   UsuariosService,
 } from '../../../core/services/usuarios.service';
-import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
+import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component';
 
 /** Tope del backend (`CambiarEstadoCuentaDto`): 500 caracteres. */
 const MOTIVO_MAXIMO = 500;
@@ -36,7 +36,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
 @Component({
   selector: 'app-admin-usuarios',
   standalone: true,
-  imports: [CommonModule, DatePipe, FormsModule, ModalOverlayDirective],
+  imports: [CommonModule, DatePipe, FormsModule, ModalShellComponent],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-6 bg-ambient-mesh">
       <!-- Header -->
@@ -332,40 +332,14 @@ type FiltroRol = 'TODOS' | RolPlataforma;
       }
 
       <!-- Modal: alta de usuario -->
-      @if (creacionAbierta()) {
-        <div
-          appModalOverlay
-          class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            class="bg-zinc-900 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border border-amber-500/25 flex flex-col max-h-[92vh]"
-          >
-            <div class="p-6 border-b border-zinc-800 flex justify-between items-start shrink-0">
-              <div class="flex items-center gap-3">
-                <div
-                  class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400"
-                >
-                  <i class="pi pi-user-plus text-lg"></i>
-                </div>
-                <div>
-                  <h3 class="text-lg font-bold text-white">Nuevo usuario</h3>
-                  <p class="text-xs text-zinc-400">
-                    Alta administrativa · la cuenta nace ACTIVA y queda auditada
-                  </p>
-                </div>
-              </div>
-              <button
-                (click)="cerrarCreacion()"
-                [disabled]="creando()"
-                class="text-zinc-500 hover:text-white disabled:opacity-40 transition-colors"
-              >
-                <i class="pi pi-times text-xl"></i>
-              </button>
-            </div>
-
-            <div class="p-6 overflow-y-auto space-y-4">
+      <app-modal-shell
+        [visible]="creacionAbierta()"
+        titulo="Nuevo usuario"
+        subtitulo="Alta administrativa · la cuenta nace ACTIVA y queda auditada"
+        icono="pi pi-user-plus"
+        ancho="xl"
+        [cerrarBloqueado]="creando()"
+        (cerrar)="cerrarCreacion()">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="sm:col-span-2">
                   <label class="block text-xs font-semibold text-zinc-400 mb-1.5">
@@ -495,9 +469,8 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                   <i class="pi pi-exclamation-triangle"></i> {{ errorCreacion() }}
                 </div>
               }
-            </div>
 
-            <div class="p-4 border-t border-zinc-800 flex gap-3 shrink-0">
+            <div modal-footer class="p-4 border-t border-zinc-800 flex gap-3 shrink-0">
               <button
                 (click)="cerrarCreacion()"
                 [disabled]="creando()"
@@ -514,53 +487,18 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                 <span>Crear usuario</span>
               </button>
             </div>
-          </div>
-        </div>
-      }
+      </app-modal-shell>
 
       <!-- Modal: cambiar el estado de la cuenta (D09/D24) -->
       @if (isModalOpen() && usuarioSeleccionado(); as usuario) {
-        <div
-          appModalOverlay
-          class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            class="bg-zinc-900 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl border"
-            [ngClass]="
-              estadoDestino() === 'SUSPENDIDO' ? 'border-rose-500/30' : 'border-emerald-500/30'
-            "
-          >
-            <div class="p-6 space-y-5">
-              <div class="flex justify-between items-start">
-                <div class="flex items-center gap-3">
-                  <div
-                    class="w-10 h-10 rounded-xl border flex items-center justify-center"
-                    [ngClass]="
-                      estadoDestino() === 'SUSPENDIDO'
-                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
-                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                    "
-                  >
-                    <i class="pi text-lg" [ngClass]="iconoEstado(estadoDestino())"></i>
-                  </div>
-                  <div>
-                    <h3 class="text-lg font-bold text-white">
-                      Cambiar estado de {{ usuario.nombreCompleto }}
-                    </h3>
-                    <p class="text-xs text-zinc-400">{{ usuario.correo }}</p>
-                  </div>
-                </div>
-                <button
-                  (click)="cerrarModal()"
-                  [disabled]="procesando()"
-                  class="text-zinc-500 hover:text-white disabled:opacity-40 transition-colors"
-                >
-                  <i class="pi pi-times text-xl"></i>
-                </button>
-              </div>
-
+        <app-modal-shell
+          [visible]="true"
+          [titulo]="'Cambiar estado de ' + usuario.nombreCompleto"
+          [subtitulo]="usuario.correo"
+          [icono]="iconoEstado(estadoDestino())"
+          [tono]="estadoDestino() === 'SUSPENDIDO' ? 'peligro' : 'primario'"
+          [cerrarBloqueado]="procesando()"
+          (cerrar)="cerrarModal()">
               <div
                 class="p-3.5 rounded-xl border text-xs flex items-start gap-2.5"
                 [ngClass]="
@@ -637,45 +575,18 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                   <span>Confirmar</span>
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
+        </app-modal-shell>
       }
 
       <!-- Modal: historial de auditoría de la cuenta -->
       @if (historialAbierto() && usuarioHistorial(); as usuario) {
-        <div
-          appModalOverlay
-          class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            class="bg-zinc-900 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border border-amber-500/20 flex flex-col max-h-[92vh]"
-          >
-            <div class="p-6 border-b border-zinc-800 flex justify-between items-start shrink-0">
-              <div class="flex items-center gap-3">
-                <div
-                  class="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-amber-400"
-                >
-                  <i class="pi pi-history text-lg"></i>
-                </div>
-                <div>
-                  <h3 class="text-lg font-bold text-white">Historial de la cuenta</h3>
-                  <p class="text-xs text-zinc-400">
-                    {{ usuario.nombreCompleto }} · {{ usuario.correo }}
-                  </p>
-                </div>
-              </div>
-              <button
-                (click)="cerrarHistorial()"
-                class="text-zinc-500 hover:text-white transition-colors"
-              >
-                <i class="pi pi-times text-xl"></i>
-              </button>
-            </div>
-
-            <div class="p-6 overflow-y-auto">
+        <app-modal-shell
+          [visible]="true"
+          titulo="Historial de la cuenta"
+          [subtitulo]="usuario.nombreCompleto + ' · ' + usuario.correo"
+          icono="pi pi-history"
+          ancho="xl"
+          (cerrar)="cerrarHistorial()">
               @if (cargandoHistorial()) {
                 <div class="flex justify-center py-16">
                   <i class="pi pi-spin pi-spinner text-3xl text-amber-500"></i>
@@ -758,9 +669,8 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                   }
                 </ol>
               }
-            </div>
 
-            <div class="p-4 border-t border-zinc-800 flex justify-end shrink-0">
+            <div modal-footer class="p-4 border-t border-zinc-800 flex justify-end shrink-0">
               <button
                 (click)="cerrarHistorial()"
                 class="px-4 py-2.5 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors"
@@ -768,8 +678,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                 Cerrar
               </button>
             </div>
-          </div>
-        </div>
+        </app-modal-shell>
       }
     </div>
   `,

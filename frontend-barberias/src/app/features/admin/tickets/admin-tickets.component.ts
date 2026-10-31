@@ -8,13 +8,12 @@ import { CajaService } from '../../../core/services/caja.service';
 import { TenantService } from '../../../core/services/tenant.service';
 import { AuthService } from '../../../auth/auth.service';
 
-import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
 import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component';
 
 @Component({
   selector: 'app-admin-tickets',
   standalone: true,
-  imports: [CommonModule, CurrencyPipe, DatePipe, FormsModule, ModalOverlayDirective, ModalShellComponent],
+  imports: [CommonModule, CurrencyPipe, DatePipe, FormsModule, ModalShellComponent],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
       
@@ -455,57 +454,43 @@ import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.
       </app-modal-shell>
 
       <!-- MODAL PURGA AUDITORÍA (ADMINISTRADOR) -->
-      @if (modalPurgaAbierto()) {
-        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
-          <div class="bg-zinc-900 border border-rose-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div class="p-6 space-y-6">
-              <div class="flex justify-between items-start">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
-                    <i class="pi pi-shield text-lg"></i>
-                  </div>
-                  <div>
-                    <h3 class="text-lg font-bold text-white">Purga de Auditoría</h3>
-                    <p class="text-xs text-zinc-400">Mantenimiento de base de datos (ADMINISTRADOR)</p>
-                  </div>
-                </div>
-                <button (click)="cerrarModalPurga()" class="text-zinc-500 hover:text-white transition-colors">
-                  <i class="pi pi-times text-xl"></i>
-                </button>
-              </div>
-
-              <div class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 space-y-1">
-                <p class="font-semibold flex items-center gap-1.5">
-                  <i class="pi pi-exclamation-triangle"></i> Operación destructiva irreversible
-                </p>
-                <p class="text-zinc-400">
-                  Esta acción elimina los registros de auditoría más antiguos del plazo especificado para optimizar almacenamiento.
-                </p>
-              </div>
-
-              <div>
-                <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Conservar registros de los últimos:</label>
-                <select [(ngModel)]="diasPurga" class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
-                  <option [ngValue]="180">6 meses (180 días)</option>
-                  <option [ngValue]="365">1 año (365 días - Recomendado)</option>
-                  <option [ngValue]="730">2 años (730 días)</option>
-                </select>
-              </div>
-
-              <div class="flex gap-3 pt-4 border-t border-zinc-800">
-                <button (click)="cerrarModalPurga()" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
-                  Cancelar
-                </button>
-                <button (click)="confirmarPurga()" [disabled]="purgando()"
-                        class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-900/30">
-                  <i class="pi" [ngClass]="purgando() ? 'pi-spin pi-spinner' : 'pi-trash'"></i>
-                  <span>{{ purgando() ? 'Purgando...' : 'Ejecutar Purga' }}</span>
-                </button>
-              </div>
-            </div>
-          </div>
+      <app-modal-shell
+        [visible]="modalPurgaAbierto()"
+        titulo="Purga de Auditoría"
+        subtitulo="Mantenimiento de base de datos (ADMINISTRADOR)"
+        icono="pi pi-shield"
+        tono="peligro"
+        [cerrarBloqueado]="purgando()"
+        (cerrar)="cerrarModalPurga()">
+        <div class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 space-y-1">
+          <p class="font-semibold flex items-center gap-1.5">
+            <i class="pi pi-exclamation-triangle"></i> Operación destructiva irreversible
+          </p>
+          <p class="text-zinc-400">
+            Esta acción elimina los registros de auditoría más antiguos del plazo especificado para optimizar almacenamiento.
+          </p>
         </div>
-      }
+
+        <div>
+          <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Conservar registros de los últimos:</label>
+          <select [(ngModel)]="diasPurga" class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+            <option [ngValue]="180">6 meses (180 días)</option>
+            <option [ngValue]="365">1 año (365 días - Recomendado)</option>
+            <option [ngValue]="730">2 años (730 días)</option>
+          </select>
+        </div>
+
+        <div modal-footer class="flex gap-3 pt-4 border-t border-zinc-800">
+          <button (click)="cerrarModalPurga()" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
+            Cancelar
+          </button>
+          <button (click)="confirmarPurga()" [disabled]="purgando()"
+                  class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-900/30">
+            <i class="pi" [ngClass]="purgando() ? 'pi-spin pi-spinner' : 'pi-trash'"></i>
+            <span>{{ purgando() ? 'Purgando...' : 'Ejecutar Purga' }}</span>
+          </button>
+        </div>
+      </app-modal-shell>
 
     </div>
   `,
