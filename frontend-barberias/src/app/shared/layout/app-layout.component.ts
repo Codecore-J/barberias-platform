@@ -128,15 +128,46 @@ import { NotificationService } from '../../core/services/notification.service';
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all" *ngIf="userRole() !== 'ADMINISTRADOR'">
                 <i class="pi pi-users mr-1.5 text-xs text-amber-400/80"></i>Equipo
               </a>
-              <a routerLink="/admin/servicios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
-                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo
-              </a>
+              <!-- Catálogo: servicios y categorías viven juntos porque son la misma
+                   tarea (montar la carta de la sede). Antes Categorías estaba escondida
+                   en Configuración y Servicios repetido en tres sitios del menú. -->
+              <div class="relative" (mouseenter)="catalogoDropdownOpen.set(true)" (mouseleave)="catalogoDropdownOpen.set(false)">
+                <button type="button"
+                        (click)="catalogoDropdownOpen.update((v) => !v)"
+                        aria-haspopup="true"
+                        [attr.aria-expanded]="catalogoDropdownOpen()"
+                        class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all flex items-center gap-1">
+                  <i class="pi pi-briefcase text-xs text-amber-400/80"></i>Catálogo
+                  <i class="pi pi-chevron-down text-[9px] text-zinc-500"></i>
+                </button>
+                @if (catalogoDropdownOpen()) {
+                  <div class="absolute left-0 top-full mt-1 w-72 glass-panel rounded-xl p-1.5 border border-amber-500/20 shadow-2xl z-50 animate-in fade-in duration-150">
+                    <a routerLink="/admin/servicios" routerLinkActive="bg-zinc-800/60"
+                       (click)="catalogoDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-list text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Servicios</span>
+                        <span class="text-[10px] text-zinc-500">Catálogo, combos y precios</span>
+                      </span>
+                    </a>
+                    <a routerLink="/admin/categorias" routerLinkActive="bg-zinc-800/60"
+                       (click)="catalogoDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-tags text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Categorías</span>
+                        <span class="text-[10px] text-zinc-500">Taxonomía donde publican los barberos</span>
+                      </span>
+                    </a>
+                  </div>
+                }
+              </div>
               <a routerLink="/admin/analiticas" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-chart-bar mr-1.5 text-xs text-amber-400/80"></i>Analíticas
               </a>
-              <!-- Dropdown Configuración -->
+              <!-- Dropdown Configuración: solo ajustes de la sede, sin catálogo -->
               <div class="relative" (mouseenter)="configDropdownOpen.set(true)" (mouseleave)="configDropdownOpen.set(false)">
                 <button class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all flex items-center gap-1">
                   <i class="pi pi-sliders-h text-xs text-amber-400/80"></i>Configuración
@@ -150,22 +181,6 @@ import { NotificationService } from '../../core/services/notification.service';
                       <span class="flex flex-col">
                         <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Horarios</span>
                         <span class="text-[10px] text-zinc-500">Apertura, cierres y bloqueos</span>
-                      </span>
-                    </a>
-                    <a routerLink="/admin/servicios" (click)="configDropdownOpen.set(false)"
-                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
-                      <i class="pi pi-list text-amber-400/80 mt-0.5"></i>
-                      <span class="flex flex-col">
-                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Servicios</span>
-                        <span class="text-[10px] text-zinc-500">Catálogo y precios</span>
-                      </span>
-                    </a>
-                    <a routerLink="/admin/categorias" (click)="configDropdownOpen.set(false)"
-                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
-                      <i class="pi pi-tags text-amber-400/80 mt-0.5"></i>
-                      <span class="flex flex-col">
-                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Categorías</span>
-                        <span class="text-[10px] text-zinc-500">Taxonomía donde publican los barberos</span>
                       </span>
                     </a>
                     <a routerLink="/admin/tickets" (click)="configDropdownOpen.set(false)"
@@ -199,11 +214,6 @@ import { NotificationService } from '../../core/services/notification.service';
               <a routerLink="/barberias" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-building mr-1.5 text-xs text-amber-400/80"></i>Barberías
-              </a>
-              <!-- E3-12: solo auditoría, sin operaciones de catálogo -->
-              <a routerLink="/admin/servicios" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
-                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all" *ngIf="userRole() !== 'ADMINISTRADOR'">
-                <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo
               </a>
               <a routerLink="/admin/vinculaciones" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
@@ -415,9 +425,6 @@ import { NotificationService } from '../../core/services/notification.service';
               }
 
               @if (userRole() === 'ADMIN_BARBERIA') {
-                <a routerLink="/admin/servicios" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
-                  <i class="pi pi-cog text-amber-400"></i>Mis Servicios
-                </a>
                 <a routerLink="/admin/agenda" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-calendar text-amber-400"></i>Mi Agenda
                 </a>
@@ -426,6 +433,11 @@ import { NotificationService } from '../../core/services/notification.service';
                 </a>
                 <a routerLink="/admin/tickets" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-receipt text-amber-400"></i>Pagos
+                </a>
+                <div class="border-t border-zinc-800 my-1 mx-2"></div>
+                <p class="px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Catálogo</p>
+                <a routerLink="/admin/servicios" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-list text-amber-400"></i>Servicios
                 </a>
                 <a routerLink="/admin/categorias" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-tags text-amber-400"></i>Categorías
@@ -502,6 +514,8 @@ export class AppLayoutComponent implements OnInit {
   readonly profileDropdownOpen = signal<boolean>(false);
   readonly notificationsDropdownOpen = signal<boolean>(false);
   readonly configDropdownOpen = signal<boolean>(false);
+  /** Fase UX · el grupo Catálogo (Servicios + Categorías) se abre aparte. */
+  readonly catalogoDropdownOpen = signal<boolean>(false);
 
   ngOnInit() {
     this.tenantService.cargarBarberias().subscribe();
