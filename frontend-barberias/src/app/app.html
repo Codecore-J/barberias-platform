@@ -1,1 +1,8 @@
 <router-outlet></router-outlet>
+
+<!--
+  Fase 1 · capa global de UI, fuera del router-outlet a propósito:
+  los toasts y el diálogo de confirmación deben sobrevivir a la navegación.
+-->
+<app-toast-container />
+<app-confirm-dialog />

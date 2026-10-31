@@ -6,6 +6,8 @@ import { HorariosService, ExcepcionHorario } from '../../../core/services/horari
 import { TenantService } from '../../../core/services/tenant.service';
 
 import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
+import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service';
+import { ToastService } from '../../../shared/ui/toast/toast.service';
 
 @Component({
   selector: 'app-admin-personal',
@@ -153,6 +155,8 @@ export class AdminPersonalComponent implements OnInit {
   private tenantService = inject(TenantService);
   private personalService = inject(PersonalService);
   private horariosService = inject(HorariosService);
+  private confirmDialog = inject(ConfirmDialogService);
+  private toast = inject(ToastService);
 
   personal = signal<Personal[]>([]);
   cargando = signal(true);
@@ -213,12 +217,15 @@ export class AdminPersonalComponent implements OnInit {
     if (!barberia || !barbero) return;
 
     if (!this.excepcionModel.fecha) {
-      alert('La fecha es obligatoria');
+      this.toast.warning('La fecha es obligatoria para registrar la excepción.', 'Falta un dato');
       return;
     }
 
     if (this.excepcionModel.tipo === 'HORARIO_ESPECIAL' && (!this.excepcionModel.horaInicio || !this.excepcionModel.horaFin)) {
-      alert('Debes definir hora de inicio y fin para un horario especial');
+      this.toast.warning(
+        'Debes definir hora de inicio y fin para un horario especial.',
+        'Falta un dato',
+      );
       return;
     }
 
@@ -228,27 +235,45 @@ export class AdminPersonalComponent implements OnInit {
       this.excepcionModel as ExcepcionHorario
     ).subscribe({
       next: () => {
-        alert('Excepción guardada correctamente');
+        this.toast.success('La excepción quedó guardada en el horario del barbero.', 'Excepción guardada');
         this.cerrarModal();
       },
       error: (err) => {
-        console.error('Error al guardar', err);
-        alert('Ocurrió un error al guardar la excepción');
+        // El aviso al usuario lo da el interceptor global: aquí solo se deja el
+        // rastro para depurar. El modal sigue abierto para corregir los datos
+        // sin tener que volver a escribirlos.
+        console.error('Error al guardar la excepción', err);
       }
     });
   }
 
   invitarMiembro() {
-    alert('Funcionalidad de invitar miembro en desarrollo');
+    this.toast.info(
+      'La invitación de nuevos miembros estará disponible próximamente.',
+      'En desarrollo',
+    );
   }
 
   editarMiembro(miembro: Personal) {
-    alert(`Editar miembro: ${miembro.nombreCompleto} (en desarrollo)`);
+    this.toast.info(
+      `La edición del perfil de ${miembro.nombreCompleto} estará disponible próximamente.`,
+      'En desarrollo',
+    );
   }
 
-  eliminarMiembro(miembro: Personal) {
-    if (confirm(`¿Estás seguro de que deseas eliminar a ${miembro.nombreCompleto} de la barbería?`)) {
-      alert('Funcionalidad de eliminación en desarrollo');
-    }
+  async eliminarMiembro(miembro: Personal): Promise<void> {
+    const confirmado = await this.confirmDialog.confirm({
+      titulo: 'Retirar del equipo',
+      mensaje: `¿Deseas eliminar a ${miembro.nombreCompleto} de la barbería? Dejará de recibir citas y de aparecer en la agenda.`,
+      textoConfirmar: 'Sí, eliminar',
+      tono: 'peligro',
+      icono: 'pi pi-user-minus',
+    });
+    if (!confirmado) return;
+
+    this.toast.warning(
+      'La eliminación de miembros está en desarrollo: todavía no modifica la base de datos.',
+      'En desarrollo',
+    );
   }
 }

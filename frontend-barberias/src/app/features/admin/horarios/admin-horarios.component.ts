@@ -15,6 +15,7 @@ interface DiaConfig {
 type TabActiva = 'semanal' | 'excepciones' | 'bloqueos';
 
 import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
+import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service';
 
 @Component({
   selector: 'app-admin-horarios',
@@ -489,6 +490,7 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
 export class AdminHorariosComponent implements OnInit {
   protected tenantService = inject(TenantService);
   private horariosService = inject(HorariosService);
+  private confirmDialog = inject(ConfirmDialogService);
 
   // Pestaña activa
   tabActiva = signal<TabActiva>('semanal');
@@ -762,11 +764,19 @@ export class AdminHorariosComponent implements OnInit {
     });
   }
 
-  eliminarBloqueo(id: string) {
+  async eliminarBloqueo(id: string): Promise<void> {
     const barberia = this.tenantService.barberiaActiva();
     if (!barberia) return;
 
-    if (!confirm('¿Deseas desbloquear esta franja horaria inmediatamente?')) return;
+    const confirmado = await this.confirmDialog.confirm({
+      titulo: 'Desbloquear franja',
+      mensaje:
+        '¿Deseas desbloquear esta franja horaria? La agenda volverá a ofrecer esas horas a los clientes de inmediato.',
+      textoConfirmar: 'Sí, desbloquear',
+      tono: 'peligro',
+      icono: 'pi pi-unlock',
+    });
+    if (!confirmado) return;
 
     this.horariosService.eliminarBloqueo(barberia.id, id).subscribe({
       next: () => {

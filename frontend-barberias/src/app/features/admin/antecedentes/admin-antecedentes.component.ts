@@ -5,6 +5,8 @@ import { RouterLink } from '@angular/router';
 import { AntecedentesService, Antecedente } from '../../../core/services/antecedentes.service';
 import { TenantService } from '../../../core/services/tenant.service';
 import { FichaClienteDrawerComponent } from '../../clientes/components/ficha-cliente-drawer/ficha-cliente-drawer.component';
+import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service';
+import { ToastService } from '../../../shared/ui/toast/toast.service';
 
 @Component({
   selector: 'app-admin-antecedentes',
@@ -158,6 +160,8 @@ import { FichaClienteDrawerComponent } from '../../clientes/components/ficha-cli
 export class AdminAntecedentesComponent implements OnInit {
   private antecedentesService = inject(AntecedentesService);
   protected tenantService = inject(TenantService);
+  private confirmDialog = inject(ConfirmDialogService);
+  private toast = inject(ToastService);
 
   pendientes = signal<Antecedente[]>([]);
   cargando = signal(true);
@@ -188,27 +192,51 @@ export class AdminAntecedentesComponent implements OnInit {
     this.clienteSeleccionado.set({ id, nombre });
   }
 
-  aprobar(ant: Antecedente) {
+  async aprobar(ant: Antecedente): Promise<void> {
     const bId = this.tenantService.barberiaActiva()?.id;
-    if (!bId || !confirm('¿Estás seguro de aprobar este antecedente? Será visible en la ficha técnica del cliente.')) return;
+    if (!bId) return;
+
+    const confirmado = await this.confirmDialog.confirm({
+      titulo: 'Aprobar antecedente',
+      mensaje: `El antecedente reportado para ${ant.cliente?.nombreCompleto || 'este cliente'} quedará visible en su ficha técnica y en sus próximas citas.`,
+      textoConfirmar: 'Sí, aprobar',
+      icono: 'pi pi-check-circle',
+    });
+    if (!confirmado) return;
 
     this.procesando.set(ant.id);
     this.antecedentesService.evaluar(bId, ant.id, 'APROBADO').subscribe({
       next: () => {
         this.cargarPendientes();
         this.procesando.set(null);
+        this.toast.success(
+          'Antecedente aprobado y publicado en la ficha del cliente.',
+          'Aprobado',
+        );
       },
       error: () => this.procesando.set(null)
     });
   }
 
-  rechazar(ant: Antecedente) {
-    const motivo = prompt('Por favor, indica el motivo del rechazo:');
+  async rechazar(ant: Antecedente): Promise<void> {
+    // El `prompt()` nativo pedía el motivo en una caja del sistema operativo y
+    // validaba después con un `alert`. Aquí el campo es parte del modal: el
+    // botón no confirma hasta que hay texto y el error se pinta bajo el campo.
+    const motivo = await this.confirmDialog.solicitarTexto({
+      titulo: 'Rechazar antecedente',
+      mensaje: `Indica por qué se rechaza el reporte de ${ant.cliente?.nombreCompleto || 'este cliente'}. El motivo queda registrado para quien lo reportó.`,
+      textoConfirmar: 'Rechazar',
+      tono: 'peligro',
+      icono: 'pi pi-times-circle',
+      entrada: {
+        etiqueta: 'Motivo del rechazo',
+        marcador: 'Ej.: no es una condición relevante para el servicio prestado',
+        multilinea: true,
+        obligatorio: true,
+        mensajeObligatorio: 'El motivo es obligatorio para rechazar un antecedente.',
+      },
+    });
     if (motivo === null) return;
-    if (!motivo.trim()) {
-      alert('El motivo es obligatorio para rechazar.');
-      return;
-    }
 
     const bId = this.tenantService.barberiaActiva()?.id;
     if (!bId) return;
@@ -218,6 +246,10 @@ export class AdminAntecedentesComponent implements OnInit {
       next: () => {
         this.cargarPendientes();
         this.procesando.set(null);
+        this.toast.warning(
+          'Antecedente rechazado. El reporte no se mostrará en la ficha del cliente.',
+          'Rechazado',
+        );
       },
       error: () => this.procesando.set(null)
     });

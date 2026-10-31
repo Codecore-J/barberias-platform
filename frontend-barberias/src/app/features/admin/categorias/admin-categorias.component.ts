@@ -8,6 +8,7 @@ import {
 import { TenantService } from '../../../core/services/tenant.service.js';
 import { AuthService } from '../../../auth/auth.service.js';
 import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive.js';
+import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service.js';
 
 /**
  * V3 · Categorías de servicio de la sede (panel del ADMIN_BARBERIA).
@@ -305,6 +306,7 @@ export class AdminCategoriasComponent implements OnInit {
   protected readonly tenantService = inject(TenantService);
   private readonly authService = inject(AuthService);
   private readonly fb = inject(FormBuilder);
+  private readonly confirmDialog = inject(ConfirmDialogService);
 
   readonly modalAbierto = signal(false);
   readonly editandoId = signal<string | null>(null);
@@ -383,14 +385,19 @@ export class AdminCategoriasComponent implements OnInit {
     });
   }
 
-  alternarEstado(categoria: CategoriaServicio): void {
+  async alternarEstado(categoria: CategoriaServicio): Promise<void> {
     if (!this.puedeGestionar()) return;
 
-    const pregunta = categoria.activa
-      ? `¿Desactivar «${categoria.nombre}»? Dejará de mostrarse en el catálogo del cliente, pero no se borra.`
-      : `¿Reactivar «${categoria.nombre}»? Volverá a mostrarse en el catálogo junto con sus servicios.`;
-
-    if (!confirm(pregunta)) return;
+    const confirmado = await this.confirmDialog.confirm({
+      titulo: categoria.activa ? 'Desactivar categoría' : 'Reactivar categoría',
+      mensaje: categoria.activa
+        ? `¿Desactivar «${categoria.nombre}»? Dejará de mostrarse en el catálogo del cliente, pero no se borra ni se pierden los servicios que cuelgan de ella.`
+        : `¿Reactivar «${categoria.nombre}»? Volverá a mostrarse en el catálogo junto con sus servicios.`,
+      textoConfirmar: categoria.activa ? 'Sí, desactivar' : 'Sí, reactivar',
+      tono: categoria.activa ? 'peligro' : 'primario',
+      icono: categoria.activa ? 'pi pi-ban' : 'pi pi-replay',
+    });
+    if (!confirmado) return;
 
     this.procesandoId.set(categoria.id);
     this.catalogoService.actualizarCategoria(categoria.id, { activa: !categoria.activa }).subscribe({

@@ -8,6 +8,7 @@ import { AuthService } from '../../auth/auth.service';
 import { FichaClienteDrawerComponent } from '../clientes/components/ficha-cliente-drawer/ficha-cliente-drawer.component';
 import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.directive';
 import { CobroModalComponent } from './components/cobro-modal/cobro-modal.component';
+import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
 
 @Component({
   selector: 'app-admin-agenda',
@@ -451,6 +452,7 @@ export class AdminAgendaComponent implements OnInit {
   protected readonly personalService = inject(PersonalService);
   protected readonly tenantService = inject(TenantService);
   protected readonly authService = inject(AuthService);
+  private readonly confirmDialog = inject(ConfirmDialogService);
 
   fechaFiltro: string = new Date().toISOString().split('T')[0];
   
@@ -604,9 +606,15 @@ export class AdminAgendaComponent implements OnInit {
     };
   }
 
-  confirmarTurno(turno: any) {
+  async confirmarTurno(turno: any): Promise<void> {
     const hora = new Date(turno.fechaHoraInicio).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-    if (!confirm(`¿Confirmar el turno de ${turno.cliente?.nombre ?? 'este cliente'} a las ${hora}?`)) return;
+    const confirmado = await this.confirmDialog.confirm({
+      titulo: 'Confirmar turno',
+      mensaje: `¿Confirmar el turno de ${turno.cliente?.nombre ?? 'este cliente'} a las ${hora}?`,
+      textoConfirmar: 'Sí, confirmar',
+      icono: 'pi pi-check-circle',
+    });
+    if (!confirmado) return;
 
     this.procesandoId.set(turno.id);
     this.errorAccion.set(null);
@@ -626,8 +634,15 @@ export class AdminAgendaComponent implements OnInit {
     });
   }
 
-  cancelarTurno(turno: any) {
-    if (!confirm(`¿Cancelar el turno de ${turno.cliente?.nombre ?? 'este cliente'}? La cita dejará de ocupar la agenda.`)) return;
+  async cancelarTurno(turno: any): Promise<void> {
+    const confirmado = await this.confirmDialog.confirm({
+      titulo: 'Cancelar turno',
+      mensaje: `¿Cancelar el turno de ${turno.cliente?.nombre ?? 'este cliente'}? La cita dejará de ocupar la agenda y la franja quedará libre para otro cliente.`,
+      textoConfirmar: 'Sí, cancelar',
+      tono: 'peligro',
+      icono: 'pi pi-calendar-minus',
+    });
+    if (!confirmado) return;
 
     this.procesandoId.set(turno.id);
     this.errorAccion.set(null);
@@ -673,12 +688,20 @@ export class AdminAgendaComponent implements OnInit {
    * E2-02: `PATCH /reservas/:id/estado` ya no existe. El no presentado tiene su
    * ruta dedicada y solo se admite desde `CONFIRMADA` (§5.2).
    */
-  marcarInasistencia(id: string) {
-    if (confirm('¿Confirmas que el cliente no se presentó a este turno?')) {
-      this.reservasService.marcarInasistencia(id).subscribe(() => {
-        this.cargarDatos();
-      });
-    }
+  async marcarInasistencia(id: string): Promise<void> {
+    const confirmado = await this.confirmDialog.confirm({
+      titulo: 'Marcar inasistencia',
+      mensaje:
+        '¿Confirmas que el cliente no se presentó a este turno? La cita quedará como no presentada y no podrá volver a confirmarse.',
+      textoConfirmar: 'Sí, no se presentó',
+      tono: 'peligro',
+      icono: 'pi pi-user-minus',
+    });
+    if (!confirmado) return;
+
+    this.reservasService.marcarInasistencia(id).subscribe(() => {
+      this.cargarDatos();
+    });
   }
 
   /**

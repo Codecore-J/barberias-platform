@@ -34,11 +34,11 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
             </button>
           }
 
-          <button (click)="cargarTickets()"
-                  [disabled]="pagosService.isLoading()"
+          <button (click)="refrescarTodo()"
+                  [disabled]="refrescando()"
                   class="px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-zinc-950 gold-gradient-bg shadow-[0_4px_16px_rgba(212,175,55,0.25)] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2">
-            <i class="pi pi-refresh" [class.pi-spin]="pagosService.isLoading()"></i>
-            {{ pagosService.isLoading() ? 'Actualizando...' : 'Refrescar' }}
+            <i class="pi pi-refresh" [class.pi-spin]="refrescando()"></i>
+            {{ refrescando() ? 'Actualizando...' : 'Refrescar' }}
           </button>
         </div>
       </div>
@@ -549,6 +549,11 @@ export class AdminTicketsComponent implements OnInit {
   protected tenantService = inject(TenantService);
   protected authService = inject(AuthService);
 
+  /** Una petición en vuelo de cualquiera de las dos fuentes deja el botón ocupado. */
+  refrescando = computed(
+    () => this.pagosService.isLoading() || this.cajaService.cargando(),
+  );
+
   filtroMetodo = signal<string>('TODOS');
   busquedaTexto = '';
   modalPurgaAbierto = signal(false);
@@ -644,6 +649,18 @@ export class AdminTicketsComponent implements OnInit {
     this.cajaService.cargarHoy().subscribe();
   }
 
+  /**
+   * Fase 1 · el botón «Refrescar» solo recargaba el historial, así que los
+   * totales de la caja del día —que viven en otra fuente y se pintan arriba—
+   * se quedaban con el valor anterior hasta reabrir la pantalla. Un cobro hecho
+   * en la agenda y la caja mostraban cifras distintas. Ahora refresca las dos
+   * fuentes que esta vista pinta a la vez, y el botón espera a ambas.
+   */
+  refrescarTodo() {
+    this.cargarTickets();
+    this.cargarCaja();
+  }
+
   abrirModalCierre() {
     this.cajaService.error.set(null);
     this.modalCierreAbierto.set(true);
@@ -724,8 +741,9 @@ export class AdminTicketsComponent implements OnInit {
         this.mensajeExito.set('Cobro anulado. El movimiento quedó registrado en la auditoría.');
         setTimeout(() => this.mensajeExito.set(''), 5000);
         // La fila vuelve a leerse de la fuente: el estado ANULADO no se inventa en
-        // el cliente, se confirma contra el backend antes de pintarlo.
-        this.cargarTickets();
+        // el cliente, se confirma contra el backend antes de pintarlo. La caja
+        // también se recarga: un cobro anulado deja de sumar en el arqueo.
+        this.refrescarTodo();
       },
       error: (err) => {
         this.anulando.set(false);
