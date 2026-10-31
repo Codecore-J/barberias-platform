@@ -1,5 +1,13 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, DestroyRef, computed, inject, resource, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { firstValueFrom } from 'rxjs';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
+import {
+  ESTADOS_TERMINALES,
+  type EstadoReserva,
+  type FiltroEstado,
+  type Turno,
+} from '../../core/models/turno.model';
 import { FormsModule } from '@angular/forms';
 import { ReservasService } from '../../core/services/reservas.service';
 import { PersonalService, Personal } from '../../core/services/personal.service';
@@ -60,7 +68,7 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
               <div class="h-5 w-[1px] bg-zinc-700 mx-1"></div>
               
               <div class="flex items-center gap-2 px-2">
-                <input type="date" [(ngModel)]="fechaFiltro" (change)="cargarDatos()"
+                <input type="date" [ngModel]="fechaFiltro()" (ngModelChange)="irAFecha($event)"
                        class="bg-transparent text-white font-medium text-xs outline-none border-none cursor-pointer">
               </div>
             </div>
@@ -142,6 +150,17 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
         </div>
       }
 
+      <!-- Fallo de CARGA (el de las acciones lo pinta errorAccion) -->
+      @if (errorCarga()) {
+        <div class="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm flex items-start gap-2 relative z-10" role="alert">
+          <i class="pi pi-exclamation-triangle mt-0.5"></i>
+          <span class="flex-1">{{ errorCarga() }}</span>
+          <button (click)="recargar()" class="text-rose-300 hover:text-white transition-colors" title="Reintentar">
+            <i class="pi pi-refresh"></i>
+          </button>
+        </div>
+      }
+
       <!-- Estado de Carga -->
       @if (cargando()) {
         <div class="flex justify-center items-center py-20 relative z-10">
@@ -172,8 +191,8 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
                 @for (turno of turnosPorBarbero(barbero.id); track turno.id) {
                   <div class="bg-zinc-900/80 p-4 rounded-2xl border-l-4 transition-all hover:bg-zinc-800/80 cursor-pointer shadow-md flex flex-col gap-2 relative overflow-hidden"
                        [ngClass]="{
-                         'border-amber-500': turno.estado === 'PENDIENTE' && (!turno.cliente?.contadorNoPresentado || turno.cliente.contadorNoPresentado < 3),
-                         'border-red-500 bg-red-950/20 shadow-[0_0_15px_rgba(239,68,68,0.2)]': turno.estado === 'PENDIENTE' && turno.cliente?.contadorNoPresentado >= 3,
+                         'border-amber-500': turno.estado === 'PENDIENTE' && turno.cliente.contadorNoPresentado < 3,
+                         'border-red-500 bg-red-950/20 shadow-[0_0_15px_rgba(239,68,68,0.2)]': turno.estado === 'PENDIENTE' && turno.cliente.contadorNoPresentado >= 3,
                          'border-emerald-500 opacity-60': turno.estado === 'COMPLETADA',
                          'border-red-500 opacity-50': turno.estado === 'CANCELADA' || turno.estado === 'NO_ASISTIO'
                        }">
@@ -195,11 +214,11 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
                       <div class="text-sm text-zinc-300 font-medium flex items-center justify-between relative z-10">
                         <div class="flex items-center gap-2">
                           {{ turno.cliente.nombre }}
-                          @if (turno.cliente?.contadorNoPresentado >= 3) {
+                          @if (turno.cliente.contadorNoPresentado >= 3) {
                             <i class="pi pi-exclamation-triangle text-red-500 animate-pulse" 
                                [title]="'Advertencia: Cliente con ' + turno.cliente.contadorNoPresentado + ' inasistencias previas'"></i>
                           }
-                          @if (turno.cliente?.estaRestringido) {
+                          @if (turno.cliente.estaRestringido) {
                             <span class="text-[9px] bg-red-500 text-white px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Bloqueado</span>
                           }
                         </div>
@@ -447,38 +466,105 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
     </div>
   `
 })
-export class AdminAgendaComponent implements OnInit {
+export class AdminAgendaComponent {
   protected readonly reservasService = inject(ReservasService);
   protected readonly personalService = inject(PersonalService);
   protected readonly tenantService = inject(TenantService);
   protected readonly authService = inject(AuthService);
   private readonly confirmDialog = inject(ConfirmDialogService);
 
-  fechaFiltro: string = new Date().toISOString().split('T')[0];
-  
-  turnos = signal<any[]>([]);
-  barberos = signal<Personal[]>([]);
-  cargando = signal(true);
-  mostrarModalWalkIn = signal(false);
-  filtroEstado = signal<string>('TODOS');
+  private readonly destroyRef = inject(DestroyRef);
 
-  turnoACobrar = signal<any | null>(null);
+  /**
+   * Fase 4 · la fecha es un SIGNAL: es la única entrada de la agenda y el
+   * recurso la observa. Antes cada cambio de día llamaba a un `cargarDatos()`
+   * que anidaba dos `.subscribe()`; ahora basta con `set()` y la lectura (y la
+   * cancelación de la anterior si el usuario cambia de día rápido) las gestiona
+   * el recurso.
+   */
+  readonly fechaFiltro = signal(new Date().toISOString().split('T')[0]);
+
+  /**
+   * Lectura de la agenda. `resource` reemplaza al `.subscribe()` de montaje: el
+   * valor llega como señal, `isLoading()` y `error()` los da Angular y el
+   * `abortSignal` del loader corta la petición anterior si la fecha cambia antes
+   * de que responda. Con el subscribe manual las respuestas podían llegar en
+   * desorden y dejar pintado un día que ya no era el elegido.
+   */
+  private readonly agendaResource = resource({
+    params: () => ({
+      fecha: this.fechaFiltro(),
+      barberiaId: this.tenantService.barberiaActivaId(),
+    }),
+    loader: ({ params }) =>
+      params.barberiaId && params.fecha
+        ? firstValueFrom(this.reservasService.obtenerAgendaDiaria(params.fecha))
+        : Promise.resolve([] as Turno[]),
+  });
+
+  /** Equipo de la sede: barberos y admins asignables. Independiente de la fecha. */
+  private readonly equipoResource = resource({
+    params: () => ({ barberiaId: this.tenantService.barberiaActivaId() }),
+    loader: ({ params }) =>
+      params.barberiaId
+        ? firstValueFrom(this.personalService.obtenerPersonal(params.barberiaId))
+        : Promise.resolve([] as Personal[]),
+  });
+
+  readonly turnos = computed<Turno[]>(() => this.agendaResource.value() ?? []);
+
+  /**
+   * El backend acepta BARBERO o ADMIN_BARBERIA como destino de una reasignación,
+   * pero las cuentas no ACTIVAS se dejan fuera: `asignarBarbero` responde 422
+   * `BARBERO_INACTIVO` y ofrecerlas sería pintar un error garantizado.
+   */
+  readonly staffAsignable = computed<Personal[]>(() =>
+    (this.equipoResource.value() ?? []).filter(
+      (p) =>
+        p.estado === 'ACTIVO' &&
+        (p.roles.includes('BARBERO') || p.roles.includes('ADMIN_BARBERIA')),
+    ),
+  );
+
+  /** Columnas de la agenda: los barberos de la sede (o todo el equipo si no hay). */
+  readonly barberos = computed<Personal[]>(() => {
+    const equipo = this.equipoResource.value() ?? [];
+    const soloBarberos = equipo.filter((p) => p.roles.includes('BARBERO'));
+    return soloBarberos.length > 0 ? soloBarberos : equipo;
+  });
+
+  readonly cargando = computed(
+    () => this.agendaResource.isLoading() || this.equipoResource.isLoading(),
+  );
+
+  /** Fallo de CARGA (las acciones tienen su propio `errorAccion`). */
+  readonly errorCarga = computed<string | null>(() => {
+    const error = this.agendaResource.error() ?? this.equipoResource.error();
+    if (!error) return null;
+    const cuerpo = error as { error?: { mensaje?: string; message?: string } };
+    return (
+      cuerpo?.error?.mensaje ?? cuerpo?.error?.message ?? 'No se pudo cargar la agenda del día.'
+    );
+  });
+
+  mostrarModalWalkIn = signal(false);
+  filtroEstado = signal<FiltroEstado>('TODOS');
+
+  turnoACobrar = signal<Turno | null>(null);
 
   /** V3 · turno cuyo barbero se está asignando, destino elegido y su estado. */
-  readonly turnoAAsignar = signal<any | null>(null);
+  readonly turnoAAsignar = signal<Turno | null>(null);
   readonly barberoDestino = signal<string | null>(null);
   readonly asignando = signal(false);
   readonly errorAsignacion = signal<string | null>(null);
-  /** Destinos válidos del backend: BARBERO o ADMIN_BARBERIA de la sede. */
-  readonly staffAsignable = signal<Personal[]>([]);
-  clienteSeleccionado = signal<any | null>(null);
+  clienteSeleccionado = signal<{ id: string; nombre: string } | null>(null);
 
   /** Id del turno con una acción en vuelo, para bloquear solo esa tarjeta. */
   procesandoId = signal<string | null>(null);
   errorAccion = signal<string | null>(null);
   mensajeAccion = signal<string | null>(null);
 
-  readonly FILTROS_ESTADO = [
+  readonly FILTROS_ESTADO: { valor: FiltroEstado; etiqueta: string }[] = [
     { valor: 'TODOS', etiqueta: 'Todos los turnos' },
     { valor: 'PENDIENTE', etiqueta: 'Pendientes' },
     { valor: 'CONFIRMADA', etiqueta: 'Confirmadas' },
@@ -517,82 +603,48 @@ export class AdminAgendaComponent implements OnInit {
       .reduce((acc, t) => acc + (Number(t.precioTotalHist) || 0), 0);
   });
 
-  ngOnInit() {
-    this.cargarDatos();
+  /** Elegir una fecha en el calendario: el recurso recarga por su cuenta. */
+  irAFecha(fecha: string): void {
+    if (!fecha) return;
+    this.fechaFiltro.set(fecha);
   }
 
   cambiarDia(delta: number) {
-    const d = new Date(this.fechaFiltro + 'T12:00:00');
+    const d = new Date(this.fechaFiltro() + 'T12:00:00');
     d.setDate(d.getDate() + delta);
-    this.fechaFiltro = d.toISOString().split('T')[0];
-    this.cargarDatos();
+    this.fechaFiltro.set(d.toISOString().split('T')[0]);
   }
 
   irAHoy() {
-    this.fechaFiltro = new Date().toISOString().split('T')[0];
-    this.cargarDatos();
+    this.fechaFiltro.set(new Date().toISOString().split('T')[0]);
   }
 
-  cargarDatos() {
-    const barberia = this.tenantService.barberiaActiva();
-    if (!barberia || !this.fechaFiltro) return;
-
-    this.cargando.set(true);
+  /**
+   * Fase 4 · refresco EXPLÍCITO tras una acción del usuario (confirmar, cobrar,
+   * asignar…). No es una lectura de montaje: el estado ya cambió en el backend y
+   * hay que volver a pedirlo. Los dos recursos se recargan a la vez.
+   */
+  private recargar(): void {
     this.errorAccion.set(null);
-
-    // Cargar personal y agenda simultáneamente
-    this.personalService.obtenerPersonal(barberia.id).subscribe({
-      next: (personal) => {
-        // Filtrar solo los que tienen rol BARBERO (o mostrarlos todos)
-        const soloBarberos = personal.filter(p => p.roles.includes('BARBERO'));
-        this.barberos.set(soloBarberos.length > 0 ? soloBarberos : personal);
-        // V3 · el backend acepta BARBERO o ADMIN_BARBERIA como destino de una
-        // reasignación, así que el modal ofrece ese mismo conjunto. Las cuentas
-        // no ACTIVAS se dejan fuera: `asignarBarbero` responde 422
-        // `BARBERO_INACTIVO` y ofrecerlas sería pintar un error garantizado.
-        this.staffAsignable.set(
-          personal.filter(
-            (p) =>
-              p.estado === 'ACTIVO' &&
-              (p.roles.includes('BARBERO') || p.roles.includes('ADMIN_BARBERIA')),
-          ),
-        );
-        
-        this.reservasService.obtenerAgendaDiaria(this.fechaFiltro).subscribe({
-          next: (turnos) => {
-            this.turnos.set(turnos ?? []);
-            this.cargando.set(false);
-          },
-          error: (err) => {
-            this.turnos.set([]);
-            this.cargando.set(false);
-            this.errorAccion.set(err?.error?.mensaje || err?.error?.message || 'No se pudo cargar la agenda del día.');
-          }
-        });
-      },
-      error: (err) => {
-        this.cargando.set(false);
-        this.errorAccion.set(err?.error?.mensaje || err?.error?.message || 'No se pudo cargar el equipo de la sede.');
-      }
-    });
+    this.agendaResource.reload();
+    this.equipoResource.reload();
   }
 
   /** `PROPUESTA_PENDIENTE` también espera una decisión de la sede. */
-  esPendiente(estado: string | undefined): boolean {
+  esPendiente(estado: EstadoReserva | undefined): boolean {
     return estado === 'PENDIENTE' || estado === 'PROPUESTA_PENDIENTE';
   }
 
   /** Estados terminales: ya no se pueden cancelar ni confirmar. */
-  puedeCancelar(estado: string | undefined): boolean {
-    const terminales = ['CANCELADA', 'COMPLETADA', 'RECHAZADA', 'EXPIRADA', 'NO_PRESENTADO', 'NO_ASISTIO'];
-    return !!estado && !terminales.includes(estado);
+  puedeCancelar(estado: EstadoReserva | undefined): boolean {
+    return !!estado && !ESTADOS_TERMINALES.includes(estado);
   }
 
-  etiquetaEstado(estado: string | undefined): string {
+  etiquetaEstado(estado: EstadoReserva | undefined): string {
     return (estado || 'SIN ESTADO').replace(/_/g, ' ');
   }
 
-  claseEstadoTurno(estado: string | undefined): Record<string, boolean> {
+  claseEstadoTurno(estado: EstadoReserva | undefined): Record<string, boolean> {
     return {
       'text-amber-400': this.esPendiente(estado),
       'text-sky-400': estado === 'CONFIRMADA',
@@ -606,7 +658,7 @@ export class AdminAgendaComponent implements OnInit {
     };
   }
 
-  async confirmarTurno(turno: any): Promise<void> {
+  async confirmarTurno(turno: Turno): Promise<void> {
     const hora = new Date(turno.fechaHoraInicio).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     const confirmado = await this.confirmDialog.confirm({
       titulo: 'Confirmar turno',
@@ -618,12 +670,15 @@ export class AdminAgendaComponent implements OnInit {
 
     this.procesandoId.set(turno.id);
     this.errorAccion.set(null);
-    this.reservasService.aceptarReserva(turno.id).subscribe({
+    this.reservasService
+      .aceptarReserva(turno.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
       next: () => {
         this.procesandoId.set(null);
         this.mensajeAccion.set('Turno confirmado correctamente.');
         setTimeout(() => this.mensajeAccion.set(null), 4000);
-        this.cargarDatos();
+        this.recargar();
       },
       error: (err) => {
         this.procesandoId.set(null);
@@ -634,7 +689,7 @@ export class AdminAgendaComponent implements OnInit {
     });
   }
 
-  async cancelarTurno(turno: any): Promise<void> {
+  async cancelarTurno(turno: Turno): Promise<void> {
     const confirmado = await this.confirmDialog.confirm({
       titulo: 'Cancelar turno',
       mensaje: `¿Cancelar el turno de ${turno.cliente?.nombre ?? 'este cliente'}? La cita dejará de ocupar la agenda y la franja quedará libre para otro cliente.`,
@@ -646,12 +701,15 @@ export class AdminAgendaComponent implements OnInit {
 
     this.procesandoId.set(turno.id);
     this.errorAccion.set(null);
-    this.reservasService.cancelarReserva(turno.id).subscribe({
+    this.reservasService
+      .cancelarReserva(turno.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
       next: () => {
         this.procesandoId.set(null);
         this.mensajeAccion.set('Turno cancelado. La franja quedó liberada.');
         setTimeout(() => this.mensajeAccion.set(null), 4000);
-        this.cargarDatos();
+        this.recargar();
       },
       error: (err) => {
         this.procesandoId.set(null);
@@ -699,20 +757,34 @@ export class AdminAgendaComponent implements OnInit {
     });
     if (!confirmado) return;
 
-    this.reservasService.marcarInasistencia(id).subscribe(() => {
-      this.cargarDatos();
-    });
+    // Fase 4 · `takeUntilDestroyed` corta la petición si el usuario cambia de
+    // pantalla antes de que responda; el error ya no se traga en silencio.
+    this.reservasService
+      .marcarInasistencia(id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.mensajeAccion.set('Turno marcado como no presentado.');
+          setTimeout(() => this.mensajeAccion.set(null), 4000);
+          this.recargar();
+        },
+        error: (err) =>
+          this.errorAccion.set(
+            err?.error?.mensaje || err?.error?.message || 'No se pudo marcar la inasistencia.',
+          ),
+      });
   }
 
   /**
    * V3 · solo se reasigna una reserva viva. Los estados terminales los rechaza
    * el backend con 409 `ESTADO_INVALIDO`; aquí ni siquiera se ofrece el botón.
    */
-  puedeAsignar(turno: any): boolean {
-    return ['PENDIENTE', 'PROPUESTA_PENDIENTE', 'CONFIRMADA'].includes(turno?.estado);
+  puedeAsignar(turno: Turno | null): boolean {
+    if (!turno) return false;
+    return ['PENDIENTE', 'PROPUESTA_PENDIENTE', 'CONFIRMADA'].includes(turno.estado);
   }
 
-  abrirAsignacion(turno: any): void {
+  abrirAsignacion(turno: Turno): void {
     if (!this.puedeGestionarSede()) return;
     this.errorAsignacion.set(null);
     this.barberoDestino.set(null);
@@ -738,13 +810,16 @@ export class AdminAgendaComponent implements OnInit {
     this.asignando.set(true);
     this.errorAsignacion.set(null);
 
-    this.reservasService.asignarBarbero(turno.id, destino).subscribe({
+    this.reservasService
+      .asignarBarbero(turno.id, destino)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
       next: (resultado) => {
         this.asignando.set(false);
         this.cerrarAsignacion();
         this.mensajeAccion.set(`Turno asignado a ${resultado?.barbero?.nombre ?? 'el barbero'}.`);
         setTimeout(() => this.mensajeAccion.set(null), 4000);
-        this.cargarDatos();
+        this.recargar();
       },
       error: (err) => {
         this.asignando.set(false);
@@ -757,7 +832,7 @@ export class AdminAgendaComponent implements OnInit {
     });
   }
 
-  iniciarCobro(turno: any) {
+  iniciarCobro(turno: Turno) {
     this.turnoACobrar.set(turno);
   }
 
@@ -765,15 +840,16 @@ export class AdminAgendaComponent implements OnInit {
     this.turnoACobrar.set(null);
     this.mensajeAccion.set('Cobro registrado: la cita quedó COMPLETADA.');
     setTimeout(() => this.mensajeAccion.set(null), 4000);
-    this.cargarDatos();
+    this.recargar();
   }
 
-  abrirFicha(cliente: any) {
+  abrirFicha(cliente: { id: string; nombre: string } | null | undefined) {
+    if (!cliente) return;
     this.clienteSeleccionado.set(cliente);
   }
 
   onWalkInCreado() {
     this.mostrarModalWalkIn.set(false);
-    this.cargarDatos();
+    this.recargar();
   }
 }

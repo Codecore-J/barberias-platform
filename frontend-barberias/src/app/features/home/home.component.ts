@@ -1,4 +1,5 @@
-import { Component, HostListener, OnInit, signal, inject } from '@angular/core';
+import { Component, HostListener, signal, inject, computed, resource } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -548,7 +549,7 @@ import { SedeCardComponent } from '../barberias/components/sede-card/sede-card.c
     </div>
   `,
 })
-export class HomeComponent implements OnInit {
+export class HomeComponent {
   protected readonly tenantService = inject(TenantService);
   protected readonly authService = inject(AuthService);
   protected readonly reservasService = inject(ReservasService);
@@ -559,51 +560,77 @@ export class HomeComponent implements OnInit {
   mouseX = signal<number>(0);
   mouseY = signal<number>(0);
 
-  // Métricas Dashboard Admin
-  ingresosHoy = signal<number>(0);
-  completadosHoy = signal<number>(0);
-  canceladosHoy = signal<number>(0);
-  barberoProductivo = signal<string>('N/A');
+  /**
+   * Fase 4 · las métricas del panel de administración se LEEN con un `resource`
+   * en vez de con dos `.subscribe()` que escribían cuatro señales a mano.
+   *
+   * Cada métrica pasa a ser un `computed`: la agenda y el historial de cobros se
+   * piden en paralelo, y si cualquiera falla el panel deja de mostrar cifras
+   * viejas como si fueran del día. Solo consulta cuando el rol es de sede (un
+   * cliente no tiene por qué pedir la agenda completa).
+   */
+  private readonly metricasResource = resource({
+    params: () => ({ rol: this.userRole(), hoy: new Date().toISOString().split('T')[0] }),
+    loader: async ({ params }) => {
+      if (params.rol !== 'ADMIN_BARBERIA' && params.rol !== 'ADMINISTRADOR') return null;
 
-  ngOnInit() {
-    if (this.userRole() === 'ADMIN_BARBERIA' || this.userRole() === 'ADMINISTRADOR') {
-      this.cargarMetricas();
+      const [agenda, pagos] = await Promise.all([
+        firstValueFrom(this.reservasService.obtenerAgendaDiaria(params.hoy)),
+        firstValueFrom(this.pagosService.obtenerHistorial()),
+      ]);
+      return { hoy: params.hoy, agenda, pagos };
+    },
+  });
+
+  private readonly metricas = computed(() => this.metricasResource.value() ?? null);
+
+  readonly completadosHoy = computed(
+    () => (this.metricas()?.agenda ?? []).filter((t) => t.estado === 'COMPLETADA').length,
+  );
+
+  readonly canceladosHoy = computed(
+    () =>
+      (this.metricas()?.agenda ?? []).filter(
+        (t) => t.estado === 'CANCELADA' || t.estado === 'NO_ASISTIO',
+      ).length,
+  );
+
+  /**
+   * H68 · ingresos del DÍA desde la tabla de pagos: un pago ANULADO no es ingreso
+   * (§7.4) y la fecha del cobro es `registradoAt`, no la de la cita.
+   */
+  readonly ingresosHoy = computed(() => {
+    const datos = this.metricas();
+    if (!datos) return 0;
+
+    return datos.pagos
+      .filter((p) => p.estadoPago !== 'ANULADO' && (p.registradoAt ?? '').startsWith(datos.hoy))
+      .reduce((acc, p) => acc + Number(p.monto || 0), 0);
+  });
+
+  /**
+   * Barbero con más citas COMPLETADAS. El campo es `barbero.nombre`: el backend
+   * (`obtenerAgendaDiaria`) devuelve `{ id, nombre }`, no `nombreCompleto`, así
+   * que antes esta tarjeta caía siempre en «Sin Asignar».
+   */
+  readonly barberoProductivo = computed(() => {
+    const conteo = new Map<string, number>();
+    for (const turno of this.metricas()?.agenda ?? []) {
+      if (turno.estado !== 'COMPLETADA') continue;
+      const nombre = turno.barbero?.nombre ?? 'Sin Asignar';
+      conteo.set(nombre, (conteo.get(nombre) ?? 0) + 1);
     }
-  }
 
-  cargarMetricas() {
-    const hoy = new Date().toISOString().split('T')[0];
-    
-    // 1. Obtener Agenda del Día
-    this.reservasService.obtenerAgendaDiaria(hoy).subscribe((agenda) => {
-       const completados = agenda.filter((t: any) => t.estado === 'COMPLETADA');
-       const cancelados = agenda.filter((t: any) => t.estado === 'CANCELADA' || t.estado === 'NO_ASISTIO');
-       this.completadosHoy.set(completados.length);
-       this.canceladosHoy.set(cancelados.length);
-
-       // Barbero más productivo
-       const barberosCounts: Record<string, number> = {};
-       completados.forEach((t: any) => {
-         const bId = t.barbero?.nombreCompleto || 'Sin Asignar';
-         barberosCounts[bId] = (barberosCounts[bId] || 0) + 1;
-       });
-       if (Object.keys(barberosCounts).length > 0) {
-         const max = Object.entries(barberosCounts).reduce((a, b) => a[1] > b[1] ? a : b);
-         this.barberoProductivo.set(max[0]);
-       }
-    });
-
-    // 2. Obtener los cobros del DÍA (ingresos). H68: el historial sale de la tabla
-    //    de pagos, un pago ANULADO no es ingreso (§7.4) y la fecha del cobro es
-    //    `registradoAt`, no la del rastro de auditoría.
-    this.pagosService.obtenerHistorial().subscribe((pagos) => {
-       const cobrosHoy = pagos.filter(
-         (p) => p.estadoPago !== 'ANULADO' && (p.registradoAt ?? '').startsWith(hoy),
-       );
-       const suma = cobrosHoy.reduce((acc, p) => acc + Number(p.monto || 0), 0);
-       this.ingresosHoy.set(suma);
-    });
-  }
+    let mejor = 'N/A';
+    let maximo = 0;
+    for (const [nombre, citas] of conteo) {
+      if (citas > maximo) {
+        maximo = citas;
+        mejor = nombre;
+      }
+    }
+    return mejor;
+  });
 
   // ── E3-12/2 · la puerta de entrada del cliente (regla 1.10) ──────────────
 

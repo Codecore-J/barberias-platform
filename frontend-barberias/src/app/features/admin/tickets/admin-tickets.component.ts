@@ -1,4 +1,6 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, DestroyRef, inject, signal, computed, resource } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { firstValueFrom } from 'rxjs';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { PagosService, PagoHistorial } from '../../../core/services/pagos.service';
@@ -517,16 +519,21 @@ import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.
     }
   `]
 })
-export class AdminTicketsComponent implements OnInit {
+export class AdminTicketsComponent {
   protected pagosService = inject(PagosService);
   // V3 fase 6 · arqueo del día y cierre.
   protected cajaService = inject(CajaService);
   protected tenantService = inject(TenantService);
   protected authService = inject(AuthService);
 
+  private readonly destroyRef = inject(DestroyRef);
+
   /** Una petición en vuelo de cualquiera de las dos fuentes deja el botón ocupado. */
   refrescando = computed(
-    () => this.pagosService.isLoading() || this.cajaService.cargando(),
+    () =>
+      this.panelResource.isLoading() ||
+      this.pagosService.isLoading() ||
+      this.cajaService.cargando(),
   );
 
   filtroMetodo = signal<string>('TODOS');
@@ -611,18 +618,33 @@ export class AdminTicketsComponent implements OnInit {
     });
   });
 
-  ngOnInit() {
-    this.cargarTickets();
-    this.cargarCaja();
-  }
+  /**
+   * Fase 4 · las dos lecturas de la pantalla (historial de cobros y arqueo del
+   * día) viven en un solo `resource`. Antes eran dos `.subscribe()` de montaje con
+   * el cuerpo vacío: el componente no recibía ningún valor, solo empujaba al
+   * servicio a escribir sus señales, y cada refresco repetía la misma pareja.
+   *
+   * El `resource` arranca al construirse y se vuelve a ejecutar cuando cambia la
+   * sede activa o el gatillo `version`; el `abortSignal` del loader ya no hace
+   * falta porque `firstValueFrom` convierte cada petición en una promesa que el
+   * propio recurso descarta al cancelar.
+   */
+  private readonly version = signal(0);
 
-  cargarTickets() {
-    this.pagosService.obtenerHistorial().subscribe();
-  }
-
-  cargarCaja() {
-    this.cajaService.cargarHoy().subscribe();
-  }
+  private readonly panelResource = resource({
+    params: () => ({
+      shopId: this.tenantService.barberiaActivaId(),
+      version: this.version(),
+    }),
+    loader: async ({ params }) => {
+      if (!params.shopId) return null;
+      await Promise.all([
+        firstValueFrom(this.cajaService.cargarHoy()),
+        firstValueFrom(this.pagosService.obtenerHistorial()),
+      ]);
+      return params.version;
+    },
+  });
 
   /**
    * Fase 1 · el botón «Refrescar» solo recargaba el historial, así que los
@@ -632,8 +654,12 @@ export class AdminTicketsComponent implements OnInit {
    * fuentes que esta vista pinta a la vez, y el botón espera a ambas.
    */
   refrescarTodo() {
-    this.cargarTickets();
-    this.cargarCaja();
+    this.version.update((n) => n + 1);
+  }
+
+  /** Reintento de la caja cuando su fuente falló: misma recarga que «Refrescar». */
+  cargarCaja() {
+    this.refrescarTodo();
   }
 
   abrirModalCierre() {
@@ -647,15 +673,18 @@ export class AdminTicketsComponent implements OnInit {
   }
 
   confirmarCierre() {
-    this.cajaService.cerrarCaja().subscribe((caja) => {
-      if (!caja) return;
-      this.modalCierreAbierto.set(false);
-      this.mensajeExito.set('Caja cerrada: los totales del día quedaron sellados.');
-      setTimeout(() => this.mensajeExito.set(''), 5000);
-      // El historial no cambia, pero el estado del cierre sí: se refresca todo
-      // para que la pantalla no muestre «caja abierta» después de sellarla.
-      this.cargarTickets();
-    });
+    this.cajaService
+      .cerrarCaja()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((caja) => {
+        if (!caja) return;
+        this.modalCierreAbierto.set(false);
+        this.mensajeExito.set('Caja cerrada: los totales del día quedaron sellados.');
+        setTimeout(() => this.mensajeExito.set(''), 5000);
+        // El historial no cambia, pero el estado del cierre sí: se refresca todo
+        // para que la pantalla no muestre «caja abierta» después de sellarla.
+        this.refrescarTodo();
+      });
   }
 
   resetFiltros() {
@@ -673,18 +702,21 @@ export class AdminTicketsComponent implements OnInit {
 
   confirmarPurga() {
     this.purgando.set(true);
-    this.pagosService.purgarAuditoria(this.diasPurga).subscribe({
-      next: (res) => {
-        this.purgando.set(false);
-        this.cerrarModalPurga();
-        this.mensajeExito.set(res?.message || 'Purga de auditoría completada con éxito.');
-        setTimeout(() => this.mensajeExito.set(''), 5000);
-        this.cargarTickets();
-      },
-      error: () => {
-        this.purgando.set(false);
-      }
-    });
+    this.pagosService
+      .purgarAuditoria(this.diasPurga)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (res) => {
+          this.purgando.set(false);
+          this.cerrarModalPurga();
+          this.mensajeExito.set(res?.message || 'Purga de auditoría completada con éxito.');
+          setTimeout(() => this.mensajeExito.set(''), 5000);
+          this.refrescarTodo();
+        },
+        error: () => {
+          this.purgando.set(false);
+        },
+      });
   }
 
   // ── H68 · §7.3: anular un cobro ─────────────────────────────────────────────
@@ -709,7 +741,10 @@ export class AdminTicketsComponent implements OnInit {
     this.anulando.set(true);
     this.errorAnulacion.set(null);
 
-    this.pagosService.anularPago(pago.id, this.motivoAnulacion.trim()).subscribe({
+    this.pagosService
+      .anularPago(pago.id, this.motivoAnulacion.trim())
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
       next: () => {
         this.anulando.set(false);
         this.cerrarModalAnular();
