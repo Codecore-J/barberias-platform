@@ -48,6 +48,19 @@ html.modal-abierto .transform-style-3d {
   transform-style: flat;
 }
 
+/*
+ * Fase 2 · bloqueo del scroll de fondo.
+ *
+ * Con un modal abierto, la rueda seguía moviendo la página de detrás: al
+ * cerrar, el usuario aparecía en otra parte del listado y no donde dejó la
+ * lectura. Se cuelga de la misma clase que ya marca el modal abierto, así que
+ * vale para todos los modales aunque todavía no usen `ModalShell`.
+ */
+html.modal-abierto,
+html.modal-abierto body {
+  overflow: hidden;
+}
+
 .backface-hidden {
   backface-visibility: hidden;
 }

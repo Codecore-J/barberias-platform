@@ -7,11 +7,12 @@ import { TenantService } from '../../../core/services/tenant.service';
 import { AuthService } from '../../../auth/auth.service';
 
 import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
+import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component';
 
 @Component({
   selector: 'app-admin-tickets',
   standalone: true,
-  imports: [CommonModule, CurrencyPipe, DatePipe, FormsModule, ModalOverlayDirective],
+  imports: [CommonModule, CurrencyPipe, DatePipe, FormsModule, ModalOverlayDirective, ModalShellComponent],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
       
@@ -357,25 +358,15 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
       }
 
       <!-- MODAL ANULAR COBRO (H68 · §7.3) -->
-      @if (modalAnularAbierto() && pagoAAnular(); as pago) {
-        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
-          <div class="bg-zinc-900 border border-rose-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div class="p-6 space-y-6">
-              <div class="flex justify-between items-start">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
-                    <i class="pi pi-ban text-lg"></i>
-                  </div>
-                  <div>
-                    <h3 class="text-lg font-bold text-white">Anular Cobro</h3>
-                    <p class="text-xs text-zinc-400">Corrección de caja con rastro en la auditoría</p>
-                  </div>
-                </div>
-                <button (click)="cerrarModalAnular()" class="text-zinc-500 hover:text-white transition-colors">
-                  <i class="pi pi-times text-xl"></i>
-                </button>
-              </div>
-
+      @if (pagoAAnular(); as pago) {
+        <app-modal-shell
+          [visible]="modalAnularAbierto()"
+          titulo="Anular Cobro"
+          subtitulo="Corrección de caja con rastro en la auditoría"
+          icono="pi pi-ban"
+          tono="peligro"
+          [cerrarBloqueado]="anulando()"
+          (cerrar)="cerrarModalAnular()">
               <div class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 space-y-1">
                 <p class="font-semibold flex items-center gap-1.5">
                   <i class="pi pi-exclamation-triangle"></i> Esta acción deshace un ingreso
@@ -413,31 +404,18 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
                   <span>{{ anulando() ? 'Anulando...' : 'Anular cobro' }}</span>
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
+        </app-modal-shell>
       }
 
       <!-- MODAL CIERRE DE CAJA (V3 fase 6) -->
-      @if (modalCierreAbierto()) {
-        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
-          <div class="bg-zinc-900 border border-amber-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div class="p-6 space-y-5">
-              <div class="flex justify-between items-start">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                    <i class="pi pi-lock text-lg"></i>
-                  </div>
-                  <div>
-                    <h3 class="text-lg font-bold text-white">Cerrar la caja del día</h3>
-                    <p class="text-xs text-zinc-400">Esta acción sella el arqueo</p>
-                  </div>
-                </div>
-                <button (click)="cerrarModalCierre()" [disabled]="cajaService.cerrando()" class="text-zinc-500 hover:text-white transition-colors">
-                  <i class="pi pi-times text-xl"></i>
-                </button>
-              </div>
-
+      <app-modal-shell
+        [visible]="modalCierreAbierto()"
+        titulo="Cerrar la caja del día"
+        subtitulo="Esta acción sella el arqueo"
+        icono="pi pi-lock"
+        tono="primario"
+        [cerrarBloqueado]="cajaService.cerrando()"
+        (cerrar)="cerrarModalCierre()">
               <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200 space-y-1">
                 <p class="font-semibold flex items-center gap-1.5">
                   <i class="pi pi-exclamation-triangle"></i> Los datos financieros del día se sellarán
@@ -472,10 +450,7 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
                   <span>{{ cajaService.cerrando() ? 'Sellando...' : 'Sí, cerrar caja' }}</span>
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      }
+      </app-modal-shell>
 
       <!-- MODAL PURGA AUDITORÍA (ADMINISTRADOR) -->
       @if (modalPurgaAbierto()) {
