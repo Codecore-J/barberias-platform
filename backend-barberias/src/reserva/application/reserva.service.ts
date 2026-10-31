@@ -156,6 +156,29 @@ const TEXTO_MOTIVO_RECHAZO: Record<string, string> = {
   OTRO: 'no fue posible atender la solicitud',
 };
 
+/**
+ * Fase 3 · opciones internas del alta de reserva.
+ *
+ * Existen para que un caso de uso mayor (la cita directa que se cobra al
+ * crearse) pueda **compartir su transacción** con el alta y **confirmar en el
+ * acto**, sin duplicar las ~450 líneas de validaciones que garantizan que un
+ * hueco no se venda dos veces.
+ */
+export interface CrearReservaOpciones {
+  /**
+   * Transacción abierta por el llamante. Cuando llega, el alta se ejecuta dentro
+   * de ella en lugar de abrir la suya: es la única forma de que reserva y cobro
+   * sean atómicos, porque Prisma no anida transacciones.
+   */
+  tx?: Prisma.TransactionClient;
+  /**
+   * La cita nace `CONFIRMADA` aunque la sede tenga confirmación MANUAL. El
+   * cajero tiene al cliente delante y el pago en la mano: hacerle esperar los 10
+   * minutos del temporizador de aceptación no tiene sentido.
+   */
+  confirmarAlCrear?: boolean;
+}
+
 @Injectable()
 export class ReservaService {
   private readonly logger = new Logger(ReservaService.name);
@@ -603,7 +626,12 @@ export class ReservaService {
     throw error;
   }
 
-  async crearReserva(clienteId: string, barberiaId: string, dto: CreateReservaDto) {
+  async crearReserva(
+    clienteId: string,
+    barberiaId: string,
+    dto: CreateReservaDto,
+    opciones: CrearReservaOpciones = {},
+  ) {
     const { inicio, fin } = validateTimeRange(dto.horaInicio, dto.horaFin);
     // E2-04: la fecha es una etiqueta `DATE`; se normaliza con el servicio central.
     const fecha = this.tiempo.fechaDeCalendario(dto.fecha);
@@ -644,7 +672,7 @@ export class ReservaService {
       );
     }
 
-    const creada = await withSerializableTransaction(this.prisma, async (tx) => {
+    const ejecutar = async (tx: Prisma.TransactionClient) => {
       // 0. Orden de validaciones (principio 9): sesión → rol → DTO → sede
       //    ACTIVA (P-SD-4) → vinculación ACTIVO con esa barbería → no restringido
       //    → configuración (pausa, tipo aceptado, horizonte, max_pendientes) →
@@ -928,8 +956,17 @@ export class ReservaService {
         );
       }
 
+      // Fase 3 · modo EFECTIVO del alta. La sede puede tener confirmación
+      // MANUAL, pero una cita cobrada en mostrador nace ya confirmada: el
+      // cajero tiene al cliente delante y el dinero en la mano. Cambiar este
+      // valor —y no cada rama por separado— mantiene coherentes el estado
+      // inicial, el temporizador, el modo guardado y los avisos.
+      const modoConfirmacion: string = opciones.confirmarAlCrear
+        ? 'AUTOMATICA'
+        : config.modoReserva;
+
       const expiraAt =
-        config.modoReserva === 'MANUAL'
+        modoConfirmacion === 'MANUAL'
           ? new Date(this.tiempo.ahora().getTime() + 10 * 60000)
           : null;
 
@@ -938,7 +975,7 @@ export class ReservaService {
       // por la máquina igual que el resto de transiciones; el actor es el CLIENTE
       // porque la reserva es suya aunque la teclee el staff (walk-in).
       const estadoInicial: EstadoReserva =
-        config.modoReserva === 'AUTOMATICA' ? ESTADOS.CONFIRMADA : ESTADOS.PENDIENTE;
+        modoConfirmacion === 'AUTOMATICA' ? ESTADOS.CONFIRMADA : ESTADOS.PENDIENTE;
       ReservaStateMachine.assertTransition(null, estadoInicial, ACTORES.CLIENTE);
 
       // 3. Crear reserva con snapshot financiero inmutable congelado
@@ -954,7 +991,7 @@ export class ReservaService {
           margenGrupalHistorico: margenFinal,
           totalPagar: precioTotalCatalogo, // Fijado inmutablemente desde el catálogo
           estado: estadoInicial,
-          modoConfirmacion: config.modoReserva,
+          modoConfirmacion,
           expiraAt,
         },
       });
@@ -1037,7 +1074,7 @@ export class ReservaService {
 
       this.logger.log(`Reserva ${reserva.id} creada para barbería ${barberiaId} con snapshot financiero de $${precioTotalCatalogo}`);
 
-      if (config.modoReserva === 'MANUAL') {
+      if (modoConfirmacion === 'MANUAL') {
         // E3-04: el job lleva un `jobId` DETERMINISTA para que aceptar o
         // rechazar puedan cancelarlo. Con un id aleatorio de BullMQ no habría
         // forma de encontrarlo después. Además es idempotente: reencolar la
@@ -1075,7 +1112,7 @@ export class ReservaService {
 
       // 5. Despacho asíncrono de notificación y programación de recordatorio 1h antes (T8.1)
       if (this.notificacionService) {
-        const esAuto = config.modoReserva === 'AUTOMATICA';
+        const esAuto = modoConfirmacion === 'AUTOMATICA';
         const tipoNotif = esAuto ? 'RESERVA_CONFIRMADA' : 'RESERVA_CREADA';
         // E4-01/8: la notificación del grupo informa el tamaño, jamás quiénes son.
         const detalleGrupo = esGrupal ? ` para ${participantesResueltos.length} participantes` : '';
@@ -1108,29 +1145,43 @@ export class ReservaService {
       }
 
       return reserva;
-    }).catch((error) =>
-      // E4-02 · Carril A (§E4-02/2 y /4): si el tramo pedido no cabe, el error
-      // trae alternativas. Se resuelven FUERA de la transacción —que ya abortó
-      // y soltó el `FOR UPDATE`— y por solo lectura (D37/H41): una sugerencia
-      // nunca retiene el hueco.
-      this.agregarAlternativasAlError(error, barberiaId, {
-        fecha: dto.fecha,
-        horaInicio: dto.horaInicio,
-        horaFin: dto.horaFin,
-        tipo: dto.tipo,
-        participantes: dto.participantes,
-        barberoId: dto.barberoId ?? undefined,
-      }),
-    );
+    };
+
+    // Fase 3 · dentro de una transacción ajena NO se captura el error: si una
+    // sentencia falló, el motor ya marcó la transacción del llamante como
+    // abortada, y tragárselo aquí solo cambiaría un error útil por un 25P02
+    // («current transaction is aborted») en la siguiente consulta.
+    const creada = opciones.tx
+      ? await ejecutar(opciones.tx)
+      : await withSerializableTransaction(this.prisma, ejecutar).catch((error) =>
+          // E4-02 · Carril A (§E4-02/2 y /4): si el tramo pedido no cabe, el error
+          // trae alternativas. Se resuelven FUERA de la transacción —que ya abortó
+          // y soltó el `FOR UPDATE`— y por solo lectura (D37/H41): una sugerencia
+          // nunca retiene el hueco.
+          this.agregarAlternativasAlError(error, barberiaId, {
+            fecha: dto.fecha,
+            horaInicio: dto.horaInicio,
+            horaFin: dto.horaFin,
+            tipo: dto.tipo,
+            participantes: dto.participantes,
+            barberoId: dto.barberoId ?? undefined,
+          }),
+        );
 
     // Fase 7 · el hecho se publica DESPUÉS del commit: si la transacción abortó
     // no hay evento y, por tanto, ningún aviso de una reserva que no existe.
-    await this.emitirEventoReserva(
-      creada.estado === ESTADOS.CONFIRMADA
-        ? EVENTOS_RESERVA.CONFIRMADA
-        : EVENTOS_RESERVA.CREADA,
-      creada.id,
-    );
+    //
+    // Fase 3 · con una transacción ajena este punto todavía no es un commit: el
+    // orquestador publica el evento cuando confirma la suya, para no anunciar
+    // una cita cuyo cobro puede abortar el flujo entero.
+    if (!opciones.tx) {
+      await this.emitirEventoReserva(
+        creada.estado === ESTADOS.CONFIRMADA
+          ? EVENTOS_RESERVA.CONFIRMADA
+          : EVENTOS_RESERVA.CREADA,
+        creada.id,
+      );
+    }
 
     return creada;
   }
@@ -1297,7 +1348,10 @@ export class ReservaService {
         },
       });
 
-      // Punto 5.1A: Eliminar físicamente cualquier nota temporal asociada a la cita cancelada/no-presentada.      // Las notas temporales (compartido: false) se destruyen cuando la reserva llega a NO_PRESENTADO.      await this.prisma.antecedente.deleteMany({
+      // Punto 5.1A: Eliminar físicamente cualquier nota temporal asociada a la cita cancelada/no-presentada.      // Las notas temporales (compartido: false) se destruyen cuando la reserva llega a NO_PRESENTADO.      // Fase 3 · con `tx`, no `this.prisma`: fuera de la transacción este DELETE
+      // se confirmaba solo, así que un rollback posterior devolvía la reserva a
+      // CONFIRMADA con las notas temporales ya destruidas.
+      await tx.antecedente.deleteMany({
         where: {
           usuarioId: reserva.clienteId,
           barberiaOrigenId: reserva.barberiaId,
@@ -3030,6 +3084,18 @@ export class ReservaService {
    * cualquier fallo se registra y se traga —una notificación no puede hacer
    * fallar una reserva ya guardada—.
    */
+  /**
+   * Fase 3 · publica el evento de una reserva creada dentro de una transacción
+   * ajena, una vez que el orquestador confirma la suya. Las altas normales no lo
+   * necesitan: `crearReserva` publica el suyo tras el commit.
+   */
+  async publicarEventoReserva(
+    tipo: TipoEventoReserva,
+    reservaId: string,
+  ): Promise<void> {
+    return this.emitirEventoReserva(tipo, reservaId);
+  }
+
   private async emitirEventoReserva(
     tipo: TipoEventoReserva,
     reservaId: string,

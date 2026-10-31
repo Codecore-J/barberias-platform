@@ -63,6 +63,8 @@ const BORRADOS_AUTORIZADOS: Record<string, string> = {
     'Mismo caso en la rejilla del barbero (`configureBarberSchedules`): se reemplaza el horario completo del barbero en esa sede dentro de una transacción, y las filas nuevas entran a continuación. Sustitución, no borrado con pérdida.',
   'auditoria/application/auditoria.service.ts:auditoria.deleteMany':
     'Purga por RETENCIÓN (T8.2): el rastro de auditoría no se desactiva, CADUCA. Se eliminan los registros anteriores a la fecha de corte (365 días por defecto) desde un job cron. Es la única forma de que el log no crezca sin límite y no representa un cambio de estado de ninguna entidad.',
+  'reserva/application/reserva.service.ts:antecedente.deleteMany':
+    'Limpieza de NOTAS TEMPORALES (Punto 5.1A): las notas con `compartido: false` son el borrador que el barbero deja mientras atiende y se destruyen al llegar a NO_PRESENTADO; no son el estado de la entidad ni un registro que nadie vaya a consultar después. Desde la Fase 3 va dentro de la transacción, así que un rollback ya no las pierde mientras la reserva vuelve a su estado anterior.',
   'barberia/application/solicitud-cambio.service.ts:usuarioRol.deleteMany':
     'El rol ADMIN_BARBERIA se MUEVE de un responsable al otro (E3-13): retirar el vínculo del anterior es la mitad del movimiento y va seguido del `upsert` del nuevo en la misma transacción. El filtro `usuarioId: { not: nuevo.id }` deja intacto al entrante, así que el vínculo nunca queda sin dueño.',
 };

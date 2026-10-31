@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ReservaService } from '../application/reserva.service.js';
+import { CrearWalkInYCobrarService } from '../application/crear-walkin-y-cobrar.service.js';
 import { ReservaProcessor } from '../application/reserva.processor.js';
 import { ExpiracionReservaService } from '../application/expiracion-reserva.service.js';
 import { ReservaController } from './reserva.controller.js';
@@ -15,6 +16,9 @@ import { AuditoriaModule } from '../../auditoria/infrastructure/auditoria.module
 // consumidor (ReservaProcessor) y la reconciliación la leen de aquí
 // (HALLAZGO-E305-01: antes cada uno llevaba su propio literal).
 import { QUEUES } from '../../shared/queues/queue.constants.js';
+// Fase 3 · el walk-in cobrado reutiliza `PagoService` dentro de su propia
+// transacción. `PagoModule` solo depende de Auditoría, así que no hay ciclo.
+import { PagoModule } from '../../pago/infrastructure/pago.module.js';
 
 @Module({
   imports: [
@@ -30,9 +34,15 @@ import { QUEUES } from '../../shared/queues/queue.constants.js';
     BullModule.registerQueue({
       name: QUEUES.LISTA_ESPERA,
     }),
+    PagoModule,
   ],
   controllers: [ReservaController, ReservaAsignacionController],
-  providers: [ReservaService, ReservaProcessor, ExpiracionReservaService],
+  providers: [
+    ReservaService,
+    ReservaProcessor,
+    ExpiracionReservaService,
+    CrearWalkInYCobrarService,
+  ],
   exports: [ReservaService],
 })
 export class ReservaModule {}
