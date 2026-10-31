@@ -122,7 +122,8 @@ describe('BarberiaService', () => {
               findUnique: vi.fn(),
             },
             usuarioRol: {
-              upsert: vi.fn(),
+              // E0 · el rol de sede se asigna con createMany + skipDuplicates.
+              createMany: vi.fn(),
               findMany: vi.fn(),
               // E1-06: `seleccionarBarberiaActiva` admite el vínculo por rol
               findFirst: vi.fn(),
@@ -198,7 +199,7 @@ describe('BarberiaService', () => {
       } as any);
       vi.mocked(prisma.barberia.create).mockResolvedValue(barberiaCreada as any);
       vi.mocked(prisma.configuracionBarberia.create).mockResolvedValue({} as any);
-      vi.mocked(prisma.usuarioRol.upsert).mockResolvedValue({} as any);
+      vi.mocked(prisma.usuarioRol.createMany).mockResolvedValue({ count: 1 } as any);
     });
 
     it('crea la sede y asigna ADMIN_BARBERIA al responsable en ESA sede', async () => {
@@ -209,15 +210,18 @@ describe('BarberiaService', () => {
       expect(prisma.barberia.count).toHaveBeenCalledWith({
         where: { responsableId, estado: 'ACTIVO' },
       });
-      expect(prisma.usuarioRol.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          create: expect.objectContaining({
+      // E0 · el rol de sede se asigna con INSERT ... ON CONFLICT DO NOTHING: la
+      // unicidad la garantiza el índice parcial `uk_usuario_rol_sede`.
+      expect(prisma.usuarioRol.createMany).toHaveBeenCalledWith({
+        data: [
+          {
             usuarioId: responsableId,
             rolId: 'rol-admin-barberia',
             barberiaId: 'sede-nueva',
-          }),
-        }),
-      );
+          },
+        ],
+        skipDuplicates: true,
+      });
 
       // E1-07: la auditoría guarda la sede en la columna, no solo en el JSON.
       expect(auditoria.registrarEvento).toHaveBeenCalledWith(
@@ -263,7 +267,7 @@ describe('BarberiaService', () => {
 
       await service.create(responsableId, dto);
 
-      expect(prisma.usuarioRol.upsert).not.toHaveBeenCalled();
+      expect(prisma.usuarioRol.createMany).not.toHaveBeenCalled();
     });
 
     it('siembra las 7 categorías oficiales al crear la sede (V3 · ON CONFLICT DO NOTHING)', async () => {

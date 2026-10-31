@@ -103,7 +103,14 @@ model UsuarioRol {
   rol      Rol       @relation(fields: [rolId], references: [id])
   barberia Barberia? @relation(fields: [barberiaId], references: [id])
 
-  @@unique([usuarioId, rolId, barberiaId], name: "uk_usuario_rol_barberia")
+  // E0 · la unicidad NO se declara aquí. Un `@@unique` con `barberiaId`
+  // nullable no protege los roles globales: PostgreSQL considera distintos dos
+  // NULL, así que `(usuario, rol, NULL)` se podía insertar sin límite (de ahí
+  // los roles duplicados en el JWT). La garantía real vive en dos índices
+  // únicos PARCIALES de la migración `fix_indexes_and_roles`:
+  //   uk_usuario_rol_global → (usuario_id, rol_id) WHERE barberia_id IS NULL
+  //   uk_usuario_rol_sede   → (usuario_id, rol_id, barberia_id) WHERE barberia_id IS NOT NULL
+  // Prisma no sabe expresar índices parciales; por eso no aparecen aquí.
   @@map("usuario_roles")
 }
 
@@ -196,6 +203,8 @@ model Servicio {
   // E4-02/D22: suscripciones de lista de espera que piden este servicio.
   listaEsperas          ListaEspera[]
 
+  // E0 · el catálogo se lista siempre por sede.
+  @@index([barberiaId])
   @@map("servicios")
 }
 
@@ -433,6 +442,13 @@ model Reserva {
   pago          Pago?
 
   @@index([barberiaId, fechaCita, estado, horaInicio, horaFin], name: "idx_reservas_concurrencia")
+  // E0 · consultas calientes sin cobertura: "mis reservas" por cliente y la
+  // agenda por barbero. Sin estos índices cada una es un Seq Scan con sort.
+  @@index([clienteId])
+  @@index([barberoId])
+  // E0 · cron de expiración (`estado IN (...) AND expira_at <= now`): el índice
+  // de concurrencia empieza por `barberia_id`, así que no lo podía resolver.
+  @@index([estado, expiraAt])
   @@map("reservas")
 }
 
@@ -598,6 +614,9 @@ model Notificacion {
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
+  // E0 · la bandeja consulta por usuario y filtra por estado; la tabla no tenía
+  // ni un índice.
+  @@index([usuarioId, estado])
   @@map("notificaciones")
 }
 
