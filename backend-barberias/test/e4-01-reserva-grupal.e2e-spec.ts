@@ -186,9 +186,19 @@ describe('E4-01 · reserva grupal', () => {
     ] as [string, string | null][]) {
       const usuario = await prisma.usuario.findUniqueOrThrow({ where: { correo }, select: { id: true } });
       for (const nombreRol of ['CLIENTE', 'ADMIN_BARBERIA', 'BARBERO'] as const) {
-        await prisma.$executeRaw`INSERT INTO usuario_roles (usuario_id, rol_id, barberia_id)
-VALUES (${usuario.id}, ${rol[nombreRol]}, ${nombreRol === 'CLIENTE' ? null : sede ? barberia[sede] : undefined})
-ON CONFLICT DO NOTHING`;
+        // Modelo tipado en vez de SQL crudo: `$executeRaw` envía los parámetros
+        // como `text` y Postgres rechaza la fila en la columna `uuid` (42804).
+        // `skipDuplicates` equivale al `ON CONFLICT DO NOTHING` que había.
+        await prisma.usuarioRol.createMany({
+          data: [
+            {
+              usuarioId: usuario.id,
+              rolId: rol[nombreRol],
+              barberiaId: nombreRol === 'CLIENTE' || !sede ? null : barberia[sede],
+            },
+          ],
+          skipDuplicates: true,
+        });
       }
       if (sede) {
         await prisma.clienteBarberia.create({

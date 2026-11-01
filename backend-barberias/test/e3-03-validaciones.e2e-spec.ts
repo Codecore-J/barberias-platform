@@ -218,11 +218,23 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
       ['cH.e303@test.com', ['E']],
       ['cI.e303@test.com', ['F']],
     ] as [string, string[]][]) {
+      const usuarioIdVal = (await prisma.usuario.findUniqueOrThrow({ where: { correo: mail } })).id;
       for (const s of ['CLIENTE', 'ADMIN_BARBERIA', 'BARBERO'] as const) {
-        const usuarioIdVal = (await prisma.usuario.findUnique({ where: { correo: mail } })).id;
-        await prisma.$executeRaw`INSERT INTO usuario_roles (usuario_id, rol_id, barberia_id)
-VALUES (${usuarioIdVal}, ${rol[s]}, ${s === 'CLIENTE' ? null : sedes.includes(s) ? barberia[s] : undefined})
-ON CONFLICT DO NOTHING`;
+        // Se usa el modelo tipado, no SQL crudo: `$executeRaw` manda los
+        // parámetros como `text` y Postgres rechaza la fila en una columna
+        // `uuid` (42804). Con Prisma el tipo de cada columna es conocido.
+        // `skipDuplicates` reproduce el `ON CONFLICT DO NOTHING` original y
+        // convive con los índices únicos parciales de `usuario_roles`.
+        await prisma.usuarioRol.createMany({
+          data: [
+            {
+              usuarioId: usuarioIdVal,
+              rolId: rol[s],
+              barberiaId: s === 'CLIENTE' || !sedes.includes(s) ? null : barberia[s],
+            },
+          ],
+          skipDuplicates: true,
+        });
       }
     }
     // Vínculos ACTIVOS (cX *sin* filas en clienteBarberias = NO_VINCULADO)
