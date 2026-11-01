@@ -186,19 +186,9 @@ describe('E4-01 · reserva grupal', () => {
     ] as [string, string | null][]) {
       const usuario = await prisma.usuario.findUniqueOrThrow({ where: { correo }, select: { id: true } });
       for (const nombreRol of ['CLIENTE', 'ADMIN_BARBERIA', 'BARBERO'] as const) {
-        await prisma.usuarioRol.upsert({
-    where: {
-      usuarioId: usuario.id,
-      rolId: rol[nombreRol],
-      barberiaId: nombreRol === 'CLIENTE' ? null : sede ? barberia[sede] : undefined,
-    },
-    update: {},
-    create: {
-      usuarioId: usuario.id,
-      rolId: rol[nombreRol],
-      barberiaId: nombreRol === 'CLIENTE' ? null : sede ? barberia[sede] : undefined,
-    },
-  });
+        await prisma.$executeRaw`INSERT INTO usuario_roles (usuario_id, rol_id, barberia_id)
+VALUES (${usuario.id}, ${rol[nombreRol]}, ${nombreRol === 'CLIENTE' ? null : sede ? barberia[sede] : undefined})
+ON CONFLICT DO NOTHING`;
       }
       if (sede) {
         await prisma.clienteBarberia.create({
