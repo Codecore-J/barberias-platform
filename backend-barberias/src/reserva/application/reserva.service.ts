@@ -805,6 +805,16 @@ export class ReservaService {
       // Bloqueo pesimista sobre la barbería (row-level lock) para evitar Race Conditions
       await this.bloquearSedeParaEscritura(tx, barberiaId);
 
+      // V3 · el barbero es un recurso COMPARTIDO entre sedes: la fila de la sede
+      // solo serializa las altas de ESTA sede, así que un barbero con rol en dos
+      // sedes podía recibir dos citas a la misma hora por dos peticiones
+      // simultáneas. Su fila es el punto de serialización que ambas comparten.
+      // El orden (sede → barbero) es el mismo en todas las transacciones, así
+      // que no introduce un ciclo de espera.
+      if (dto.barberoId) {
+        await this.bloquearBarberoParaEscritura(tx, dto.barberoId);
+      }
+
       // 1. Obtener y validar servicios del catálogo (T6.2 Snapshot Histórico Inmutable).
       //    E4-01: en la reserva grupal el catálogo se resuelve POR PARTICIPANTE y
       //    el bloque sale de Σ duraciones + UN margen (D42/§5.4); el `horaFin` de
@@ -953,6 +963,22 @@ export class ReservaService {
         throw errorDeConflicto(
           'CONFLICTO_HORARIO',
           'El horario seleccionado ya no está disponible o se solapa con un bloqueo/reserva',
+        );
+      }
+
+      // V3 · el motor de disponibilidad mira las reservas de UNA sede, así que
+      // por sí solo no ve que el mismo barbero esté ocupado en otra. Con el lock
+      // del barbero ya tomado, esta consulta cierra ese hueco: es bloqueante en
+      // el sentido que importa (nadie más puede escribir su agenda mientras la
+      // transacción vive) y su índice es `reservas_barbero_id_idx`.
+      if (dto.barberoId) {
+        await this.exigirBarberoSinSolape(
+          tx,
+          dto.barberoId,
+          fecha,
+          inicio,
+          horaFinServicios,
+          margenFinal,
         );
       }
 
@@ -3190,6 +3216,93 @@ export class ReservaService {
     await tx.$queryRaw`SELECT id FROM ${Prisma.raw(
       tablaCalificada('barberias'),
     )} WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+  }
+
+  /**
+   * V3 · lock de la fila del BARBERO durante el alta.
+   *
+   * `bloquearSedeParaEscritura` serializa las escrituras de una sede, pero un
+   * barbero puede tener rol en varias: dos altas simultáneas en sedes distintas
+   * no comparten fila y el aislamiento SERIALIZABLE no lo detecta, porque cada
+   * transacción lee su propio conjunto de reservas. La fila de `usuarios` es el
+   * único punto que ambas comparten, y tomarla antes de leer las reservas del
+   * barbero es lo que convierte la comprobación en una decisión serializada.
+   *
+   * Se califica el esquema con `tablaCalificada` (H58): el nombre suelto depende
+   * del `search_path` de la sesión cuando hay un pooler por delante.
+   */
+  private async bloquearBarberoParaEscritura(
+    tx: Prisma.TransactionClient,
+    barberoId: string,
+  ): Promise<void> {
+    await tx.$queryRaw`SELECT id FROM ${Prisma.raw(
+      tablaCalificada('usuarios'),
+    )} WHERE id = ${barberoId}::uuid FOR UPDATE`;
+  }
+
+  /**
+   * V3 · el barbero no puede estar en dos citas a la vez, ni en dos sedes.
+   *
+   * Ocupa `[horaInicio, horaFin + margen)` por reserva, la misma cuenta que usa
+   * el motor de disponibilidad (D42/§5.4): el margen de la sede se aplica al
+   * BLOQUE y va después de los servicios. Solo cuentan PENDIENTE y CONFIRMADA,
+   * que son los estados desde los que una reserva ocupa agenda (§5.3).
+   *
+   * La consulta NO filtra por sede a propósito: es justo el caso que la
+   * disponibilidad de una sola sede no puede ver. El id de la otra sede no viaja
+   * en el mensaje, que es todo lo que el cliente necesita saber.
+   */
+  private async exigirBarberoSinSolape(
+    tx: Prisma.TransactionClient,
+    barberoId: string,
+    fecha: Date,
+    inicio: Date,
+    finServicios: Date,
+    margenNuevoMin: number,
+  ): Promise<void> {
+    const reservas = await tx.reserva.findMany({
+      where: {
+        barberoId,
+        fechaCita: fecha,
+        estado: { in: [ESTADOS.PENDIENTE, ESTADOS.CONFIRMADA] },
+      },
+      select: {
+        id: true,
+        horaInicio: true,
+        horaFin: true,
+        margenGrupalHistorico: true,
+      },
+    });
+
+    const nuevoInicio = this.minutosDeReloj(inicio);
+    const nuevoFin = this.minutosDeReloj(finServicios) + margenNuevoMin;
+
+    const solapada = reservas.find((reserva) => {
+      const inicioExistente = this.minutosDeReloj(reserva.horaInicio);
+      const finExistente =
+        this.minutosDeReloj(reserva.horaFin) + (reserva.margenGrupalHistorico ?? 0);
+
+      return nuevoInicio < finExistente && inicioExistente < nuevoFin;
+    });
+
+    if (solapada) {
+      throw errorDeConflicto(
+        'CONFLICTO_HORARIO',
+        'El barbero ya tiene otra cita que se solapa con ese horario.',
+      );
+    }
+  }
+
+  /**
+   * Minutos desde medianoche de una hora de reloj.
+   *
+   * Las dos fuentes de horas del proyecto son `DATE`/`TIME` sin zona: `TIME`
+   * llega de Prisma como `1970-01-01THH:mm:00.000Z` y `parseTime` construye el
+   * mismo instante con `setUTCHours`, así que `getUTC*` devuelve la hora escrita
+   * en ambos casos (el mismo criterio que usa `aceptarReserva`).
+   */
+  private minutosDeReloj(hora: Date): number {
+    return hora.getUTCHours() * 60 + hora.getUTCMinutes();
   }
 
   /**

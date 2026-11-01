@@ -221,6 +221,11 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // `barberoId` sale del JWT: la ruta no lo lleva ni en la ruta ni en el cuerpo.
   'GET /shops/:shopId/mi-horario/': [ROL_BARBERO],
   'PUT /shops/:shopId/mi-horario/': [ROL_BARBERO],
+  // V3 · plantilla base semanal (recurrente, sin sede). Misma política que la
+  // semana de la sede: es el barbero quien declara su horario, y el `barberoId`
+  // sale del JWT. La sede del path solo autoriza el vínculo.
+  'GET /shops/:shopId/mi-horario/base': [ROL_BARBERO],
+  'PUT /shops/:shopId/mi-horario/base': [ROL_BARBERO],
   'GET /shops/:shopId/hours/exceptions': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'POST /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'POST /shops/:shopId/hours/barbers/:barberoId/exceptions': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -631,8 +636,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // 95 × 4 = 380. V3 suma ocho rutas del catálogo híbrido y la asignación: 103
   // × 4 = 412. V3 fase 5 suma `mi-horario` (GET y PUT, solo BARBERO): 105 × 4 =
   // 420. V3 fase 6 suma el cobro de la agenda y las dos de caja: 108 × 4 = 432.
-  // Fase 3 suma la cita directa cobrada (`walk-in-pago`): 109 × 4 = 436.
-  expect(evaluaciones).toBe(436);
+  // Fase 3 suma la cita directa cobrada (`walk-in-pago`): 109 × 4 = 436. La
+  // plantilla base semanal del barbero suma sus dos verbos: 111 × 4 = 444.
+  expect(evaluaciones).toBe(444);
     expect(
       desviaciones.length === 0
         ? ''

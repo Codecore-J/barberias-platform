@@ -9,6 +9,11 @@ import type {
   DiaHorarioBarberoResponse,
   MiHorarioResponse,
 } from './dto/mi-horario-response.dto.js';
+import {
+  type DiaPlantillaBarberoResponse,
+  type PlantillaBaseBarberoResponse,
+} from './dto/plantilla-base-barbero.dto.js';
+import { OrigenModificacionHorario } from '@prisma/client';
 import { validateTimeRange, parseTime } from '../domain/time.utils.js';
 import { esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
 import { horaRelojHHMM } from '../../shared/time/tiempo.service.js';
@@ -26,7 +31,13 @@ export class HorarioService {
     @Optional() private readonly tiempo: TiempoService = new TiempoService(),
   ) {}
 
-  private async validateAccess(usuarioId: string, barberiaId: string) {
+  /**
+   * ¿Es este usuario OPERADOR de la sede (responsable, ADMIN_BARBERIA o
+   * ADMINISTRADOR global)? Es la única definición de «puede tocar la sede» en
+   * este servicio; `validateAccess` y la autoría de las excepciones la comparten
+   * para no decidir dos veces con criterios distintos.
+   */
+  private async esOperadorDeSede(usuarioId: string, barberiaId: string): Promise<boolean> {
     const barberia = await this.prisma.barberia.findUnique({
       where: { id: barberiaId },
       select: { responsableId: true },
@@ -36,16 +47,20 @@ export class HorarioService {
       throw new NotFoundException('Barbería no encontrada');
     }
 
-    const rolesUser = await this.prisma.usuarioRol.findMany({
-      where: { usuarioId, barberiaId },
-      include: { rol: true }
+    if (barberia.responsableId === usuarioId) return true;
+
+    // E1-04 (D05): el rol global es ADMINISTRADOR.
+    if (await esAdministradorGlobalPorId(this.prisma, usuarioId)) return true;
+
+    const rolAdmin = await this.prisma.usuarioRol.findFirst({
+      where: { usuarioId, barberiaId, rol: { nombre: 'ADMIN_BARBERIA' } },
     });
 
-    const isResponsable = barberia.responsableId === usuarioId;
-    // E1-04 (D05): el rol global es ADMINISTRADOR.
-    const esGlobal = await esAdministradorGlobalPorId(this.prisma, usuarioId);
+    return !!rolAdmin;
+  }
 
-    if (!isResponsable && !esGlobal && !rolesUser.some(ur => ur.rol.nombre === 'ADMIN_BARBERIA')) {
+  private async validateAccess(usuarioId: string, barberiaId: string) {
+    if (!(await this.esOperadorDeSede(usuarioId, barberiaId))) {
       throw new ForbiddenException('No tienes permisos para modificar horarios de esta barbería');
     }
   }
@@ -365,11 +380,43 @@ export class HorarioService {
     return this.getMiHorario(usuarioId, barberiaId);
   }
 
-  async addBarberException(usuarioId: string, barberiaId: string, barberoId: string, dto: CreateExcepcionHorarioDto) {
-    // Admin validation or self
-    if (usuarioId !== barberoId) {
-      await this.validateAccess(usuarioId, barberiaId);
+  /**
+   * V3 · ORIGEN del cambio de horario: quien toca su propia agenda es el
+   * BARBERO; quien toca la de otro tiene que ser operador de la sede y queda
+   * como ADMIN_SEDE. El usuario concreto se guarda aparte, en
+   * `modificadoPorId`, para que la auditoría no dependa de un solo campo.
+   *
+   * Un barbero que intente escribir la agenda de un compañero recibe 403 aquí y
+   * no un 404: el recurso existe, lo que falta es el permiso.
+   */
+  private async resolverOrigenDeModificacion(
+    usuarioId: string,
+    barberiaId: string,
+    barberoId: string,
+  ): Promise<OrigenModificacionHorario> {
+    if (usuarioId === barberoId) {
+      return OrigenModificacionHorario.BARBERO;
     }
+
+    if (await this.esOperadorDeSede(usuarioId, barberiaId)) {
+      return OrigenModificacionHorario.ADMIN_SEDE;
+    }
+
+    const rolDeBarbero = await this.prisma.usuarioRol.findFirst({
+      where: { usuarioId, barberiaId, rol: { nombre: 'BARBERO' } },
+    });
+
+    if (rolDeBarbero) {
+      throw new ForbiddenException(
+        'Solo puedes modificar tu propia agenda: la de otro barbero la gestiona el responsable de la sede.',
+      );
+    }
+
+    throw new ForbiddenException('No tienes permisos para modificar horarios de esta barbería');
+  }
+
+  async addBarberException(usuarioId: string, barberiaId: string, barberoId: string, dto: CreateExcepcionHorarioDto) {
+    const modificadoPor = await this.resolverOrigenDeModificacion(usuarioId, barberiaId, barberoId);
 
     let inicio: Date | undefined;
     let fin: Date | undefined;
@@ -398,6 +445,8 @@ export class HorarioService {
         horaInicio: inicio,
         horaFin: fin,
         motivo: dto.motivo,
+        modificadoPor,
+        modificadoPorId: usuarioId,
       },
       create: {
         barberiaId,
@@ -407,6 +456,8 @@ export class HorarioService {
         horaInicio: inicio,
         horaFin: fin,
         motivo: dto.motivo,
+        modificadoPor,
+        modificadoPorId: usuarioId,
       }
     });
   }
@@ -423,5 +474,144 @@ export class HorarioService {
       },
       orderBy: { fecha: 'asc' },
     });
+  }
+
+  // ── V3 · plantilla base semanal (sin sede) ───────────────────────────────
+
+  /**
+   * Valida UN día de la plantilla y lo traduce a lo que se escribe en la base.
+   *
+   * Reglas (las mismas que impone el CHECK de la migración, aquí con mensajes
+   * que el barbero puede leer):
+   *  - un día ACTIVO necesita entrada y salida, con entrada < salida;
+   *  - un día apagado puede venir sin horas: significa «no crees/bloques este
+   *    día», y el servicio solo apaga la fila si ya existía;
+   *  - las horas que sí vienen se validan siempre, aunque el día esté apagado:
+   *    guardar «9:5» para luego encenderlo dejaría una fila inservible.
+   */
+  private validarDiaDePlantilla(dia: {
+    diaSemana: number;
+    activo?: boolean;
+    horaInicio?: string | null;
+    horaFin?: string | null;
+  }) {
+    const activo = dia.activo ?? true;
+
+    if (!dia.horaInicio || !dia.horaFin) {
+      if (activo) {
+        throw new BadRequestException(
+          `El día ${dia.diaSemana} está activo: indica horaInicio y horaFin.`,
+        );
+      }
+
+      return { diaSemana: dia.diaSemana, horaInicio: null, horaFin: null, activo: false };
+    }
+
+    validateTimeRange(dia.horaInicio, dia.horaFin);
+
+    return {
+      diaSemana: dia.diaSemana,
+      horaInicio: dia.horaInicio,
+      horaFin: dia.horaFin,
+      activo,
+    };
+  }
+
+  /**
+   * La plantilla del barbero autenticado, con los siete días.
+   *
+   * Es una plantilla GLOBAL: no cuelga de una sede, así que el `barberiaId` no
+   * filtra la lectura. La sede del path solo sirve para autorizar (el barbero
+   * tiene que tener rol en ella, `exigirBarberoDeSede`).
+   */
+  async obtenerPlantillaBase(usuarioId: string): Promise<PlantillaBaseBarberoResponse> {
+    const filas = await this.prisma.horarioBaseBarbero.findMany({
+      where: { barberoId: usuarioId },
+      orderBy: { diaSemana: 'asc' },
+    });
+
+    return {
+      barberoId: usuarioId,
+      sinPlantilla: filas.length === 0,
+      dias: DIAS_SEMANA.map((diaSemana): DiaPlantillaBarberoResponse => {
+        const fila = filas.find((candidata) => candidata.diaSemana === diaSemana);
+
+        return {
+          diaSemana,
+          horaInicio: fila?.horaInicio ?? null,
+          horaFin: fila?.horaFin ?? null,
+          // Sin fila no hay bloque: `activo` describe el bloque, no el día.
+          activo: fila?.activo ?? false,
+        };
+      }),
+    };
+  }
+
+  /**
+   * Guarda la plantilla con un UPSERT MASIVO: solo se tocan los días enviados.
+   *
+   * No reemplaza la semana como `configurarMiHorario` porque la plantilla se
+   * edita bloque a bloque desde otra pantalla: borrar lo no enviado convertiría
+   * un envío parcial en una pérdida silenciosa. Tampoco borra filas —el campo
+   * `activo` existe justo para apagar un bloque sin perder sus horas—, así que
+   * el vocabulario del proyecto (E2-07) se mantiene intacto.
+   *
+   * Las validaciones corren ANTES de abrir la transacción: un día inválido no
+   * debe dejar media plantilla escrita.
+   */
+  async guardarPlantillaBase(
+    usuarioId: string,
+    barberiaId: string,
+    dto: { dias: { diaSemana: number; activo?: boolean; horaInicio?: string | null; horaFin?: string | null }[] },
+  ): Promise<PlantillaBaseBarberoResponse> {
+    await this.exigirBarberoDeSede(usuarioId, barberiaId);
+
+    const diasVistos = new Set<number>();
+
+    const dias = dto.dias.map((dia) => {
+      if (diasVistos.has(dia.diaSemana)) {
+        throw new BadRequestException(
+          `El día ${dia.diaSemana} viene repetido: envía una sola fila por día.`,
+        );
+      }
+      diasVistos.add(dia.diaSemana);
+
+      return this.validarDiaDePlantilla(dia);
+    });
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const dia of dias) {
+        if (!dia.horaInicio || !dia.horaFin) {
+          // Día apagado y sin horas: no hay bloque que crear. Si ya existía, se
+          // apaga; si no, `updateMany` no toca ninguna fila y no se inventa una
+          // con horas falsas (las columnas son NOT NULL).
+          await tx.horarioBaseBarbero.updateMany({
+            where: { barberoId: usuarioId, diaSemana: dia.diaSemana },
+            data: { activo: false },
+          });
+          continue;
+        }
+
+        await tx.horarioBaseBarbero.upsert({
+          where: {
+            barberoId_diaSemana: { barberoId: usuarioId, diaSemana: dia.diaSemana },
+          },
+          update: {
+            horaInicio: dia.horaInicio,
+            horaFin: dia.horaFin,
+            activo: dia.activo,
+          },
+          create: {
+            barberoId: usuarioId,
+            diaSemana: dia.diaSemana,
+            horaInicio: dia.horaInicio,
+            horaFin: dia.horaFin,
+            activo: dia.activo,
+          },
+        });
+      }
+    });
+
+    return this.obtenerPlantillaBase(usuarioId);
   }
 }

@@ -10,6 +10,7 @@ import {
 } from '@angular/forms';
 import { HorariosService, MiHorarioSemana } from '../../../core/services/horarios.service.js';
 import { TenantService } from '../../../core/services/tenant.service.js';
+import { BarberoPlantillaBaseComponent } from './barbero-plantilla-base.component.js';
 
 /** Nombres por día ISO (1 = lunes … 7 = domingo). */
 const NOMBRES_DIA: Record<number, string> = {
@@ -51,7 +52,7 @@ const SEMANA_POR_DEFECTO = [
 @Component({
   selector: 'app-barbero-horarios',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, BarberoPlantillaBaseComponent],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-5xl mx-auto space-y-8 bg-ambient-mesh">
       <!-- Cabecera -->
@@ -61,27 +62,72 @@ const SEMANA_POR_DEFECTO = [
             Mi <span class="gold-gradient-text">Horario</span>
           </h2>
           <p class="text-sm text-zinc-400 max-w-xl">
-            Define tus días de trabajo y tus horas de descanso en
-            {{ tenantService.nombreBarberiaActiva() }}. Fuera de estas horas el cliente no verá
-            huecos disponibles para reservarte.
+            @if (vista() === 'plantilla') {
+              Tu semana por defecto, la que se repite en todas tus sedes. Es la base que el motor
+              usa cuando no tienes un horario propio en la sede consultada.
+            } @else {
+              Define tus días de trabajo y tus horas de descanso en
+              {{ tenantService.nombreBarberiaActiva() }}. Fuera de estas horas el cliente no verá
+              huecos disponibles para reservarte.
+            }
           </p>
         </div>
 
+        @if (vista() === 'sede') {
+          <button
+            type="button"
+            (click)="guardar()"
+            [disabled]="cargando() || guardando()"
+            class="px-5 py-2.5 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:-translate-y-0.5 transition-transform flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+          >
+            @if (guardando()) {
+              <i class="pi pi-spin pi-spinner"></i>
+              <span>Guardando...</span>
+            } @else {
+              <i class="pi pi-save"></i>
+              <span>Guardar Mi Horario</span>
+            }
+          </button>
+        }
+      </div>
+
+      <!-- Dos alcances distintos del mismo horario: la plantilla que acompaña al
+           barbero entre sedes y la semana concreta de ESTA sede (con descansos). -->
+      <div
+        class="inline-flex p-1 gap-1 rounded-2xl bg-zinc-900/60 border border-white/10"
+        role="group"
+        aria-label="Horario del barbero"
+      >
         <button
           type="button"
-          (click)="guardar()"
-          [disabled]="cargando() || guardando()"
-          class="px-5 py-2.5 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:-translate-y-0.5 transition-transform flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+          [attr.aria-pressed]="vista() === 'plantilla'"
+          (click)="vista.set('plantilla')"
+          class="px-4 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-2"
+          [class.bg-amber-500]="vista() === 'plantilla'"
+          [class.text-zinc-950]="vista() === 'plantilla'"
+          [class.text-zinc-300]="vista() !== 'plantilla'"
         >
-          @if (guardando()) {
-            <i class="pi pi-spin pi-spinner"></i>
-            <span>Guardando...</span>
-          } @else {
-            <i class="pi pi-save"></i>
-            <span>Guardar Mi Horario</span>
-          }
+          <i class="pi pi-th-large"></i>
+          <span>Plantilla semanal</span>
+        </button>
+
+        <button
+          type="button"
+          [attr.aria-pressed]="vista() === 'sede'"
+          (click)="vista.set('sede')"
+          class="px-4 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-2"
+          [class.bg-amber-500]="vista() === 'sede'"
+          [class.text-zinc-950]="vista() === 'sede'"
+          [class.text-zinc-300]="vista() !== 'sede'"
+        >
+          <i class="pi pi-building"></i>
+          <span>Mi horario en esta sede</span>
         </button>
       </div>
+
+      @if (vista() === 'plantilla') {
+        <app-barbero-plantilla-base />
+      } @else {
 
       <!-- Origen de las horas que se están viendo -->
       @if (heredaHorarioSede() && !cargando()) {
@@ -306,6 +352,7 @@ const SEMANA_POR_DEFECTO = [
           </div>
         </form>
       }
+      }
     </div>
   `,
 })
@@ -322,6 +369,13 @@ export class BarberoHorariosComponent implements OnInit {
   /** Un mensaje por día, indexado por `diaSemana` (1–7). */
   readonly erroresDia = signal<Record<number, string>>({});
   readonly heredaHorarioSede = signal(false);
+
+  /**
+   * Qué matriz se está editando. Las dos son del mismo barbero, pero se guardan
+   * en tablas distintas y tienen precedencia distinta: la plantilla es la base
+   * que viaja entre sedes y `mi-horario` la semana concreta de esta sede.
+   */
+  readonly vista = signal<'plantilla' | 'sede'>('plantilla');
 
   readonly formSemana = this.fb.group({
     dias: this.fb.array<FormGroup>([]),

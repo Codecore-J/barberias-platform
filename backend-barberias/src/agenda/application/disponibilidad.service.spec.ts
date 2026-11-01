@@ -358,12 +358,25 @@ describe('DisponibilidadService · horario propio del barbero (V3 fase 5)', () =
     };
   }
 
-  function prismaConBarbero(filas: any[]) {
+  function prismaConBarbero(
+    filas: any[],
+    extra: { plantilla?: any; excepcionBarbero?: any } = {},
+  ) {
     return {
       barberia: { findUnique: async () => ({ zonaHoraria: tz }) },
       horario: { findFirst: async () => ({ horaInicio: time(9, 0), horaFin: time(18, 0) }) },
       excepcionHorario: { findFirst: async () => null },
+      // V3 · la excepción del BARBERO para esa fecha es la prioridad 1.
+      excepcionHorarioBarbero: { findFirst: async () => extra.excepcionBarbero ?? null },
       horarioBarbero: { findMany: async () => filas },
+      // V3 · plantilla base (prioridad 3): se resuelve por día ISO, así que un
+      // mock con el día equivocado NO devuelve nada, igual que la base.
+      horarioBaseBarbero: {
+        findUnique: async ({ where }: any) =>
+          extra.plantilla && where.barberoId_diaSemana.diaSemana === extra.plantilla.diaSemana
+            ? extra.plantilla
+            : null,
+      },
       bloqueosAgenda: { findMany: async () => [] },
       reserva: { findMany: async () => [] },
     } as any;
@@ -472,5 +485,201 @@ describe('DisponibilidadService · horario propio del barbero (V3 fase 5)', () =
     expect(alternativas.every((a) => a.horaInicio < '12:00' || a.horaInicio >= '13:00')).toBe(
       true,
     );
+  });
+});
+
+/**
+ * V3 · plantilla base semanal (`horarios_base_barbero`).
+ *
+ * El motor tenía dos fuentes de horario del barbero: la excepción de la fecha y
+ * la semana declarada en `horarios_barbero`. Aquí se fija la tercera y, sobre
+ * todo, la PRECEDENCIA entre las tres, que es lo que un refactor puede romper
+ * sin que nada más se ponga rojo:
+ *
+ *   excepción del barbero  >  semana de la sede  >  plantilla base  >  sede
+ *
+ * `2026-10-05` es lunes (ISO 1) y la sede abre de 09:00 a 18:00 en
+ * `America/Santo_Domingo`: con paso de 30 min son 18 huecos.
+ */
+describe('DisponibilidadService · plantilla base semanal del barbero (V3)', () => {
+  const tz = ZONA_POR_DEFECTO;
+  const tiempo = new TiempoService();
+  const LUNES = '2026-10-05';
+  const DOMINGO = '2026-10-04';
+
+  function time(h: number, m: number): Date {
+    const d = new Date('1970-01-01T00:00:00Z');
+    d.setUTCHours(h, m, 0, 0);
+    return d;
+  }
+
+  function fila(diaSemana: number, horas: Record<string, unknown> = {}) {
+    return {
+      diaSemana,
+      esDiaLibre: false,
+      horaInicio: time(9, 0),
+      horaFin: time(18, 0),
+      horaInicioDescanso: null,
+      horaFinDescanso: null,
+      ...horas,
+    };
+  }
+
+  /** Fila de plantilla base: horas de texto, como las guarda la tabla. */
+  function plantilla(diaSemana: number, inicio: string, fin: string, activo = true) {
+    return { barberoId: 'barbero-1', diaSemana, horaInicio: inicio, horaFin: fin, activo };
+  }
+
+  function consulta(fecha = LUNES) {
+    return {
+      barberiaId: 'sede',
+      fecha,
+      duracionTotal: 30,
+      margenRequerido: 0,
+      barberoId: 'barbero-1',
+    };
+  }
+
+  function etiquetas(slots: { inicio: Date; fin: Date }[]): string[] {
+    return slots.map(
+      (s) =>
+        `${tiempo.desdeInstante(s.inicio, tz).hora}-${tiempo.desdeInstante(s.fin, tz).hora}`,
+    );
+  }
+
+  /**
+   * Prisma mínimo para el día del barbero: sede 09:00–18:00 y las tres fuentes
+   * de horario propias que el motor debe ordenar por precedencia.
+   */
+  function prismaConBarbero(
+    filas: any[],
+    extra: { plantilla?: any; excepcionBarbero?: any } = {},
+  ) {
+    return {
+      barberia: { findUnique: async () => ({ zonaHoraria: tz }) },
+      horario: { findFirst: async () => ({ horaInicio: time(9, 0), horaFin: time(18, 0) }) },
+      excepcionHorario: { findFirst: async () => null },
+      excepcionHorarioBarbero: { findFirst: async () => extra.excepcionBarbero ?? null },
+      horarioBarbero: { findMany: async () => filas },
+      horarioBaseBarbero: {
+        findUnique: async ({ where }: any) =>
+          extra.plantilla && where.barberoId_diaSemana.diaSemana === extra.plantilla.diaSemana
+            ? extra.plantilla
+            : null,
+      },
+      bloqueosAgenda: { findMany: async () => [] },
+      reserva: { findMany: async () => [] },
+    } as any;
+  }
+
+  it('sin plantilla ni semana propia se sigue heredando el horario de la sede', async () => {
+    const slots = await new DisponibilidadService(prismaConBarbero([])).calcularDisponibilidad(
+      consulta(),
+    );
+
+    expect(slots).toHaveLength(18);
+    expect(etiquetas([slots[0]])).toEqual(['09:00-09:30']);
+  });
+
+  it('la plantilla dicta la jornada cuando el barbero no declaró semana en la sede', async () => {
+    const prisma = prismaConBarbero([], { plantilla: plantilla(1, '10:00', '14:00') });
+
+    const slots = await new DisponibilidadService(prisma).calcularDisponibilidad(consulta());
+
+    expect(slots).toHaveLength(8);
+    expect(etiquetas([slots[0]])).toEqual(['10:00-10:30']);
+    expect(etiquetas([slots[slots.length - 1]])).toEqual(['13:30-14:00']);
+  });
+
+  it('la plantilla no puede ABRIR la sede: se recorta con ella', async () => {
+    // La plantilla propone 07:00–20:00 y la sede abre 09:00–18:00.
+    const prisma = prismaConBarbero([], { plantilla: plantilla(1, '07:00', '20:00') });
+
+    const slots = await new DisponibilidadService(prisma).calcularDisponibilidad(consulta());
+
+    expect(slots).toHaveLength(18);
+    expect(etiquetas([slots[0]])).toEqual(['09:00-09:30']);
+    expect(etiquetas([slots[slots.length - 1]])).toEqual(['17:30-18:00']);
+  });
+
+  it('un día apagado en la plantilla deja al barbero sin huecos', async () => {
+    const prisma = prismaConBarbero([], {
+      plantilla: plantilla(1, '09:00', '18:00', false),
+    });
+
+    await expect(
+      new DisponibilidadService(prisma).calcularDisponibilidad(consulta()),
+    ).resolves.toEqual([]);
+  });
+
+  it('la semana declarada en la sede gana a la plantilla, aunque la plantilla esté activa', async () => {
+    const prisma = prismaConBarbero([fila(1, { horaInicio: time(9, 0), horaFin: time(11, 0) })], {
+      plantilla: plantilla(1, '10:00', '14:00'),
+    });
+
+    const slots = await new DisponibilidadService(prisma).calcularDisponibilidad(consulta());
+
+    expect(slots).toHaveLength(4);
+    expect(etiquetas([slots[0]])).toEqual(['09:00-09:30']);
+    expect(etiquetas([slots[slots.length - 1]])).toEqual(['10:30-11:00']);
+  });
+
+  it('un día apagado en la plantilla NO apaga una semana ya declarada en la sede', async () => {
+    const prisma = prismaConBarbero([fila(1)], {
+      plantilla: plantilla(1, '09:00', '18:00', false),
+    });
+
+    const slots = await new DisponibilidadService(prisma).calcularDisponibilidad(consulta());
+
+    expect(slots).toHaveLength(18);
+  });
+
+  it('la excepción del barbero manda sobre la plantilla: CERRADA borra el día', async () => {
+    const prisma = prismaConBarbero([], {
+      plantilla: plantilla(1, '09:00', '18:00'),
+      excepcionBarbero: { tipo: 'CERRADA', horaInicio: null, horaFin: null },
+    });
+
+    await expect(
+      new DisponibilidadService(prisma).calcularDisponibilidad(consulta()),
+    ).resolves.toEqual([]);
+  });
+
+  it('la excepción del barbero sustituye la jornada de la plantilla', async () => {
+    const prisma = prismaConBarbero([], {
+      plantilla: plantilla(1, '09:00', '18:00'),
+      excepcionBarbero: {
+        tipo: 'HORARIO_ESPECIAL',
+        horaInicio: time(11, 0),
+        horaFin: time(13, 0),
+      },
+    });
+
+    const slots = await new DisponibilidadService(prisma).calcularDisponibilidad(consulta());
+
+    expect(etiquetas(slots)).toEqual([
+      '11:00-11:30',
+      '11:30-12:00',
+      '12:00-12:30',
+      '12:30-13:00',
+    ]);
+  });
+
+  it('resuelve el día ISO de la fecha: el domingo busca el 7, no el 0', async () => {
+    const prisma = prismaConBarbero([], { plantilla: plantilla(7, '10:00', '12:00') });
+    const service = new DisponibilidadService(prisma);
+
+    // 2026-10-04 es domingo. Con la numeración ISO la plantilla del 7 aplica...
+    const domingo = await service.calcularDisponibilidad(consulta(DOMINGO));
+    expect(etiquetas(domingo)).toEqual([
+      '10:00-10:30',
+      '10:30-11:00',
+      '11:00-11:30',
+      '11:30-12:00',
+    ]);
+
+    // ...y el lunes, con la misma plantilla cargada, sigue heredando la sede.
+    const lunes = await service.calcularDisponibilidad(consulta());
+    expect(lunes).toHaveLength(18);
   });
 });
