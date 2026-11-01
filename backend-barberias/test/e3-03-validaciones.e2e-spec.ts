@@ -219,7 +219,20 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
       ['cI.e303@test.com', ['F']],
     ] as [string, string[]][]) {
       for (const s of ['CLIENTE', 'ADMIN_BARBERIA', 'BARBERO'] as const) {
-        await prisma.usuarioRol.create({ data: { usuarioId: (await prisma.usuario.findUnique({ where: { correo: mail } })).id, rolId: rol[s], barberiaId: s === 'CLIENTE' ? null : sedes.includes(s) ? barberia[s] : undefined } });
+        await prisma.usuarioRol.upsert({
+    where: {
+      usuarioId_rolId: {
+        usuarioId: (await prisma.usuario.findUnique({ where: { correo: mail } })).id,
+        rolId: rol[s],
+      },
+    },
+    update: {},
+    create: {
+      usuarioId: (await prisma.usuario.findUnique({ where: { correo: mail } })).id,
+      rolId: rol[s],
+      barberiaId: s === 'CLIENTE' ? null : sedes.includes(s) ? barberia[s] : undefined,
+    },
+  });
       }
     }
     // Vínculos ACTIVOS (cX *sin* filas en clienteBarberias = NO_VINCULADO)
