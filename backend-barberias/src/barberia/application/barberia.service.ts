@@ -251,20 +251,20 @@ export class BarberiaService {
       //    no necesita la fila: `RolesGuard` ya lo deja pasar (D05).
       if (!esAdministradorDePlataforma && rolAdminBarberia) {
         validarAsignacionRol(rolAdminBarberia, barberia.id);
-        await tx.usuarioRol.upsert({
-          where: {
-            uk_usuario_rol_barberia: {
+        // E0 · antes un `upsert` sobre `uk_usuario_rol_barberia`. Ese `@@unique`
+        // ya no existe (no protegía los roles globales); la unicidad de la sede
+        // la garantiza el índice parcial `uk_usuario_rol_sede`, así que
+        // `skipDuplicates` (INSERT ... ON CONFLICT DO NOTHING) es el equivalente
+        // exacto del viejo `update: {}`.
+        await tx.usuarioRol.createMany({
+          data: [
+            {
               usuarioId: responsableId,
               rolId: rolAdminBarberia.id,
               barberiaId: barberia.id,
             },
-          },
-          create: {
-            usuarioId: responsableId,
-            rolId: rolAdminBarberia.id,
-            barberiaId: barberia.id,
-          },
-          update: {},
+          ],
+          skipDuplicates: true,
         });
       }
 

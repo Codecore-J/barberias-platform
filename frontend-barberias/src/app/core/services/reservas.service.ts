@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, of, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 import { TenantService } from './tenant.service.js';
+import type { ReservaCliente, Turno } from '../models/turno.model.js';
 
 export interface DisponibilidadSlot {
   inicio: string;
@@ -122,11 +123,11 @@ export class ReservasService {
   /**
    * Obtiene las reservas del cliente actual
    */
-  obtenerMisReservas(): Observable<any[]> {
+  obtenerMisReservas(): Observable<ReservaCliente[]> {
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.get<any>(`${this.appointmentsUrl}/mine`).pipe(
+    return this.http.get<ReservaCliente[]>(`${this.appointmentsUrl}/mine`).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
@@ -138,12 +139,16 @@ export class ReservasService {
 
   /**
    * Obtiene la agenda de reservas de una barbería para una fecha específica (Para barberos/admins)
+   *
+   * Fase 4 · devuelve `Turno[]`, no `any[]`: es la MISMA forma que el backend
+   * arma en `obtenerAgendaDiaria` (cliente siempre presente, barbero nullable) y
+   * así la agenda no necesita castear la respuesta para pintarla.
    */
-  obtenerAgendaDiaria(fecha: string): Observable<any[]> {
+  obtenerAgendaDiaria(fecha: string): Observable<Turno[]> {
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.get<any>(`${this.appointmentsUrl}/day?fecha=${fecha}`).pipe(
+    return this.http.get<Turno[]>(`${this.appointmentsUrl}/day?fecha=${fecha}`).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);

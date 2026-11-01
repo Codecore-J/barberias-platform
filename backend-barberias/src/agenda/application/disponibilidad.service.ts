@@ -92,6 +92,17 @@ export class DisponibilidadService {
     return barberia?.zonaHoraria || ZONA_POR_DEFECTO;
   }
 
+  /** Respuesta de un día en el que el barbero no trabaja: sin jornada ni huecos. */
+  private diaSinJornada(tz: string, fechaIso: string, fechaEtiqueta: Date) {
+    return {
+      tz,
+      fechaIso,
+      fechaEtiqueta,
+      jornada: null as Intervalo | null,
+      ocupados: [] as Intervalo[],
+    };
+  }
+
   /**
    * Compone el instante real de una etiqueta de calendario (`fecha`) más una
    * etiqueta horaria (`TIME`) en la zona de la sede. Es la sustitución directa
@@ -207,61 +218,107 @@ export class DisponibilidadService {
 
     // V3 fase 5 · el horario PROPIO del barbero manda dentro del de la sede.
     //
-    // La jornada efectiva es el rango más restrictivo de los dos: si el barbero
-    // entra más tarde o sale antes, se recorta; si se pisa con la sede pero no
-    // contiene el bloque pedido, la intersección lo deja fuera. Un día libre
+    // Precedencia (V3 · plantilla base), de más concreta a más general:
+    //   1. la EXCEPCIÓN de ese barbero para esa fecha exacta —cerrado o jornada
+    //      especial—: es la decisión más puntual y gana a todo lo demás;
+    //   2. la semana declarada en `horarios_barbero` para ESA sede;
+    //   3. la plantilla base semanal (`horarios_base_barbero`), que acompaña al
+    //      barbero entre sedes cuando en esta no declaró nada.
+    //
+    // En las tres fuentes la jornada efectiva es el rango más restrictivo con el
+    // de la sede: el barbero no puede abrir una sede cerrada. Un día libre
     // (`es_dia_libre`) borra la jornada entera del barbero, no la de la sede.
     //
-    // Señal de compatibilidad: si NO hay ninguna fila del barbero en esa sede se
-    // hereda el horario de la sede. Así los barberos que nunca entraron a esta
-    // pantalla no pierden su agenda el día del despliegue.
+    // Señal de compatibilidad: un barbero sin filas propias y SIN plantilla
+    // hereda el horario de la sede. Así los barberos que nunca configuraron nada
+    // no pierden su agenda, y la plantilla solo cambia el comportamiento de
+    // quien la declaró (o la apagó) a propósito.
     let descansoBarbero: Intervalo | null = null;
 
     if (barberoId) {
-      const filasBarbero = await db.horarioBarbero.findMany({
-        where: { barberiaId, barberoId },
+      const excepcionBarbero = await db.excepcionHorarioBarbero.findFirst({
+        where: { barberiaId, barberoId, fecha: fechaEtiqueta },
       });
 
-      if (filasBarbero.length > 0) {
-        const dia = filasBarbero.find((fila: any) => fila.diaSemana === diaSemana);
+      if (excepcionBarbero?.tipo === TipoExcepcionHorario.CERRADA) {
+        return this.diaSinJornada(tz, fechaIso, fechaEtiqueta);
+      }
 
-        if (!dia || dia.esDiaLibre || !dia.horaInicio || !dia.horaFin) {
-          return {
-            tz,
-            fechaIso,
-            fechaEtiqueta,
-            jornada: null as Intervalo | null,
-            ocupados: [] as Intervalo[],
+      /** Rango propio del barbero ya resuelto; `null` = hereda el de la sede. */
+      let rangoBarbero: Intervalo | null = null;
+
+      if (
+        excepcionBarbero?.tipo === TipoExcepcionHorario.HORARIO_ESPECIAL &&
+        excepcionBarbero.horaInicio &&
+        excepcionBarbero.horaFin
+      ) {
+        rangoBarbero = {
+          inicio: this.instanteDeEtiqueta(fechaIso, excepcionBarbero.horaInicio, tz),
+          fin: this.instanteDeEtiqueta(fechaIso, excepcionBarbero.horaFin, tz),
+        };
+      } else {
+        const filasBarbero = await db.horarioBarbero.findMany({
+          where: { barberiaId, barberoId },
+        });
+
+        if (filasBarbero.length > 0) {
+          const dia = filasBarbero.find((fila: any) => fila.diaSemana === diaSemana);
+
+          if (!dia || dia.esDiaLibre || !dia.horaInicio || !dia.horaFin) {
+            return this.diaSinJornada(tz, fechaIso, fechaEtiqueta);
+          }
+
+          rangoBarbero = {
+            inicio: this.instanteDeEtiqueta(fechaIso, dia.horaInicio, tz),
+            fin: this.instanteDeEtiqueta(fechaIso, dia.horaFin, tz),
           };
+
+          if (dia.horaInicioDescanso && dia.horaFinDescanso) {
+            descansoBarbero = {
+              inicio: this.instanteDeEtiqueta(fechaIso, dia.horaInicioDescanso, tz),
+              fin: this.instanteDeEtiqueta(fechaIso, dia.horaFinDescanso, tz),
+            };
+          }
+        } else {
+          // La plantilla base usa horas de texto `"HH:mm"`, no `TIME`, así que se
+          // compone con `aInstante` y no con `instanteDeEtiqueta`.
+          //
+          // `diaSemana` ya es ISO 1–7 (el de `TiempoService.diaSemana`), el mismo
+          // que guarda la plantilla: no hay conversión que pueda desplazar el día.
+          const plantilla = await db.horarioBaseBarbero.findUnique({
+            where: { barberoId_diaSemana: { barberoId, diaSemana } },
+          });
+
+          // Un día APAGADO en la plantilla es una decisión explícita: el barbero
+          // no trabaja ese día. La AUSENCIA de plantilla no lo es —la tabla está
+          // vacía para casi todos— y por eso cae a la herencia de la sede.
+          if (plantilla && !plantilla.activo) {
+            return this.diaSinJornada(tz, fechaIso, fechaEtiqueta);
+          }
+
+          if (plantilla) {
+            rangoBarbero = {
+              inicio: this.tiempo.aInstante(fechaIso, plantilla.horaInicio, tz),
+              fin: this.tiempo.aInstante(fechaIso, plantilla.horaFin, tz),
+            };
+          }
         }
+      }
 
-        const inicioBarbero = this.instanteDeEtiqueta(fechaIso, dia.horaInicio, tz);
-        const finBarbero = this.instanteDeEtiqueta(fechaIso, dia.horaFin, tz);
-
+      if (rangoBarbero) {
         const inicioIntersectado = new Date(
-          Math.max(inicioJornada.getTime(), inicioBarbero.getTime()),
+          Math.max(inicioJornada.getTime(), rangoBarbero.inicio.getTime()),
         );
-        const finIntersectado = new Date(Math.min(finJornada.getTime(), finBarbero.getTime()));
+        const finIntersectado = new Date(
+          Math.min(finJornada.getTime(), rangoBarbero.fin.getTime()),
+        );
 
         if (inicioIntersectado.getTime() >= finIntersectado.getTime()) {
-          return {
-            tz,
-            fechaIso,
-            fechaEtiqueta,
-            jornada: null as Intervalo | null,
-            ocupados: [] as Intervalo[],
-          };
+          return this.diaSinJornada(tz, fechaIso, fechaEtiqueta);
         }
 
         inicioJornada = inicioIntersectado;
         finJornada = finIntersectado;
-
-        if (dia.horaInicioDescanso && dia.horaFinDescanso) {
-          descansoBarbero = {
-            inicio: this.instanteDeEtiqueta(fechaIso, dia.horaInicioDescanso, tz),
-            fin: this.instanteDeEtiqueta(fechaIso, dia.horaFinDescanso, tz),
-          };
-        }
       }
     }
 

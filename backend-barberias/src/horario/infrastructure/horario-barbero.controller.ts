@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Put, UseGuards } from '@nestjs/common';
 import { HorarioService } from '../application/horario.service.js';
 import { ConfigurarMiHorarioDto } from '../application/dto/configurar-mi-horario.dto.js';
+import { GuardarPlantillaBaseDto } from '../application/dto/plantilla-base-barbero.dto.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import { VinculoBarberiaGuard } from '../../iam/infrastructure/vinculo-barberia.guard.js';
@@ -46,5 +47,35 @@ export class HorarioBarberoController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.horarioService.configurarMiHorario(user.id, barberiaId, dto);
+  }
+
+  /**
+   * GET · plantilla semanal BASE del barbero (la que se repite cada semana).
+   *
+   * Es global —no cuelga de una sede—, pero se sirve bajo `shops/:shopId`
+   * porque el acceso lo autoriza el vínculo con la sede: quien la lee es el
+   * barbero autenticado, nunca un id que llegue del cliente.
+   */
+  @Roles('BARBERO')
+  @UseGuards(VinculoBarberiaGuard)
+  @Get('base')
+  obtenerPlantilla(@CurrentUser() user: UsuarioAutenticado) {
+    return this.horarioService.obtenerPlantillaBase(user.id);
+  }
+
+  /**
+   * PUT · guarda la plantilla base con un upsert MASIVO (solo los días
+   * enviados). Un día puede apagarse con `activo: false` sin perder sus horas,
+   * que es lo que evita tener que reescribir la semana entera.
+   */
+  @Roles('BARBERO')
+  @UseGuards(VinculoBarberiaGuard)
+  @Put('base')
+  guardarPlantilla(
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
+    @Body() dto: GuardarPlantillaBaseDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.horarioService.guardarPlantillaBase(user.id, barberiaId, dto);
   }
 }

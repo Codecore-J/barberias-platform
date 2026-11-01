@@ -7,7 +7,8 @@ import {
 } from '../../../core/services/catalogo-hibrido.service.js';
 import { TenantService } from '../../../core/services/tenant.service.js';
 import { AuthService } from '../../../auth/auth.service.js';
-import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive.js';
+import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component.js';
+import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service.js';
 
 /**
  * V3 · Categorías de servicio de la sede (panel del ADMIN_BARBERIA).
@@ -23,7 +24,7 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
 @Component({
   selector: 'app-admin-categorias',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, ModalOverlayDirective],
+  imports: [CommonModule, ReactiveFormsModule, ModalShellComponent],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-8 bg-ambient-mesh">
       <!-- Cabecera -->
@@ -211,33 +212,14 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
       </div>
 
       <!-- Modal de alta / edición -->
-      @if (modalAbierto()) {
-        <div
-          appModalOverlay
-          class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-        >
-          <div
-            class="bg-zinc-900 border border-amber-500/25 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden"
-          >
-            <div class="p-6 space-y-6">
-              <div class="flex justify-between items-start">
-                <div>
-                  <h3 class="text-xl font-bold text-white">
-                    {{ editandoId() ? 'Editar categoría' : 'Nueva categoría' }}
-                  </h3>
-                  <p class="text-xs text-zinc-400 mt-1">
-                    Agrupa los servicios que ofrecen tus barberos en esta sede.
-                  </p>
-                </div>
-                <button
-                  (click)="cerrarFormulario()"
-                  class="text-zinc-500 hover:text-white transition-colors"
-                  aria-label="Cerrar"
-                >
-                  <i class="pi pi-times text-xl"></i>
-                </button>
-              </div>
-
+      <app-modal-shell
+        [visible]="modalAbierto()"
+        [titulo]="editandoId() ? 'Editar categoría' : 'Nueva categoría'"
+        subtitulo="Agrupa los servicios que ofrecen tus barberos en esta sede."
+        icono="pi pi-tags"
+        ancho="lg"
+        [cerrarBloqueado]="catalogoService.guardandoCategoria()"
+        (cerrar)="cerrarFormulario()">
               <form [formGroup]="form" (ngSubmit)="guardar()" class="space-y-4">
                 <div>
                   <label class="block text-xs font-semibold text-zinc-400 uppercase mb-1.5">
@@ -271,7 +253,7 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
                   }
                 </div>
 
-                <div class="flex gap-3 pt-4 border-t border-white/5">
+                <div modal-footer class="flex gap-3 pt-4 border-t border-white/5">
                   <button
                     type="button"
                     (click)="cerrarFormulario()"
@@ -293,10 +275,7 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-        </div>
-      }
+      </app-modal-shell>
     </div>
   `,
 })
@@ -305,6 +284,7 @@ export class AdminCategoriasComponent implements OnInit {
   protected readonly tenantService = inject(TenantService);
   private readonly authService = inject(AuthService);
   private readonly fb = inject(FormBuilder);
+  private readonly confirmDialog = inject(ConfirmDialogService);
 
   readonly modalAbierto = signal(false);
   readonly editandoId = signal<string | null>(null);
@@ -383,14 +363,19 @@ export class AdminCategoriasComponent implements OnInit {
     });
   }
 
-  alternarEstado(categoria: CategoriaServicio): void {
+  async alternarEstado(categoria: CategoriaServicio): Promise<void> {
     if (!this.puedeGestionar()) return;
 
-    const pregunta = categoria.activa
-      ? `¿Desactivar «${categoria.nombre}»? Dejará de mostrarse en el catálogo del cliente, pero no se borra.`
-      : `¿Reactivar «${categoria.nombre}»? Volverá a mostrarse en el catálogo junto con sus servicios.`;
-
-    if (!confirm(pregunta)) return;
+    const confirmado = await this.confirmDialog.confirm({
+      titulo: categoria.activa ? 'Desactivar categoría' : 'Reactivar categoría',
+      mensaje: categoria.activa
+        ? `¿Desactivar «${categoria.nombre}»? Dejará de mostrarse en el catálogo del cliente, pero no se borra ni se pierden los servicios que cuelgan de ella.`
+        : `¿Reactivar «${categoria.nombre}»? Volverá a mostrarse en el catálogo junto con sus servicios.`,
+      textoConfirmar: categoria.activa ? 'Sí, desactivar' : 'Sí, reactivar',
+      tono: categoria.activa ? 'peligro' : 'primario',
+      icono: categoria.activa ? 'pi pi-ban' : 'pi pi-replay',
+    });
+    if (!confirmado) return;
 
     this.procesandoId.set(categoria.id);
     this.catalogoService.actualizarCategoria(categoria.id, { activa: !categoria.activa }).subscribe({

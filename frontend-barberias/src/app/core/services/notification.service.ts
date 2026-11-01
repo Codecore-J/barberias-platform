@@ -1,6 +1,7 @@
 import { Injectable, signal, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
 import { Observable, tap, catchError, of } from 'rxjs';
+import { SILENCIAR_TOAST } from '../interceptors/error.interceptor';
 
 export interface NotificacionItem {
   id: string;
@@ -26,18 +27,25 @@ export class NotificationService {
 
   cargarNotificaciones(): Observable<NotificacionItem[]> {
     this.isLoading.set(true);
-    return this.http.get<NotificacionItem[]>(`${this.apiUrl}/mis-notificaciones`).pipe(
-      tap((items) => {
-        const list = Array.isArray(items) ? items : (items as any).data || [];
-        this.notificaciones.set(list);
-        this.noLeidasCount.set(list.filter((n: NotificacionItem) => !n.leido).length);
-        this.isLoading.set(false);
-      }),
-      catchError(() => {
-        this.isLoading.set(false);
-        return of([]);
-      }),
-    );
+    // Sondeo de fondo del layout: si falla, la campana se queda sin datos pero
+    // el usuario no necesita un toast rojo cada pocos segundos (ya lo hizo el
+    // `catchError` de abajo devolviendo la lista vacía).
+    return this.http
+      .get<NotificacionItem[]>(`${this.apiUrl}/mis-notificaciones`, {
+        context: new HttpContext().set(SILENCIAR_TOAST, true),
+      })
+      .pipe(
+        tap((items) => {
+          const list = Array.isArray(items) ? items : (items as any).data || [];
+          this.notificaciones.set(list);
+          this.noLeidasCount.set(list.filter((n: NotificacionItem) => !n.leido).length);
+          this.isLoading.set(false);
+        }),
+        catchError(() => {
+          this.isLoading.set(false);
+          return of([]);
+        }),
+      );
   }
 
   marcarComoLeida(id: string): Observable<any> {

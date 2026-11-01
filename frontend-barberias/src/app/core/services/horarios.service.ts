@@ -42,6 +42,45 @@ export interface ExcepcionHorario {
   motivo?: string;
 }
 
+/**
+ * V3 · un día de la PLANTILLA BASE semanal del barbero.
+ *
+ * Es global (no cuelga de una sede): la semana que el barbero declara una vez y
+ * el motor usa como fuente por defecto cuando no tiene horario propio en la
+ * sede consultada. `diaSemana` es ISO 1 = lunes … 7 = domingo.
+ */
+export interface DiaPlantillaBase {
+  diaSemana: number;
+  /** `null` cuando el barbero nunca configuró ese día. */
+  horaInicio: string | null;
+  horaFin: string | null;
+  /** Un día sin bloque (`horaInicio` nulo) siempre llega en `false`. */
+  activo: boolean;
+}
+
+export interface PlantillaBaseSemana {
+  barberoId: string;
+  /** `true` si el barbero todavía no guardó ninguna plantilla. */
+  sinPlantilla: boolean;
+  /** Los siete días, con los no configurados en `null`. */
+  dias: DiaPlantillaBase[];
+}
+
+/**
+ * V3 · excepción del barbero para UNA fecha concreta.
+ *
+ * El backend no acepta rangos (`fechaInicio`/`fechaFin`): cada día distinto es
+ * una excepción propia, que es como la guarda `excepciones_horario_barbero`
+ * (`UNIQUE (barbero, barbería, fecha)`).
+ */
+export interface NuevaExcepcionBarbero {
+  fecha: string; // YYYY-MM-DD
+  tipo: 'CERRADA' | 'HORARIO_ESPECIAL';
+  horaInicio?: string;
+  horaFin?: string;
+  motivo?: string;
+}
+
 export interface BloqueoAgenda {
   id: string;
   barberiaId: string;
@@ -91,6 +130,50 @@ export class HorariosService {
     });
   }
 
+  /**
+   * Plantilla base semanal del barbero autenticado.
+   *
+   * Bajo `shops/:shopId` porque la sede es lo que autoriza la llamada; la
+   * plantilla en sí es del barbero y el `barberoId` lo pone el backend desde el
+   * JWT, nunca el cliente.
+   */
+  obtenerPlantillaBase(barberiaId: string): Observable<PlantillaBaseSemana> {
+    return this.http.get<PlantillaBaseSemana>(`${API_URL}/shops/${barberiaId}/mi-horario/base`);
+  }
+
+  /**
+   * Guardado MASIVO de la plantilla: solo se envían los días que cambian.
+   *
+   * Es un upsert por día, no un reemplazo: el backend conserva los días que no
+   * viajan en el cuerpo (y las horas de un día que se apaga).
+   */
+  guardarPlantillaBase(
+    barberiaId: string,
+    dias: DiaPlantillaBase[],
+  ): Observable<PlantillaBaseSemana> {
+    return this.http.put<PlantillaBaseSemana>(`${API_URL}/shops/${barberiaId}/mi-horario/base`, {
+      dias,
+    });
+  }
+
+  /**
+   * Excepción del barbero para una fecha (día libre o jornada especial).
+   *
+   * El `barberoId` va en la ruta porque el backend lo exige para autorizar: si
+   * no coincide con el usuario del token, solo un administrador de la sede puede
+   * escribirla (403 en caso contrario).
+   */
+  crearExcepcionBarbero(
+    barberiaId: string,
+    barberoId: string,
+    excepcion: NuevaExcepcionBarbero,
+  ): Observable<ExcepcionHorario> {
+    return this.http.post<ExcepcionHorario>(
+      `${API_URL}/shops/${barberiaId}/hours/barbers/${barberoId}/exceptions`,
+      excepcion,
+    );
+  }
+
   obtenerExcepciones(barberiaId: string, from?: string, to?: string): Observable<ExcepcionHorario[]> {
     let params: any = {};
     if (from) params.from = from;
@@ -102,8 +185,17 @@ export class HorariosService {
     return this.http.post<ExcepcionHorario>(`${API_URL}/shops/${barberiaId}/hours/exceptions`, excepcion);
   }
 
-  agregarExcepcionBarbero(barberiaId: string, barberoId: string, excepcion: ExcepcionHorario): Observable<any> {
-    return this.http.post(`${API_URL}/shops/${barberiaId}/hours/barbers/${barberoId}/exceptions`, excepcion);
+  /**
+   * Alias del nombre anterior. Conserva la firma que ya usaba la pantalla de
+   * personal; la implementación es una sola (`crearExcepcionBarbero`), para que
+   * cambiar la ruta o el cuerpo no obligue a tocar dos sitios.
+   */
+  agregarExcepcionBarbero(
+    barberiaId: string,
+    barberoId: string,
+    excepcion: ExcepcionHorario,
+  ): Observable<ExcepcionHorario> {
+    return this.crearExcepcionBarbero(barberiaId, barberoId, excepcion);
   }
 
   obtenerBloqueos(barberiaId: string, from?: string, to?: string): Observable<BloqueoAgenda[]> {

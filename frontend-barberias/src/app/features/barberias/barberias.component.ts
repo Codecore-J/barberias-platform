@@ -10,12 +10,12 @@ import { qrDeInvitacion, urlDeInvitacion } from '../../core/utils/invitacion.uti
 import { VincularModalComponent } from './components/vincular-modal/vincular-modal.component';
 import { SedeCardComponent } from './components/sede-card/sede-card.component';
 
-import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.directive';
+import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.component';
 
 @Component({
   selector: 'app-barberias',
   standalone: true,
-  imports: [CommonModule, RouterLink, VincularModalComponent, SedeCardComponent, ModalOverlayDirective],
+  imports: [CommonModule, RouterLink, VincularModalComponent, SedeCardComponent, ModalShellComponent],
   template: `
     <div class="space-y-12 py-8 perspective-1200 bg-ambient-mesh min-h-screen">
       
@@ -252,62 +252,50 @@ import { ModalOverlayDirective } from '../../shared/directives/modal-overlay.dir
         contador de inasistencias NO se borran.
       -->
       @if (barberiaADesvincular(); as objetivo) {
-        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
-          <div class="bg-zinc-900 border border-rose-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div class="p-6 space-y-5">
-              <div class="flex justify-between items-start">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
-                    <i class="pi pi-sign-out text-lg"></i>
-                  </div>
-                  <div>
-                    <h3 class="text-lg font-bold text-white">Desvincularme</h3>
-                    <p class="text-xs text-zinc-400">{{ objetivo.nombre }}</p>
-                  </div>
-                </div>
-                <button (click)="cerrarDesvinculacion()" class="text-zinc-500 hover:text-white transition-colors">
-                  <i class="pi pi-times text-xl"></i>
-                </button>
-              </div>
-
-              <div class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 space-y-2">
-                <p>
-                  Vas a cerrar tu vínculo con
-                  <span class="font-semibold">{{ objetivo.nombre }}</span>: dejarás de ver su catálogo
-                  y no podrás reservar en esa sede.
-                </p>
-                <p class="text-rose-200/80">
-                  Tu historial y tu contador de inasistencias se conservan (D20/D21). Si vuelves a
-                  introducir su código de acceso, recuperas la misma vinculación.
-                </p>
-                @if (estadoDe(objetivo.id)?.estaRestringido) {
-                  <p class="text-rose-200 font-semibold">
-                    Esta sede te tiene restringido: desvincularte NO levanta esa restricción.
-                  </p>
-                }
-              </div>
-
-              @if (miEstado.error()) {
-                <div class="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-start gap-2">
-                  <i class="pi pi-exclamation-triangle mt-0.5"></i>
-                  <span>{{ miEstado.error() }}</span>
-                </div>
-              }
-
-              <div class="flex gap-3 pt-2 border-t border-zinc-800">
-                <button (click)="cerrarDesvinculacion()"
-                        class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
-                  Cancelar
-                </button>
-                <button (click)="confirmarDesvinculacion()" [disabled]="miEstado.isLoading()"
-                        class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-40 transition-all flex items-center justify-center gap-2">
-                  <i class="pi" [ngClass]="miEstado.isLoading() ? 'pi-spin pi-spinner' : 'pi-user-minus'"></i>
-                  <span>Sí, desvincularme</span>
-                </button>
-              </div>
-            </div>
+        <app-modal-shell
+          [visible]="true"
+          titulo="Desvincularme"
+          [subtitulo]="objetivo.nombre"
+          icono="pi pi-sign-out"
+          tono="peligro"
+          [cerrarBloqueado]="miEstado.isLoading()"
+          (cerrar)="cerrarDesvinculacion()">
+          <div class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 space-y-2">
+            <p>
+              Vas a cerrar tu vínculo con
+              <span class="font-semibold">{{ objetivo.nombre }}</span>: dejarás de ver su catálogo
+              y no podrás reservar en esa sede.
+            </p>
+            <p class="text-rose-200/80">
+              Tu historial y tu contador de inasistencias se conservan (D20/D21). Si vuelves a
+              introducir su código de acceso, recuperas la misma vinculación.
+            </p>
+            @if (estadoDe(objetivo.id)?.estaRestringido) {
+              <p class="text-rose-200 font-semibold">
+                Esta sede te tiene restringido: desvincularte NO levanta esa restricción.
+              </p>
+            }
           </div>
-        </div>
+
+          @if (miEstado.error()) {
+            <div class="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-start gap-2">
+              <i class="pi pi-exclamation-triangle mt-0.5"></i>
+              <span>{{ miEstado.error() }}</span>
+            </div>
+          }
+
+          <div modal-footer class="flex gap-3 pt-2 border-t border-zinc-800">
+            <button (click)="cerrarDesvinculacion()"
+                    class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
+              Cancelar
+            </button>
+            <button (click)="confirmarDesvinculacion()" [disabled]="miEstado.isLoading()"
+                    class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-40 transition-all flex items-center justify-center gap-2">
+              <i class="pi" [ngClass]="miEstado.isLoading() ? 'pi-spin pi-spinner' : 'pi-user-minus'"></i>
+              <span>Sí, desvincularme</span>
+            </button>
+          </div>
+        </app-modal-shell>
       }
 
     </div>

@@ -5,12 +5,14 @@ import { PersonalService, Personal } from '../../../core/services/personal.servi
 import { HorariosService, ExcepcionHorario } from '../../../core/services/horarios.service';
 import { TenantService } from '../../../core/services/tenant.service';
 
-import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
+import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component';
+import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service';
+import { ToastService } from '../../../shared/ui/toast/toast.service';
 
 @Component({
   selector: 'app-admin-personal',
   standalone: true,
-  imports: [CommonModule, FormsModule, ModalOverlayDirective],
+  imports: [CommonModule, FormsModule, ModalShellComponent],
   template: `
     <div class="space-y-8 pb-12 animate-fade-in relative z-10">
       
@@ -86,20 +88,12 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
       </div>
 
       <!-- Modal Excepción -->
-      @if (modalAbierto()) {
-        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div class="p-6 space-y-6">
-              <div class="flex justify-between items-start">
-                <div>
-                  <h3 class="text-xl font-bold text-white">Nueva Excepción</h3>
-                  <p class="text-sm text-zinc-400">Para {{ barberoSeleccionado()?.nombreCompleto }}</p>
-                </div>
-                <button (click)="cerrarModal()" class="text-zinc-500 hover:text-white transition-colors">
-                  <i class="pi pi-times text-xl"></i>
-                </button>
-              </div>
-
+      <app-modal-shell
+        [visible]="modalAbierto()"
+        titulo="Nueva Excepción"
+        [subtitulo]="'Para ' + (barberoSeleccionado()?.nombreCompleto ?? '')"
+        icono="pi pi-calendar-plus"
+        (cerrar)="cerrarModal()">
               <div class="space-y-4">
                 <div>
                   <label class="block text-xs font-medium text-zinc-400 mb-1">Fecha</label>
@@ -133,7 +127,7 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
                 </div>
               </div>
 
-              <div class="flex gap-3 pt-4 border-t border-white/5">
+              <div modal-footer class="flex gap-3 pt-4 border-t border-white/5">
                 <button (click)="cerrarModal()" class="flex-1 py-3 px-4 rounded-xl font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
                   Cancelar
                 </button>
@@ -141,10 +135,7 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
                   <i class="pi pi-check mr-2"></i>Guardar
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      }
+      </app-modal-shell>
 
     </div>
   `
@@ -153,6 +144,8 @@ export class AdminPersonalComponent implements OnInit {
   private tenantService = inject(TenantService);
   private personalService = inject(PersonalService);
   private horariosService = inject(HorariosService);
+  private confirmDialog = inject(ConfirmDialogService);
+  private toast = inject(ToastService);
 
   personal = signal<Personal[]>([]);
   cargando = signal(true);
@@ -213,12 +206,15 @@ export class AdminPersonalComponent implements OnInit {
     if (!barberia || !barbero) return;
 
     if (!this.excepcionModel.fecha) {
-      alert('La fecha es obligatoria');
+      this.toast.warning('La fecha es obligatoria para registrar la excepción.', 'Falta un dato');
       return;
     }
 
     if (this.excepcionModel.tipo === 'HORARIO_ESPECIAL' && (!this.excepcionModel.horaInicio || !this.excepcionModel.horaFin)) {
-      alert('Debes definir hora de inicio y fin para un horario especial');
+      this.toast.warning(
+        'Debes definir hora de inicio y fin para un horario especial.',
+        'Falta un dato',
+      );
       return;
     }
 
@@ -228,27 +224,45 @@ export class AdminPersonalComponent implements OnInit {
       this.excepcionModel as ExcepcionHorario
     ).subscribe({
       next: () => {
-        alert('Excepción guardada correctamente');
+        this.toast.success('La excepción quedó guardada en el horario del barbero.', 'Excepción guardada');
         this.cerrarModal();
       },
       error: (err) => {
-        console.error('Error al guardar', err);
-        alert('Ocurrió un error al guardar la excepción');
+        // El aviso al usuario lo da el interceptor global: aquí solo se deja el
+        // rastro para depurar. El modal sigue abierto para corregir los datos
+        // sin tener que volver a escribirlos.
+        console.error('Error al guardar la excepción', err);
       }
     });
   }
 
   invitarMiembro() {
-    alert('Funcionalidad de invitar miembro en desarrollo');
+    this.toast.info(
+      'La invitación de nuevos miembros estará disponible próximamente.',
+      'En desarrollo',
+    );
   }
 
   editarMiembro(miembro: Personal) {
-    alert(`Editar miembro: ${miembro.nombreCompleto} (en desarrollo)`);
+    this.toast.info(
+      `La edición del perfil de ${miembro.nombreCompleto} estará disponible próximamente.`,
+      'En desarrollo',
+    );
   }
 
-  eliminarMiembro(miembro: Personal) {
-    if (confirm(`¿Estás seguro de que deseas eliminar a ${miembro.nombreCompleto} de la barbería?`)) {
-      alert('Funcionalidad de eliminación en desarrollo');
-    }
+  async eliminarMiembro(miembro: Personal): Promise<void> {
+    const confirmado = await this.confirmDialog.confirm({
+      titulo: 'Retirar del equipo',
+      mensaje: `¿Deseas eliminar a ${miembro.nombreCompleto} de la barbería? Dejará de recibir citas y de aparecer en la agenda.`,
+      textoConfirmar: 'Sí, eliminar',
+      tono: 'peligro',
+      icono: 'pi pi-user-minus',
+    });
+    if (!confirmado) return;
+
+    this.toast.warning(
+      'La eliminación de miembros está en desarrollo: todavía no modifica la base de datos.',
+      'En desarrollo',
+    );
   }
 }

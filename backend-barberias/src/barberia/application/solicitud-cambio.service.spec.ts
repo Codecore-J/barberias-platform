@@ -70,7 +70,7 @@ describe('SolicitudCambioService (E3-13)', () => {
       barberia: { findUnique: vi.fn(), update: vi.fn() },
       usuario: { findUnique: vi.fn() },
       rol: { findUnique: vi.fn() },
-      usuarioRol: { deleteMany: vi.fn(), upsert: vi.fn() },
+      usuarioRol: { deleteMany: vi.fn(), createMany: vi.fn() },
       solicitudCambioBarberia: {
         findUnique: vi.fn(),
         findFirst: vi.fn(),
@@ -225,20 +225,15 @@ describe('SolicitudCambioService (E3-13)', () => {
           usuarioId: { not: NUEVO_RESPONSABLE },
         },
       });
-      expect(prisma.usuarioRol.upsert).toHaveBeenCalledWith({
-        where: {
-          uk_usuario_rol_barberia: {
+      expect(prisma.usuarioRol.createMany).toHaveBeenCalledWith({
+        data: [
+          {
             usuarioId: NUEVO_RESPONSABLE,
             rolId: ROL_ADMIN_BARBERIA_ID,
             barberiaId: BARBERIA_A,
           },
-        },
-        create: {
-          usuarioId: NUEVO_RESPONSABLE,
-          rolId: ROL_ADMIN_BARBERIA_ID,
-          barberiaId: BARBERIA_A,
-        },
-        update: {},
+        ],
+        skipDuplicates: true,
       });
       // 3. la solicitud queda resuelta
       expect(prisma.solicitudCambioBarberia.update).toHaveBeenCalledWith({
@@ -281,7 +276,7 @@ describe('SolicitudCambioService (E3-13)', () => {
         where: { id: BARBERIA_A },
         data: { nombre: 'Barbería Renombrada' },
       });
-      expect(prisma.usuarioRol.upsert).not.toHaveBeenCalled();
+      expect(prisma.usuarioRol.createMany).not.toHaveBeenCalled();
       expect(auditoria.registrarEvento).toHaveBeenCalledWith(
         expect.objectContaining({ accion: 'SOLICITUD_CAMBIO_NOMBRE_APROBADA' }),
         expect.anything(),

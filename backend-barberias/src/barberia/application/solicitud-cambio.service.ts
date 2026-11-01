@@ -316,8 +316,10 @@ export class SolicitudCambioService {
           validarAsignacionRol(rolAdminBarberia, barberia.id);
 
           // El rol se MUEVE: se retira del anterior y se asigna al nuevo. Si el
-          // nuevo ya lo tuviera, el deleteMany no lo toca y el upsert no duplica
-          // (uk_usuario_rol_barberia).
+          // nuevo ya lo tuviera, el deleteMany no lo toca y el INSERT ... ON
+          // CONFLICT DO NOTHING no duplica (índice parcial uk_usuario_rol_sede:
+          // el `@@unique` que cubría esto ya no existe — no protegía los roles
+          // globales, ver schema.prisma).
           await tx.usuarioRol.deleteMany({
             where: {
               rolId: rolAdminBarberia.id,
@@ -326,20 +328,15 @@ export class SolicitudCambioService {
             },
           });
 
-          await tx.usuarioRol.upsert({
-            where: {
-              uk_usuario_rol_barberia: {
+          await tx.usuarioRol.createMany({
+            data: [
+              {
                 usuarioId: nuevo.id,
                 rolId: rolAdminBarberia.id,
                 barberiaId: barberia.id,
               },
-            },
-            create: {
-              usuarioId: nuevo.id,
-              rolId: rolAdminBarberia.id,
-              barberiaId: barberia.id,
-            },
-            update: {},
+            ],
+            skipDuplicates: true,
           });
         }
 

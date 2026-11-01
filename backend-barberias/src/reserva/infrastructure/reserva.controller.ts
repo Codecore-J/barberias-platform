@@ -10,7 +10,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ReservaService } from '../application/reserva.service.js';
+import { CrearWalkInYCobrarService } from '../application/crear-walkin-y-cobrar.service.js';
 import { CreateReservaDto } from '../application/dto/create-reserva.dto.js';
+import { WalkInCobroDto } from '../application/dto/walk-in-cobro.dto.js';
 import { RechazarReservaDto } from '../application/dto/rechazar-reserva.dto.js';
 import { ReprogramarReservaDto } from '../application/dto/reprogramar-reserva.dto.js';
 import { CancelacionEspecialDto } from '../application/dto/cancelacion-especial.dto.js';
@@ -23,7 +25,10 @@ import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 @Controller('shops/:shopId/appointments')
 export class ReservaController {
-  constructor(private readonly reservaService: ReservaService) {}
+  constructor(
+    private readonly reservaService: ReservaService,
+    private readonly walkInCobro: CrearWalkInYCobrarService,
+  ) {}
 
   @Get('day')
   @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR')
@@ -95,6 +100,35 @@ export class ReservaController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.reservaService.crearReserva(user.id, barberiaId, dto);
+  }
+
+  /**
+   * POST /shops/:shopId/appointments/walk-in-pago
+   * Fase 3 · cita directa cobrada en un solo paso.
+   *
+   * Existe porque el walk-in + cobro eran dos peticiones: si la segunda no
+   * llegaba, quedaba una cita sin pagar y el arqueo descuadrado. Aquí ambas
+   * escrituras comparten transacción SERIALIZABLE (ver el caso de uso) y el
+   * mismo servicio de alta que el wizard, así que las reglas de agenda son una
+   * sola.
+   *
+   * Solo la SEDE opera el mostrador: el barbero cobra lo suyo desde su agenda
+   * (`POST /shops/:shopId/payments`), pero abrir una cita al vuelo y cobrarla es
+   * una operación de caja.
+   */
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Post('walk-in-pago')
+  crearWalkInYCobrar(
+    @CurrentBarberiaId() barberiaId: string,
+    @Body() dto: WalkInCobroDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.walkInCobro.ejecutar(
+      user.id,
+      barberiaId,
+      dto.reserva,
+      dto.metodoPago,
+    );
   }
 
   /**

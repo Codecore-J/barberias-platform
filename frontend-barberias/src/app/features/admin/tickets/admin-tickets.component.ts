@@ -1,4 +1,6 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, DestroyRef, inject, signal, computed, resource } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { firstValueFrom } from 'rxjs';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { PagosService, PagoHistorial } from '../../../core/services/pagos.service';
@@ -6,12 +8,12 @@ import { CajaService } from '../../../core/services/caja.service';
 import { TenantService } from '../../../core/services/tenant.service';
 import { AuthService } from '../../../auth/auth.service';
 
-import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
+import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component';
 
 @Component({
   selector: 'app-admin-tickets',
   standalone: true,
-  imports: [CommonModule, CurrencyPipe, DatePipe, FormsModule, ModalOverlayDirective],
+  imports: [CommonModule, CurrencyPipe, DatePipe, FormsModule, ModalShellComponent],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
       
@@ -34,11 +36,11 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
             </button>
           }
 
-          <button (click)="cargarTickets()"
-                  [disabled]="pagosService.isLoading()"
+          <button (click)="refrescarTodo()"
+                  [disabled]="refrescando()"
                   class="px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-zinc-950 gold-gradient-bg shadow-[0_4px_16px_rgba(212,175,55,0.25)] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2">
-            <i class="pi pi-refresh" [class.pi-spin]="pagosService.isLoading()"></i>
-            {{ pagosService.isLoading() ? 'Actualizando...' : 'Refrescar' }}
+            <i class="pi pi-refresh" [class.pi-spin]="refrescando()"></i>
+            {{ refrescando() ? 'Actualizando...' : 'Refrescar' }}
           </button>
         </div>
       </div>
@@ -357,25 +359,15 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
       }
 
       <!-- MODAL ANULAR COBRO (H68 · §7.3) -->
-      @if (modalAnularAbierto() && pagoAAnular(); as pago) {
-        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
-          <div class="bg-zinc-900 border border-rose-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div class="p-6 space-y-6">
-              <div class="flex justify-between items-start">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
-                    <i class="pi pi-ban text-lg"></i>
-                  </div>
-                  <div>
-                    <h3 class="text-lg font-bold text-white">Anular Cobro</h3>
-                    <p class="text-xs text-zinc-400">Corrección de caja con rastro en la auditoría</p>
-                  </div>
-                </div>
-                <button (click)="cerrarModalAnular()" class="text-zinc-500 hover:text-white transition-colors">
-                  <i class="pi pi-times text-xl"></i>
-                </button>
-              </div>
-
+      @if (pagoAAnular(); as pago) {
+        <app-modal-shell
+          [visible]="modalAnularAbierto()"
+          titulo="Anular Cobro"
+          subtitulo="Corrección de caja con rastro en la auditoría"
+          icono="pi pi-ban"
+          tono="peligro"
+          [cerrarBloqueado]="anulando()"
+          (cerrar)="cerrarModalAnular()">
               <div class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 space-y-1">
                 <p class="font-semibold flex items-center gap-1.5">
                   <i class="pi pi-exclamation-triangle"></i> Esta acción deshace un ingreso
@@ -413,31 +405,18 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
                   <span>{{ anulando() ? 'Anulando...' : 'Anular cobro' }}</span>
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
+        </app-modal-shell>
       }
 
       <!-- MODAL CIERRE DE CAJA (V3 fase 6) -->
-      @if (modalCierreAbierto()) {
-        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
-          <div class="bg-zinc-900 border border-amber-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div class="p-6 space-y-5">
-              <div class="flex justify-between items-start">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                    <i class="pi pi-lock text-lg"></i>
-                  </div>
-                  <div>
-                    <h3 class="text-lg font-bold text-white">Cerrar la caja del día</h3>
-                    <p class="text-xs text-zinc-400">Esta acción sella el arqueo</p>
-                  </div>
-                </div>
-                <button (click)="cerrarModalCierre()" [disabled]="cajaService.cerrando()" class="text-zinc-500 hover:text-white transition-colors">
-                  <i class="pi pi-times text-xl"></i>
-                </button>
-              </div>
-
+      <app-modal-shell
+        [visible]="modalCierreAbierto()"
+        titulo="Cerrar la caja del día"
+        subtitulo="Esta acción sella el arqueo"
+        icono="pi pi-lock"
+        tono="primario"
+        [cerrarBloqueado]="cajaService.cerrando()"
+        (cerrar)="cerrarModalCierre()">
               <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200 space-y-1">
                 <p class="font-semibold flex items-center gap-1.5">
                   <i class="pi pi-exclamation-triangle"></i> Los datos financieros del día se sellarán
@@ -472,63 +451,46 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
                   <span>{{ cajaService.cerrando() ? 'Sellando...' : 'Sí, cerrar caja' }}</span>
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      }
+      </app-modal-shell>
 
       <!-- MODAL PURGA AUDITORÍA (ADMINISTRADOR) -->
-      @if (modalPurgaAbierto()) {
-        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
-          <div class="bg-zinc-900 border border-rose-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div class="p-6 space-y-6">
-              <div class="flex justify-between items-start">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
-                    <i class="pi pi-shield text-lg"></i>
-                  </div>
-                  <div>
-                    <h3 class="text-lg font-bold text-white">Purga de Auditoría</h3>
-                    <p class="text-xs text-zinc-400">Mantenimiento de base de datos (ADMINISTRADOR)</p>
-                  </div>
-                </div>
-                <button (click)="cerrarModalPurga()" class="text-zinc-500 hover:text-white transition-colors">
-                  <i class="pi pi-times text-xl"></i>
-                </button>
-              </div>
-
-              <div class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 space-y-1">
-                <p class="font-semibold flex items-center gap-1.5">
-                  <i class="pi pi-exclamation-triangle"></i> Operación destructiva irreversible
-                </p>
-                <p class="text-zinc-400">
-                  Esta acción elimina los registros de auditoría más antiguos del plazo especificado para optimizar almacenamiento.
-                </p>
-              </div>
-
-              <div>
-                <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Conservar registros de los últimos:</label>
-                <select [(ngModel)]="diasPurga" class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
-                  <option [ngValue]="180">6 meses (180 días)</option>
-                  <option [ngValue]="365">1 año (365 días - Recomendado)</option>
-                  <option [ngValue]="730">2 años (730 días)</option>
-                </select>
-              </div>
-
-              <div class="flex gap-3 pt-4 border-t border-zinc-800">
-                <button (click)="cerrarModalPurga()" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
-                  Cancelar
-                </button>
-                <button (click)="confirmarPurga()" [disabled]="purgando()"
-                        class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-900/30">
-                  <i class="pi" [ngClass]="purgando() ? 'pi-spin pi-spinner' : 'pi-trash'"></i>
-                  <span>{{ purgando() ? 'Purgando...' : 'Ejecutar Purga' }}</span>
-                </button>
-              </div>
-            </div>
-          </div>
+      <app-modal-shell
+        [visible]="modalPurgaAbierto()"
+        titulo="Purga de Auditoría"
+        subtitulo="Mantenimiento de base de datos (ADMINISTRADOR)"
+        icono="pi pi-shield"
+        tono="peligro"
+        [cerrarBloqueado]="purgando()"
+        (cerrar)="cerrarModalPurga()">
+        <div class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 space-y-1">
+          <p class="font-semibold flex items-center gap-1.5">
+            <i class="pi pi-exclamation-triangle"></i> Operación destructiva irreversible
+          </p>
+          <p class="text-zinc-400">
+            Esta acción elimina los registros de auditoría más antiguos del plazo especificado para optimizar almacenamiento.
+          </p>
         </div>
-      }
+
+        <div>
+          <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Conservar registros de los últimos:</label>
+          <select [(ngModel)]="diasPurga" class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+            <option [ngValue]="180">6 meses (180 días)</option>
+            <option [ngValue]="365">1 año (365 días - Recomendado)</option>
+            <option [ngValue]="730">2 años (730 días)</option>
+          </select>
+        </div>
+
+        <div modal-footer class="flex gap-3 pt-4 border-t border-zinc-800">
+          <button (click)="cerrarModalPurga()" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
+            Cancelar
+          </button>
+          <button (click)="confirmarPurga()" [disabled]="purgando()"
+                  class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-900/30">
+            <i class="pi" [ngClass]="purgando() ? 'pi-spin pi-spinner' : 'pi-trash'"></i>
+            <span>{{ purgando() ? 'Purgando...' : 'Ejecutar Purga' }}</span>
+          </button>
+        </div>
+      </app-modal-shell>
 
     </div>
   `,
@@ -542,12 +504,22 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
     }
   `]
 })
-export class AdminTicketsComponent implements OnInit {
+export class AdminTicketsComponent {
   protected pagosService = inject(PagosService);
   // V3 fase 6 · arqueo del día y cierre.
   protected cajaService = inject(CajaService);
   protected tenantService = inject(TenantService);
   protected authService = inject(AuthService);
+
+  private readonly destroyRef = inject(DestroyRef);
+
+  /** Una petición en vuelo de cualquiera de las dos fuentes deja el botón ocupado. */
+  refrescando = computed(
+    () =>
+      this.panelResource.isLoading() ||
+      this.pagosService.isLoading() ||
+      this.cajaService.cargando(),
+  );
 
   filtroMetodo = signal<string>('TODOS');
   busquedaTexto = '';
@@ -631,17 +603,48 @@ export class AdminTicketsComponent implements OnInit {
     });
   });
 
-  ngOnInit() {
-    this.cargarTickets();
-    this.cargarCaja();
+  /**
+   * Fase 4 · las dos lecturas de la pantalla (historial de cobros y arqueo del
+   * día) viven en un solo `resource`. Antes eran dos `.subscribe()` de montaje con
+   * el cuerpo vacío: el componente no recibía ningún valor, solo empujaba al
+   * servicio a escribir sus señales, y cada refresco repetía la misma pareja.
+   *
+   * El `resource` arranca al construirse y se vuelve a ejecutar cuando cambia la
+   * sede activa o el gatillo `version`; el `abortSignal` del loader ya no hace
+   * falta porque `firstValueFrom` convierte cada petición en una promesa que el
+   * propio recurso descarta al cancelar.
+   */
+  private readonly version = signal(0);
+
+  private readonly panelResource = resource({
+    params: () => ({
+      shopId: this.tenantService.barberiaActivaId(),
+      version: this.version(),
+    }),
+    loader: async ({ params }) => {
+      if (!params.shopId) return null;
+      await Promise.all([
+        firstValueFrom(this.cajaService.cargarHoy()),
+        firstValueFrom(this.pagosService.obtenerHistorial()),
+      ]);
+      return params.version;
+    },
+  });
+
+  /**
+   * Fase 1 · el botón «Refrescar» solo recargaba el historial, así que los
+   * totales de la caja del día —que viven en otra fuente y se pintan arriba—
+   * se quedaban con el valor anterior hasta reabrir la pantalla. Un cobro hecho
+   * en la agenda y la caja mostraban cifras distintas. Ahora refresca las dos
+   * fuentes que esta vista pinta a la vez, y el botón espera a ambas.
+   */
+  refrescarTodo() {
+    this.version.update((n) => n + 1);
   }
 
-  cargarTickets() {
-    this.pagosService.obtenerHistorial().subscribe();
-  }
-
+  /** Reintento de la caja cuando su fuente falló: misma recarga que «Refrescar». */
   cargarCaja() {
-    this.cajaService.cargarHoy().subscribe();
+    this.refrescarTodo();
   }
 
   abrirModalCierre() {
@@ -655,15 +658,18 @@ export class AdminTicketsComponent implements OnInit {
   }
 
   confirmarCierre() {
-    this.cajaService.cerrarCaja().subscribe((caja) => {
-      if (!caja) return;
-      this.modalCierreAbierto.set(false);
-      this.mensajeExito.set('Caja cerrada: los totales del día quedaron sellados.');
-      setTimeout(() => this.mensajeExito.set(''), 5000);
-      // El historial no cambia, pero el estado del cierre sí: se refresca todo
-      // para que la pantalla no muestre «caja abierta» después de sellarla.
-      this.cargarTickets();
-    });
+    this.cajaService
+      .cerrarCaja()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((caja) => {
+        if (!caja) return;
+        this.modalCierreAbierto.set(false);
+        this.mensajeExito.set('Caja cerrada: los totales del día quedaron sellados.');
+        setTimeout(() => this.mensajeExito.set(''), 5000);
+        // El historial no cambia, pero el estado del cierre sí: se refresca todo
+        // para que la pantalla no muestre «caja abierta» después de sellarla.
+        this.refrescarTodo();
+      });
   }
 
   resetFiltros() {
@@ -681,18 +687,21 @@ export class AdminTicketsComponent implements OnInit {
 
   confirmarPurga() {
     this.purgando.set(true);
-    this.pagosService.purgarAuditoria(this.diasPurga).subscribe({
-      next: (res) => {
-        this.purgando.set(false);
-        this.cerrarModalPurga();
-        this.mensajeExito.set(res?.message || 'Purga de auditoría completada con éxito.');
-        setTimeout(() => this.mensajeExito.set(''), 5000);
-        this.cargarTickets();
-      },
-      error: () => {
-        this.purgando.set(false);
-      }
-    });
+    this.pagosService
+      .purgarAuditoria(this.diasPurga)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (res) => {
+          this.purgando.set(false);
+          this.cerrarModalPurga();
+          this.mensajeExito.set(res?.message || 'Purga de auditoría completada con éxito.');
+          setTimeout(() => this.mensajeExito.set(''), 5000);
+          this.refrescarTodo();
+        },
+        error: () => {
+          this.purgando.set(false);
+        },
+      });
   }
 
   // ── H68 · §7.3: anular un cobro ─────────────────────────────────────────────
@@ -717,15 +726,19 @@ export class AdminTicketsComponent implements OnInit {
     this.anulando.set(true);
     this.errorAnulacion.set(null);
 
-    this.pagosService.anularPago(pago.id, this.motivoAnulacion.trim()).subscribe({
+    this.pagosService
+      .anularPago(pago.id, this.motivoAnulacion.trim())
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
       next: () => {
         this.anulando.set(false);
         this.cerrarModalAnular();
         this.mensajeExito.set('Cobro anulado. El movimiento quedó registrado en la auditoría.');
         setTimeout(() => this.mensajeExito.set(''), 5000);
         // La fila vuelve a leerse de la fuente: el estado ANULADO no se inventa en
-        // el cliente, se confirma contra el backend antes de pintarlo.
-        this.cargarTickets();
+        // el cliente, se confirma contra el backend antes de pintarlo. La caja
+        // también se recarga: un cobro anulado deja de sumar en el arqueo.
+        this.refrescarTodo();
       },
       error: (err) => {
         this.anulando.set(false);

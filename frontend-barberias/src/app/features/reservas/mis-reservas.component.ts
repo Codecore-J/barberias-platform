@@ -1,7 +1,9 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, inject, computed, resource } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 import { ReservasService } from '../../core/services/reservas.service';
+import type { ReservaCliente } from '../../core/models/turno.model';
 
 @Component({
   selector: 'app-mis-reservas',
@@ -116,16 +118,22 @@ import { ReservasService } from '../../core/services/reservas.service';
     </div>
   `
 })
-export class MisReservasComponent implements OnInit {
+export class MisReservasComponent {
   protected readonly reservasService = inject(ReservasService);
-  
-  reservas = signal<any[]>([]);
 
-  ngOnInit() {
-    this.reservasService.obtenerMisReservas().subscribe(data => {
-      // Ordenar: Pendientes primero (o más cercanas primero), luego completadas/canceladas
-      const ordenados = data.sort((a, b) => new Date(b.fechaHoraInicio).getTime() - new Date(a.fechaHoraInicio).getTime());
-      this.reservas.set(ordenados);
-    });
-  }
+  /**
+   * Fase 4 · la lista es una lectura, así que la sirve un `resource` en lugar de
+   * un `.subscribe()` de montaje. El orden se aplica en un `computed` sobre una
+   * COPIA del arreglo: `sort` lo muta, y mutar el valor del recurso rompe la
+   * comparación con el que Angular guardó.
+   */
+  private readonly reservasResource = resource({
+    loader: () => firstValueFrom(this.reservasService.obtenerMisReservas()),
+  });
+
+  readonly reservas = computed<ReservaCliente[]>(() =>
+    [...(this.reservasResource.value() ?? [])].sort(
+      (a, b) => new Date(b.fechaHoraInicio).getTime() - new Date(a.fechaHoraInicio).getTime(),
+    ),
+  );
 }

@@ -1,7 +1,7 @@
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { ReservasService } from '../../../../core/services/reservas.service.js';
-import { ModalOverlayDirective } from '../../../../shared/directives/modal-overlay.directive.js';
+import { ModalShellComponent } from '../../../../shared/ui/modal-shell/modal-shell.component.js';
 
 type MetodoCobro = 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA';
 
@@ -27,41 +27,17 @@ interface OpcionMetodo {
 @Component({
   selector: 'app-cobro-modal',
   standalone: true,
-  imports: [CommonModule, CurrencyPipe, DatePipe, ModalOverlayDirective],
+  imports: [CommonModule, CurrencyPipe, DatePipe, ModalShellComponent],
   template: `
-    <div
-      appModalOverlay
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in"
-      (click)="cerrar.emit()"
+    <app-modal-shell
+      [visible]="true"
+      titulo="Cobrar cita"
+      subtitulo="Registra el pago y cierra la atención"
+      icono="pi pi-wallet"
+      tono="primario"
+      [cerrarBloqueado]="procesando()"
+      (cerrar)="cerrar.emit()"
     >
-      <div
-        class="bg-zinc-900 border border-amber-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl"
-        (click)="$event.stopPropagation()"
-      >
-        <div class="p-6 space-y-5">
-          <!-- Cabecera -->
-          <div class="flex justify-between items-start">
-            <div class="flex items-center gap-3">
-              <div
-                class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400"
-              >
-                <i class="pi pi-wallet text-lg"></i>
-              </div>
-              <div>
-                <h3 class="text-lg font-bold text-white">Cobrar cita</h3>
-                <p class="text-xs text-zinc-400">Registra el pago y cierra la atención</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              (click)="cerrar.emit()"
-              class="text-zinc-500 hover:text-white transition-colors"
-              aria-label="Cerrar"
-            >
-              <i class="pi pi-times text-xl"></i>
-            </button>
-          </div>
-
           <!-- Resumen de la cita -->
           <div class="rounded-2xl bg-zinc-950/70 border border-white/5 p-4 space-y-2">
             <div class="flex items-center justify-between text-sm">
@@ -160,9 +136,7 @@ interface OpcionMetodo {
               <span>{{ procesando() ? 'Cobrando...' : 'Confirmar cobro' }}</span>
             </button>
           </div>
-        </div>
-      </div>
-    </div>
+    </app-modal-shell>
   `,
 })
 export class CobroModalComponent {

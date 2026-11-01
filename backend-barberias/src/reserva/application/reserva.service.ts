@@ -156,6 +156,29 @@ const TEXTO_MOTIVO_RECHAZO: Record<string, string> = {
   OTRO: 'no fue posible atender la solicitud',
 };
 
+/**
+ * Fase 3 · opciones internas del alta de reserva.
+ *
+ * Existen para que un caso de uso mayor (la cita directa que se cobra al
+ * crearse) pueda **compartir su transacción** con el alta y **confirmar en el
+ * acto**, sin duplicar las ~450 líneas de validaciones que garantizan que un
+ * hueco no se venda dos veces.
+ */
+export interface CrearReservaOpciones {
+  /**
+   * Transacción abierta por el llamante. Cuando llega, el alta se ejecuta dentro
+   * de ella en lugar de abrir la suya: es la única forma de que reserva y cobro
+   * sean atómicos, porque Prisma no anida transacciones.
+   */
+  tx?: Prisma.TransactionClient;
+  /**
+   * La cita nace `CONFIRMADA` aunque la sede tenga confirmación MANUAL. El
+   * cajero tiene al cliente delante y el pago en la mano: hacerle esperar los 10
+   * minutos del temporizador de aceptación no tiene sentido.
+   */
+  confirmarAlCrear?: boolean;
+}
+
 @Injectable()
 export class ReservaService {
   private readonly logger = new Logger(ReservaService.name);
@@ -603,7 +626,12 @@ export class ReservaService {
     throw error;
   }
 
-  async crearReserva(clienteId: string, barberiaId: string, dto: CreateReservaDto) {
+  async crearReserva(
+    clienteId: string,
+    barberiaId: string,
+    dto: CreateReservaDto,
+    opciones: CrearReservaOpciones = {},
+  ) {
     const { inicio, fin } = validateTimeRange(dto.horaInicio, dto.horaFin);
     // E2-04: la fecha es una etiqueta `DATE`; se normaliza con el servicio central.
     const fecha = this.tiempo.fechaDeCalendario(dto.fecha);
@@ -644,7 +672,7 @@ export class ReservaService {
       );
     }
 
-    const creada = await withSerializableTransaction(this.prisma, async (tx) => {
+    const ejecutar = async (tx: Prisma.TransactionClient) => {
       // 0. Orden de validaciones (principio 9): sesión → rol → DTO → sede
       //    ACTIVA (P-SD-4) → vinculación ACTIVO con esa barbería → no restringido
       //    → configuración (pausa, tipo aceptado, horizonte, max_pendientes) →
@@ -776,6 +804,16 @@ export class ReservaService {
 
       // Bloqueo pesimista sobre la barbería (row-level lock) para evitar Race Conditions
       await this.bloquearSedeParaEscritura(tx, barberiaId);
+
+      // V3 · el barbero es un recurso COMPARTIDO entre sedes: la fila de la sede
+      // solo serializa las altas de ESTA sede, así que un barbero con rol en dos
+      // sedes podía recibir dos citas a la misma hora por dos peticiones
+      // simultáneas. Su fila es el punto de serialización que ambas comparten.
+      // El orden (sede → barbero) es el mismo en todas las transacciones, así
+      // que no introduce un ciclo de espera.
+      if (dto.barberoId) {
+        await this.bloquearBarberoParaEscritura(tx, dto.barberoId);
+      }
 
       // 1. Obtener y validar servicios del catálogo (T6.2 Snapshot Histórico Inmutable).
       //    E4-01: en la reserva grupal el catálogo se resuelve POR PARTICIPANTE y
@@ -928,8 +966,33 @@ export class ReservaService {
         );
       }
 
+      // V3 · el motor de disponibilidad mira las reservas de UNA sede, así que
+      // por sí solo no ve que el mismo barbero esté ocupado en otra. Con el lock
+      // del barbero ya tomado, esta consulta cierra ese hueco: es bloqueante en
+      // el sentido que importa (nadie más puede escribir su agenda mientras la
+      // transacción vive) y su índice es `reservas_barbero_id_idx`.
+      if (dto.barberoId) {
+        await this.exigirBarberoSinSolape(
+          tx,
+          dto.barberoId,
+          fecha,
+          inicio,
+          horaFinServicios,
+          margenFinal,
+        );
+      }
+
+      // Fase 3 · modo EFECTIVO del alta. La sede puede tener confirmación
+      // MANUAL, pero una cita cobrada en mostrador nace ya confirmada: el
+      // cajero tiene al cliente delante y el dinero en la mano. Cambiar este
+      // valor —y no cada rama por separado— mantiene coherentes el estado
+      // inicial, el temporizador, el modo guardado y los avisos.
+      const modoConfirmacion: string = opciones.confirmarAlCrear
+        ? 'AUTOMATICA'
+        : config.modoReserva;
+
       const expiraAt =
-        config.modoReserva === 'MANUAL'
+        modoConfirmacion === 'MANUAL'
           ? new Date(this.tiempo.ahora().getTime() + 10 * 60000)
           : null;
 
@@ -938,7 +1001,7 @@ export class ReservaService {
       // por la máquina igual que el resto de transiciones; el actor es el CLIENTE
       // porque la reserva es suya aunque la teclee el staff (walk-in).
       const estadoInicial: EstadoReserva =
-        config.modoReserva === 'AUTOMATICA' ? ESTADOS.CONFIRMADA : ESTADOS.PENDIENTE;
+        modoConfirmacion === 'AUTOMATICA' ? ESTADOS.CONFIRMADA : ESTADOS.PENDIENTE;
       ReservaStateMachine.assertTransition(null, estadoInicial, ACTORES.CLIENTE);
 
       // 3. Crear reserva con snapshot financiero inmutable congelado
@@ -954,7 +1017,7 @@ export class ReservaService {
           margenGrupalHistorico: margenFinal,
           totalPagar: precioTotalCatalogo, // Fijado inmutablemente desde el catálogo
           estado: estadoInicial,
-          modoConfirmacion: config.modoReserva,
+          modoConfirmacion,
           expiraAt,
         },
       });
@@ -1037,7 +1100,7 @@ export class ReservaService {
 
       this.logger.log(`Reserva ${reserva.id} creada para barbería ${barberiaId} con snapshot financiero de $${precioTotalCatalogo}`);
 
-      if (config.modoReserva === 'MANUAL') {
+      if (modoConfirmacion === 'MANUAL') {
         // E3-04: el job lleva un `jobId` DETERMINISTA para que aceptar o
         // rechazar puedan cancelarlo. Con un id aleatorio de BullMQ no habría
         // forma de encontrarlo después. Además es idempotente: reencolar la
@@ -1075,7 +1138,7 @@ export class ReservaService {
 
       // 5. Despacho asíncrono de notificación y programación de recordatorio 1h antes (T8.1)
       if (this.notificacionService) {
-        const esAuto = config.modoReserva === 'AUTOMATICA';
+        const esAuto = modoConfirmacion === 'AUTOMATICA';
         const tipoNotif = esAuto ? 'RESERVA_CONFIRMADA' : 'RESERVA_CREADA';
         // E4-01/8: la notificación del grupo informa el tamaño, jamás quiénes son.
         const detalleGrupo = esGrupal ? ` para ${participantesResueltos.length} participantes` : '';
@@ -1108,29 +1171,43 @@ export class ReservaService {
       }
 
       return reserva;
-    }).catch((error) =>
-      // E4-02 · Carril A (§E4-02/2 y /4): si el tramo pedido no cabe, el error
-      // trae alternativas. Se resuelven FUERA de la transacción —que ya abortó
-      // y soltó el `FOR UPDATE`— y por solo lectura (D37/H41): una sugerencia
-      // nunca retiene el hueco.
-      this.agregarAlternativasAlError(error, barberiaId, {
-        fecha: dto.fecha,
-        horaInicio: dto.horaInicio,
-        horaFin: dto.horaFin,
-        tipo: dto.tipo,
-        participantes: dto.participantes,
-        barberoId: dto.barberoId ?? undefined,
-      }),
-    );
+    };
+
+    // Fase 3 · dentro de una transacción ajena NO se captura el error: si una
+    // sentencia falló, el motor ya marcó la transacción del llamante como
+    // abortada, y tragárselo aquí solo cambiaría un error útil por un 25P02
+    // («current transaction is aborted») en la siguiente consulta.
+    const creada = opciones.tx
+      ? await ejecutar(opciones.tx)
+      : await withSerializableTransaction(this.prisma, ejecutar).catch((error) =>
+          // E4-02 · Carril A (§E4-02/2 y /4): si el tramo pedido no cabe, el error
+          // trae alternativas. Se resuelven FUERA de la transacción —que ya abortó
+          // y soltó el `FOR UPDATE`— y por solo lectura (D37/H41): una sugerencia
+          // nunca retiene el hueco.
+          this.agregarAlternativasAlError(error, barberiaId, {
+            fecha: dto.fecha,
+            horaInicio: dto.horaInicio,
+            horaFin: dto.horaFin,
+            tipo: dto.tipo,
+            participantes: dto.participantes,
+            barberoId: dto.barberoId ?? undefined,
+          }),
+        );
 
     // Fase 7 · el hecho se publica DESPUÉS del commit: si la transacción abortó
     // no hay evento y, por tanto, ningún aviso de una reserva que no existe.
-    await this.emitirEventoReserva(
-      creada.estado === ESTADOS.CONFIRMADA
-        ? EVENTOS_RESERVA.CONFIRMADA
-        : EVENTOS_RESERVA.CREADA,
-      creada.id,
-    );
+    //
+    // Fase 3 · con una transacción ajena este punto todavía no es un commit: el
+    // orquestador publica el evento cuando confirma la suya, para no anunciar
+    // una cita cuyo cobro puede abortar el flujo entero.
+    if (!opciones.tx) {
+      await this.emitirEventoReserva(
+        creada.estado === ESTADOS.CONFIRMADA
+          ? EVENTOS_RESERVA.CONFIRMADA
+          : EVENTOS_RESERVA.CREADA,
+        creada.id,
+      );
+    }
 
     return creada;
   }
@@ -1297,7 +1374,10 @@ export class ReservaService {
         },
       });
 
-      // Punto 5.1A: Eliminar físicamente cualquier nota temporal asociada a la cita cancelada/no-presentada.      // Las notas temporales (compartido: false) se destruyen cuando la reserva llega a NO_PRESENTADO.      await this.prisma.antecedente.deleteMany({
+      // Punto 5.1A: Eliminar físicamente cualquier nota temporal asociada a la cita cancelada/no-presentada.      // Las notas temporales (compartido: false) se destruyen cuando la reserva llega a NO_PRESENTADO.      // Fase 3 · con `tx`, no `this.prisma`: fuera de la transacción este DELETE
+      // se confirmaba solo, así que un rollback posterior devolvía la reserva a
+      // CONFIRMADA con las notas temporales ya destruidas.
+      await tx.antecedente.deleteMany({
         where: {
           usuarioId: reserva.clienteId,
           barberiaOrigenId: reserva.barberiaId,
@@ -3030,6 +3110,18 @@ export class ReservaService {
    * cualquier fallo se registra y se traga —una notificación no puede hacer
    * fallar una reserva ya guardada—.
    */
+  /**
+   * Fase 3 · publica el evento de una reserva creada dentro de una transacción
+   * ajena, una vez que el orquestador confirma la suya. Las altas normales no lo
+   * necesitan: `crearReserva` publica el suyo tras el commit.
+   */
+  async publicarEventoReserva(
+    tipo: TipoEventoReserva,
+    reservaId: string,
+  ): Promise<void> {
+    return this.emitirEventoReserva(tipo, reservaId);
+  }
+
   private async emitirEventoReserva(
     tipo: TipoEventoReserva,
     reservaId: string,
@@ -3124,6 +3216,93 @@ export class ReservaService {
     await tx.$queryRaw`SELECT id FROM ${Prisma.raw(
       tablaCalificada('barberias'),
     )} WHERE id = ${barberiaId}::uuid FOR UPDATE`;
+  }
+
+  /**
+   * V3 · lock de la fila del BARBERO durante el alta.
+   *
+   * `bloquearSedeParaEscritura` serializa las escrituras de una sede, pero un
+   * barbero puede tener rol en varias: dos altas simultáneas en sedes distintas
+   * no comparten fila y el aislamiento SERIALIZABLE no lo detecta, porque cada
+   * transacción lee su propio conjunto de reservas. La fila de `usuarios` es el
+   * único punto que ambas comparten, y tomarla antes de leer las reservas del
+   * barbero es lo que convierte la comprobación en una decisión serializada.
+   *
+   * Se califica el esquema con `tablaCalificada` (H58): el nombre suelto depende
+   * del `search_path` de la sesión cuando hay un pooler por delante.
+   */
+  private async bloquearBarberoParaEscritura(
+    tx: Prisma.TransactionClient,
+    barberoId: string,
+  ): Promise<void> {
+    await tx.$queryRaw`SELECT id FROM ${Prisma.raw(
+      tablaCalificada('usuarios'),
+    )} WHERE id = ${barberoId}::uuid FOR UPDATE`;
+  }
+
+  /**
+   * V3 · el barbero no puede estar en dos citas a la vez, ni en dos sedes.
+   *
+   * Ocupa `[horaInicio, horaFin + margen)` por reserva, la misma cuenta que usa
+   * el motor de disponibilidad (D42/§5.4): el margen de la sede se aplica al
+   * BLOQUE y va después de los servicios. Solo cuentan PENDIENTE y CONFIRMADA,
+   * que son los estados desde los que una reserva ocupa agenda (§5.3).
+   *
+   * La consulta NO filtra por sede a propósito: es justo el caso que la
+   * disponibilidad de una sola sede no puede ver. El id de la otra sede no viaja
+   * en el mensaje, que es todo lo que el cliente necesita saber.
+   */
+  private async exigirBarberoSinSolape(
+    tx: Prisma.TransactionClient,
+    barberoId: string,
+    fecha: Date,
+    inicio: Date,
+    finServicios: Date,
+    margenNuevoMin: number,
+  ): Promise<void> {
+    const reservas = await tx.reserva.findMany({
+      where: {
+        barberoId,
+        fechaCita: fecha,
+        estado: { in: [ESTADOS.PENDIENTE, ESTADOS.CONFIRMADA] },
+      },
+      select: {
+        id: true,
+        horaInicio: true,
+        horaFin: true,
+        margenGrupalHistorico: true,
+      },
+    });
+
+    const nuevoInicio = this.minutosDeReloj(inicio);
+    const nuevoFin = this.minutosDeReloj(finServicios) + margenNuevoMin;
+
+    const solapada = reservas.find((reserva) => {
+      const inicioExistente = this.minutosDeReloj(reserva.horaInicio);
+      const finExistente =
+        this.minutosDeReloj(reserva.horaFin) + (reserva.margenGrupalHistorico ?? 0);
+
+      return nuevoInicio < finExistente && inicioExistente < nuevoFin;
+    });
+
+    if (solapada) {
+      throw errorDeConflicto(
+        'CONFLICTO_HORARIO',
+        'El barbero ya tiene otra cita que se solapa con ese horario.',
+      );
+    }
+  }
+
+  /**
+   * Minutos desde medianoche de una hora de reloj.
+   *
+   * Las dos fuentes de horas del proyecto son `DATE`/`TIME` sin zona: `TIME`
+   * llega de Prisma como `1970-01-01THH:mm:00.000Z` y `parseTime` construye el
+   * mismo instante con `setUTCHours`, así que `getUTC*` devuelve la hora escrita
+   * en ambos casos (el mismo criterio que usa `aceptarReserva`).
+   */
+  private minutosDeReloj(hora: Date): number {
+    return hora.getUTCHours() * 60 + hora.getUTCMinutes();
   }
 
   /**

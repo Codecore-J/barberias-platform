@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 import { ServiciosService, Servicio } from '../../core/services/servicios.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
+import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
 
 @Component({
   selector: 'app-admin-servicios',
@@ -262,6 +263,7 @@ export class AdminServiciosComponent implements OnInit {
   protected readonly tenantService = inject(TenantService);
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(AuthService);
+  private readonly confirmDialog = inject(ConfirmDialogService);
 
   userRole(): string {
     const roles = this.authService.authState().user?.roles;
@@ -389,16 +391,21 @@ export class AdminServiciosComponent implements OnInit {
    * de regla de negocio —lo normal aquí, no lo excepcional— acabaría además en
    * un error no capturado por consola.
    */
-  toggleEstado(servicio: Servicio) {
+  async toggleEstado(servicio: Servicio) {
     if (!this.puedeGestionar()) return;
     const tipo = servicio.esCombo ? 'el combo' : 'el servicio';
     const esReactivacion = servicio.estado === 'INACTIVO';
 
-    const pregunta = esReactivacion
-      ? `¿Deseas reactivar ${tipo} "${servicio.nombre}"? Volverá al catálogo de los clientes.`
-      : `¿Deseas desactivar ${tipo} "${servicio.nombre}"? Dejará de ofrecerse, pero no se borra.`;
-
-    if (!confirm(pregunta)) return;
+    const confirmado = await this.confirmDialog.confirm({
+      titulo: esReactivacion ? 'Reactivar en el catálogo' : 'Retirar del catálogo',
+      mensaje: esReactivacion
+        ? `¿Deseas reactivar ${tipo} «${servicio.nombre}»? Volverá a estar disponible para los clientes.`
+        : `¿Deseas desactivar ${tipo} «${servicio.nombre}»? Dejará de ofrecerse en el catálogo, pero no se borra: podrás reactivarlo cuando quieras.`,
+      textoConfirmar: esReactivacion ? 'Sí, reactivar' : 'Sí, desactivar',
+      tono: esReactivacion ? 'primario' : 'peligro',
+      icono: esReactivacion ? 'pi pi-replay' : 'pi pi-ban',
+    });
+    if (!confirmado) return;
 
     const peticion$: Observable<unknown> = esReactivacion
       ? (servicio.esCombo

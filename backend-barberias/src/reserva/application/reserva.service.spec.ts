@@ -39,7 +39,17 @@ describe('ReservaService', () => {
     $queryRaw: vi.fn(),
     configuracionBarberia: { findUnique: vi.fn() },
     clienteBarberia: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
-    reserva: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), count: vi.fn() },
+    // `findMany` es el que usa el solape del barbero entre sedes (V3): por
+    // defecto no hay ninguna otra cita, que es el caso de todos los tests que no
+    // lo sobrescriben.
+    reserva: {
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
     participanteReserva: { create: vi.fn() },
     participanteServicio: { createMany: vi.fn(), findMany: vi.fn() },
     servicio: { findMany: vi.fn() },

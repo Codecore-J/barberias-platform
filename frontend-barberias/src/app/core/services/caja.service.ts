@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, catchError, of, tap } from 'rxjs';
+import { Observable, catchError, firstValueFrom, of, tap } from 'rxjs';
 import { API_URL } from '../constants/api.constants';
 import { TenantService } from './tenant.service';
 
@@ -99,7 +99,14 @@ export class CajaService {
       catchError((err) => {
         this.cerrando.set(false);
         this.error.set(this.mensajeDeError(err, 'No se pudo cerrar la caja.'));
-        if (err?.status === 409) this.cargarHoy().subscribe();
+        // Fase 4 · el 409 significa que el día YA estaba cerrado, así que se
+        // relee el arqueo para pintar el cierre existente en vez de dejar la
+        // pantalla creyendo que sigue abierta. `firstValueFrom` evita el
+        // `.subscribe()` anidado dentro del `catchError`: nadie escuchaba ese
+        // flujo y el error del reintento se perdía sin dejar rastro.
+        if (err?.status === 409) {
+          void firstValueFrom(this.cargarHoy()).catch(() => null);
+        }
         return of(null);
       }),
     );

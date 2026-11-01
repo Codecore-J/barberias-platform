@@ -6,6 +6,7 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
 import { ACTORES, ESTADOS, type EstadoReserva } from '../../shared/domain/estados.js';
@@ -22,6 +23,17 @@ import { AuditoriaService } from '../../auditoria/application/auditoria.service.
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import { esAdministradorGlobal, esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
 import { METODO_PAGO_POR_DEFECTO } from '../domain/metodos-pago.js';
+
+/**
+ * Fase 3 · cómo un caso de uso mayor reutiliza su transacción para cobrar.
+ *
+ * Sin `tx` el método abre su propia transacción SERIALIZABLE (comportamiento
+ * histórico de los endpoints de cobro). Con `tx` se une a la del llamante, que
+ * es quien garantiza el «todo o nada» del flujo completo.
+ */
+export interface ContextoCobro {
+  tx?: Prisma.TransactionClient;
+}
 
 @Injectable()
 export class PagoService {
@@ -95,6 +107,7 @@ export class PagoService {
     usuarioId: string,
     barberiaId: string | null,
     dto: RegistrarPagoDto,
+    contexto: ContextoCobro = {},
   ) {
     // `null` es legítimo: `POST /pagos/cobrar` no lleva sede en la ruta y la
     // resuelve de la propia reserva, la única fuente fiable de a qué sede
@@ -115,7 +128,7 @@ export class PagoService {
 
     const perfil = await this.validateAccess(usuarioId, targetBarberiaId);
 
-    return withSerializableTransaction(this.prisma, async (tx) => {
+    const ejecutar = async (tx: Prisma.TransactionClient) => {
       // Bloqueo pesimista para evitar que dos cajeros cobren la misma reserva simultáneamente
       const reserva = await tx.reserva.findFirst({
         where: {
@@ -283,7 +296,17 @@ export class PagoService {
         pago,
         reserva: reservaActualizada,
       };
-    });
+    };
+
+    // Fase 3 · cuando el cobro es un paso de un caso de uso mayor (la cita
+    // directa que se cobra al crearse), la transacción la abre ese orquestador y
+    // aquí se reutiliza su `tx`. Abrir una segunda transacción SERIALIZABLE no
+    // sería un anidamiento —Prisma no los tiene— sino otra transacción
+    // independiente, y el «todo o nada» que promete el walk-in sería falso: la
+    // reserva podría confirmarse y el cobro fallar por separado.
+    if (contexto.tx) return ejecutar(contexto.tx);
+
+    return withSerializableTransaction(this.prisma, ejecutar);
   }
 
   /**

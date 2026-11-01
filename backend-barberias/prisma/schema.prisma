@@ -38,6 +38,10 @@ model Usuario {
   tokensRecuperacion TokenRecuperacion[]
   horariosBarbero    HorarioBarbero[]          @relation("HorarioDeBarbero")
   excepcionesBarbero ExcepcionHorarioBarbero[] @relation("ExcepcionDeBarbero")
+  // V3 · plantilla semanal recurrente del barbero (independiente de la sede).
+  horariosBase       HorarioBaseBarbero[]      @relation("HorarioBaseDeBarbero")
+  // V3 · excepciones de horario que este usuario modificó (barbero o admin).
+  excepcionesEditadas ExcepcionHorarioBarbero[] @relation("ExcepcionModificadaPor")
   reservasBarbero    Reserva[]                 @relation("BarberoReserva")
   bloqueosBarbero    BloqueosAgenda[]          @relation("BloqueoDeBarbero")
   // E3-08/D17: quién ejecutó la cancelación especial de una reserva.
@@ -103,7 +107,14 @@ model UsuarioRol {
   rol      Rol       @relation(fields: [rolId], references: [id])
   barberia Barberia? @relation(fields: [barberiaId], references: [id])
 
-  @@unique([usuarioId, rolId, barberiaId], name: "uk_usuario_rol_barberia")
+  // E0 · la unicidad NO se declara aquí. Un `@@unique` con `barberiaId`
+  // nullable no protege los roles globales: PostgreSQL considera distintos dos
+  // NULL, así que `(usuario, rol, NULL)` se podía insertar sin límite (de ahí
+  // los roles duplicados en el JWT). La garantía real vive en dos índices
+  // únicos PARCIALES de la migración `fix_indexes_and_roles`:
+  //   uk_usuario_rol_global → (usuario_id, rol_id) WHERE barberia_id IS NULL
+  //   uk_usuario_rol_sede   → (usuario_id, rol_id, barberia_id) WHERE barberia_id IS NOT NULL
+  // Prisma no sabe expresar índices parciales; por eso no aparecen aquí.
   @@map("usuario_roles")
 }
 
@@ -196,6 +207,8 @@ model Servicio {
   // E4-02/D22: suscripciones de lista de espera que piden este servicio.
   listaEsperas          ListaEspera[]
 
+  // E0 · el catálogo se lista siempre por sede.
+  @@index([barberiaId])
   @@map("servicios")
 }
 
@@ -356,12 +369,54 @@ model ExcepcionHorarioBarbero {
   horaInicio DateTime? @map("hora_inicio") @db.Time
   horaFin    DateTime? @map("hora_fin") @db.Time
   motivo     String?   @db.Text
+  // V3 · autoría del cambio. `modificadoPor` dice el ORIGEN (el propio barbero
+  // o un administrador de la sede) y `modificadoPorId` el usuario concreto.
+  // El id es opcional porque las filas anteriores a esta migración no lo
+  // tienen: se prefiere un autor desconocido a inventar uno.
+  modificadoPor   OrigenModificacionHorario @default(BARBERO) @map("modificado_por")
+  modificadoPorId String?                   @map("modificado_por_id") @db.Uuid
 
-  barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
-  barbero  Usuario  @relation("ExcepcionDeBarbero", fields: [barberoId], references: [id], onDelete: Cascade)
+  barberia    Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
+  barbero     Usuario  @relation("ExcepcionDeBarbero", fields: [barberoId], references: [id], onDelete: Cascade)
+  // Borrar al autor deja la excepción SIN autor, no sin fila.
+  modificador Usuario? @relation("ExcepcionModificadaPor", fields: [modificadoPorId], references: [id], onDelete: SetNull)
 
   @@unique([barberoId, barberiaId, fecha], name: "uk_excepcion_barbero_fecha")
   @@map("excepciones_horario_barbero")
+}
+
+/// V3 · plantilla semanal recurrente del barbero.
+///
+/// Es el horario BASE sin sede: la plantilla de la semana que el barbero
+/// declara una vez. `HorarioBarbero` sigue siendo el horario efectivo dentro
+/// de cada sede y es el único que lee hoy el motor de disponibilidad; esta
+/// tabla no se materializa en la sede todavía.
+///
+/// `diaSemana` usa la MISMA numeración que el resto del motor (ISO 1 = lunes …
+/// 7 = domingo), que es la de `HorarioBarbero`, `Horario` y
+/// `TiempoService.diaSemana`. Compartir la convención evita que una lectura
+/// cruzada entre la plantilla y el horario de la sede desplace la semana un
+/// día; el CHECK de la migración acota el rango a 1–7.
+///
+/// Las horas son texto "HH:mm", no `TIME`: son horas de reloj sin fecha ni
+/// zona. El CHECK de la migración valida el formato y que el inicio sea
+/// anterior al fin.
+///
+/// La unicidad es `(barbero, día)` SIN sede: un barbero que trabaje en varias
+/// sedes comparte plantilla. Un horario distinto por sede vive en
+/// `HorarioBarbero`, no aquí.
+model HorarioBaseBarbero {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberoId  String  @map("barbero_id") @db.Uuid
+  diaSemana  Int     @map("dia_semana") @db.SmallInt
+  horaInicio String  @map("hora_inicio") @db.VarChar(5)
+  horaFin    String  @map("hora_fin") @db.VarChar(5)
+  activo     Boolean @default(true)
+
+  barbero Usuario @relation("HorarioBaseDeBarbero", fields: [barberoId], references: [id], onDelete: Cascade)
+
+  @@unique([barberoId, diaSemana], map: "uk_horario_base_barbero_dia")
+  @@map("horarios_base_barbero")
 }
 
 model BloqueosAgenda {
@@ -433,6 +488,13 @@ model Reserva {
   pago          Pago?
 
   @@index([barberiaId, fechaCita, estado, horaInicio, horaFin], name: "idx_reservas_concurrencia")
+  // E0 · consultas calientes sin cobertura: "mis reservas" por cliente y la
+  // agenda por barbero. Sin estos índices cada una es un Seq Scan con sort.
+  @@index([clienteId])
+  @@index([barberoId])
+  // E0 · cron de expiración (`estado IN (...) AND expira_at <= now`): el índice
+  // de concurrencia empieza por `barberia_id`, así que no lo podía resolver.
+  @@index([estado, expiraAt])
   @@map("reservas")
 }
 
@@ -598,6 +660,9 @@ model Notificacion {
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
+  // E0 · la bandeja consulta por usuario y filtra por estado; la tabla no tenía
+  // ni un índice.
+  @@index([usuarioId, estado])
   @@map("notificaciones")
 }
 
@@ -748,6 +813,16 @@ model ListaEspera {
 enum TipoOtp {
   TELEFONO
   CORREO
+}
+
+/// V3 · quién modificó una excepción de horario del barbero.
+///
+/// `BARBERO` = el propio dueño del horario; `ADMIN_SEDE` = un administrador
+/// de la sede intervino (bloqueo o corrección). Es el ORIGEN del cambio; el
+/// usuario concreto se guarda en `modificadoPorId`.
+enum OrigenModificacionHorario {
+  BARBERO
+  ADMIN_SEDE
 }
 
 /// V2.1 · Código de verificación de 6 dígitos (10 minutos de vida).

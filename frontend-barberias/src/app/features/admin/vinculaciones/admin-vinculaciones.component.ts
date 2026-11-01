@@ -21,12 +21,12 @@ const MOTIVO_MINIMO = 10;
  * deja que el backend responda con el contrato de errores D40, cuyo `mensaje`
  * se muestra tal cual (`VinculacionesService.error`).
  */
-import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.directive';
+import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component';
 
 @Component({
   selector: 'app-admin-vinculaciones',
   standalone: true,
-  imports: [CommonModule, DatePipe, FormsModule, ModalOverlayDirective],
+  imports: [CommonModule, DatePipe, FormsModule, ModalShellComponent],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-8 bg-ambient-mesh">
       <!-- Header -->
@@ -172,54 +172,42 @@ import { ModalOverlayDirective } from '../../../shared/directives/modal-overlay.
 
       <!-- Modal de rechazo: el motivo es obligatorio en el diseño -->
       @if (seleccionada(); as fila) {
-        <div appModalOverlay class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
-          <div class="bg-zinc-900 border border-rose-500/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div class="p-6 space-y-5">
-              <div class="flex justify-between items-start">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
-                    <i class="pi pi-times-circle text-lg"></i>
-                  </div>
-                  <div>
-                    <h3 class="text-lg font-bold text-white">Rechazar vinculación</h3>
-                    <p class="text-xs text-zinc-400">{{ fila.nombreCompleto }} · {{ fila.barberiaNombre }}</p>
-                  </div>
-                </div>
-                <button (click)="cerrarModal()" class="text-zinc-500 hover:text-white transition-colors">
-                  <i class="pi pi-times text-xl"></i>
-                </button>
-              </div>
-
-              <div class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">
-                El vínculo quedará <span class="font-semibold">DESVINCULADO</span> y el cliente recibirá
-                el motivo. El motivo es obligatorio y queda auditado.
-              </div>
-
-              <div>
-                <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo del rechazo</label>
-                <textarea [(ngModel)]="motivo" rows="3" maxlength="500"
-                          class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors"
-                          placeholder="Explica por qué no se concede la sexta barbería"></textarea>
-                <p class="text-[11px] mt-1.5"
-                   [ngClass]="motivoValido() ? 'text-zinc-500' : 'text-rose-400'">
-                  {{ motivo().trim().length }}/{{ MOTIVO_MINIMO }} caracteres mínimos
-                </p>
-              </div>
-
-              <div class="flex gap-3 pt-2 border-t border-zinc-800">
-                <button (click)="cerrarModal()"
-                        class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
-                  Cancelar
-                </button>
-                <button (click)="confirmarRechazo()" [disabled]="!motivoValido() || procesandoId() !== null"
-                        class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-40 transition-all flex items-center justify-center gap-2">
-                  <i class="pi" [ngClass]="procesandoId() !== null ? 'pi-spin pi-spinner' : 'pi-ban'"></i>
-                  <span>Confirmar rechazo</span>
-                </button>
-              </div>
-            </div>
+        <app-modal-shell
+          [visible]="true"
+          titulo="Rechazar vinculación"
+          [subtitulo]="fila.nombreCompleto + ' · ' + fila.barberiaNombre"
+          icono="pi pi-times-circle"
+          tono="peligro"
+          [cerrarBloqueado]="procesandoId() !== null"
+          (cerrar)="cerrarModal()">
+          <div class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">
+            El vínculo quedará <span class="font-semibold">DESVINCULADO</span> y el cliente recibirá
+            el motivo. El motivo es obligatorio y queda auditado.
           </div>
-        </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo del rechazo</label>
+            <textarea [(ngModel)]="motivo" rows="3" maxlength="500"
+                      class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors"
+                      placeholder="Explica por qué no se concede la sexta barbería"></textarea>
+            <p class="text-[11px] mt-1.5"
+               [ngClass]="motivoValido() ? 'text-zinc-500' : 'text-rose-400'">
+              {{ motivo().trim().length }}/{{ MOTIVO_MINIMO }} caracteres mínimos
+            </p>
+          </div>
+
+          <div modal-footer class="flex gap-3 pt-2 border-t border-zinc-800">
+            <button (click)="cerrarModal()"
+                    class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
+              Cancelar
+            </button>
+            <button (click)="confirmarRechazo()" [disabled]="!motivoValido() || procesandoId() !== null"
+                    class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-40 transition-all flex items-center justify-center gap-2">
+              <i class="pi" [ngClass]="procesandoId() !== null ? 'pi-spin pi-spinner' : 'pi-ban'"></i>
+              <span>Confirmar rechazo</span>
+            </button>
+          </div>
+        </app-modal-shell>
       }
     </div>
   `,
