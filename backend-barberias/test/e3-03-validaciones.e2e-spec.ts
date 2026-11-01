@@ -221,10 +221,9 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
       for (const s of ['CLIENTE', 'ADMIN_BARBERIA', 'BARBERO'] as const) {
         await prisma.usuarioRol.upsert({
     where: {
-      usuarioId_rolId: {
-        usuarioId: (await prisma.usuario.findUnique({ where: { correo: mail } })).id,
-        rolId: rol[s],
-      },
+      usuarioId: (await prisma.usuario.findUnique({ where: { correo: mail } })).id,
+      rolId: rol[s],
+      barberiaId: s === 'CLIENTE' ? null : sedes.includes(s) ? barberia[s] : undefined,
     },
     update: {},
     create: {

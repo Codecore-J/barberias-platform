@@ -188,10 +188,9 @@ describe('E4-01 · reserva grupal', () => {
       for (const nombreRol of ['CLIENTE', 'ADMIN_BARBERIA', 'BARBERO'] as const) {
         await prisma.usuarioRol.upsert({
     where: {
-      usuarioId_rolId: {
-        usuarioId: usuario.id,
-        rolId: rol[nombreRol],
-      },
+      usuarioId: usuario.id,
+      rolId: rol[nombreRol],
+      barberiaId: nombreRol === 'CLIENTE' ? null : sede ? barberia[sede] : undefined,
     },
     update: {},
     create: {
