@@ -137,7 +137,11 @@ test.describe('/admin/usuarios · gestión de cuentas de la plataforma', () => {
       // El alta de la cuenta también quedó registrada, más abajo.
       await expect(historial.getByText('Cuenta creada', { exact: true })).toBeVisible();
 
-      await historial.getByRole('button', { name: 'Cerrar' }).click();
+      // `modal-shell` ya pinta su propia X con `aria-label="Cerrar"`, así que
+      // dentro del diálogo hay DOS botones con ese nombre accesible y un
+      // `getByRole` directo rompe la regla de strict mode de Playwright. Se
+      // apunta al botón del pie, que es el que pulsa el usuario.
+      await historial.locator('[modal-footer]').getByRole('button', { name: 'Cerrar' }).click();
       await expect(historial).toBeHidden();
     });
   });
