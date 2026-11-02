@@ -49,7 +49,13 @@ describe('ServiciosService · catálogo de administración (E2-07)', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         // Fase 5: la sede viaja en la ruta, así que el servicio la lee del tenant.
-        { provide: TenantService, useValue: { barberiaActivaId: () => SEDE } },
+        {
+          provide: TenantService,
+          useValue: {
+            barberiaActivaId: () => SEDE,
+            registrarPurgadorLocal: () => undefined,
+          },
+        },
       ],
     });
     service = TestBed.inject(ServiciosService);
