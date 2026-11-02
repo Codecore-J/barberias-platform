@@ -9,6 +9,7 @@ import { TenantService } from '../../../core/services/tenant.service.js';
 import { AuthService } from '../../../auth/auth.service.js';
 import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component.js';
 import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service.js';
+import { ToastService } from '../../../shared/ui/toast/toast.service.js';
 
 /**
  * V3 · Categorías de servicio de la sede (panel del ADMIN_BARBERIA).
@@ -53,17 +54,6 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
           </button>
         }
       </div>
-
-      <!-- Toast de éxito -->
-      @if (mensajeExito()) {
-        <div
-          class="fixed bottom-6 right-6 z-[60] px-4 py-3 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-sm shadow-2xl flex items-center gap-2"
-          role="status"
-        >
-          <i class="pi pi-check-circle"></i>
-          <span>{{ mensajeExito() }}</span>
-        </div>
-      }
 
       <!-- Error de negocio o de red -->
       @if (catalogoService.errorCategorias()) {
@@ -222,10 +212,11 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
         (cerrar)="cerrarFormulario()">
               <form [formGroup]="form" (ngSubmit)="guardar()" class="space-y-4">
                 <div>
-                  <label class="block text-xs font-semibold text-zinc-400 uppercase mb-1.5">
+                  <label for="categoria-nombre" class="block text-xs font-semibold text-zinc-400 uppercase mb-1.5">
                     Nombre
                   </label>
                   <input
+                    id="categoria-nombre"
                     type="text"
                     formControlName="nombre"
                     placeholder="Ej. Corte, Barba, Color"
@@ -239,10 +230,11 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
                 </div>
 
                 <div>
-                  <label class="block text-xs font-semibold text-zinc-400 uppercase mb-1.5">
+                  <label for="categoria-descripcion" class="block text-xs font-semibold text-zinc-400 uppercase mb-1.5">
                     Descripción <span class="text-zinc-600 normal-case">(opcional)</span>
                   </label>
                   <textarea
+                    id="categoria-descripcion"
                     formControlName="descripcion"
                     rows="3"
                     placeholder="¿Qué engloba esta categoría?"
@@ -285,11 +277,11 @@ export class AdminCategoriasComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly fb = inject(FormBuilder);
   private readonly confirmDialog = inject(ConfirmDialogService);
+  private readonly toast = inject(ToastService);
 
   readonly modalAbierto = signal(false);
   readonly editandoId = signal<string | null>(null);
   readonly procesandoId = signal<string | null>(null);
-  readonly mensajeExito = signal<string | null>(null);
 
   /**
    * La taxonomía la escribe el ADMIN_BARBERIA de la sede. El ADMINISTRADOR global
@@ -390,7 +382,6 @@ export class AdminCategoriasComponent implements OnInit {
   }
 
   private mostrarExito(mensaje: string): void {
-    this.mensajeExito.set(mensaje);
-    setTimeout(() => this.mensajeExito.set(null), 4000);
+    this.toast.success(mensaje, 'Categorías');
   }
 }

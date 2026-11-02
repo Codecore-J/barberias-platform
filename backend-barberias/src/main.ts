@@ -9,6 +9,7 @@ import express from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module.js';
 import { PrismaExceptionFilter } from './shared/filters/prisma-exception.filter.js';
+import { DecimalSerializerInterceptor } from './shared/interceptors/decimal-serializer.interceptor.js';
 import { opcionesLogger } from './shared/observability/logger.config.js';
 import { inicializarSentry } from './shared/observability/sentry.js';
 
@@ -148,9 +149,18 @@ async function bootstrap() {
     }),
   );
 
-  // Interceptor global: aplica @Exclude() y @Expose() de class-transformer
-  // en todas las respuestas — garantiza que passwordHash nunca se exponga.
-  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
+  // Interceptores globales de respuesta, en orden de fuera hacia dentro:
+  //
+  //  1. `DecimalSerializerInterceptor` convierte los `Prisma.Decimal` en
+  //     `number`. Va el primero para ver la respuesta ya serializada por
+  //     class-transformer, que es donde el `Decimal` deja de ser una instancia
+  //     y se queda en `{s,e,d}` (ver el interceptor).
+  //  2. `ClassSerializerInterceptor` aplica @Exclude() y @Expose(), y garantiza
+  //     que passwordHash nunca se exponga.
+  app.useGlobalInterceptors(
+    new DecimalSerializerInterceptor(),
+    new ClassSerializerInterceptor(app.get(Reflector)),
+  );
 
   await app.listen(process.env.PORT ?? 3000);
 }

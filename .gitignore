@@ -35,6 +35,7 @@ prisma/migrations/*.sql.bak
 coverage/
 **/coverage/
 scratch/
+.cloud-attachments/
 .freebuff/
 endpoints.json
 *.tsbuildinfo

@@ -207,6 +207,37 @@ export class SolicitudCambioService {
     };
   }
 
+  /**
+   * `GET /shops/:shopId/change-requests` · bandeja LOCAL de la sede.
+   *
+   * La sede necesita ver el estado de lo que propuso (pendiente, aprobada con
+   * el valor aplicado o rechazada con su motivo). Solo LEE: resolver sigue
+   * siendo de la plataforma (D26), y por eso esta bandeja no tiene acciones.
+   *
+   * La pertenencia se comprueba aquí por la misma razón que en la creación: el
+   * `RolesGuard` no resuelve la sede de un `:shopId` con más segmentos, y el
+   * ADMINISTRADOR global entra de forma transversal.
+   */
+  async listarDeSede(
+    barberiaId: string,
+    usuario: UsuarioAutenticado,
+  ): Promise<SolicitudCambioResponseDto[]> {
+    if (!esAdministradorGlobal(usuario) && !this.esAdminDeSede(usuario, barberiaId)) {
+      throw errorDePermiso(
+        'SOLO_ADMIN_BARBERIA',
+        'Solo el ADMIN_BARBERIA de esta barbería puede ver sus solicitudes de cambio.',
+      );
+    }
+
+    const filas = await this.prisma.solicitudCambioBarberia.findMany({
+      where: { barberiaId },
+      orderBy: { creadoAt: 'desc' },
+      include: { barberia: { select: { id: true, nombre: true } } },
+    });
+
+    return filas.map((fila) => this.aRespuesta(fila));
+  }
+
   // ── RESOLVER (solo plataforma) ─────────────────────────────────────────────
 
   async resolver(

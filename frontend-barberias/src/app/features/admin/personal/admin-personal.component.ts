@@ -71,7 +71,7 @@ import { ToastService } from '../../../shared/ui/toast/toast.service';
                   <button (click)="abrirModalExcepcion(miembro)" class="flex-1 text-xs font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 py-2 rounded-lg transition-colors border border-amber-500/30">
                     <i class="pi pi-calendar-times mr-1"></i> Excepción
                   </button>
-                  <button (click)="eliminarMiembro(miembro)" class="w-10 flex items-center justify-center text-zinc-500 hover:text-red-400 bg-white/5 hover:bg-red-400/10 rounded-lg transition-colors">
+                  <button (click)="eliminarMiembro(miembro)" [attr.aria-label]="'Eliminar a ' + miembro.nombreCompleto" class="w-10 flex items-center justify-center text-zinc-500 hover:text-red-400 bg-white/5 hover:bg-red-400/10 rounded-lg transition-colors">
                     <i class="pi pi-trash"></i>
                   </button>
                 </div>
@@ -96,13 +96,13 @@ import { ToastService } from '../../../shared/ui/toast/toast.service';
         (cerrar)="cerrarModal()">
               <div class="space-y-4">
                 <div>
-                  <label class="block text-xs font-medium text-zinc-400 mb-1">Fecha</label>
-                  <input type="date" [(ngModel)]="excepcionModel.fecha" class="w-full bg-zinc-950 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/50 transition-colors">
+                  <label for="personal-excepcion-fecha" class="block text-xs font-medium text-zinc-400 mb-1">Fecha</label>
+                  <input id="personal-excepcion-fecha" type="date" [(ngModel)]="excepcionModel.fecha" class="w-full bg-zinc-950 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/50 transition-colors">
                 </div>
 
                 <div>
-                  <label class="block text-xs font-medium text-zinc-400 mb-1">Tipo de Excepción</label>
-                  <select [(ngModel)]="excepcionModel.tipo" class="w-full bg-zinc-950 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/50 transition-colors">
+                  <label for="personal-excepcion-tipo" class="block text-xs font-medium text-zinc-400 mb-1">Tipo de Excepción</label>
+                  <select id="personal-excepcion-tipo" [(ngModel)]="excepcionModel.tipo" class="w-full bg-zinc-950 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/50 transition-colors">
                     <option value="CERRADA">Día Libre Completo</option>
                     <option value="HORARIO_ESPECIAL">Horario Especial (Parcial)</option>
                   </select>
@@ -111,19 +111,19 @@ import { ToastService } from '../../../shared/ui/toast/toast.service';
                 @if (excepcionModel.tipo === 'HORARIO_ESPECIAL') {
                   <div class="grid grid-cols-2 gap-4">
                     <div>
-                      <label class="block text-xs font-medium text-zinc-400 mb-1">Hora Inicio</label>
-                      <input type="time" [(ngModel)]="excepcionModel.horaInicio" class="w-full bg-zinc-950 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/50 transition-colors">
+                      <label for="personal-excepcion-inicio" class="block text-xs font-medium text-zinc-400 mb-1">Hora Inicio</label>
+                      <input id="personal-excepcion-inicio" type="time" [(ngModel)]="excepcionModel.horaInicio" class="w-full bg-zinc-950 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/50 transition-colors">
                     </div>
                     <div>
-                      <label class="block text-xs font-medium text-zinc-400 mb-1">Hora Fin</label>
-                      <input type="time" [(ngModel)]="excepcionModel.horaFin" class="w-full bg-zinc-950 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/50 transition-colors">
+                      <label for="personal-excepcion-fin" class="block text-xs font-medium text-zinc-400 mb-1">Hora Fin</label>
+                      <input id="personal-excepcion-fin" type="time" [(ngModel)]="excepcionModel.horaFin" class="w-full bg-zinc-950 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/50 transition-colors">
                     </div>
                   </div>
                 }
 
                 <div>
-                  <label class="block text-xs font-medium text-zinc-400 mb-1">Motivo (Opcional)</label>
-                  <input type="text" [(ngModel)]="excepcionModel.motivo" placeholder="Ej. Cita médica, Vacaciones..." class="w-full bg-zinc-950 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/50 transition-colors">
+                  <label for="personal-excepcion-motivo" class="block text-xs font-medium text-zinc-400 mb-1">Motivo (Opcional)</label>
+                  <input id="personal-excepcion-motivo" type="text" [(ngModel)]="excepcionModel.motivo" placeholder="Ej. Cita médica, Vacaciones..." class="w-full bg-zinc-950 border border-white/5 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/50 transition-colors">
                 </div>
               </div>
 
@@ -187,7 +187,7 @@ export class AdminPersonalComponent implements OnInit {
     this.barberoSeleccionado.set(barbero);
     this.excepcionModel = {
       tipo: 'CERRADA',
-      fecha: new Date().toISOString().split('T')[0],
+      fecha: this.hoyLocal(),
       horaInicio: '',
       horaFin: '',
       motivo: ''
@@ -198,6 +198,21 @@ export class AdminPersonalComponent implements OnInit {
   cerrarModal() {
     this.modalAbierto.set(false);
     this.barberoSeleccionado.set(null);
+  }
+
+  /**
+   * Día de HOY como etiqueta `YYYY-MM-DD` en la zona del navegador.
+   *
+   * `toISOString()` devuelve el día en UTC: a partir de las 20:00 en Santo
+   * Domingo (UTC-4) ya es mañana, y el modal proponía una fecha futura.
+   * La excepción se guarda en una columna `DATE`, así que el valor debe ser
+   * el día de calendario del usuario, no un instante.
+   */
+  private hoyLocal(): string {
+    const ahora = new Date();
+    const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+    const dia = String(ahora.getDate()).padStart(2, '0');
+    return `${ahora.getFullYear()}-${mes}-${dia}`;
   }
 
   guardarExcepcion() {

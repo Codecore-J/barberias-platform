@@ -173,7 +173,7 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
             <h3 class="text-2xl font-bold text-white">
               {{ isEditing() ? 'Editar Servicio' : 'Nuevo Servicio' }}
             </h3>
-            <button (click)="closeForm()" class="text-zinc-400 hover:text-white"><i class="pi pi-times text-xl"></i></button>
+            <button type="button" (click)="closeForm()" aria-label="Cerrar formulario de servicio" class="text-zinc-400 hover:text-white"><i class="pi pi-times text-xl" aria-hidden="true"></i></button>
           </div>
 
           <form [formGroup]="form" (ngSubmit)="onSubmit()" class="space-y-6 relative z-10">
@@ -181,20 +181,20 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <!-- Nombre -->
               <div class="space-y-2 md:col-span-2">
-                <label class="text-xs font-bold text-zinc-400 uppercase">Nombre del Servicio</label>
-                <input type="text" formControlName="nombre" class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 px-4 text-white focus:border-amber-500/50 outline-none">
+                <label for="servicio-nombre" class="text-xs font-bold text-zinc-400 uppercase">Nombre del Servicio</label>
+                <input id="servicio-nombre" type="text" formControlName="nombre" class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 px-4 text-white focus:border-amber-500/50 outline-none">
               </div>
 
               <!-- Precio -->
               <div class="space-y-2">
-                <label class="text-xs font-bold text-zinc-400 uppercase">Precio ($)</label>
-                <input type="number" formControlName="precio" class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 px-4 text-white focus:border-amber-500/50 outline-none">
+                <label for="servicio-precio" class="text-xs font-bold text-zinc-400 uppercase">Precio ($)</label>
+                <input id="servicio-precio" type="number" formControlName="precio" class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 px-4 text-white focus:border-amber-500/50 outline-none">
               </div>
 
               <!-- Duración -->
               <div class="space-y-2">
-                <label class="text-xs font-bold text-zinc-400 uppercase">Duración (Minutos)</label>
-                <input type="number" formControlName="duracionMinutos" class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 px-4 text-white focus:border-amber-500/50 outline-none">
+                <label for="servicio-duracion" class="text-xs font-bold text-zinc-400 uppercase">Duración (Minutos)</label>
+                <input id="servicio-duracion" type="number" formControlName="duracionMinutos" class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 px-4 text-white focus:border-amber-500/50 outline-none">
               </div>
 
               <!-- Es Combo -->
@@ -206,9 +206,9 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
               <!-- Selección de Servicios para Combo -->
               @if (form.get('esCombo')?.value) {
                 <div class="space-y-2 md:col-span-2 bg-zinc-900/80 p-4 rounded-xl border border-amber-500/20">
-                  <label class="text-xs font-bold text-amber-400 uppercase">Selecciona los servicios del combo</label>
+                  <label for="servicio-combo-items" class="text-xs font-bold text-amber-400 uppercase">Selecciona los servicios del combo</label>
                   <p class="text-xs text-zinc-400 mb-3">Mantén presionado Ctrl (o Cmd) para seleccionar múltiples.</p>
-                  <select multiple formControlName="serviciosComboIds" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-white outline-none focus:border-amber-500 h-32">
+                  <select id="servicio-combo-items" multiple formControlName="serviciosComboIds" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-white outline-none focus:border-amber-500 h-32">
                     @for (s of serviciosRegulares(); track s.id) {
                       <!-- Evitamos que un combo se seleccione a sí mismo -->
                       @if (s.id !== editingId()) {
@@ -221,8 +221,8 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
 
               <!-- Descripción -->
               <div class="space-y-2 md:col-span-2">
-                <label class="text-xs font-bold text-zinc-400 uppercase">Descripción (Opcional)</label>
-                <textarea formControlName="descripcion" rows="3" class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 px-4 text-white focus:border-amber-500/50 outline-none resize-none"></textarea>
+                <label for="servicio-descripcion" class="text-xs font-bold text-zinc-400 uppercase">Descripción (Opcional)</label>
+                <textarea id="servicio-descripcion" formControlName="descripcion" rows="3" class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 px-4 text-white focus:border-amber-500/50 outline-none resize-none"></textarea>
               </div>
             </div>
 

@@ -24,8 +24,9 @@ import { PARAM_RETURN_URL } from '../core/utils/return-url.util';
  *  - con un `returnUrl` inválido (`https://otro-sitio`, `//otro-sitio`, la
  *    propia pantalla de login) se cae al destino por rol, que es la red de
  *    seguridad contra el open redirect;
- *  - sin `returnUrl` nada cambia respecto de antes (cliente → `/`, admin con
- *    sede → `/admin/agenda`).
+ *  - sin `returnUrl` nada cambia para cliente y sede (cliente → `/`, admin con
+ *    sede → `/admin/agenda`), y el ADMINISTRADOR global entra a su hub de
+ *    sedes (`/barberias`) sin que se le autoasigne una (D05).
  *
  * El `Router` es el REAL (spy sobre `navigate`/`navigateByUrl`), para no atar la
  * prueba a la forma exacta con que se navega.
@@ -35,6 +36,9 @@ describe('AuthService · H75 (el destino pedido sobrevive al login)', () => {
   let servicio: AuthService;
   let router: Router;
   let sedesDelUsuario: { id: string }[];
+
+  /** D05 · el superadmin pide la lista SIN autoasignación de sede. */
+  const cargarBarberias = vi.fn(() => of(sedesDelUsuario));
 
   const respuesta = (roles: string[]): AuthResponseDto => ({
     accessToken: 'token-de-prueba',
@@ -54,6 +58,7 @@ describe('AuthService · H75 (el destino pedido sobrevive al login)', () => {
   beforeEach(() => {
     localStorage.clear();
     sedesDelUsuario = [];
+    cargarBarberias.mockClear();
 
     TestBed.configureTestingModule({
       providers: [
@@ -62,7 +67,7 @@ describe('AuthService · H75 (el destino pedido sobrevive al login)', () => {
         provideRouter([]),
         {
           provide: TenantService,
-          useValue: { cargarBarberias: () => of(sedesDelUsuario) },
+          useValue: { cargarBarberias },
         },
       ],
     });
@@ -128,9 +133,26 @@ describe('AuthService · H75 (el destino pedido sobrevive al login)', () => {
 
     servicio.login({ correo: 'admin@demo.com', password: 'x' }).subscribe();
 
-    responderLogin(['ADMINISTRADOR']);
+    responderLogin(['ADMIN_BARBERIA']);
 
     expect(router.navigate).toHaveBeenCalledWith(['/admin/agenda']);
+  });
+
+  /**
+   * D05 · el ADMINISTRADOR global no tiene sede propia: llevarlo a
+   * `/admin/agenda` era dejarlo operando «la primera de la lista» sin haberla
+   * elegido. Su entrada es el hub con el listado global, y la sede la elige él.
+   */
+  it('D05: sin returnUrl el ADMINISTRADOR global va al hub de sedes, no a una agenda', () => {
+    sedesDelUsuario = [{ id: 'b1' }, { id: 'b2' }];
+
+    servicio.login({ correo: 'plataforma@demo.com', password: 'x' }).subscribe();
+
+    responderLogin(['ADMINISTRADOR']);
+
+    expect(cargarBarberias).toHaveBeenCalledWith({ autoSeleccionar: false });
+    expect(router.navigate).toHaveBeenCalledWith(['/barberias']);
+    expect(router.navigate).not.toHaveBeenCalledWith(['/admin/agenda']);
   });
 
   it('un returnUrl de otro sitio NO se usa: cae al destino por rol (anti open redirect)', () => {

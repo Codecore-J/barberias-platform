@@ -11,6 +11,7 @@ import {
   UsuariosService,
 } from '../../../core/services/usuarios.service';
 import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component';
+import { ToastService } from '../../../shared/ui/toast/toast.service';
 
 /** Tope del backend (`CambiarEstadoCuentaDto`): 500 caracteres. */
 const MOTIVO_MAXIMO = 500;
@@ -71,15 +72,6 @@ type FiltroRol = 'TODOS' | RolPlataforma;
           </button>
         </div>
       </div>
-
-      <!-- Feedback -->
-      @if (mensajeExito()) {
-        <div
-          class="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm flex items-center gap-2"
-        >
-          <i class="pi pi-check-circle"></i> {{ mensajeExito() }}
-        </div>
-      }
 
       @if (service.error()) {
         <div
@@ -342,10 +334,11 @@ type FiltroRol = 'TODOS' | RolPlataforma;
         (cerrar)="cerrarCreacion()">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="sm:col-span-2">
-                  <label class="block text-xs font-semibold text-zinc-400 mb-1.5">
+                  <label for="usuario-nombre" class="block text-xs font-semibold text-zinc-400 mb-1.5">
                     Nombre completo
                   </label>
                   <input
+                    id="usuario-nombre"
                     [(ngModel)]="formNombre"
                     name="formNombre"
                     type="text"
@@ -357,8 +350,9 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                 </div>
 
                 <div>
-                  <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Correo</label>
+                  <label for="usuario-correo" class="block text-xs font-semibold text-zinc-400 mb-1.5">Correo</label>
                   <input
+                    id="usuario-correo"
                     [(ngModel)]="formCorreo"
                     name="formCorreo"
                     type="email"
@@ -370,8 +364,9 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                 </div>
 
                 <div>
-                  <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Teléfono</label>
+                  <label for="usuario-telefono" class="block text-xs font-semibold text-zinc-400 mb-1.5">Teléfono</label>
                   <input
+                    id="usuario-telefono"
                     [ngModel]="formTelefono()"
                     (ngModelChange)="formTelefono.set(soloDigitos($event, 10))"
                     name="formTelefono"
@@ -387,10 +382,11 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                 </div>
 
                 <div>
-                  <label class="block text-xs font-semibold text-zinc-400 mb-1.5">
+                  <label for="usuario-cedula" class="block text-xs font-semibold text-zinc-400 mb-1.5">
                     Cédula <span class="text-zinc-600 font-normal">(opcional)</span>
                   </label>
                   <input
+                    id="usuario-cedula"
                     [ngModel]="formCedula()"
                     (ngModelChange)="formCedula.set(soloDigitos($event, 11))"
                     name="formCedula"
@@ -405,8 +401,9 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                 </div>
 
                 <div>
-                  <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Contraseña</label>
+                  <label for="usuario-password" class="block text-xs font-semibold text-zinc-400 mb-1.5">Contraseña</label>
                   <input
+                    id="usuario-password"
                     [(ngModel)]="formPassword"
                     name="formPassword"
                     type="password"
@@ -418,8 +415,9 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                 </div>
 
                 <div>
-                  <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Rol</label>
+                  <label for="usuario-rol" class="block text-xs font-semibold text-zinc-400 mb-1.5">Rol</label>
                   <select
+                    id="usuario-rol"
                     [(ngModel)]="formRol"
                     name="formRol"
                     [disabled]="creando()"
@@ -433,10 +431,11 @@ type FiltroRol = 'TODOS' | RolPlataforma;
 
                 @if (rolRequiereSede()) {
                   <div>
-                    <label class="block text-xs font-semibold text-zinc-400 mb-1.5">
+                    <label for="usuario-barberia" class="block text-xs font-semibold text-zinc-400 mb-1.5">
                       Barbería <span class="text-rose-400">*</span>
                     </label>
                     <select
+                      id="usuario-barberia"
                       [(ngModel)]="formBarberiaId"
                       name="formBarberiaId"
                       [disabled]="creando() || cargandoBarberias()"
@@ -525,10 +524,11 @@ type FiltroRol = 'TODOS' | RolPlataforma;
               </div>
 
               <div>
-                <label class="block text-xs font-semibold text-zinc-400 mb-1.5">
+                <label for="usuario-motivo-cambio" class="block text-xs font-semibold text-zinc-400 mb-1.5">
                   Motivo del cambio
                 </label>
                 <textarea
+                  id="usuario-motivo-cambio"
                   [(ngModel)]="motivoTexto"
                   name="motivo"
                   rows="3"
@@ -685,6 +685,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
 })
 export class AdminUsuariosComponent implements OnInit {
   protected readonly service = inject(UsuariosService);
+  private readonly toast = inject(ToastService);
   protected readonly MOTIVO_MAXIMO = MOTIVO_MAXIMO;
   protected readonly ROLES_PLATAFORMA = ROLES_PLATAFORMA;
 
@@ -743,7 +744,6 @@ export class AdminUsuariosComponent implements OnInit {
   readonly motivoTexto = signal('');
   readonly procesando = signal(false);
   readonly errorModal = signal<string | null>(null);
-  readonly mensajeExito = signal('');
 
   readonly estadoDestino = computed<'ACTIVO' | 'SUSPENDIDO'>(() =>
     this.usuarioSeleccionado()?.estadoCuenta === 'SUSPENDIDO' ? 'ACTIVO' : 'SUSPENDIDO',
@@ -1070,7 +1070,6 @@ export class AdminUsuariosComponent implements OnInit {
   }
 
   private avisar(texto: string): void {
-    this.mensajeExito.set(texto);
-    setTimeout(() => this.mensajeExito.set(''), 5000);
+    this.toast.success(texto, 'Usuarios');
   }
 }
