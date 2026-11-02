@@ -19,6 +19,7 @@ describe('AnalyticsDashboardComponent', () => {
     seleccionarBarberia: (id: string) => any;
     barberiaActivaId: () => string | null;
     nombreBarberiaActiva: () => string;
+    registrarPurgadorLocal: (purgador: () => void) => void;
   };
   let routerSpy: { navigate: (commands: any[]) => Promise<boolean> };
 
@@ -53,6 +54,7 @@ describe('AnalyticsDashboardComponent', () => {
       seleccionarBarberia: vi.fn(() => of({})),
       barberiaActivaId: vi.fn(() => 's1'),
       nombreBarberiaActiva: vi.fn(() => 'Sede Norte'),
+      registrarPurgadorLocal: vi.fn(),
     };
     routerSpy = {
       navigate: vi.fn(() => Promise.resolve(true)),
