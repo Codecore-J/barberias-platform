@@ -1,6 +1,6 @@
 import { Injectable, signal, computed, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, catchError, of, map, switchMap } from 'rxjs';
+import { Observable, tap, catchError, of, map, switchMap, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 import type { PuertaDeEntrada } from '../utils/invitacion.util.js';
 
@@ -73,6 +73,9 @@ export class TenantService {
   readonly barberiasVinculadas = signal<BarberiaResumen[]>([]);
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
+
+  /** Los servicios de dominio registran aquí la purga de sus cachés de sede. */
+  private readonly purgadoresEstadoLocal = new Set<() => void>();
 
   // Computeds útiles
   readonly tieneBarberiaActiva = computed(() => !!this.barberiaActiva());
@@ -167,16 +170,47 @@ export class TenantService {
    * decida qué hacer con él.
    */
   seleccionarBarberia(barberiaId: string): Observable<any> {
+    return this.cambiarSedeActiva(barberiaId);
+  }
+
+  /**
+   * Cambia el contexto de sede solo después de que el backend autorice la
+   * selección. Al confirmar una sede distinta se purgan los datos compartidos
+   * en memoria antes de guardar la nueva sede activa.
+   */
+  cambiarSedeActiva(shopId: string): Observable<any> {
+    const idSolicitado = shopId?.trim();
+    if (!idSolicitado) {
+      return throwError(() => new Error('La sede solicitada no es válida.'));
+    }
+
+    if (this.barberiaActivaId() === idSolicitado) return of(null);
+
     this.isLoading.set(true);
     this.error.set(null);
-    return this.pedirSeleccion(barberiaId).pipe(
-      tap(() => {
-        this.fijarLocalTrasBackend(barberiaId);
-        this.isLoading.set(false);
+
+    const sedes$ = this.barberiasVinculadas().length > 0
+      ? of(this.barberiasVinculadas())
+      : this.cargarBarberias({ autoSeleccionar: false });
+
+    return sedes$.pipe(
+      switchMap((sedes) => {
+        const sede = sedes.find((barberia) => barberia.id === idSolicitado);
+        if (!sede) {
+          return throwError(() => new Error('La sede no está disponible para esta cuenta.'));
+        }
+
+        return this.pedirSeleccion(idSolicitado).pipe(
+          tap(() => {
+            this.purgarEstadoLocal();
+            this.guardarSedeActiva(sede);
+          }),
+        );
       }),
+      tap(() => this.isLoading.set(false)),
       catchError((err) => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'No se pudo seleccionar la barbería');
+        this.error.set(err.error?.message || err.message || 'No se pudo seleccionar la sede');
         throw err;
       }),
     );
@@ -189,19 +223,6 @@ export class TenantService {
    */
   private pedirSeleccion(barberiaId: string): Observable<any> {
     return this.http.patch(`${this.apiUrl}/${barberiaId}/select`, {});
-  }
-
-  /**
-   * Tras el 200 del backend, la sede de la lista local pasa a ser la activa.
-   * Si no está en la lista no hay objeto completo que cachear y no se fija
-   * nada —los dos llamadores la tienen en la lista (la tarjeta, y la recarga
-   * previa de `crearBarberia`), así que esto es solo defensivo—.
-   */
-  private fijarLocalTrasBackend(barberiaId: string): void {
-    const barberia = this.barberiasVinculadas().find((b) => b.id === barberiaId);
-    if (barberia) {
-      this.setBarberiaActiva(barberia);
-    }
   }
 
   /**
@@ -380,6 +401,23 @@ export class TenantService {
   }
 
   setBarberiaActiva(barberia: BarberiaResumen | null) {
+    if (this.barberiaActivaId() !== (barberia?.id ?? null)) {
+      this.purgarEstadoLocal();
+    }
+    this.guardarSedeActiva(barberia);
+  }
+
+  /** Registra el reset de señales en un servicio con caché de sede. */
+  registrarPurgadorLocal(purgador: () => void): void {
+    this.purgadoresEstadoLocal.add(purgador);
+  }
+
+  private purgarEstadoLocal(): void {
+    for (const purgar of this.purgadoresEstadoLocal) purgar();
+    this.error.set(null);
+  }
+
+  private guardarSedeActiva(barberia: BarberiaResumen | null): void {
     this.barberiaActiva.set(barberia);
     if (barberia) {
       localStorage.setItem(this.storageKey, barberia.id);
@@ -391,9 +429,8 @@ export class TenantService {
   }
 
   limpiarTenant() {
-    this.barberiaActiva.set(null);
+    this.purgarEstadoLocal();
+    this.guardarSedeActiva(null);
     this.barberiasVinculadas.set([]);
-    localStorage.removeItem(this.storageKey);
-    localStorage.removeItem('active_barberia_data');
   }
 }

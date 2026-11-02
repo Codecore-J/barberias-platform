@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, map, tap, catchError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
+import { TenantService } from './tenant.service.js';
 
 /**
  * E3-13 · solicitudes de cambio de nombre y responsable (D26).
@@ -47,11 +48,23 @@ interface PaginaSolicitudes {
 })
 export class SolicitudesCambioService {
   private readonly http = inject(HttpClient);
+  private readonly tenant = inject(TenantService);
+
+  constructor() {
+    this.tenant.registrarPurgadorLocal(() => this.limpiarEstadoLocal());
+  }
 
   readonly solicitudes = signal<SolicitudCambio[]>([]);
   readonly total = signal<number>(0);
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
+
+  private limpiarEstadoLocal(): void {
+    this.solicitudes.set([]);
+    this.total.set(0);
+    this.isLoading.set(false);
+    this.error.set(null);
+  }
 
   /** `GET /shops/:shopId/change-requests` · bandeja local, solo lectura. */
   cargarDeSede(barberiaId: string): Observable<SolicitudCambio[]> {

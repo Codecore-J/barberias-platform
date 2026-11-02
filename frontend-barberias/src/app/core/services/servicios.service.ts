@@ -23,6 +23,10 @@ export class ServiciosService {
   private readonly http = inject(HttpClient);
   private readonly tenant = inject(TenantService);
 
+  constructor() {
+    this.tenant.registrarPurgadorLocal(() => this.limpiarEstadoLocal());
+  }
+
   /**
    * Fase 5 (Punto 5.3): la sede viaja en la RUTA, nunca en una cabecera.
    * `/servicios` y `/catalogo/combos` dejan de existir como alias planos.
@@ -38,6 +42,12 @@ export class ServiciosService {
   readonly servicios = signal<Servicio[]>([]);
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
+
+  private limpiarEstadoLocal(): void {
+    this.servicios.set([]);
+    this.isLoading.set(false);
+    this.error.set(null);
+  }
 
   /**
    * E2-07 · P-SD-1/P-SD-2: el panel de administración lee el catálogo con
