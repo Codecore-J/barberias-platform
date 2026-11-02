@@ -2,7 +2,7 @@
  * Redondea un importe en base 10, evitando los residuos habituales de IEEE 754.
  * Los valores que no se pueden convertir a un número finito se normalizan a 0.
  */
-export function redondearMoneda(value: number | string, decimals = 2): number {
+export function redondearMoneda(value: number | string | null | undefined, decimals = 2): number {
   const numero = typeof value === 'number' ? value : Number(value);
   const decimalesSeguros = Math.trunc(decimals);
 
@@ -17,7 +17,7 @@ export function redondearMoneda(value: number | string, decimals = 2): number {
 }
 
 /** Suma importes numéricos o textuales y redondea el total una sola vez. */
-export function sumarSeguro(valores: (number | string)[]): number {
+export function sumarSeguro(valores: (number | string | null | undefined)[]): number {
   const total = valores.reduce<number>((acumulado, valor) => {
     const numero = typeof valor === 'number' ? valor : Number(valor);
     return acumulado + (Number.isFinite(numero) ? numero : 0);

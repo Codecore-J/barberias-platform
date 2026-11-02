@@ -67,7 +67,10 @@ describe('AuthService · H75 (el destino pedido sobrevive al login)', () => {
         provideRouter([]),
         {
           provide: TenantService,
-          useValue: { cargarBarberias },
+          useValue: {
+            cargarBarberias,
+            registrarPurgadorLocal: vi.fn(),
+          },
         },
       ],
     });

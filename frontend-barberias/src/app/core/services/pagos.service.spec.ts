@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { vi } from 'vitest';
 import { PagosService } from './pagos.service';
 import { TenantService } from './tenant.service';
 import { API_URL } from '../constants/api.constants.js';
@@ -53,7 +54,7 @@ describe('PagosService · historial y anulación de cobros (H68)', () => {
           provide: TenantService,
           useValue: {
             barberiaActivaId: () => SEDE,
-            registrarPurgadorLocal: () => undefined,
+            registrarPurgadorLocal: vi.fn(),
           },
         },
       ],

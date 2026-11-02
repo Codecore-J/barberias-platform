@@ -9,11 +9,15 @@ import { API_URL } from '../constants/api.constants';
 describe('AnalyticsService', () => {
   let service: AnalyticsService;
   let httpMock: HttpTestingController;
-  let tenantServiceSpy: { barberiaActivaId: () => string | null };
+  let tenantServiceSpy: {
+    barberiaActivaId: () => string | null;
+    registrarPurgadorLocal: (purgador: () => void) => void;
+  };
 
   beforeEach(() => {
     tenantServiceSpy = {
       barberiaActivaId: vi.fn(() => 'shop-123'),
+      registrarPurgadorLocal: vi.fn(),
     };
 
     TestBed.configureTestingModule({
