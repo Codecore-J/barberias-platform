@@ -1,37 +1,50 @@
 import { inject } from '@angular/core';
 import { Router, CanActivateFn } from '@angular/router';
+import { catchError, map, of } from 'rxjs';
 import { TenantService } from '../services/tenant.service';
 
 /**
  * Exige un contexto de sede para entrar a las pantallas de operación.
  *
- * Sin sede activa se va al hub (`/barberias`), que es la única pantalla que no
- * lleva este guard: no hay bucle posible porque el destino no vuelve a pasar por
- * aquí. Eso es lo que convierte al hub en el selector de contexto de CUALQUIER
- * rol, incluido el ADMINISTRADOR global: su alcance transversal no le da una
- * sede por defecto, se la elige él (D05).
+ * Cuando la ruta declara `:shopId` o `:id`, el cambio de contexto se valida con
+ * el backend antes de activar la pantalla. El TenantService purga las señales
+ * de la sede anterior después de la respuesta autorizada.
  */
-export const tenantGuard: CanActivateFn = () => {
+export const tenantGuard: CanActivateFn = (route) => {
   const tenantService = inject(TenantService);
   const router = inject(Router);
 
-  const activa = tenantService.barberiaActiva();
-  const sedes = tenantService.barberiasVinculadas();
+  const validarContextoActual = () => {
+    const activa = tenantService.barberiaActiva();
+    const sedes = tenantService.barberiasVinculadas();
 
-  // La sede cacheada pudo dejar de estar disponible —una sede suspendida sale
-  // del listado, y con ella el acceso a sus pantallas—. Operar con esa sede
-  // encadena 403/409 en cada petición, así que se descarta ANTES de dar paso.
-  if (activa && sedes.length > 0 && !sedes.some((sede) => sede.id === activa.id)) {
-    tenantService.setBarberiaActiva(null);
+    // Descarta una sede que ya no está en el alcance que devuelve el backend.
+    if (activa && sedes.length > 0 && !sedes.some((sede) => sede.id === activa.id)) {
+      tenantService.setBarberiaActiva(null);
+      return router.createUrlTree(['/barberias']);
+    }
+
+    if (tenantService.barberiaActivaId()) return true;
     return router.createUrlTree(['/barberias']);
+  };
+
+  // Incluye parámetros definidos en rutas padre y acepta los nombres usados
+  // por las rutas de sede y por las rutas heredadas.
+  const shopId = [...route.pathFromRoot]
+    .reverse()
+    .map((snapshot) => snapshot.paramMap.get('shopId') ?? snapshot.paramMap.get('id'))
+    .find((id): id is string => Boolean(id));
+
+  if (shopId && tenantService.barberiaActivaId() !== shopId) {
+    return tenantService.cambiarSedeActiva(shopId).pipe(
+      map(() =>
+        tenantService.barberiaActivaId() === shopId
+          ? validarContextoActual()
+          : router.createUrlTree(['/barberias']),
+      ),
+      catchError(() => of(router.createUrlTree(['/barberias']))),
+    );
   }
 
-  // Requerimos que el usuario haya seleccionado una barbería activa
-  if (tenantService.barberiaActivaId()) {
-    return true;
-  }
-
-  // Sin barbería seleccionada, el hub de barberías: el superadmin ve ahí el
-  // listado global y cualquier otro rol, sus sedes.
-  return router.createUrlTree(['/barberias']);
+  return validarContextoActual();
 };

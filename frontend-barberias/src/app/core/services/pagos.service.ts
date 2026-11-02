@@ -38,6 +38,10 @@ export class PagosService {
   private readonly tenant = inject(TenantService);
   private readonly apiUrl = `${API_URL}`;
 
+  constructor() {
+    this.tenant.registrarPurgadorLocal(() => this.limpiarEstadoLocal());
+  }
+
   /** Fase 5: la sede vive en la ruta (`/shops/:shopId/payments`). */
   private get pagosUrl(): string {
     return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/payments`;
@@ -46,6 +50,12 @@ export class PagosService {
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
   readonly pagos = signal<PagoHistorial[]>([]);
+
+  private limpiarEstadoLocal(): void {
+    this.pagos.set([]);
+    this.isLoading.set(false);
+    this.error.set(null);
+  }
 
   /**
    * H68 · el historial de cobros de la sede activa.

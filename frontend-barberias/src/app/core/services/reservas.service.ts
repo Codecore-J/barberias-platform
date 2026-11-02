@@ -43,6 +43,10 @@ export class ReservasService {
   private readonly tenant = inject(TenantService);
   private readonly apiUrl = `${API_URL}`;
 
+  constructor() {
+    this.tenant.registrarPurgadorLocal(() => this.limpiarEstadoLocal());
+  }
+
   /**
    * Fase 5 (Punto 5.3): reservas y agenda se anidan bajo la sede en la ruta
    * (`/shops/:shopId/appointments`), en vez de resolverla por cabecera.
@@ -53,6 +57,11 @@ export class ReservasService {
 
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
+
+  private limpiarEstadoLocal(): void {
+    this.isLoading.set(false);
+    this.error.set(null);
+  }
 
   /**
    * Obtiene los slots de disponibilidad para un día específico

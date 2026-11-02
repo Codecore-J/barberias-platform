@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, of, tap, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
+import { TenantService } from './tenant.service.js';
 
 /**
  * E4-03/2 · H54 · E3-12/3 · el vínculo del CLIENTE con UNA sede, visto por él.
@@ -51,6 +52,11 @@ export interface MiDesvinculacion {
 export class MiEstadoService {
   private readonly http = inject(HttpClient);
   private readonly apiUrl = `${API_URL}/shops`;
+  private readonly tenant = inject(TenantService);
+
+  constructor() {
+    this.tenant.registrarPurgadorLocal(() => this.limpiar());
+  }
 
   /** Estado por sede, indexado por `barberiaId`: la tarjeta lo lee de aquí. */
   readonly estados = signal<Record<string, MiEstado>>({});
@@ -116,6 +122,7 @@ export class MiEstadoService {
   /** Se llama al cerrar sesión: nada del estado de un cliente puede sobrevivir a otro. */
   limpiar(): void {
     this.estados.set({});
+    this.isLoading.set(false);
     this.ultimaDesvinculacion.set(null);
     this.error.set(null);
   }

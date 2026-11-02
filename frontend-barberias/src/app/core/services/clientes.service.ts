@@ -26,6 +26,10 @@ export class ClientesService {
   private readonly http = inject(HttpClient);
   private readonly tenant = inject(TenantService);
 
+  constructor() {
+    this.tenant.registrarPurgadorLocal(() => this.limpiarEstadoLocal());
+  }
+
   /** Fase 5: la sede viaja en la ruta, nunca en la cabecera x-barberia-id. */
   private get apiUrl(): string {
     return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/clients`;
@@ -33,6 +37,11 @@ export class ClientesService {
 
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
+
+  private limpiarEstadoLocal(): void {
+    this.isLoading.set(false);
+    this.error.set(null);
+  }
 
   /**
    * Obtiene la ficha técnica de un cliente (notas y estadísticas limitadas a la barbería actual)

@@ -49,7 +49,13 @@ describe('PagosService · historial y anulación de cobros (H68)', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         // Fase 5: la sede sale de la ruta, así que el servicio la lee del tenant.
-        { provide: TenantService, useValue: { barberiaActivaId: () => SEDE } },
+        {
+          provide: TenantService,
+          useValue: {
+            barberiaActivaId: () => SEDE,
+            registrarPurgadorLocal: () => undefined,
+          },
+        },
       ],
     });
 

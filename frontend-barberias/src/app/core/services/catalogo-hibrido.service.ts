@@ -91,6 +91,10 @@ export class CatalogoHibridoService {
   private readonly http = inject(HttpClient);
   private readonly tenant = inject(TenantService);
 
+  constructor() {
+    this.tenant.registrarPurgadorLocal(() => this.limpiarEstadoLocal());
+  }
+
   private get categoriasUrl(): string {
     return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/categorias`;
   }
@@ -119,6 +123,20 @@ export class CatalogoHibridoService {
   readonly catalogo = signal<CategoriaDelCatalogo[]>([]);
   readonly cargandoCatalogo = signal<boolean>(false);
   readonly errorCatalogo = signal<string | null>(null);
+
+  private limpiarEstadoLocal(): void {
+    this.categorias.set([]);
+    this.cargandoCategorias.set(false);
+    this.guardandoCategoria.set(false);
+    this.errorCategorias.set(null);
+    this.misServicios.set([]);
+    this.cargandoMisServicios.set(false);
+    this.guardandoServicio.set(false);
+    this.errorMisServicios.set(null);
+    this.catalogo.set([]);
+    this.cargandoCatalogo.set(false);
+    this.errorCatalogo.set(null);
+  }
 
   /** Texto mostrable de un error HTTP, con el mensaje D40 del backend si lo hay. */
   static mensajeDeError(error: any, porDefecto: string): string {

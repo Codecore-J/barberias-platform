@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
+import { TenantService } from './tenant.service.js';
 
 /**
  * E4-03 · lista negra LOCAL de la sede (D48).
@@ -29,10 +30,21 @@ export interface ClienteRestringido {
 })
 export class ClientesRestringidosService {
   private readonly http = inject(HttpClient);
+  private readonly tenant = inject(TenantService);
+
+  constructor() {
+    this.tenant.registrarPurgadorLocal(() => this.limpiarEstadoLocal());
+  }
 
   readonly clientes = signal<ClienteRestringido[]>([]);
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
+
+  private limpiarEstadoLocal(): void {
+    this.clientes.set([]);
+    this.isLoading.set(false);
+    this.error.set(null);
+  }
 
   /** `GET /shops/:shopId/restricted-clients` · solo las filas restringidas. */
   cargar(barberiaId: string): Observable<ClienteRestringido[]> {

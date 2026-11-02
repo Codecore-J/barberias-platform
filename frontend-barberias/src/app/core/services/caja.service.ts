@@ -46,10 +46,21 @@ export class CajaService {
   private readonly http = inject(HttpClient);
   private readonly tenant = inject(TenantService);
 
+  constructor() {
+    this.tenant.registrarPurgadorLocal(() => this.limpiarEstadoLocal());
+  }
+
   readonly caja = signal<CajaDelDia | null>(null);
   readonly cargando = signal(false);
   readonly cerrando = signal(false);
   readonly error = signal<string | null>(null);
+
+  private limpiarEstadoLocal(): void {
+    this.caja.set(null);
+    this.cargando.set(false);
+    this.cerrando.set(false);
+    this.error.set(null);
+  }
 
   cargarHoy(): Observable<CajaDelDia | null> {
     const shopId = this.tenant.barberiaActivaId();
