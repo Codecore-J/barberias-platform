@@ -9,6 +9,7 @@ import { TenantService } from '../../../core/services/tenant.service';
 import { AuthService } from '../../../auth/auth.service';
 
 import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component';
+import { ToastService } from '../../../shared/ui/toast/toast.service';
 
 @Component({
   selector: 'app-admin-tickets',
@@ -44,13 +45,6 @@ import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.
           </button>
         </div>
       </div>
-
-      <!-- FEEDBACK MENSAJES -->
-      @if (mensajeExito()) {
-        <div class="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm flex items-center gap-2 animate-in fade-in">
-          <i class="pi pi-check-circle"></i> {{ mensajeExito() }}
-        </div>
-      }
 
       <!-- V3 fase 6 · CAJA DEL DÍA -->
       <section
@@ -381,8 +375,8 @@ import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.
               </div>
 
               <div>
-                <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo de la anulación (obligatorio)</label>
-                <textarea [(ngModel)]="motivoAnulacion" rows="3" maxlength="500"
+                <label for="pago-motivo-anulacion" class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo de la anulación (obligatorio)</label>
+                <textarea id="pago-motivo-anulacion" [(ngModel)]="motivoAnulacion" rows="3" maxlength="500"
                           placeholder="Ej.: cobré la reserva equivocada / el cliente pagó con otro medio"
                           class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-rose-500 transition-colors resize-none"></textarea>
                 <p class="text-[10px] text-zinc-500 mt-1">El motivo queda en el registro de auditoría junto con tu usuario y la fecha.</p>
@@ -472,8 +466,8 @@ import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.
         </div>
 
         <div>
-          <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Conservar registros de los últimos:</label>
-          <select [(ngModel)]="diasPurga" class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+          <label for="auditoria-retencion-dias" class="block text-xs font-semibold text-zinc-400 mb-1.5">Conservar registros de los últimos:</label>
+          <select id="auditoria-retencion-dias" [(ngModel)]="diasPurga" class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
             <option [ngValue]="180">6 meses (180 días)</option>
             <option [ngValue]="365">1 año (365 días - Recomendado)</option>
             <option [ngValue]="730">2 años (730 días)</option>
@@ -510,6 +504,7 @@ export class AdminTicketsComponent {
   protected cajaService = inject(CajaService);
   protected tenantService = inject(TenantService);
   protected authService = inject(AuthService);
+  private readonly toast = inject(ToastService);
 
   private readonly destroyRef = inject(DestroyRef);
 
@@ -528,7 +523,6 @@ export class AdminTicketsComponent {
   modalCierreAbierto = signal(false);
   purgando = signal(false);
   diasPurga = 365;
-  mensajeExito = signal('');
 
   // H68 · §7.3: anulación de un cobro.
   modalAnularAbierto = signal(false);
@@ -664,8 +658,7 @@ export class AdminTicketsComponent {
       .subscribe((caja) => {
         if (!caja) return;
         this.modalCierreAbierto.set(false);
-        this.mensajeExito.set('Caja cerrada: los totales del día quedaron sellados.');
-        setTimeout(() => this.mensajeExito.set(''), 5000);
+        this.toast.success('Caja cerrada: los totales del día quedaron sellados.', 'Caja');
         // El historial no cambia, pero el estado del cierre sí: se refresca todo
         // para que la pantalla no muestre «caja abierta» después de sellarla.
         this.refrescarTodo();
@@ -694,8 +687,7 @@ export class AdminTicketsComponent {
         next: (res) => {
           this.purgando.set(false);
           this.cerrarModalPurga();
-          this.mensajeExito.set(res?.message || 'Purga de auditoría completada con éxito.');
-          setTimeout(() => this.mensajeExito.set(''), 5000);
+          this.toast.success(res?.message || 'Purga de auditoría completada con éxito.', 'Auditoría');
           this.refrescarTodo();
         },
         error: () => {
@@ -733,8 +725,7 @@ export class AdminTicketsComponent {
       next: () => {
         this.anulando.set(false);
         this.cerrarModalAnular();
-        this.mensajeExito.set('Cobro anulado. El movimiento quedó registrado en la auditoría.');
-        setTimeout(() => this.mensajeExito.set(''), 5000);
+        this.toast.success('Cobro anulado. El movimiento quedó registrado en la auditoría.', 'Pagos');
         // La fila vuelve a leerse de la fuente: el estado ANULADO no se inventa en
         // el cliente, se confirma contra el backend antes de pintarlo. La caja
         // también se recarga: un cobro anulado deja de sumar en el arqueo.

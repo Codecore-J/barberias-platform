@@ -191,6 +191,22 @@ import { NotificationService } from '../../core/services/notification.service';
                         <span class="text-[10px] text-zinc-500">Cobros, historial y anulaciones</span>
                       </span>
                     </a>
+                    <a routerLink="/admin/solicitudes-cambio" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-send text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Solicitudes de cambio</span>
+                        <span class="text-[10px] text-zinc-500">Nombre y responsable: estado de lo propuesto</span>
+                      </span>
+                    </a>
+                    <a routerLink="/admin/clientes-restringidos" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-shield text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Clientes restringidos</span>
+                        <span class="text-[10px] text-zinc-500">Bloqueos por inasistencias y su levantamiento</span>
+                      </span>
+                    </a>
                     <div class="border-t border-zinc-800 my-1"></div>
                     <a routerLink="/barberias" (click)="configDropdownOpen.set(false)"
                        class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
@@ -265,6 +281,22 @@ import { NotificationService } from '../../core/services/notification.service';
                       <span class="flex flex-col">
                         <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Pagos</span>
                         <span class="text-[10px] text-zinc-500">Cobros, historial y auditoría</span>
+                      </span>
+                    </a>
+                    <a routerLink="/admin/solicitudes-cambio" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-send text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Solicitudes de cambio</span>
+                        <span class="text-[10px] text-zinc-500">Resolver nombre y responsable de las sedes</span>
+                      </span>
+                    </a>
+                    <a routerLink="/admin/clientes-restringidos" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-shield text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Clientes restringidos</span>
+                        <span class="text-[10px] text-zinc-500">Lista negra local de la sede activa</span>
                       </span>
                     </a>
                     <div class="border-t border-zinc-800 my-1"></div>
@@ -434,6 +466,12 @@ import { NotificationService } from '../../core/services/notification.service';
                 <a routerLink="/admin/tickets" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-receipt text-amber-400"></i>Pagos
                 </a>
+                <a routerLink="/admin/solicitudes-cambio" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-send text-amber-400"></i>Solicitudes de cambio
+                </a>
+                <a routerLink="/admin/clientes-restringidos" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-shield text-amber-400"></i>Clientes restringidos
+                </a>
                 <div class="border-t border-zinc-800 my-1 mx-2"></div>
                 <p class="px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Catálogo</p>
                 <a routerLink="/admin/servicios" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
@@ -473,6 +511,12 @@ import { NotificationService } from '../../core/services/notification.service';
                 </a>
                 <a routerLink="/admin/tickets" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-receipt text-amber-400"></i>Pagos
+                </a>
+                <a routerLink="/admin/solicitudes-cambio" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-send text-amber-400"></i>Solicitudes de cambio
+                </a>
+                <a routerLink="/admin/clientes-restringidos" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-shield text-amber-400"></i>Clientes restringidos
                 </a>
               }
             </div>
@@ -518,7 +562,11 @@ export class AppLayoutComponent implements OnInit {
   readonly catalogoDropdownOpen = signal<boolean>(false);
 
   ngOnInit() {
-    this.tenantService.cargarBarberias().subscribe();
+    // D05 · al superadmin no se le autoasigna la primera sede: su contexto de
+    // auditoría lo elige él en el hub. Para el resto, el auto-pick de siempre.
+    this.tenantService
+      .cargarBarberias({ autoSeleccionar: this.userRole() !== 'ADMINISTRADOR' })
+      .subscribe();
     this.notificationService.cargarNotificaciones().subscribe();
   }
 

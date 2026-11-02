@@ -106,8 +106,16 @@ export class TenantService {
    * viene vacía, por vínculo: así el selector de sede funciona para los cuatro
    * roles sin que este servicio tenga que adivinar el rol del token (y sin la
    * carrera de leer `authState()` antes de que `/auth/me` haya respondido).
+   *
+   * D05 · al ADMINISTRADOR global `GET /shops` le devuelve TODAS las sedes
+   * activas de la plataforma (el backend resuelve su alcance), así que el mismo
+   * camino sirve sin una rama por rol en el navegador.
+   *
+   * `autoSeleccionar: false` sirve para el superadmin: su pantalla de entrada es
+   * el hub y la sede la elige él, en lugar de quedar anclado a la primera de la
+   * lista por un `PATCH /select` que nadie pidió.
    */
-  cargarBarberias(): Observable<BarberiaResumen[]> {
+  cargarBarberias(opciones: { autoSeleccionar?: boolean } = {}): Observable<BarberiaResumen[]> {
     this.isLoading.set(true);
     this.error.set(null);
 
@@ -119,7 +127,7 @@ export class TenantService {
       tap((barberias: BarberiaResumen[]) => {
         this.barberiasVinculadas.set(barberias);
         this.isLoading.set(false);
-        this.sincronizarSedeActiva(barberias);
+        this.sincronizarSedeActiva(barberias, opciones.autoSeleccionar !== false);
       }),
       catchError((err) => {
         this.isLoading.set(false);
@@ -302,7 +310,7 @@ export class TenantService {
    * de RED no llega hasta aquí y no purga nada. Una carga que sí responde —aunque
    * responda vacío o sin la sede— sí purga, y eso es lo que se quiere.
    */
-  private sincronizarSedeActiva(barberias: BarberiaResumen[]): void {
+  private sincronizarSedeActiva(barberias: BarberiaResumen[], autoSeleccionar = true): void {
     const referencia = this.barberiaActiva()?.id ?? localStorage.getItem(this.storageKey);
     const conservada = referencia ? (barberias.find((b) => b.id === referencia) ?? null) : null;
 
@@ -317,6 +325,13 @@ export class TenantService {
     // backend la registró cuando la fijó.
     if (conservada && conservada.id === this.barberiaActiva()?.id) {
       this.setBarberiaActiva(conservada);
+      return;
+    }
+
+    // El superadmin elige su contexto en el hub: sin selección previa no se
+    // autoasigna la primera sede, porque entrar a auditar «la que toque» no es
+    // una decisión suya. La purga y el refresco de arriba ya se aplicaron.
+    if (!autoSeleccionar) {
       return;
     }
 

@@ -132,6 +132,11 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // (`SOLO_ADMIN_BARBERIA`, 403) y eso lo cubre el E2E de E3-13. La bandeja de
   // plataforma es exclusiva del ADMINISTRADOR global.
   'POST /shops/:shopId/change-requests': [ROL_ADMIN_BARBERIA],
+  // La sede necesita ver el estado de lo que propuso; la resolución sigue
+  // siendo de la plataforma (D26), así que esta lectura no tiene acciones de
+  // escritura. Declara también al ADMINISTRADOR porque su supervisión es
+  // transversal y la pertenencia la vuelve a exigir el servicio.
+  'GET /shops/:shopId/change-requests': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // E4-03 (2026-10-12): la bandeja de restringidos es de la SEDE. Como en
   // E3-13 la ruta usa `:id` y el guard no resuelve la sede del parámetro, así
   // que la pertenencia la exige el servicio (403). D48: la lista es local y no
@@ -638,7 +643,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // 420. V3 fase 6 suma el cobro de la agenda y las dos de caja: 108 × 4 = 432.
   // Fase 3 suma la cita directa cobrada (`walk-in-pago`): 109 × 4 = 436. La
   // plantilla base semanal del barbero suma sus dos verbos: 111 × 4 = 444.
-  expect(evaluaciones).toBe(444);
+  // La bandeja local de solicitudes de cambio (E3-13, lectura de la sede) suma
+  // la 112: 112 × 4 = 448.
+  expect(evaluaciones).toBe(448);
     expect(
       desviaciones.length === 0
         ? ''

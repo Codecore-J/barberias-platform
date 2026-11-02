@@ -827,6 +827,21 @@ describe('BarberiaService', () => {
     });
 
     /**
+     * D05 · el rol global no está atado a ninguna sede, así que filtrar por
+     * `responsableId`/`usuario_roles` le devolvía `[]` y el hub de sedes quedaba
+     * vacío: el `tenantGuard` lo encerraba en un selector sin nada que elegir.
+     * Su listado es el de la plataforma.
+     */
+    it('D05: el ADMINISTRADOR global lista TODAS las sedes activas, sin filtro de pertenencia', async () => {
+      await service.findAllByResponsable('usuario-z', ADMINISTRADOR);
+
+      expect(prisma.barberia.findMany).toHaveBeenCalledWith({
+        where: { estado: 'ACTIVO' },
+        orderBy: { nombre: 'asc' },
+      });
+    });
+
+    /**
      * H-01 · staff creado desde `/admin/usuarios`: su sede vive solo en
      * `usuario_roles.barberia_id`, sin ser `responsableId`. Antes recibía `[]`
      * en `GET /barberias`, el hub no le ofrecía la sede y el `tenantGuard` del

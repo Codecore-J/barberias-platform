@@ -141,11 +141,22 @@ export class AuthService {
         }
 
         const roles = response.usuario.roles || [];
+        const esGlobal = roles.includes('ADMINISTRADOR');
         const isAdmin =
-          roles.includes('ADMINISTRADOR') ||
-          roles.includes('ADMIN_BARBERIA') ||
-          roles.includes('ADMIN');
+          esGlobal || roles.includes('ADMIN_BARBERIA') || roles.includes('ADMIN');
         const isBarbero = roles.includes('BARBERO');
+
+        // D05 · el superadmin no pertenece a ninguna sede: el hub ES su pantalla
+        // de entrada —el listado global de sedes que va a auditar—, no el estado
+        // vacío al que lo llevaba una lista filtrada por pertenencia. Se pide el
+        // listado SIN autoasignar sede para que la elección sea suya.
+        if (esGlobal) {
+          this.tenantService.cargarBarberias({ autoSeleccionar: false }).subscribe({
+            next: () => this.router.navigate(['/barberias']),
+            error: () => this.router.navigate(['/barberias'])
+          });
+          return;
+        }
 
         if (isAdmin) {
           this.tenantService.cargarBarberias().subscribe({

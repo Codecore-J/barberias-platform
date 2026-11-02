@@ -135,6 +135,37 @@ export const routes: Routes = [
           ),
       },
       {
+        //
+        // E3-13 · solicitudes de cambio de nombre y responsable (D26).
+        //
+        // Es una pantalla de SEDE (necesita `barberiaId` para la bandeja local),
+        // así que lleva `tenantGuard`; el ADMINISTRADOR global entra con una
+        // sede elegida y puede ampliar la vista a todas desde la propia
+        // pantalla. Los dos roles son los mismos que declara el backend en
+        // `GET /shops/:shopId/change-requests`; resolver sigue siendo exclusivo
+        // de la plataforma.
+        //
+        path: 'admin/solicitudes-cambio',
+        canActivate: [tenantGuard, roleGuard(['ADMIN_BARBERIA', 'ADMINISTRADOR'])],
+        loadComponent: () =>
+          import('./features/admin/solicitudes-cambio/solicitudes-cambio.component').then(
+            (m) => m.AdminSolicitudesCambioComponent,
+          ),
+      },
+      {
+        //
+        // E4-03 · lista negra LOCAL de la sede (D48): quién no puede agendar
+        // aquí y el levantamiento de esa restricción. Mismos roles que el
+        // backend (`ADMIN_BARBERIA`, `ADMINISTRADOR`) y sede obligatoria.
+        //
+        path: 'admin/clientes-restringidos',
+        canActivate: [tenantGuard, roleGuard(['ADMIN_BARBERIA', 'ADMINISTRADOR'])],
+        loadComponent: () =>
+          import('./features/admin/clientes-restringidos/clientes-restringidos.component').then(
+            (m) => m.AdminClientesRestringidosComponent,
+          ),
+      },
+      {
         // E3-12 · bandeja de plataforma de la 6.ª vinculación (D10).
         // SIN `tenantGuard`: es una pantalla TRANSVERSAL de la plataforma y el
         // ADMINISTRADOR no necesita sede activa para decidir sobre una sexta

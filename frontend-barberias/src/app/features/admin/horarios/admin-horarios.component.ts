@@ -1,15 +1,53 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import {
+  FormArray,
+  FormBuilder,
+  FormGroup,
+  FormsModule,
+  ReactiveFormsModule,
+  Validators,
+} from '@angular/forms';
 import { HorariosService, Horario, ExcepcionHorario, BloqueoAgenda, CreateBloqueoDto } from '../../../core/services/horarios.service';
 import { TenantService } from '../../../core/services/tenant.service';
+import { ToastService } from '../../../shared/ui/toast/toast.service';
 
-interface DiaConfig {
-  dia: number;
-  nombre: string;
-  activo: boolean;
-  horaInicio: string;
-  horaFin: string;
+/** Nombres por día ISO (1 = lunes … 7 = domingo), el mismo orden del motor. */
+const NOMBRES_DIA: Record<number, string> = {
+  1: 'Lunes',
+  2: 'Martes',
+  3: 'Miércoles',
+  4: 'Jueves',
+  5: 'Viernes',
+  6: 'Sábado',
+  7: 'Domingo',
+};
+
+/**
+ * Semana que se ofrece cuando la sede todavía no guardó ninguna fila.
+ *
+ * Es una propuesta, no un valor inventado: la pantalla la muestra igual que el
+ * panel del barbero para que el administrador pueda ajustar en vez de partir de
+ * siete días en blanco.
+ */
+const SEMANA_POR_DEFECTO = [
+  { diaSemana: 1, activo: true, inicio: '09:00', fin: '18:00' },
+  { diaSemana: 2, activo: true, inicio: '09:00', fin: '18:00' },
+  { diaSemana: 3, activo: true, inicio: '09:00', fin: '18:00' },
+  { diaSemana: 4, activo: true, inicio: '09:00', fin: '18:00' },
+  { diaSemana: 5, activo: true, inicio: '09:00', fin: '19:00' },
+  { diaSemana: 6, activo: true, inicio: '10:00', fin: '15:00' },
+  { diaSemana: 7, activo: false, inicio: '10:00', fin: '14:00' },
+];
+
+/** Un peldaño de la jerarquía de resolución que pinta la cabecera del panel. */
+interface NivelJerarquia {
+  orden: number;
+  titulo: string;
+  detalle: string;
+  icono: string;
+  /** El nivel que se edita en ESTA pantalla. */
+  destacado: boolean;
 }
 
 type TabActiva = 'semanal' | 'excepciones' | 'bloqueos';
@@ -20,7 +58,7 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
 @Component({
   selector: 'app-admin-horarios',
   standalone: true,
-  imports: [CommonModule, FormsModule, ModalShellComponent],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, ModalShellComponent],
   template: `
     <div class="space-y-8 pb-12 animate-fade-in relative z-10">
       
@@ -71,17 +109,57 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
         </p>
       </div>
 
-      <!-- NOTIFICACIONES FEEDBACK -->
-      @if (mensajeExito()) {
-        <div class="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm flex items-center gap-2 animate-in fade-in">
-          <i class="pi pi-check-circle"></i> {{ mensajeExito() }}
+      <!-- JERARQUÍA DE PRECEDENCIA: el panel edita UNO de los cuatro niveles, y
+           saber cuál gana explica por qué un barbero no aparece en la agenda. -->
+      <div class="glass-panel p-5 sm:p-6 rounded-3xl border border-white/5 space-y-4">
+        <div class="flex items-start gap-3">
+          <div class="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+            <i class="pi pi-sort-amount-down text-sm"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold text-white">Cómo se resuelve la disponibilidad</h3>
+            <p class="text-xs text-zinc-400">
+              Cuando dos horarios chocan gana siempre el más específico. La jornada efectiva de un
+              barbero es la intersección de todo lo que le aplica, nunca la suma.
+            </p>
+          </div>
         </div>
-      }
-      @if (mensajeError()) {
-        <div class="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm flex items-center gap-2 animate-in fade-in">
-          <i class="pi pi-exclamation-triangle"></i> {{ mensajeError() }}
-        </div>
-      }
+
+        <ol class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          @for (nivel of jerarquia; track nivel.orden) {
+            <li
+              class="rounded-2xl border p-3.5 flex flex-col gap-1.5 transition-colors"
+              [ngClass]="nivel.destacado
+                ? 'border-amber-500/30 bg-amber-500/[0.06]'
+                : 'border-white/5 bg-white/[0.02]'"
+            >
+              <div class="flex items-center gap-2">
+                <span
+                  class="w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center shrink-0"
+                  [ngClass]="nivel.destacado
+                    ? 'bg-amber-500 text-zinc-950'
+                    : 'bg-zinc-800 text-zinc-400 border border-zinc-700'"
+                >
+                  {{ nivel.orden }}
+                </span>
+                <i class="pi text-xs"
+                   [ngClass]="[nivel.icono, nivel.destacado ? 'text-amber-400' : 'text-zinc-500']"></i>
+                <span class="text-xs font-semibold text-white truncate">{{ nivel.titulo }}</span>
+              </div>
+              <p class="text-[11px] leading-relaxed text-zinc-400">{{ nivel.detalle }}</p>
+            </li>
+          }
+        </ol>
+
+        <p class="text-[11px] text-zinc-500 flex items-start gap-2 pt-1 border-t border-white/5">
+          <i class="pi pi-info-circle mt-0.5"></i>
+          <span>
+            Una <strong class="text-zinc-300">excepción de sede</strong> por fecha (pestaña
+            «Excepciones») cierra o recorta ese día para todos; y ningún barbero puede abrir más
+            allá del horario de la sede.
+          </span>
+        </p>
+      </div>
 
       <!-- TABS DE NAVEGACIÓN -->
       <div class="flex items-center gap-2 border-b border-zinc-800 pb-3">
@@ -125,54 +203,143 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
 
       <!-- ================= TAB 1: HORARIOS SEMANALES ================= -->
       @if (tabActiva() === 'semanal') {
-        <div class="glass-panel p-6 rounded-3xl border border-white/5 space-y-4">
-          <div class="flex items-center justify-between pb-3 border-b border-white/5">
+        <div class="glass-panel p-5 sm:p-6 rounded-3xl border border-white/5 space-y-4">
+          <!-- Alcance + resumen en vivo -->
+          <div class="flex flex-wrap items-start justify-between gap-3 pb-3 border-b border-white/5">
             <div>
-              <h3 class="text-base font-semibold text-white">Días de Atención al Público</h3>
-              <p class="text-xs text-zinc-400">Activa o desactiva días y configura rangos de apertura y cierre.</p>
+              <h3 class="text-base font-semibold text-white">Jornada semanal de la sede</h3>
+              <p class="text-xs text-zinc-400">
+                Semana ISO (1 = lunes … 7 = domingo). El motor intersecta esta jornada con el
+                horario de cada barbero: nadie puede abrir fuera de ella.
+              </p>
             </div>
-            <span class="text-xs text-zinc-500">Formato 24 horas</span>
-          </div>
-          
-          <div class="hidden md:grid grid-cols-12 gap-4 pb-2 pt-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-            <div class="col-span-4">Día de la Semana</div>
-            <div class="col-span-4">Apertura (HH:mm)</div>
-            <div class="col-span-4">Cierre (HH:mm)</div>
+            <div class="flex flex-wrap items-center gap-2 text-[11px] font-semibold">
+              <span class="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-center gap-1.5">
+                <i class="pi pi-calendar-plus text-[10px]"></i>
+                {{ diasAbiertos() }} / 7 días
+              </span>
+              <span class="px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 flex items-center gap-1.5">
+                <i class="pi pi-clock text-[10px]"></i>
+                {{ horasSemanales() }} h / semana
+              </span>
+            </div>
           </div>
 
-          <div class="space-y-3 md:space-y-2">
-            @for (dia of diasConfig; track dia.dia) {
-              <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center p-3.5 md:p-3 rounded-2xl transition-all"
-                   [ngClass]="dia.activo ? 'bg-zinc-900/60 border border-zinc-700/60 hover:border-amber-500/30' : 'bg-zinc-950/40 border border-white/5 opacity-50'">
-                
-                <div class="col-span-1 md:col-span-4 flex items-center gap-3">
-                  <button (click)="toggleDia(dia)" 
-                          class="w-11 h-6 rounded-full flex items-center p-1 transition-colors duration-300 focus:outline-none"
-                          [ngClass]="dia.activo ? 'bg-amber-500' : 'bg-zinc-700'">
-                    <div class="w-4 h-4 rounded-full bg-white transform transition-transform duration-300 shadow-sm"
-                         [ngClass]="dia.activo ? 'translate-x-5' : 'translate-x-0'"></div>
-                  </button>
-                  <span class="font-medium text-white text-sm">{{ dia.nombre }}</span>
-                  @if (!dia.activo) {
-                    <span class="text-[11px] font-medium text-rose-400 bg-rose-400/10 px-2 py-0.5 rounded-full ml-1">Cerrado</span>
+          <!-- Cabecera de columnas (solo escritorio) -->
+          <div class="hidden lg:grid grid-cols-12 gap-4 px-3 pb-2 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+            <div class="col-span-4">Día (ISO 1–7)</div>
+            <div class="col-span-8">Ventana de atención</div>
+          </div>
+
+          <form [formGroup]="formSemana" novalidate>
+            <div formArrayName="dias" class="space-y-3">
+              @for (dia of dias.controls; track dia.get('diaSemana')?.value; let i = $index) {
+                <div
+                  [formGroupName]="i"
+                  class="rounded-2xl border p-4 transition-colors"
+                  [ngClass]="{
+                    'bg-white/[0.03] border-white/10': dia.get('activo')?.value && !errorDe(dia),
+                    'bg-transparent border-white/5': !dia.get('activo')?.value && !errorDe(dia),
+                    'bg-rose-500/[0.04] border-rose-500/40': !!errorDe(dia)
+                  }"
+                >
+                  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:items-center">
+                    <!-- Día + interruptor -->
+                    <div class="lg:col-span-4 flex items-center gap-3">
+                      <button
+                        type="button"
+                        role="switch"
+                        [attr.aria-checked]="dia.get('activo')?.value"
+                        [attr.aria-label]="(dia.get('activo')?.value ? 'Cerrar ' : 'Abrir ') + nombreDia(i)"
+                        (click)="alternarDia(i)"
+                        class="w-11 h-6 rounded-full flex items-center p-1 transition-colors duration-300 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+                        [class.bg-amber-500]="dia.get('activo')?.value"
+                        [class.bg-zinc-700]="!dia.get('activo')?.value"
+                      >
+                        <span
+                          class="w-4 h-4 rounded-full bg-white transform transition-transform duration-300"
+                          [class.translate-x-5]="dia.get('activo')?.value"
+                          [class.translate-x-0]="!dia.get('activo')?.value"
+                        ></span>
+                      </button>
+
+                      <div class="min-w-0">
+                        <p class="font-semibold text-white text-sm">{{ nombreDia(i) }}</p>
+                        <p class="text-[10px] uppercase tracking-wider text-zinc-500">
+                          ISO {{ dia.get('diaSemana')?.value }}
+                        </p>
+                      </div>
+
+                      @if (!dia.get('activo')?.value) {
+                        <span class="text-[11px] font-medium text-zinc-400 bg-zinc-800/60 border border-zinc-700/60 px-2 py-0.5 rounded-full ml-auto lg:ml-1">
+                          Cerrado
+                        </span>
+                      }
+                    </div>
+
+                    <!-- Apertura / cierre -->
+                    <div class="lg:col-span-8 grid grid-cols-2 gap-3">
+                      <div class="space-y-1">
+                        <label
+                          [for]="'apertura-' + i"
+                          class="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold"
+                        >
+                          Apertura
+                        </label>
+                        <input
+                          type="time"
+                          [id]="'apertura-' + i"
+                          formControlName="horaInicio"
+                          class="w-full bg-zinc-900/70 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        />
+                      </div>
+                      <div class="space-y-1">
+                        <label
+                          [for]="'cierre-' + i"
+                          class="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold"
+                        >
+                          Cierre
+                        </label>
+                        <input
+                          type="time"
+                          [id]="'cierre-' + i"
+                          formControlName="horaFin"
+                          class="w-full bg-zinc-900/70 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Validación del día, junto a la fila que hay que corregir -->
+                  @if (errorDe(dia)) {
+                    <p class="mt-3 text-xs text-rose-300 flex items-start gap-1.5" role="alert">
+                      <i class="pi pi-exclamation-circle mt-0.5"></i>
+                      <span>{{ errorDe(dia) }}</span>
+                    </p>
                   }
                 </div>
+              }
+            </div>
+          </form>
 
-                <div class="col-span-1 md:col-span-4 flex flex-col md:block">
-                  <label class="md:hidden text-xs text-zinc-500 mb-1">Apertura</label>
-                  <input type="time" [(ngModel)]="dia.horaInicio" [disabled]="!dia.activo"
-                         class="w-full bg-zinc-950/70 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all disabled:opacity-40">
-                </div>
+          @if (sinDiasActivos()) {
+            <p class="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl px-3 py-2 flex items-start gap-2" role="alert">
+              <i class="pi pi-exclamation-triangle mt-0.5"></i>
+              <span>
+                No hay ningún día abierto: la sede no ofrecerá horarios y ningún cliente podrá
+                reservar.
+              </span>
+            </p>
+          }
 
-                <div class="col-span-1 md:col-span-4 flex flex-col md:block">
-                  <label class="md:hidden text-xs text-zinc-500 mb-1">Cierre</label>
-                  <input type="time" [(ngModel)]="dia.horaFin" [disabled]="!dia.activo"
-                         class="w-full bg-zinc-950/70 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all disabled:opacity-40">
-                </div>
-
-              </div>
-            }
-          </div>
+          <p class="text-xs text-zinc-500 flex items-start gap-2 pt-2 border-t border-white/5">
+            <i class="pi pi-info-circle mt-0.5"></i>
+            <span>
+              Los días apagados no ofrecen ninguna cita. Para cerrar una fecha suelta sin tocar la
+              semana usa la pestaña <strong class="text-zinc-300">Excepciones</strong>: allí el
+              cambio vale solo para ese día.
+            </span>
+          </p>
         </div>
       }
 
@@ -353,14 +520,14 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
         (cerrar)="cerrarModalExcepcion()">
         <div class="space-y-4">
           <div>
-            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Fecha</label>
-            <input type="date" [(ngModel)]="excepcionModel.fecha"
+            <label for="sede-excepcion-fecha" class="block text-xs font-semibold text-zinc-400 mb-1.5">Fecha</label>
+            <input id="sede-excepcion-fecha" type="date" [(ngModel)]="excepcionModel.fecha"
                    class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
           </div>
 
           <div>
-            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Tipo de Excepción</label>
-            <select [(ngModel)]="excepcionModel.tipo"
+            <label for="sede-excepcion-tipo" class="block text-xs font-semibold text-zinc-400 mb-1.5">Tipo de Excepción</label>
+            <select id="sede-excepcion-tipo" [(ngModel)]="excepcionModel.tipo"
                     class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
               <option value="CERRADA">Sede Cerrada (Todo el día no laborable)</option>
               <option value="HORARIO_ESPECIAL">Horario Especial (Apertura y Cierre personalizado)</option>
@@ -370,21 +537,21 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
           @if (excepcionModel.tipo === 'HORARIO_ESPECIAL') {
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Inicio</label>
-                <input type="time" [(ngModel)]="excepcionModel.horaInicio"
+                <label for="sede-excepcion-inicio" class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Inicio</label>
+                <input id="sede-excepcion-inicio" type="time" [(ngModel)]="excepcionModel.horaInicio"
                        class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
               </div>
               <div>
-                <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Fin</label>
-                <input type="time" [(ngModel)]="excepcionModel.horaFin"
+                <label for="sede-excepcion-fin" class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Fin</label>
+                <input id="sede-excepcion-fin" type="time" [(ngModel)]="excepcionModel.horaFin"
                        class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
               </div>
             </div>
           }
 
           <div>
-            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo o Justificación</label>
-            <input type="text" [(ngModel)]="excepcionModel.motivo" placeholder="Ej. Navidad, Año Nuevo, Fumigación..."
+            <label for="sede-excepcion-motivo" class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo o Justificación</label>
+            <input id="sede-excepcion-motivo" type="text" [(ngModel)]="excepcionModel.motivo" placeholder="Ej. Navidad, Año Nuevo, Fumigación..."
                    class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
           </div>
         </div>
@@ -413,33 +580,33 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
         (cerrar)="cerrarModalBloqueo()">
         <div class="space-y-4">
           <div>
-            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Fecha</label>
-            <input type="date" [(ngModel)]="bloqueoModel.fecha"
+            <label for="bloqueo-fecha" class="block text-xs font-semibold text-zinc-400 mb-1.5">Fecha</label>
+            <input id="bloqueo-fecha" type="date" [(ngModel)]="bloqueoModel.fecha"
                    class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
           </div>
 
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Inicio</label>
-              <input type="time" [(ngModel)]="bloqueoModel.horaInicio"
+              <label for="bloqueo-inicio" class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Inicio</label>
+              <input id="bloqueo-inicio" type="time" [(ngModel)]="bloqueoModel.horaInicio"
                      class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
             </div>
             <div>
-              <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Fin</label>
-              <input type="time" [(ngModel)]="bloqueoModel.horaFin"
+              <label for="bloqueo-fin" class="block text-xs font-semibold text-zinc-400 mb-1.5">Hora Fin</label>
+              <input id="bloqueo-fin" type="time" [(ngModel)]="bloqueoModel.horaFin"
                      class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
             </div>
           </div>
 
           <div>
-            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo</label>
-            <input type="text" [(ngModel)]="bloqueoModel.motivo" placeholder="Ej. Almuerzo general, Reparación de equipos..."
+            <label for="bloqueo-motivo" class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo</label>
+            <input id="bloqueo-motivo" type="text" [(ngModel)]="bloqueoModel.motivo" placeholder="Ej. Almuerzo general, Reparación de equipos..."
                    class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
           </div>
 
           <div>
-            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Auto-liberación (BullMQ)</label>
-            <select [(ngModel)]="bloqueoModel.liberacionAutomaticaMinutos"
+            <label for="bloqueo-liberacion" class="block text-xs font-semibold text-zinc-400 mb-1.5">Auto-liberación (BullMQ)</label>
+            <select id="bloqueo-liberacion" [(ngModel)]="bloqueoModel.liberacionAutomaticaMinutos"
                     class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
               <option [ngValue]="undefined">Manual (Hasta que se elimine)</option>
               <option [ngValue]="15">Liberar en 15 minutos</option>
@@ -477,19 +644,65 @@ export class AdminHorariosComponent implements OnInit {
 
   // Estados generales
   guardando = signal(false);
-  mensajeExito = signal('');
-  mensajeError = signal('');
+  private readonly toast = inject(ToastService);
 
-  // Tab 1: Horarios Semanales
-  diasConfig: DiaConfig[] = [
-    { dia: 1, nombre: 'Lunes', activo: true, horaInicio: '09:00', horaFin: '18:00' },
-    { dia: 2, nombre: 'Martes', activo: true, horaInicio: '09:00', horaFin: '18:00' },
-    { dia: 3, nombre: 'Miércoles', activo: true, horaInicio: '09:00', horaFin: '18:00' },
-    { dia: 4, nombre: 'Jueves', activo: true, horaInicio: '09:00', horaFin: '18:00' },
-    { dia: 5, nombre: 'Viernes', activo: true, horaInicio: '09:00', horaFin: '19:00' },
-    { dia: 6, nombre: 'Sábado', activo: true, horaInicio: '10:00', horaFin: '15:00' },
-    { dia: 7, nombre: 'Domingo', activo: false, horaInicio: '10:00', horaFin: '14:00' },
+  // Tab 1: Horarios Semanales (semana ISO 1–7 en formulario reactivo)
+  private readonly fb = inject(FormBuilder);
+
+  readonly formSemana = this.fb.group({
+    dias: this.fb.array<FormGroup>([]),
+  });
+
+  /** Un mensaje por día, indexado por `diaSemana` (1–7). */
+  readonly erroresDia = signal<Record<number, string>>({});
+  readonly diasAbiertos = signal(0);
+  /** Horas semanales abiertas, redondeadas a un decimal, para el resumen. */
+  readonly horasSemanales = signal(0);
+  readonly sinDiasActivos = computed(() => this.diasAbiertos() === 0);
+
+  /**
+   * Orden real de resolución del motor, de más concreta a más general. Se pinta
+   * en el panel porque no es evidente: sin esta pista, un administrador no sabe
+   * por qué un barbero concreto no ofrece huecos aunque la sede esté abierta.
+   */
+  readonly jerarquia: NivelJerarquia[] = [
+    {
+      orden: 1,
+      titulo: 'Excepción del barbero',
+      detalle:
+        'Una fecha concreta manda sobre todo lo demás: si el barbero se cierra ese día, no hay huecos, aunque la sede esté abierta.',
+      icono: 'pi-user',
+      destacado: false,
+    },
+    {
+      orden: 2,
+      titulo: 'Horario de la sede',
+      detalle:
+        'Es el de esta pantalla: define la ventana real de atención y recorta cualquier horario que se salga de ella.',
+      icono: 'pi-building',
+      destacado: true,
+    },
+    {
+      orden: 3,
+      titulo: 'Plantilla base del barbero',
+      detalle:
+        'La semana que el barbero repite entre sedes. Se usa cuando en esta sede no declaró un horario propio.',
+      icono: 'pi-th-large',
+      destacado: false,
+    },
+    {
+      orden: 4,
+      titulo: 'Herencia de la sede',
+      detalle:
+        'Un barbero sin horario propio ni plantilla hereda tal cual esta jornada semanal.',
+      icono: 'pi-refresh',
+      destacado: false,
+    },
   ];
+
+  get dias(): FormArray<FormGroup> {
+    return this.formSemana.get('dias') as FormArray<FormGroup>;
+  }
 
   // Tab 2: Excepciones
   excepciones = signal<ExcepcionHorario[]>([]);
@@ -518,6 +731,9 @@ export class AdminHorariosComponent implements OnInit {
   };
 
   ngOnInit() {
+    // Cada cambio de hora o de interruptor refresca el resumen y retira el
+    // error de esa fila: corregir el dato es la señal de que ya está bien.
+    this.formSemana.valueChanges.subscribe(() => this.actualizarResumen());
     this.cargarHorariosActuales();
     this.cargarExcepciones();
     this.cargarBloqueos();
@@ -525,36 +741,93 @@ export class AdminHorariosComponent implements OnInit {
 
   cambiarTab(tab: TabActiva) {
     this.tabActiva.set(tab);
-    this.mensajeExito.set('');
-    this.mensajeError.set('');
   }
 
   cargarHorariosActuales() {
     const barberia = this.tenantService.barberiaActiva();
-    if (!barberia) return;
+    if (!barberia) {
+      this.aplicarSemana([]);
+      return;
+    }
 
     this.horariosService.obtenerHorarios(barberia.id).subscribe({
-      next: (horarios) => {
-        if (horarios && horarios.length > 0) {
-          this.diasConfig.forEach(d => d.activo = false);
-          horarios.forEach(h => {
-            const config = this.diasConfig.find(d => d.dia === h.diaSemana);
-            if (config) {
-              config.activo = true;
-              // El backend puede devolver la hora como ISO (`1970-01-01T08:00:00.000Z`).
-              // Un `<input type="time">` solo acepta `HH:mm`; sin normalizar, el
-              // navegador descarta el valor y deja `--:--` además de escupir un
-              // error de formato por cada input en la consola.
-              config.horaInicio = this.toTimeInputFormat(h.horaInicio);
-              config.horaFin = this.toTimeInputFormat(h.horaFin);
-            }
-          });
-        }
-      },
+      next: (horarios) => this.aplicarSemana(horarios ?? []),
       error: (err) => {
-        this.mostrarError(err?.error?.message || 'No se pudieron cargar los horarios de la sede.');
-      }
+        // La propuesta por defecto deja la pantalla usable aunque falle el GET;
+        // el aviso evita que se guarde creyendo que se vio lo que hay en la base.
+        this.aplicarSemana([]);
+        this.mostrarError(
+          this.mensajeDeError(err, 'No se pudieron cargar los horarios de la sede.'),
+        );
+      },
     });
+  }
+
+  /**
+   * Pinta la semana en el `FormArray`, siempre con los siete días.
+   *
+   * Si la sede no tiene filas se ofrece la semana por defecto como propuesta;
+   * si tiene alguna, los días sin fila quedan CERRADOS: la ausencia de horario
+   * es una decisión (ese día no abre), no un día «por configurar».
+   */
+  private aplicarSemana(horarios: Horario[]): void {
+    const porDia = new Map((horarios ?? []).map((h) => [h.diaSemana, h]));
+    const conFilas = porDia.size > 0;
+
+    this.dias.clear();
+
+    for (const base of SEMANA_POR_DEFECTO) {
+      const guardado = porDia.get(base.diaSemana);
+
+      // El backend puede devolver la hora como ISO (`1970-01-01T08:00:00.000Z`).
+      // Un `<input type="time">` solo acepta `HH:mm`; sin normalizar, el
+      // navegador descarta el valor y deja `--:--` además de escupir un error de
+      // formato por cada input en la consola.
+      const inicio =
+        this.toTimeInputFormat(guardado?.horaInicio) || base.inicio;
+      const fin = this.toTimeInputFormat(guardado?.horaFin) || base.fin;
+
+      this.dias.push(
+        this.construirDia({
+          diaSemana: base.diaSemana,
+          activo: conFilas ? Boolean(guardado) : base.activo,
+          horaInicio: inicio,
+          horaFin: fin,
+        }),
+      );
+    }
+
+    this.erroresDia.set({});
+    this.actualizarResumen();
+  }
+
+  private construirDia(dia: {
+    diaSemana: number;
+    activo: boolean;
+    horaInicio: string;
+    horaFin: string;
+  }): FormGroup {
+    const grupo = this.fb.group({
+      diaSemana: [dia.diaSemana],
+      activo: [dia.activo],
+      horaInicio: [dia.horaInicio, [Validators.required]],
+      horaFin: [dia.horaFin, [Validators.required]],
+    });
+
+    this.aplicarEstadoHoras(grupo);
+    return grupo;
+  }
+
+  /** Un día cerrado no debe dejar editar sus horas (ni enviarlas). */
+  private aplicarEstadoHoras(grupo: FormGroup): void {
+    const abierto = Boolean(grupo.get('activo')?.value);
+
+    for (const nombre of ['horaInicio', 'horaFin']) {
+      const control = grupo.get(nombre);
+      if (!control) continue;
+      if (abierto) control.enable({ emitEvent: false });
+      else control.disable({ emitEvent: false });
+    }
   }
 
   /**
@@ -589,35 +862,143 @@ export class AdminHorariosComponent implements OnInit {
     return this.toTimeInputFormat(valor) || '—';
   }
 
-  toggleDia(dia: DiaConfig) {
-    dia.activo = !dia.activo;
+  nombreDia(indice: number): string {
+    const diaSemana = this.dias.at(indice).get('diaSemana')?.value as number;
+    return NOMBRES_DIA[diaSemana] ?? '';
+  }
+
+  /** Mensaje de validación del día, o `undefined` si la fila está bien. */
+  errorDe(grupo: FormGroup): string | undefined {
+    const diaSemana = grupo.get('diaSemana')?.value as number;
+    return this.erroresDia()[diaSemana];
+  }
+
+  alternarDia(indice: number): void {
+    const grupo = this.dias.at(indice);
+    const abierto = !grupo.get('activo')?.value;
+
+    grupo.get('activo')?.setValue(abierto);
+
+    if (abierto) {
+      if (!grupo.get('horaInicio')?.value) grupo.get('horaInicio')?.setValue('09:00');
+      if (!grupo.get('horaFin')?.value) grupo.get('horaFin')?.setValue('18:00');
+    }
+
+    this.aplicarEstadoHoras(grupo);
+    this.limpiarErrorDia(grupo);
+    this.actualizarResumen();
+  }
+
+  private limpiarErrorDia(grupo: FormGroup): void {
+    const diaSemana = grupo.get('diaSemana')?.value as number;
+    if (!this.erroresDia()[diaSemana]) return;
+
+    const resto = { ...this.erroresDia() };
+    delete resto[diaSemana];
+    this.erroresDia.set(resto);
+  }
+
+  /** Minutos desde medianoche de un `HH:mm`; `NaN` si el valor no es una hora. */
+  private aMinutos(hora: string | null | undefined): number {
+    const partes = /^(\d{1,2}):(\d{2})/.exec(hora ?? '');
+    if (!partes) return Number.NaN;
+    return Number(partes[1]) * 60 + Number(partes[2]);
+  }
+
+  private actualizarResumen(): void {
+    let abiertos = 0;
+    let minutos = 0;
+
+    for (const grupo of this.dias.controls) {
+      if (!grupo.get('activo')?.value) continue;
+      abiertos += 1;
+
+      const inicio = this.aMinutos(grupo.get('horaInicio')?.value as string);
+      const fin = this.aMinutos(grupo.get('horaFin')?.value as string);
+      if (fin > inicio) minutos += fin - inicio;
+    }
+
+    this.diasAbiertos.set(abiertos);
+    this.horasSemanales.set(Math.round((minutos / 60) * 10) / 10);
+  }
+
+  /**
+   * Reglas de la semana, con el mismo lenguaje que usa el panel del barbero.
+   *
+   * Se validan EN EL CLIENTE para que el error aparezca bajo la fila que hay
+   * que corregir y no como un banner con el mensaje crudo del backend.
+   */
+  private validarSemana(): Record<number, string> {
+    const errores: Record<number, string> = {};
+
+    for (const grupo of this.dias.controls) {
+      if (!grupo.get('activo')?.value) continue;
+
+      const diaSemana = grupo.get('diaSemana')?.value as number;
+      const inicio = grupo.get('horaInicio')?.value as string;
+      const fin = grupo.get('horaFin')?.value as string;
+
+      if (!inicio || !fin) {
+        errores[diaSemana] = 'Indica la hora de apertura y la de cierre.';
+        continue;
+      }
+
+      if (this.aMinutos(inicio) >= this.aMinutos(fin)) {
+        errores[diaSemana] = 'El cierre debe ser posterior a la apertura del mismo día.';
+      }
+    }
+
+    return errores;
+  }
+
+  /**
+   * Traduce un fallo del servidor a algo accionable. Las horas ya se validaron
+   * arriba, así que aquí solo quedan permisos, red y reglas de negocio.
+   */
+  private mensajeDeError(err: unknown, porDefecto: string): string {
+    const estado = (err as { status?: number } | null)?.status;
+    if (estado === 403) {
+      return 'Solo el responsable de la sede puede cambiar su horario.';
+    }
+    return porDefecto;
   }
 
   guardarHorarios() {
     const barberia = this.tenantService.barberiaActiva();
-    if (!barberia) return;
+    if (!barberia) {
+      this.mostrarError('No hay una sede activa: elige una para configurar su horario.');
+      return;
+    }
+
+    const errores = this.validarSemana();
+    this.erroresDia.set(errores);
+
+    if (Object.keys(errores).length > 0) {
+      this.mostrarError('Revisa los días marcados: hay horas que no son válidas.');
+      return;
+    }
+
+    const payload: Omit<Horario, 'id'>[] = this.dias.controls
+      .filter((grupo) => grupo.get('activo')?.value)
+      .map((grupo) => ({
+        diaSemana: grupo.get('diaSemana')?.value as number,
+        horaInicio: this.toTimeInputFormat(grupo.get('horaInicio')?.value as string),
+        horaFin: this.toTimeInputFormat(grupo.get('horaFin')?.value as string),
+      }));
 
     this.guardando.set(true);
-    this.mensajeExito.set('');
-    this.mensajeError.set('');
-
-    const payload: Omit<Horario, 'id'>[] = this.diasConfig
-      .filter(d => d.activo)
-      .map(d => ({
-        diaSemana: d.dia,
-        horaInicio: d.horaInicio,
-        horaFin: d.horaFin
-      }));
 
     this.horariosService.configurarHorarios(barberia.id, payload).subscribe({
       next: () => {
         this.guardando.set(false);
-        this.mostrarExito('Horarios semanales guardados exitosamente.');
+        this.mostrarExito('Horario semanal de la sede guardado.');
       },
       error: (err) => {
         this.guardando.set(false);
-        this.mostrarError(err.error?.message || 'Error al guardar los horarios');
-      }
+        this.mostrarError(
+          this.mensajeDeError(err, 'No se pudo guardar el horario de la sede.'),
+        );
+      },
     });
   }
 
@@ -643,7 +1024,7 @@ export class AdminHorariosComponent implements OnInit {
 
   abrirModalExcepcion() {
     this.excepcionModel = {
-      fecha: new Date().toISOString().split('T')[0],
+      fecha: this.hoyLocal(),
       tipo: 'CERRADA',
       horaInicio: '09:00',
       horaFin: '14:00',
@@ -707,7 +1088,7 @@ export class AdminHorariosComponent implements OnInit {
 
   abrirModalBloqueo() {
     this.bloqueoModel = {
-      fecha: new Date().toISOString().split('T')[0],
+      fecha: this.hoyLocal(),
       horaInicio: '12:00',
       horaFin: '13:00',
       motivo: '',
@@ -770,29 +1151,52 @@ export class AdminHorariosComponent implements OnInit {
   }
 
   // --- HELPERS ---
+
+  /**
+   * Etiqueta de calendario del día de HOY, en la zona del navegador.
+   *
+   * `new Date().toISOString().split('T')[0]` devuelve el día en UTC: a partir
+   * de las 20:00 en Santo Domingo (UTC-4) ya es el día siguiente, así que el
+   * modal proponía como fecha por defecto un día que aún no había llegado.
+   */
+  private hoyLocal(): string {
+    const ahora = new Date();
+    const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+    const dia = String(ahora.getDate()).padStart(2, '0');
+    return `${ahora.getFullYear()}-${mes}-${dia}`;
+  }
+
+  /**
+   * `fecha` de excepciones y bloqueos es una columna `DATE` sin hora: el
+   * backend la envía como `YYYY-MM-DD` (o `YYYY-MM-DDT00:00:00.000Z`).
+   *
+   * `new Date('2026-11-01')` la ancla a medianoche UTC y `toLocaleDateString`
+   * la pinta en la zona del navegador: en UTC-4 el 1 de noviembre aparecía
+   * como «31 oct». Se leen año/mes/día del propio string y se construye una
+   * fecha LOCAL con esos componentes, de modo que el día mostrado es siempre
+   * el día guardado.
+   */
   formatearFecha(fechaStr: string): string {
     if (!fechaStr) return '';
-    try {
-      const d = new Date(fechaStr);
-      return d.toLocaleDateString('es-ES', {
-        weekday: 'short',
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      });
-    } catch {
-      return fechaStr;
-    }
+    const partes = /^(\d{4})-(\d{2})-(\d{2})/.exec(fechaStr.trim());
+    if (!partes) return fechaStr;
+
+    const d = new Date(Number(partes[1]), Number(partes[2]) - 1, Number(partes[3]));
+    if (Number.isNaN(d.getTime())) return fechaStr;
+
+    return d.toLocaleDateString('es-ES', {
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
   }
 
   private mostrarExito(msg: string) {
-    this.mensajeExito.set(msg);
-    this.mensajeError.set('');
-    setTimeout(() => this.mensajeExito.set(''), 4500);
+    this.toast.success(msg, 'Horarios');
   }
 
   private mostrarError(msg: string) {
-    this.mensajeError.set(msg);
-    setTimeout(() => this.mensajeError.set(''), 5500);
+    this.toast.error(msg, 'Horarios');
   }
 }

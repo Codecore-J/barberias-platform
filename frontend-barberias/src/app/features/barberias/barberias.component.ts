@@ -22,11 +22,33 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
       <!-- Título de la sección -->
       <section class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div class="space-y-2">
+          <!--
+            D05 · el ADMINISTRADOR global no está vinculado a ninguna sede: este
+            hub no es su «estado vacío», es su consola de supervisión. El
+            distintivo lo dice sin que tenga que adivinarlo por el contenido.
+          -->
+          @if (esSuperadmin()) {
+            <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-semibold uppercase tracking-wider">
+              <i class="pi pi-shield text-[10px]"></i>
+              <span>Acceso Global · Superadmin</span>
+            </span>
+          }
+
           <h2 class="text-4xl sm:text-5xl font-display font-extrabold text-white transform translate-z-12">
-            Tus <span class="gold-gradient-text">Barberías</span>
+            @if (esSuperadmin()) {
+              Sedes de la <span class="gold-gradient-text">Plataforma</span>
+            } @else {
+              Tus <span class="gold-gradient-text">Barberías</span>
+            }
           </h2>
+
           <p class="text-zinc-400 max-w-2xl text-sm sm:text-base">
-            Gestiona las barberías a las que tienes acceso. Selecciona una para activar tu sesión y acceder al catálogo y agendamiento.
+            @if (esSuperadmin()) {
+              Supervisa y audita cualquier sede del sistema. Elige una para abrir su panel
+              administrativo: no necesitas estar vinculado a ella.
+            } @else {
+              Gestiona las barberías a las que tienes acceso. Selecciona una para activar tu sesión y acceder al catálogo y agendamiento.
+            }
           </p>
         </div>
 
@@ -38,6 +60,38 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
           </button>
         }
       </section>
+
+      <!--
+        Buscador de sedes (D05). Aparece cuando la lista es larga —el caso del
+        superadmin, que ve todas las sedes de la plataforma— y filtra EN LOCAL:
+        el universo ya llegó del backend, así que teclear no dispara peticiones.
+      -->
+      @if (esSuperadmin() || tenantService.barberiasVinculadas().length > 3) {
+        <section class="max-w-6xl mx-auto px-4">
+          <div class="relative">
+            <i class="pi pi-search absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-sm"></i>
+            <input
+              type="search"
+              [value]="filtro()"
+              (input)="filtro.set($any($event.target).value)"
+              placeholder="Buscar sede por nombre, ubicación o código…"
+              aria-label="Buscar sede"
+              class="w-full bg-zinc-900/60 border border-white/10 rounded-xl pl-11 pr-10 py-3 text-sm text-white placeholder:text-zinc-500 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors"
+            >
+            @if (filtro()) {
+              <button
+                (click)="filtro.set('')"
+                aria-label="Limpiar búsqueda"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-amber-400 transition-colors">
+                <i class="pi pi-times"></i>
+              </button>
+            }
+          </div>
+          <p class="mt-2 text-[11px] text-zinc-500" aria-live="polite">
+            {{ barberiasVisibles().length }} de {{ tenantService.barberiasVinculadas().length }} sedes
+          </p>
+        </section>
+      }
 
       <!--
         E3-12/2 · la puerta de entrada de la sede (regla 1.10).
@@ -152,9 +206,9 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
         H72: la tarjeta vive en SedeCardComponent porque el home del CLIENTE
         pinta la MISMA tarjeta con la lista de GET /mi-estado/barberias.
       -->
-      @if (!tenantService.isLoading() && tenantService.barberiasVinculadas().length > 0) {
+      @if (!tenantService.isLoading() && barberiasVisibles().length > 0) {
         <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto px-4 transform-style-3d">
-          @for (barberia of tenantService.barberiasVinculadas(); track barberia.id) {
+          @for (barberia of barberiasVisibles(); track barberia.id) {
             <app-sede-card
               [barberia]="barberia"
               [estado]="estadoDe(barberia.id)"
@@ -208,10 +262,18 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
           <div class="w-24 h-24 mx-auto rounded-full bg-zinc-800/50 border border-zinc-700/50 flex items-center justify-center text-4xl text-zinc-500">
             <i class="pi pi-inbox"></i>
           </div>
-          <h3 class="text-xl font-bold text-white">No tienes barberías vinculadas</h3>
-          <p class="text-zinc-400 text-sm">
-            Para comenzar a agendar turnos o gestionar una barbería, necesitas vincularte a una utilizando un código de acceso o crear la tuya propia.
-          </p>
+          @if (esSuperadmin()) {
+            <h3 class="text-xl font-bold text-white">No hay sedes activas en la plataforma</h3>
+            <p class="text-zinc-400 text-sm">
+              No existe ninguna sede en estado activo que supervisar. Cuando una se registre
+              aparecerá aquí automáticamente.
+            </p>
+          } @else {
+            <h3 class="text-xl font-bold text-white">No tienes barberías vinculadas</h3>
+            <p class="text-zinc-400 text-sm">
+              Para comenzar a agendar turnos o gestionar una barbería, necesitas vincularte a una utilizando un código de acceso o crear la tuya propia.
+            </p>
+          }
           <div class="flex justify-center gap-4 pt-4">
             @if (userRole() === 'CLIENTE') {
               <button (click)="showVincularModal.set(true)" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:scale-105 transition-transform flex items-center">
@@ -237,6 +299,21 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
               <span>Vincular con Código</span>
             </button>
           }
+        </div>
+      }
+
+      <!-- Búsqueda sin coincidencias: la lista NO está vacía, el filtro sí -->
+      @if (
+        !tenantService.isLoading() &&
+        tenantService.barberiasVinculadas().length > 0 &&
+        barberiasVisibles().length === 0
+      ) {
+        <div class="max-w-xl mx-auto px-4 text-center space-y-3">
+          <i class="pi pi-search text-2xl text-zinc-600"></i>
+          <p class="text-sm text-zinc-300">Ninguna sede coincide con «{{ filtro() }}».</p>
+          <button (click)="filtro.set('')" class="text-xs font-semibold text-amber-400 hover:text-amber-300">
+            Limpiar búsqueda
+          </button>
         </div>
       }
 
@@ -309,15 +386,54 @@ export class BarberiasComponent implements OnInit {
 
   showVincularModal = signal(false);
 
+  /** Término del buscador de sedes (D05). Local: no dispara peticiones. */
+  readonly filtro = signal('');
+
+  /** D05 · el rol global se identifica para el distintivo y los textos. */
+  readonly esSuperadmin = computed(() => this.userRole() === 'ADMINISTRADOR');
+
+  /**
+   * Sedes que pinta el hub: todas, o las que coinciden con la búsqueda.
+   *
+   * Se compara sin acentos ni mayúsculas sobre nombre, ubicación y código de
+   * acceso: son los tres datos con los que el superadmin identifica una sede
+   * cuando tiene decenas en el listado.
+   */
+  readonly barberiasVisibles = computed(() => {
+    const termino = this.normalizar(this.filtro());
+    const sedes = this.tenantService.barberiasVinculadas();
+
+    if (!termino) {
+      return sedes;
+    }
+
+    return sedes.filter((sede) =>
+      [sede.nombre, sede.ubicacion, sede.codigoAcceso]
+        .filter(Boolean)
+        .some((campo) => this.normalizar(String(campo)).includes(termino)),
+    );
+  });
+
+  private normalizar(texto: string): string {
+    return texto
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
   /** Sede pendiente de confirmar su salida; `null` cuando no hay modal. */
   readonly barberiaADesvincular = signal<BarberiaResumen | null>(null);
   readonly mensajeExito = signal('');
 
   ngOnInit() {
-    this.tenantService.cargarBarberias().subscribe(() => {
-      this.cargarEstados();
-      this.cargarInvitacion();
-    });
+    // D05 · el superadmin no hereda sede: entra al hub a elegir cuál audita.
+    this.tenantService
+      .cargarBarberias({ autoSeleccionar: !this.esSuperadmin() })
+      .subscribe(() => {
+        this.cargarEstados();
+        this.cargarInvitacion();
+      });
   }
 
   /**
@@ -413,16 +529,18 @@ export class BarberiasComponent implements OnInit {
         this.avisar(
           `Te desvinculaste de ${resultado.barberiaNombre}. Te quedan ${resultado.vinculacionesVigentes} barberías vinculadas.`,
         );
-        this.tenantService.cargarBarberias().subscribe(() => {
-          this.cargarEstados();
-          if (this.tenantService.barberiasVinculadas().length === 0) {
-            // Purga absoluta: sin sedes no queda nada de un vínculo cerrado en la
-            // sesión (ni el estado por sede que alimentaba las tarjetas) y se
-            // vuelve al dashboard raíz, fuera del contexto de barbería.
-            this.miEstado.limpiar();
-            this.router.navigate(['/']);
-          }
-        });
+        this.tenantService
+          .cargarBarberias({ autoSeleccionar: !this.esSuperadmin() })
+          .subscribe(() => {
+            this.cargarEstados();
+            if (this.tenantService.barberiasVinculadas().length === 0) {
+              // Purga absoluta: sin sedes no queda nada de un vínculo cerrado en la
+              // sesión (ni el estado por sede que alimentaba las tarjetas) y se
+              // vuelve al dashboard raíz, fuera del contexto de barbería.
+              this.miEstado.limpiar();
+              this.router.navigate(['/']);
+            }
+          });
       },
     });
   }

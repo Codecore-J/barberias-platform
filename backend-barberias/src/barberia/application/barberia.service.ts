@@ -442,6 +442,28 @@ export class BarberiaService {
     responsableId: string,
     usuario: UsuarioAutenticado,
   ): Promise<(BarberiaResponseDto | BarberiaLecturaDto)[]> {
+    // D05 · el ADMINISTRADOR global es transversal: no está atado a ninguna
+    // sede, así que el filtro por `responsableId` / `usuario_roles` le devolvía
+    // `[]`. Sin sedes en el hub, el `tenantGuard` del frontend lo dejaba en un
+    // selector vacío: un callejón sin salida para el único rol que debe
+    // supervisar toda la plataforma.
+    //
+    // Su listado es el de la plataforma —todas las sedes ACTIVAS, sin filtro de
+    // pertenencia—. Las suspendidas siguen fuera a propósito: entrar a una sede
+    // que no opera lleva a 403/409 en cada pantalla. El inventario COMPLETO
+    // (activas e inactivas) sigue disponible para la administración de
+    // plataforma en `GET /shops/all`.
+    if (esAdministradorGlobal(usuario)) {
+      const sedes = await this.prisma.barberia.findMany({
+        where: { estado: 'ACTIVO' },
+        orderBy: { nombre: 'asc' },
+      });
+
+      // `veCodigoDe` también da `true` al global, así que aquí se entrega el
+      // formulario completo (con `codigoAcceso` y `enlaceUnico`) de cada sede.
+      return sedes.map((sede) => this.toResponse(sede));
+    }
+
     const tieneRol = (nombre: string) =>
       usuario.rolesDetallados?.some((r) => r.nombre === nombre) ||
       usuario.roles?.includes(nombre);

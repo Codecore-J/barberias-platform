@@ -22,6 +22,7 @@ const MOTIVO_MINIMO = 10;
  * se muestra tal cual (`VinculacionesService.error`).
  */
 import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component';
+import { ToastService } from '../../../shared/ui/toast/toast.service';
 
 @Component({
   selector: 'app-admin-vinculaciones',
@@ -82,13 +83,6 @@ import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.
           </div>
         </div>
       </div>
-
-      <!-- Feedback -->
-      @if (mensajeExito()) {
-        <div class="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm flex items-center gap-2">
-          <i class="pi pi-check-circle"></i> {{ mensajeExito() }}
-        </div>
-      }
 
       @if (service.error()) {
         <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center gap-2">
@@ -186,8 +180,8 @@ import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.
           </div>
 
           <div>
-            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo del rechazo</label>
-            <textarea [(ngModel)]="motivo" rows="3" maxlength="500"
+            <label for="vinculacion-motivo-rechazo" class="block text-xs font-semibold text-zinc-400 mb-1.5">Motivo del rechazo</label>
+            <textarea id="vinculacion-motivo-rechazo" [(ngModel)]="motivo" rows="3" maxlength="500"
                       class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors"
                       placeholder="Explica por qué no se concede la sexta barbería"></textarea>
             <p class="text-[11px] mt-1.5"
@@ -214,12 +208,12 @@ import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.
 })
 export class AdminVinculacionesComponent implements OnInit {
   protected readonly service = inject(VinculacionesService);
+  private readonly toast = inject(ToastService);
   protected readonly MOTIVO_MINIMO = MOTIVO_MINIMO;
 
   readonly procesandoId = signal<string | null>(null);
   readonly seleccionada = signal<VinculacionPendiente | null>(null);
   readonly motivo = signal('');
-  readonly mensajeExito = signal('');
 
   readonly motivoValido = computed(() => this.motivo().trim().length >= MOTIVO_MINIMO);
 
@@ -275,7 +269,6 @@ export class AdminVinculacionesComponent implements OnInit {
   }
 
   private avisar(texto: string): void {
-    this.mensajeExito.set(texto);
-    setTimeout(() => this.mensajeExito.set(''), 5000);
+    this.toast.success(texto, 'Vinculaciones');
   }
 }

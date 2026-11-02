@@ -154,6 +154,24 @@ export class BarberiaController {
   }
 
   /**
+   * GET /shops/:shopId/change-requests · E3-13 (D26)
+   *
+   * Bandeja LOCAL de la sede: lo que ella misma propuso y cómo terminó. Es de
+   * solo lectura a propósito —la resolución es de la plataforma— y la
+   * pertenencia real la exige el servicio (`SOLO_ADMIN_BARBERIA`, 403), igual
+   * que en la creación: la ruta usa `:shopId` con un segmento extra, así que el
+   * `RolesGuard` no acota la sede del parámetro.
+   */
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Get(':shopId/change-requests')
+  listarSolicitudesCambio(
+    @Param('shopId', ParseUUIDPipe) id: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.solicitudCambioService.listarDeSede(id, user);
+  }
+
+  /**
    * POST /shops/:shopId/change-requests · E3-13 (D26)
    *
    * El nombre y el responsable solo cambian con la aprobación de la plataforma:
