@@ -36,15 +36,6 @@ export class InvitarPersonalDto {
 }
 
 export class ActualizarPersonalDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(150)
-  nombreCompleto!: string;
-
-  @IsString()
-  @Matches(/^\d{10}$/)
-  telefono!: string;
-
   @IsIn(['ACTIVO', 'INACTIVO'])
   estado!: 'ACTIVO' | 'INACTIVO';
 

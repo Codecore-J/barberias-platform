@@ -82,6 +82,34 @@ const CATEGORIAS_OFICIALES_SEDE = [
   },
 ] as const;
 
+const MAX_INTENTOS_INVITAR_PERSONAL = 3;
+const ESPERA_BASE_COLISION_MS = 25;
+
+type CampoUnicoPersonal = 'correo' | 'asignacion' | 'telefono' | 'otro';
+
+/** Prisma puede exponer `meta.target` como campos o como nombre de índice. */
+function clasificarColisionPersonal(error: unknown): CampoUnicoPersonal {
+  const meta = (error as { meta?: { target?: unknown } } | null)?.meta;
+  const target = Array.isArray(meta?.target)
+    ? meta.target.join('_')
+    : typeof meta?.target === 'string'
+      ? meta.target
+      : '';
+  const normalizado = target.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  if (normalizado.includes('correo') || normalizado.includes('email'))
+    return 'correo';
+  if (
+    normalizado.includes('usuarioid') &&
+    normalizado.includes('rolid') &&
+    normalizado.includes('barberiaid')
+  ) {
+    return 'asignacion';
+  }
+  if (normalizado.includes('telefono')) return 'telefono';
+  return 'otro';
+}
+
 /** Genera un slug URL-safe de hasta `maxLen` caracteres */
 function generateSlug(text: string, maxLen = 40): string {
   const slug = text
@@ -376,6 +404,24 @@ export class BarberiaService {
     reutilizado: boolean;
   }> {
     this.assertAdminPersonal(barberiaId, solicitante);
+    return this.intentarInvitarPersonal(barberiaId, dto, solicitante, 1);
+  }
+
+  private async intentarInvitarPersonal(
+    barberiaId: string,
+    dto: InvitarPersonalDto,
+    solicitante: UsuarioAutenticado,
+    intento: number,
+  ): Promise<{
+    id: string;
+    nombreCompleto: string;
+    correo: string;
+    telefono: string;
+    estado: string;
+    estadoSede: string;
+    roles: string[];
+    reutilizado: boolean;
+  }> {
     const correo = dto.correo.trim().toLowerCase();
     const telefono = dto.telefono.trim();
     try {
@@ -531,25 +577,32 @@ export class BarberiaService {
       });
     } catch (error: any) {
       if (error?.code === 'P2002') {
-        // Dos invitaciones simultáneas pueden leer antes de que exista la
-        // cuenta. Si otra transacción ganó la carrera por correo, la buscamos
-        // de nuevo y vinculamos esa cuenta sin tocar su hash de contraseña.
-        const usuarioGanador = await this.prisma.usuario.findFirst({
-          where: { correo: { equals: correo, mode: 'insensitive' } },
-          select: {
-            id: true,
-            nombreCompleto: true,
-            correo: true,
-            telefono: true,
-            estadoCuenta: true,
-          },
-        });
-        if (usuarioGanador) {
-          // Reintentar vuelve a hacer la búsqueda y vincula dentro de la misma
-          // transacción que también protege una invitación no concurrente.
-          return this.invitarPersonal(barberiaId, dto, solicitante);
+        const colision = clasificarColisionPersonal(error);
+        if (colision === 'telefono') {
+          throw new ConflictException('El teléfono ya está registrado.');
         }
-        throw new ConflictException('El teléfono ya está registrado.');
+        if (colision === 'otro') {
+          throw new ConflictException(
+            'La invitación entra en conflicto con una restricción de unicidad.',
+          );
+        }
+        if (intento >= MAX_INTENTOS_INVITAR_PERSONAL) {
+          throw new ConflictException(
+            `No fue posible completar la invitación tras ${MAX_INTENTOS_INVITAR_PERSONAL} intentos concurrentes. Inténtalo de nuevo.`,
+          );
+        }
+
+        // Solo correo y la asignación usuario/rol/sede son colisiones
+        // recuperables: tras esperar, la siguiente transacción vuelve a leer
+        // el estado ganador y reutiliza la cuenta o vínculo que ya se creó.
+        const esperaMs = ESPERA_BASE_COLISION_MS * 2 ** (intento - 1);
+        await new Promise((resolve) => setTimeout(resolve, esperaMs));
+        return this.intentarInvitarPersonal(
+          barberiaId,
+          dto,
+          solicitante,
+          intento + 1,
+        );
       }
       throw error;
     }
@@ -597,13 +650,6 @@ export class BarberiaService {
 
     try {
       const actualizado = await this.prisma.$transaction(async (tx) => {
-        await tx.usuario.update({
-          where: { id: usuarioId },
-          data: {
-            nombreCompleto: dto.nombreCompleto.trim(),
-            telefono: dto.telefono.trim(),
-          },
-        });
         await tx.usuarioRol.update({
           where: { id: relaciones[0].id },
           data: { rolId: rol.id, estado: dto.estado },
@@ -638,7 +684,9 @@ export class BarberiaService {
       };
     } catch (error: any) {
       if (error?.code === 'P2002')
-        throw new ConflictException('El teléfono ya está registrado.');
+        throw new ConflictException(
+          'La asignación de rol de este miembro ya existe en la sede.',
+        );
       throw error;
     }
   }

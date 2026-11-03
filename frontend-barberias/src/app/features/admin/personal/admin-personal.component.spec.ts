@@ -31,11 +31,10 @@ describe('AdminPersonalComponent', () => {
     nombreCompleto: 'Ana Gómez',
     correo: 'ana@example.com',
   }));
-  const actualizarMiembro = vi.fn((_shopId: string, _userId: string, _dto: any) => of({
+  const actualizarMiembro = vi.fn((_shopId: string, _userId: string, dto: any) => of({
     ...miembro,
-    nombreCompleto: 'Juan Pérez Actualizado',
-    telefono: '8095559876',
-    estadoSede: 'INACTIVO' as const,
+    estadoSede: dto.estado,
+    roles: [dto.rolNombre],
   }));
   const success = vi.fn();
   const error = vi.fn();
@@ -142,37 +141,37 @@ describe('AdminPersonalComponent', () => {
     expect(component.formularioPersonalAbierto()).toBe(true);
     expect(component.modoFormulario()).toBe('editar');
     expect(component.formularioEdicion.getRawValue()).toEqual({
-      nombreCompleto: 'Juan Pérez',
-      telefono: '8095551234',
       estado: 'ACTIVO',
       rolNombre: 'BARBERO',
     });
-
-    component.formularioEdicion.patchValue({ telefono: '123' });
-    expect(component.formularioEdicion.controls.telefono.invalid).toBe(true);
-    expect(component.formularioEdicion.invalid).toBe(true);
+    const nombre = fixture.nativeElement.querySelector('#personal-editar-nombre') as HTMLInputElement;
+    const telefono = fixture.nativeElement.querySelector('#personal-editar-telefono') as HTMLInputElement;
+    expect(nombre.value).toBe('Juan Pérez');
+    expect(nombre.readOnly).toBe(true);
+    expect(telefono.value).toBe('8095551234');
+    expect(telefono.readOnly).toBe(true);
+    expect(component.formularioEdicion.contains('nombreCompleto')).toBe(false);
+    expect(component.formularioEdicion.contains('telefono')).toBe(false);
   });
 
-  it('guarda cambios válidos de edición y notifica con Toast', () => {
+  it('envía solo rol y estado locales al guardar la edición y notifica con Toast', () => {
     component.editarMiembro(miembro);
     component.formularioEdicion.patchValue({
-      nombreCompleto: 'Juan Pérez Actualizado',
-      telefono: '8095559876',
       estado: 'INACTIVO',
+      rolNombre: 'ADMIN_BARBERIA',
     });
 
     component.guardarEdicionPersonal();
 
     expect(actualizarMiembro).toHaveBeenCalledWith('shop-qa', 'user-1', {
-      nombreCompleto: 'Juan Pérez Actualizado',
-      telefono: '8095559876',
       estado: 'INACTIVO',
-      rolNombre: 'BARBERO',
+      rolNombre: 'ADMIN_BARBERIA',
     });
     expect(component.personal()[0]?.estadoSede).toBe('INACTIVO');
+    expect(component.personal()[0]?.roles).toEqual(['ADMIN_BARBERIA']);
     expect(component.formularioPersonalAbierto()).toBe(false);
     expect(success).toHaveBeenCalledWith(
-      'Se guardaron los cambios de Juan Pérez Actualizado.',
+      'Se guardaron los cambios de Juan Pérez.',
       'Personal actualizado',
     );
   });
