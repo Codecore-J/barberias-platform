@@ -428,16 +428,15 @@ import { AuthService } from '../../../auth/auth.service';
               <input
                 id="personal-editar-nombre"
                 type="text"
-                formControlName="nombreCompleto"
+                [value]="miembroSeleccionado()?.nombreCompleto ?? ''"
+                readonly
                 autocomplete="name"
-                required
-                aria-required="true"
-                [attr.aria-invalid]="campoInvalido(formularioEdicion, 'nombreCompleto')"
-                class="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/60"
+                aria-describedby="personal-editar-nombre-ayuda"
+                class="w-full bg-zinc-950/70 border border-white/10 rounded-xl px-4 py-3 text-zinc-400 cursor-not-allowed"
               />
-              @if (campoInvalido(formularioEdicion, 'nombreCompleto')) {
-                <p class="mt-1 text-xs text-rose-300">Escribe el nombre completo.</p>
-              }
+              <p id="personal-editar-nombre-ayuda" class="mt-1 text-xs text-zinc-500">
+                Este dato pertenece a la cuenta global y no se modifica desde una sede.
+              </p>
             </div>
             <div class="grid sm:grid-cols-3 gap-4">
               <div>
@@ -450,16 +449,15 @@ import { AuthService } from '../../../auth/auth.service';
                   id="personal-editar-telefono"
                   type="tel"
                   inputmode="numeric"
-                  formControlName="telefono"
+                  [value]="miembroSeleccionado()?.telefono ?? ''"
+                  readonly
                   autocomplete="tel"
-                  required
-                  aria-required="true"
-                  [attr.aria-invalid]="campoInvalido(formularioEdicion, 'telefono')"
-                  class="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/60"
+                  aria-describedby="personal-editar-telefono-ayuda"
+                  class="w-full bg-zinc-950/70 border border-white/10 rounded-xl px-4 py-3 text-zinc-400 cursor-not-allowed"
                 />
-                @if (campoInvalido(formularioEdicion, 'telefono')) {
-                  <p class="mt-1 text-xs text-rose-300">Usa 10 dígitos.</p>
-                }
+                <p id="personal-editar-telefono-ayuda" class="mt-1 text-xs text-zinc-500">
+                  El teléfono pertenece a la cuenta global y no se modifica desde una sede.
+                </p>
               </div>
               <div>
                 <label
@@ -549,8 +547,6 @@ export class AdminPersonalComponent implements OnInit {
     rolNombre: ['BARBERO' as 'BARBERO' | 'ADMIN_BARBERIA', Validators.required],
   });
   readonly formularioEdicion = this.fb.group({
-    nombreCompleto: ['', [Validators.required, Validators.maxLength(150)]],
-    telefono: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
     estado: ['ACTIVO' as 'ACTIVO' | 'INACTIVO', Validators.required],
     rolNombre: ['BARBERO' as 'BARBERO' | 'ADMIN_BARBERIA', Validators.required],
   });
@@ -686,8 +682,6 @@ export class AdminPersonalComponent implements OnInit {
     this.miembroSeleccionado.set(miembro);
     this.errorPersonal.set(null);
     this.formularioEdicion.reset({
-      nombreCompleto: miembro.nombreCompleto,
-      telefono: miembro.telefono ?? '',
       estado: miembro.estadoSede ?? 'ACTIVO',
       rolNombre: miembro.roles.includes('ADMIN_BARBERIA') ? 'ADMIN_BARBERIA' : 'BARBERO',
     });
@@ -744,7 +738,6 @@ export class AdminPersonalComponent implements OnInit {
     const miembro = this.miembroSeleccionado();
     if (!barberia || !miembro) return;
     const dto = this.formularioEdicion.getRawValue() as ActualizarPersonalRequest;
-    dto.nombreCompleto = dto.nombreCompleto.trim();
     this.guardandoPersonal.set(true);
     this.errorPersonal.set(null);
     this.personalService.actualizarMiembro(barberia.id, miembro.id, dto).subscribe({
@@ -783,8 +776,6 @@ export class AdminPersonalComponent implements OnInit {
     const barberia = this.tenantService.barberiaActiva();
     if (!barberia) return;
     const dto: ActualizarPersonalRequest = {
-      nombreCompleto: miembro.nombreCompleto,
-      telefono: miembro.telefono,
       estado: 'INACTIVO',
       rolNombre: miembro.roles.includes('ADMIN_BARBERIA') ? 'ADMIN_BARBERIA' : 'BARBERO',
     };

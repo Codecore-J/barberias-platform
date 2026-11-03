@@ -5,7 +5,11 @@ import { BarberiaService } from './barberia.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  ConflictException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 
 const BARBERIA_A = 'barberia-a';
@@ -138,6 +142,7 @@ describe('BarberiaService', () => {
             }),
             usuario: {
               findUnique: vi.fn(),
+              findUniqueOrThrow: vi.fn(),
               findFirst: vi.fn(),
               create: vi.fn(),
               update: vi.fn(),
@@ -303,6 +308,183 @@ describe('BarberiaService', () => {
       expect(prisma.usuarioRol.create).not.toHaveBeenCalled();
       expect(prisma.usuario.create).not.toHaveBeenCalled();
       expect(resultado.estadoSede).toBe('ACTIVO');
+    });
+
+    it('resuelve dos invitaciones simultáneas al mismo correo reutilizando la cuenta ganadora', async () => {
+      let ganador: any = null;
+      let lecturasDeCorreo = 0;
+      let liberarLecturas!: () => void;
+      const ambasLecturas = new Promise<void>(
+        (resolve) => (liberarLecturas = resolve),
+      );
+      const asignacion = { id: 'asignacion-ganadora' };
+
+      vi.mocked(prisma.barberia.findUnique).mockResolvedValue({
+        id: BARBERIA_A,
+      } as any);
+      vi.mocked(prisma.rol.findUnique).mockResolvedValue({
+        id: 'rol-barbero',
+        nombre: 'BARBERO',
+      } as any);
+      vi.mocked(prisma.usuario.findFirst).mockImplementation(
+        async ({ where }: any) => {
+          if (where.correo) {
+            if (lecturasDeCorreo < 2) {
+              lecturasDeCorreo++;
+              if (lecturasDeCorreo === 2) liberarLecturas();
+              await ambasLecturas;
+              return null;
+            }
+            return ganador;
+          }
+          return null;
+        },
+      );
+      vi.mocked(prisma.usuarioRol.findMany).mockImplementation(async () =>
+        ganador ? ([asignacion] as any) : ([] as any),
+      );
+      vi.mocked(prisma.usuarioRol.update).mockResolvedValue({
+        estado: 'ACTIVO',
+        rol: { nombre: 'BARBERO' },
+      } as any);
+      vi.mocked(prisma.usuario.create).mockImplementation(
+        async ({ data }: any) => {
+          if (ganador) {
+            throw { code: 'P2002', meta: { target: ['correo'] } };
+          }
+          ganador = {
+            id: 'usuario-ganador',
+            nombreCompleto: data.nombreCompleto,
+            correo: data.correo,
+            telefono: data.telefono,
+            estadoCuenta: 'ACTIVO',
+          };
+          return {
+            ...ganador,
+            usuarioRoles: [{ estado: 'ACTIVO', rol: { nombre: 'BARBERO' } }],
+          } as any;
+        },
+      );
+
+      const [primera, segunda] = await Promise.all([
+        service.invitarPersonal(BARBERIA_A, dto, ADMIN_A),
+        service.invitarPersonal(BARBERIA_A, dto, ADMIN_A),
+      ]);
+
+      expect(prisma.usuario.create).toHaveBeenCalledTimes(2);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+      expect([primera.id, segunda.id]).toEqual([
+        'usuario-ganador',
+        'usuario-ganador',
+      ]);
+      expect([primera.reutilizado, segunda.reutilizado].sort()).toEqual([
+        false,
+        true,
+      ]);
+      expect(prisma.usuarioRol.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: asignacion.id } }),
+      );
+    });
+
+    it('limita a tres intentos las colisiones de correo y devuelve 409 al agotarlos', async () => {
+      vi.mocked(prisma.barberia.findUnique).mockResolvedValue({
+        id: BARBERIA_A,
+      } as any);
+      vi.mocked(prisma.rol.findUnique).mockResolvedValue({
+        id: 'rol-barbero',
+        nombre: 'BARBERO',
+      } as any);
+      vi.mocked(prisma.usuario.findFirst).mockResolvedValue(null);
+      vi.mocked(prisma.usuario.create).mockRejectedValue({
+        code: 'P2002',
+        meta: { target: ['correo'] },
+      } as any);
+
+      let error: unknown;
+      try {
+        await service.invitarPersonal(BARBERIA_A, dto, ADMIN_A);
+      } catch (capturado) {
+        error = capturado;
+      }
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getStatus()).toBe(409);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+      expect(prisma.usuario.create).toHaveBeenCalledTimes(3);
+    });
+
+    it('no reintenta una colisión P2002 del teléfono', async () => {
+      vi.mocked(prisma.barberia.findUnique).mockResolvedValue({
+        id: BARBERIA_A,
+      } as any);
+      vi.mocked(prisma.rol.findUnique).mockResolvedValue({
+        id: 'rol-barbero',
+        nombre: 'BARBERO',
+      } as any);
+      vi.mocked(prisma.usuario.findFirst).mockResolvedValue(null);
+      vi.mocked(prisma.usuario.create).mockRejectedValue({
+        code: 'P2002',
+        meta: { target: ['telefono'] },
+      } as any);
+
+      let error: unknown;
+      try {
+        await service.invitarPersonal(BARBERIA_A, dto, ADMIN_A);
+      } catch (capturado) {
+        error = capturado;
+      }
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(error).toMatchObject({
+        message: 'El teléfono ya está registrado.',
+      });
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.usuario.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('actualizarPersonal · aislamiento de propiedades locales', () => {
+    it('actualiza solo rol y estado de la asignación, sin escribir sobre Usuario', async () => {
+      vi.mocked(prisma.usuario.findUnique).mockResolvedValue({
+        id: 'miembro-1',
+      } as any);
+      vi.mocked(prisma.usuario.findUniqueOrThrow).mockResolvedValue({
+        id: 'miembro-1',
+        nombreCompleto: 'Nombre global',
+        correo: 'miembro@example.com',
+        telefono: '8095554321',
+        estadoCuenta: 'ACTIVO',
+      } as any);
+      vi.mocked(prisma.rol.findUnique).mockResolvedValue({
+        id: 'rol-admin-sede',
+        nombre: 'ADMIN_BARBERIA',
+      } as any);
+      vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([
+        { id: 'asignacion-sede-a' },
+      ] as any);
+      vi.mocked(prisma.usuarioRol.update).mockResolvedValue({} as any);
+
+      const resultado = await service.actualizarPersonal(
+        BARBERIA_A,
+        'miembro-1',
+        { estado: 'INACTIVO', rolNombre: 'ADMIN_BARBERIA' },
+        ADMIN_A,
+      );
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.usuario.update).not.toHaveBeenCalled();
+      expect(prisma.usuarioRol.update).toHaveBeenCalledWith({
+        where: { id: 'asignacion-sede-a' },
+        data: { rolId: 'rol-admin-sede', estado: 'INACTIVO' },
+      });
+      expect(resultado).toMatchObject({
+        id: 'miembro-1',
+        nombreCompleto: 'Nombre global',
+        telefono: '8095554321',
+        estadoCuenta: 'ACTIVO',
+        estadoSede: 'INACTIVO',
+        roles: ['ADMIN_BARBERIA'],
+      });
     });
   });
 

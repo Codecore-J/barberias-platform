@@ -24,8 +24,6 @@ export interface InvitarPersonalRequest {
 }
 
 export interface ActualizarPersonalRequest {
-  nombreCompleto: string;
-  telefono: string;
   estado: 'ACTIVO' | 'INACTIVO';
   rolNombre: RolPersonal;
 }
