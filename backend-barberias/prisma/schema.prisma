@@ -102,6 +102,7 @@ model UsuarioRol {
   usuarioId  String  @map("usuario_id") @db.Uuid
   rolId      String  @map("rol_id") @db.Uuid
   barberiaId String? @map("barberia_id") @db.Uuid
+  estado     String  @default("ACTIVO") @db.VarChar(20)
 
   usuario  Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   rol      Rol       @relation(fields: [rolId], references: [id])

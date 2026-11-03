@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
@@ -19,6 +20,10 @@ import { BarberiaResponseDto as BarberiaResponse } from './dto/barberia-response
 import type { BarberiaLecturaDto } from './dto/barberia-lectura.dto.js';
 import { BarberiaLecturaDto as BarberiaLectura } from './dto/barberia-lectura.dto.js';
 import type { UnirseBarberiaDto } from './dto/unirse-barberia.dto.js';
+import type {
+  ActualizarPersonalDto,
+  InvitarPersonalDto,
+} from './dto/gestionar-personal.dto.js';
 import type { InvitacionSedeDto } from './dto/invitacion-sede.dto.js';
 import { InvitacionSedeDto as InvitacionSede } from './dto/invitacion-sede.dto.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
@@ -34,7 +39,10 @@ import {
 import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
 // E3-12: el estado de la 6.ª vinculación y su límite viven en el dominio de la
 // vinculación, compartidos con el flujo que las resuelve (VinculacionService).
-import { ESTADOS_VINCULACION, LIMITE_VINCULACIONES } from '../domain/vinculacion.js';
+import {
+  ESTADOS_VINCULACION,
+  LIMITE_VINCULACIONES,
+} from '../domain/vinculacion.js';
 
 /**
  * Catálogo de las 7 categorías oficiales que toda sede recibe al nacer.
@@ -56,7 +64,8 @@ const CATEGORIAS_OFICIALES_SEDE = [
   },
   {
     nombre: 'Barba y Afeitado',
-    descripcion: 'Perfilado de barba, afeitado con navaja y ritual con toalla caliente.',
+    descripcion:
+      'Perfilado de barba, afeitado con navaja y ritual con toalla caliente.',
   },
   {
     nombre: 'Combos (Corte + Barba)',
@@ -64,7 +73,8 @@ const CATEGORIAS_OFICIALES_SEDE = [
   },
   {
     nombre: 'Extras y Cuidado Personal',
-    descripcion: 'Cejas, mascarilla negra, limpieza facial, lavado y colorimetría.',
+    descripcion:
+      'Cejas, mascarilla negra, limpieza facial, lavado y colorimetría.',
   },
   {
     nombre: 'Cortes Infantiles',
@@ -84,7 +94,6 @@ function generateSlug(text: string, maxLen = 40): string {
     .slice(0, maxLen);
   return slug.length > 0 ? slug : 'barberia';
 }
-
 
 /** Código de acceso alfanumérico de 8 caracteres (mayúsculas + dígitos) */
 function generateCodigoAcceso(): string {
@@ -106,7 +115,10 @@ export const MAX_BARBERIAS_POR_RESPONSABLE = 2;
  * tipo es estructural —y no la unión de los dos DTO— para que el acceso a
  * `enlaceUnico` no dependa de qué DTO concreto envió la petición.
  */
-type PuertaDeEntradaSolicitada = { codigoAcceso?: string; enlaceUnico?: string };
+type PuertaDeEntradaSolicitada = {
+  codigoAcceso?: string;
+  enlaceUnico?: string;
+};
 
 @Injectable()
 export class BarberiaService {
@@ -212,7 +224,11 @@ export class BarberiaService {
         select: { id: true },
       });
 
-      let rolAdminBarberia: { id: string; nombre: string; ambito: string } | null = null;
+      let rolAdminBarberia: {
+        id: string;
+        nombre: string;
+        ambito: string;
+      } | null = null;
 
       if (!esAdministradorDePlataforma) {
         rolAdminBarberia = await tx.rol.findUnique({
@@ -303,7 +319,9 @@ export class BarberiaService {
         tx,
       );
 
-      this.logger.log(`Barbería creada: ${barberia.id} por usuario ${responsableId}`);
+      this.logger.log(
+        `Barbería creada: ${barberia.id} por usuario ${responsableId}`,
+      );
       return this.toResponse(barberia);
     });
   }
@@ -327,6 +345,302 @@ export class BarberiaService {
     return (usuario.rolesDetallados ?? []).some(
       (rol) => roles.includes(rol.nombre) && alcanceCumple(rol, barberiaId),
     );
+  }
+
+  private assertAdminPersonal(
+    barberiaId: string,
+    usuario: UsuarioAutenticado,
+  ): void {
+    if (
+      !esAdministradorGlobal(usuario) &&
+      !this.tieneAlgunRolEnBarberia(barberiaId, usuario, ['ADMIN_BARBERIA'])
+    ) {
+      throw new ForbiddenException(
+        'Solo el administrador de esta sede puede gestionar su personal.',
+      );
+    }
+  }
+
+  async invitarPersonal(
+    barberiaId: string,
+    dto: InvitarPersonalDto,
+    solicitante: UsuarioAutenticado,
+  ): Promise<{
+    id: string;
+    nombreCompleto: string;
+    correo: string;
+    telefono: string;
+    estado: string;
+    estadoSede: string;
+    roles: string[];
+    reutilizado: boolean;
+  }> {
+    this.assertAdminPersonal(barberiaId, solicitante);
+    const correo = dto.correo.trim().toLowerCase();
+    const telefono = dto.telefono.trim();
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const barberia = await tx.barberia.findUnique({
+          where: { id: barberiaId },
+          select: { id: true },
+        });
+        if (!barberia) throw new NotFoundException('Sede no encontrada.');
+
+        const usuarioExistente = await tx.usuario.findFirst({
+          where: { correo: { equals: correo, mode: 'insensitive' } },
+          select: {
+            id: true,
+            nombreCompleto: true,
+            correo: true,
+            telefono: true,
+            estadoCuenta: true,
+          },
+        });
+        if (usuarioExistente) {
+          // Vincular se mantiene dentro de esta misma transacción. La cuenta y
+          // su contraseña global no se actualizan al reutilizarla.
+          const rol = await tx.rol.findUnique({
+            where: { nombre: dto.rolNombre },
+            select: { id: true, nombre: true },
+          });
+          if (!rol)
+            throw new InternalServerErrorException(
+              `El rol ${dto.rolNombre} no existe en el catálogo.`,
+            );
+          if (usuarioExistente.estadoCuenta !== 'ACTIVO') {
+            throw new ConflictException(
+              'La cuenta asociada a este correo no está activa. Debe reactivarse desde la plataforma antes de asignarla a una sede.',
+            );
+          }
+          const relaciones = await tx.usuarioRol.findMany({
+            where: { usuarioId: usuarioExistente.id, barberiaId },
+            select: { id: true },
+          });
+          if (relaciones.length > 1) {
+            throw new ConflictException(
+              'La cuenta ya tiene varias asignaciones de personal en esta sede; regularízalas antes de volver a invitarla.',
+            );
+          }
+
+          let relacion;
+          if (relaciones.length === 1) {
+            relacion = await tx.usuarioRol.update({
+              where: { id: relaciones[0].id },
+              data: { rolId: rol.id, estado: 'ACTIVO' },
+              select: { estado: true, rol: { select: { nombre: true } } },
+            });
+          } else {
+            relacion = await tx.usuarioRol.create({
+              data: {
+                usuarioId: usuarioExistente.id,
+                barberiaId,
+                rolId: rol.id,
+                estado: 'ACTIVO',
+              },
+              select: { estado: true, rol: { select: { nombre: true } } },
+            });
+          }
+          await this.auditoria.registrarEvento(
+            {
+              usuarioId: solicitante.id,
+              barberiaId,
+              accion: 'PERSONAL_SEDE_VINCULADO',
+              entidad: 'usuarios',
+              entidadId: usuarioExistente.id,
+              contexto: {
+                correo: usuarioExistente.correo,
+                rol: relacion.rol.nombre,
+                estadoSede: relacion.estado,
+                cuentaReutilizada: true,
+              },
+            },
+            tx,
+          );
+          return {
+            id: usuarioExistente.id,
+            nombreCompleto: usuarioExistente.nombreCompleto,
+            correo: usuarioExistente.correo,
+            telefono: usuarioExistente.telefono,
+            estado: usuarioExistente.estadoCuenta,
+            estadoSede: relacion.estado,
+            roles: [relacion.rol.nombre],
+            reutilizado: true,
+          };
+        }
+
+        const rol = await tx.rol.findUnique({
+          where: { nombre: dto.rolNombre },
+          select: { id: true, nombre: true },
+        });
+        if (!rol)
+          throw new InternalServerErrorException(
+            `El rol ${dto.rolNombre} no existe en el catálogo.`,
+          );
+        const telefonoExistente = await tx.usuario.findFirst({
+          where: { telefono },
+          select: { id: true },
+        });
+        if (telefonoExistente) {
+          throw new ConflictException('El teléfono ya está registrado.');
+        }
+
+        const passwordHash = await bcrypt.hash(dto.password, 10);
+        const usuario = await tx.usuario.create({
+          data: {
+            nombreCompleto: dto.nombreCompleto.trim(),
+            correo,
+            telefono,
+            passwordHash,
+            usuarioRoles: {
+              create: { rolId: rol.id, barberiaId, estado: 'ACTIVO' },
+            },
+          },
+          select: {
+            id: true,
+            nombreCompleto: true,
+            correo: true,
+            telefono: true,
+            estadoCuenta: true,
+            usuarioRoles: {
+              where: { barberiaId },
+              select: { estado: true, rol: { select: { nombre: true } } },
+            },
+          },
+        });
+        await this.auditoria.registrarEvento(
+          {
+            usuarioId: solicitante.id,
+            barberiaId,
+            accion: 'PERSONAL_SEDE_CREADO',
+            entidad: 'usuarios',
+            entidadId: usuario.id,
+            contexto: { correo, rol: rol.nombre, cuentaReutilizada: false },
+          },
+          tx,
+        );
+        return {
+          id: usuario.id,
+          nombreCompleto: usuario.nombreCompleto,
+          correo: usuario.correo,
+          telefono: usuario.telefono,
+          estado: usuario.estadoCuenta,
+          estadoSede: usuario.usuarioRoles[0]?.estado ?? 'ACTIVO',
+          roles: usuario.usuarioRoles.map((item) => item.rol.nombre),
+          reutilizado: false,
+        };
+      });
+    } catch (error: any) {
+      if (error?.code === 'P2002') {
+        // Dos invitaciones simultáneas pueden leer antes de que exista la
+        // cuenta. Si otra transacción ganó la carrera por correo, la buscamos
+        // de nuevo y vinculamos esa cuenta sin tocar su hash de contraseña.
+        const usuarioGanador = await this.prisma.usuario.findFirst({
+          where: { correo: { equals: correo, mode: 'insensitive' } },
+          select: {
+            id: true,
+            nombreCompleto: true,
+            correo: true,
+            telefono: true,
+            estadoCuenta: true,
+          },
+        });
+        if (usuarioGanador) {
+          // Reintentar vuelve a hacer la búsqueda y vincula dentro de la misma
+          // transacción que también protege una invitación no concurrente.
+          return this.invitarPersonal(barberiaId, dto, solicitante);
+        }
+        throw new ConflictException('El teléfono ya está registrado.');
+      }
+      throw error;
+    }
+  }
+
+  async actualizarPersonal(
+    barberiaId: string,
+    usuarioId: string,
+    dto: ActualizarPersonalDto,
+    solicitante: UsuarioAutenticado,
+  ) {
+    this.assertAdminPersonal(barberiaId, solicitante);
+    if (usuarioId === solicitante.id && !esAdministradorGlobal(solicitante)) {
+      throw new ForbiddenException(
+        'No puedes cambiar tu propio rol o estado en esta sede.',
+      );
+    }
+    const [usuario, rol] = await Promise.all([
+      this.prisma.usuario.findUnique({
+        where: { id: usuarioId },
+        select: { id: true },
+      }),
+      this.prisma.rol.findUnique({
+        where: { nombre: dto.rolNombre },
+        select: { id: true, nombre: true },
+      }),
+    ]);
+    if (!usuario) throw new NotFoundException('Miembro no encontrado.');
+    if (!rol)
+      throw new InternalServerErrorException(
+        `El rol ${dto.rolNombre} no existe en el catálogo.`,
+      );
+    const relaciones = await this.prisma.usuarioRol.findMany({
+      where: { usuarioId, barberiaId },
+      select: { id: true },
+    });
+    if (relaciones.length === 0)
+      throw new NotFoundException(
+        'El usuario no pertenece al personal de esta sede.',
+      );
+    if (relaciones.length > 1)
+      throw new ConflictException(
+        'El miembro tiene más de un rol en esta sede; regulariza sus asignaciones antes de editarlo.',
+      );
+
+    try {
+      const actualizado = await this.prisma.$transaction(async (tx) => {
+        await tx.usuario.update({
+          where: { id: usuarioId },
+          data: {
+            nombreCompleto: dto.nombreCompleto.trim(),
+            telefono: dto.telefono.trim(),
+          },
+        });
+        await tx.usuarioRol.update({
+          where: { id: relaciones[0].id },
+          data: { rolId: rol.id, estado: dto.estado },
+        });
+        await this.auditoria.registrarEvento(
+          {
+            usuarioId: solicitante.id,
+            barberiaId,
+            accion: 'PERSONAL_SEDE_ACTUALIZADO',
+            entidad: 'usuarios',
+            entidadId: usuarioId,
+            contexto: { rol: rol.nombre, estado: dto.estado },
+          },
+          tx,
+        );
+        return tx.usuario.findUniqueOrThrow({
+          where: { id: usuarioId },
+          select: {
+            id: true,
+            nombreCompleto: true,
+            correo: true,
+            telefono: true,
+            estadoCuenta: true,
+          },
+        });
+      });
+      return {
+        ...actualizado,
+        estado: actualizado.estadoCuenta,
+        estadoSede: dto.estado,
+        roles: [rol.nombre],
+      };
+    } catch (error: any) {
+      if (error?.code === 'P2002')
+        throw new ConflictException('El teléfono ya está registrado.');
+      throw error;
+    }
   }
 
   /** El ADMINISTRADOR tiene acceso transversal: no está acotado a una barbería. */
@@ -359,10 +673,12 @@ export class BarberiaService {
     const esGlobal = !!usuario && this.esAdministrador(usuario);
     const esAdmin =
       esGlobal ||
-      (!!usuario && this.tieneAlgunRolEnBarberia(barberiaId, usuario, ['ADMIN_BARBERIA']));
+      (!!usuario &&
+        this.tieneAlgunRolEnBarberia(barberiaId, usuario, ['ADMIN_BARBERIA']));
     const puedeLeer =
       esAdmin ||
-      (!!usuario && this.tieneAlgunRolEnBarberia(barberiaId, usuario, ['BARBERO']));
+      (!!usuario &&
+        this.tieneAlgunRolEnBarberia(barberiaId, usuario, ['BARBERO']));
 
     if (!puedeLeer) {
       throw new ForbiddenException(
@@ -381,10 +697,16 @@ export class BarberiaService {
       orderBy: [{ rol: { nombre: 'asc' } }, { usuario: { correo: 'asc' } }],
       include: {
         usuario: {
-          select: { id: true, nombreCompleto: true, correo: true, telefono: true, estadoCuenta: true }
+          select: {
+            id: true,
+            nombreCompleto: true,
+            correo: true,
+            telefono: true,
+            estadoCuenta: true,
+          },
         },
-        rol: true
-      }
+        rol: true,
+      },
     });
 
     // Group by user since a user might have multiple roles in the same barberia
@@ -397,7 +719,8 @@ export class BarberiaService {
           correo: r.usuario.correo,
           telefono: r.usuario.telefono,
           estado: r.usuario.estadoCuenta,
-          roles: []
+          estadoSede: r.estado,
+          roles: [],
         });
       }
       userMap.get(r.usuario.id).roles.push(r.rol.nombre);
@@ -468,7 +791,10 @@ export class BarberiaService {
       usuario.rolesDetallados?.some((r) => r.nombre === nombre) ||
       usuario.roles?.includes(nombre);
 
-    const esStaff = tieneRol('ADMINISTRADOR') || tieneRol('ADMIN_BARBERIA') || tieneRol('BARBERO');
+    const esStaff =
+      tieneRol('ADMINISTRADOR') ||
+      tieneRol('ADMIN_BARBERIA') ||
+      tieneRol('BARBERO');
 
     if (!esStaff && tieneRol('CLIENTE')) {
       const vinculaciones = await this.prisma.clienteBarberia.findMany({
@@ -485,7 +811,11 @@ export class BarberiaService {
       const results = vinculaciones
         .map((v) => v.barberia)
         .filter((b) => !!b)
-        .map((b) => this.veCodigoDe(b.id, usuario) ? this.toResponse(b) : this.toLectura(b));
+        .map((b) =>
+          this.veCodigoDe(b.id, usuario)
+            ? this.toResponse(b)
+            : this.toLectura(b),
+        );
       return results;
     }
 
@@ -499,6 +829,7 @@ export class BarberiaService {
             usuarioRoles: {
               some: {
                 usuarioId: usuario.id,
+                estado: 'ACTIVO',
                 rol: { nombre: { in: ['ADMIN_BARBERIA', 'BARBERO'] } },
               },
             },
@@ -624,7 +955,9 @@ export class BarberiaService {
     }
 
     if (!esGlobal && barberia.responsableId !== authUserId) {
-      throw new ForbiddenException('Solo el responsable puede modificar esta barbería.');
+      throw new ForbiddenException(
+        'Solo el responsable puede modificar esta barbería.',
+      );
     }
 
     if (dto.telefono !== undefined && dto.telefono !== barberia.telefono) {
@@ -665,10 +998,14 @@ export class BarberiaService {
       select: { passwordHash: true },
     });
 
-    const valida = !!usuario && (await bcrypt.compare(passwordActual, usuario.passwordHash));
+    const valida =
+      !!usuario && (await bcrypt.compare(passwordActual, usuario.passwordHash));
 
     if (!valida) {
-      throw reglaDeNegocio('PASSWORD_INCORRECTA', 'La contraseña actual no es correcta.');
+      throw reglaDeNegocio(
+        'PASSWORD_INCORRECTA',
+        'La contraseña actual no es correcta.',
+      );
     }
   }
 
@@ -698,7 +1035,9 @@ export class BarberiaService {
     }
 
     if (!esGlobal && barberia.responsableId !== authUserId) {
-      throw new ForbiddenException('Solo el responsable puede cambiar el estado de esta barbería.');
+      throw new ForbiddenException(
+        'Solo el responsable puede cambiar el estado de esta barbería.',
+      );
     }
 
     if (barberia.estado === estado) {
@@ -718,7 +1057,10 @@ export class BarberiaService {
       await this.auditoria.registrarEvento(
         {
           usuarioId: authUserId,
-          accion: estado === 'INACTIVO' ? 'BARBERIA_SUSPENDIDA' : 'BARBERIA_REACTIVADA',
+          accion:
+            estado === 'INACTIVO'
+              ? 'BARBERIA_SUSPENDIDA'
+              : 'BARBERIA_REACTIVADA',
           entidad: 'barberias',
           entidadId: id,
           contexto: {
@@ -730,7 +1072,9 @@ export class BarberiaService {
       );
     });
 
-    this.logger.log(`Barbería ${id} pasó a ${estado} por usuario ${authUserId}`);
+    this.logger.log(
+      `Barbería ${id} pasó a ${estado} por usuario ${authUserId}`,
+    );
   }
 
   // ── VINCULAR CLIENTE A BARBERÍA (T2.2) ─────────────────────────────────────
@@ -753,7 +1097,10 @@ export class BarberiaService {
    * quien se desvincula de una sede no queda condenado a la bandeja de
    * aprobación para la siguiente.
    */
-  async vincularCliente(usuarioId: string, dto: VincularBarberiaDto | UnirseBarberiaDto) {
+  async vincularCliente(
+    usuarioId: string,
+    dto: VincularBarberiaDto | UnirseBarberiaDto,
+  ) {
     // E3-12/2: la sede se resuelve por la puerta que trajo el cliente —código o
     // enlace único—, pero TODO lo demás (el conteo de D10, la reapertura de H71,
     // la auditoría y el estado resultante) es exactamente el mismo camino que ya
@@ -762,105 +1109,116 @@ export class BarberiaService {
 
     // H71: la transacción devuelve la fila Y, si tocó reabrir, lo que hay que
     // avisar. El aviso se despacha DESPUÉS del commit y fuera de la transacción.
-    const { vinculo, reapertura } = await withSerializableTransaction(this.prisma, async (tx) => {
-      const barberia = await tx.barberia.findUnique({
-        where: puerta,
-      });
-
-      if (!barberia || barberia.estado !== 'ACTIVO') {
-        throw new NotFoundException('Barbería no encontrada o inactiva.');
-      }
-
-      const existing = await tx.clienteBarberia.findUnique({
-        where: {
-          uk_cliente_barberia: {
-            usuarioId,
-            barberiaId: barberia.id,
-          },
-        },
-      });
-
-      // Idempotencia: un vínculo VIVO se devuelve tal cual. Volver a introducir
-      // el código no cambia nada ni pide aprobación otra vez. Solo la fila
-      // CERRADA se reabre.
-      if (existing && existing.estadoVinculacion !== ESTADOS_VINCULACION.DESVINCULADO) {
-        return { vinculo: existing, reapertura: null };
-      }
-
-      // Conteo estricto (T2.2) sobre los vínculos VIVOS. D10 limita las
-      // barberías en las que el cliente ESTÁ, no las filas que alguna vez tuvo:
-      // un `DESVINCULADO` conserva su historial (D20/D21) pero no ocupa plaza,
-      // así que al cerrar un vínculo el cliente recupera el cupo. Ese único
-      // filtro cubre también la fila que se está reabriendo —en la base todavía
-      // está `DESVINCULADO`, y no se cuenta a sí misma—, y por eso la exclusión
-      // explicita por `id` ya no hace falta.
-      const count = await tx.clienteBarberia.count({
-        where: {
-          usuarioId,
-          estadoVinculacion: { not: ESTADOS_VINCULACION.DESVINCULADO },
-        },
-      });
-
-      // D10 · la 6.ª vinculación queda PENDIENTE_APROBACION hasta que el
-      // ADMINISTRADOR la apruebe. El estado y el límite NO son literales de
-      // aquí: los comparte con el flujo que la resuelve (E3-12), que es el
-      // único que puede sacar a un cliente de esta espera.
-      const estadoVinculacion =
-        count >= LIMITE_VINCULACIONES
-          ? ESTADOS_VINCULACION.PENDIENTE_APROBACION
-          : ESTADOS_VINCULACION.ACTIVO;
-
-      // H71 · D21: la fila cerrada se REABRE con el estado que le toca hoy
-      // —pendiente si el cliente sigue por encima del límite, activa si ya
-      // tiene hueco— y deja rastro del antes y el después (D28).
-      if (existing) {
-        const reactivada = await tx.clienteBarberia.update({
-          where: { id: existing.id },
-          data: { estadoVinculacion },
+    const { vinculo, reapertura } = await withSerializableTransaction(
+      this.prisma,
+      async (tx) => {
+        const barberia = await tx.barberia.findUnique({
+          where: puerta,
         });
 
-        await this.auditoria.registrarEvento(
-          {
-            usuarioId,
-            accion: 'VINCULACION_REACTIVADA',
-            entidad: 'cliente_barberias',
-            entidadId: existing.id,
-            contexto: {
+        if (!barberia || barberia.estado !== 'ACTIVO') {
+          throw new NotFoundException('Barbería no encontrada o inactiva.');
+        }
+
+        const existing = await tx.clienteBarberia.findUnique({
+          where: {
+            uk_cliente_barberia: {
+              usuarioId,
               barberiaId: barberia.id,
-              anterior: { estadoVinculacion: existing.estadoVinculacion },
-              nuevo: { estadoVinculacion },
             },
           },
-          tx,
-        );
+        });
+
+        // Idempotencia: un vínculo VIVO se devuelve tal cual. Volver a introducir
+        // el código no cambia nada ni pide aprobación otra vez. Solo la fila
+        // CERRADA se reabre.
+        if (
+          existing &&
+          existing.estadoVinculacion !== ESTADOS_VINCULACION.DESVINCULADO
+        ) {
+          return { vinculo: existing, reapertura: null };
+        }
+
+        // Conteo estricto (T2.2) sobre los vínculos VIVOS. D10 limita las
+        // barberías en las que el cliente ESTÁ, no las filas que alguna vez tuvo:
+        // un `DESVINCULADO` conserva su historial (D20/D21) pero no ocupa plaza,
+        // así que al cerrar un vínculo el cliente recupera el cupo. Ese único
+        // filtro cubre también la fila que se está reabriendo —en la base todavía
+        // está `DESVINCULADO`, y no se cuenta a sí misma—, y por eso la exclusión
+        // explicita por `id` ya no hace falta.
+        const count = await tx.clienteBarberia.count({
+          where: {
+            usuarioId,
+            estadoVinculacion: { not: ESTADOS_VINCULACION.DESVINCULADO },
+          },
+        });
+
+        // D10 · la 6.ª vinculación queda PENDIENTE_APROBACION hasta que el
+        // ADMINISTRADOR la apruebe. El estado y el límite NO son literales de
+        // aquí: los comparte con el flujo que la resuelve (E3-12), que es el
+        // único que puede sacar a un cliente de esta espera.
+        const estadoVinculacion =
+          count >= LIMITE_VINCULACIONES
+            ? ESTADOS_VINCULACION.PENDIENTE_APROBACION
+            : ESTADOS_VINCULACION.ACTIVO;
+
+        // H71 · D21: la fila cerrada se REABRE con el estado que le toca hoy
+        // —pendiente si el cliente sigue por encima del límite, activa si ya
+        // tiene hueco— y deja rastro del antes y el después (D28).
+        if (existing) {
+          const reactivada = await tx.clienteBarberia.update({
+            where: { id: existing.id },
+            data: { estadoVinculacion },
+          });
+
+          await this.auditoria.registrarEvento(
+            {
+              usuarioId,
+              accion: 'VINCULACION_REACTIVADA',
+              entidad: 'cliente_barberias',
+              entidadId: existing.id,
+              contexto: {
+                barberiaId: barberia.id,
+                anterior: { estadoVinculacion: existing.estadoVinculacion },
+                nuevo: { estadoVinculacion },
+              },
+            },
+            tx,
+          );
+
+          this.logger.log(
+            `Vinculación ${existing.id} de ${usuarioId} con la barbería ${barberia.id} reabierta como ${estadoVinculacion}`,
+          );
+          return {
+            vinculo: reactivada,
+            reapertura: { nombreBarberia: barberia.nombre, estadoVinculacion },
+          };
+        }
+
+        const esBarberiaActiva = count === 0; // Si es la primera, la marcamos como activa por defecto
+
+        const nuevaVinculacion = await tx.clienteBarberia.create({
+          data: {
+            usuarioId,
+            barberiaId: barberia.id,
+            estadoVinculacion,
+            esBarberiaActiva,
+          },
+        });
 
         this.logger.log(
-          `Vinculación ${existing.id} de ${usuarioId} con la barbería ${barberia.id} reabierta como ${estadoVinculacion}`,
+          `Usuario ${usuarioId} vinculado a Barbería ${barberia.id}. Estado: ${estadoVinculacion}`,
         );
-        return {
-          vinculo: reactivada,
-          reapertura: { nombreBarberia: barberia.nombre, estadoVinculacion },
-        };
-      }
-
-      const esBarberiaActiva = count === 0; // Si es la primera, la marcamos como activa por defecto
-
-      const nuevaVinculacion = await tx.clienteBarberia.create({
-        data: {
-          usuarioId,
-          barberiaId: barberia.id,
-          estadoVinculacion,
-          esBarberiaActiva,
-        },
-      });
-
-      this.logger.log(`Usuario ${usuarioId} vinculado a Barbería ${barberia.id}. Estado: ${estadoVinculacion}`);
-      return { vinculo: nuevaVinculacion, reapertura: null };
-    });
+        return { vinculo: nuevaVinculacion, reapertura: null };
+      },
+    );
 
     // Solo hay algo que avisar cuando la reapertura devuelve trabajo a la
     // plataforma: si la fila volvió ACTIVA no hay nada que aprobar.
-    if (reapertura && reapertura.estadoVinculacion === ESTADOS_VINCULACION.PENDIENTE_APROBACION) {
+    if (
+      reapertura &&
+      reapertura.estadoVinculacion === ESTADOS_VINCULACION.PENDIENTE_APROBACION
+    ) {
       this.avisarReaperturaPendiente(reapertura.nombreBarberia);
     }
 
@@ -901,7 +1259,9 @@ export class BarberiaService {
       );
     }
 
-    return codigoAcceso ? { codigoAcceso } : { enlaceUnico: enlaceUnico as string };
+    return codigoAcceso
+      ? { codigoAcceso }
+      : { enlaceUnico: enlaceUnico as string };
   }
 
   /**
@@ -914,10 +1274,14 @@ export class BarberiaService {
    * que en la base ya está reabierta. Todos los fallos se registran, ninguno sube.
    */
   private avisarReaperturaPendiente(nombreBarberia: string): void {
-    void this.notificarReaperturaPendiente(nombreBarberia).catch(() => undefined);
+    void this.notificarReaperturaPendiente(nombreBarberia).catch(
+      () => undefined,
+    );
   }
 
-  private async notificarReaperturaPendiente(nombreBarberia: string): Promise<void> {
+  private async notificarReaperturaPendiente(
+    nombreBarberia: string,
+  ): Promise<void> {
     if (!this.notificacion) {
       return;
     }
@@ -969,7 +1333,11 @@ export class BarberiaService {
    * ADMIN_BARBERIA) y `barberia.responsable_id` (el dueño). El ADMINISTRADOR
    * global no necesita vínculo: es transversal, igual que en el resto del backend.
    */
-  async seleccionarBarberiaActiva(usuarioId: string, barberiaId: string, usuario?: UsuarioAutenticado) {
+  async seleccionarBarberiaActiva(
+    usuarioId: string,
+    barberiaId: string,
+    usuario?: UsuarioAutenticado,
+  ) {
     return withSerializableTransaction(this.prisma, async (tx) => {
       const vinculacion = await tx.clienteBarberia.findUnique({
         where: {
@@ -981,7 +1349,9 @@ export class BarberiaService {
       });
 
       if (vinculacion && vinculacion.estadoVinculacion !== 'ACTIVO') {
-        throw new ForbiddenException('Tu vinculación a esta barbería no está activa.');
+        throw new ForbiddenException(
+          'Tu vinculación a esta barbería no está activa.',
+        );
       }
 
       if (!vinculacion) {
@@ -989,9 +1359,17 @@ export class BarberiaService {
         // pero entonces no hay nada que activar: la marca de sede activa vive en
         // `cliente_barberias`. Se devuelve la sede para que el frontend la cachee.
         const [rolEnSede, sede, esGlobal] = await Promise.all([
-          tx.usuarioRol.findFirst({ where: { usuarioId, barberiaId }, select: { id: true } }),
-          tx.barberia.findUnique({ where: { id: barberiaId }, select: { id: true, responsableId: true } }),
-          usuario ? Promise.resolve(esAdministradorGlobal(usuario)) : esAdministradorGlobalPorId(tx, usuarioId),
+          tx.usuarioRol.findFirst({
+            where: { usuarioId, barberiaId, estado: 'ACTIVO' },
+            select: { id: true },
+          }),
+          tx.barberia.findUnique({
+            where: { id: barberiaId },
+            select: { id: true, responsableId: true },
+          }),
+          usuario
+            ? Promise.resolve(esAdministradorGlobal(usuario))
+            : esAdministradorGlobalPorId(tx, usuarioId),
         ]);
 
         if (!sede) {
@@ -1002,8 +1380,15 @@ export class BarberiaService {
           throw new NotFoundException('No estás vinculado a esta barbería.');
         }
 
-        this.logger.log(`Usuario ${usuarioId} seleccionó la barbería ${barberiaId} por rol`);
-        return { usuarioId, barberiaId, esBarberiaActiva: true, vinculo: 'ROL' };
+        this.logger.log(
+          `Usuario ${usuarioId} seleccionó la barbería ${barberiaId} por rol`,
+        );
+        return {
+          usuarioId,
+          barberiaId,
+          esBarberiaActiva: true,
+          vinculo: 'ROL',
+        };
       }
 
       // Desactivar todas las barberías para este usuario

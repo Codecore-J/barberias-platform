@@ -95,6 +95,8 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /shops/': TODOS,
   'GET /shops/all': [ROL_ADMINISTRADOR],
   'GET /shops/:shopId/staff': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
+  'POST /shops/:shopId/staff': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /shops/:shopId/staff/:userId': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /shops/:shopId': TODOS,
   'PATCH /shops/:shopId/select': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'PATCH /shops/:shopId': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -644,8 +646,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // Fase 3 suma la cita directa cobrada (`walk-in-pago`): 109 × 4 = 436. La
   // plantilla base semanal del barbero suma sus dos verbos: 111 × 4 = 444.
   // La bandeja local de solicitudes de cambio (E3-13, lectura de la sede) suma
-  // la 112: 112 × 4 = 448.
-  expect(evaluaciones).toBe(448);
+  // la 112: 112 × 4 = 448. La gestión local de personal añade POST y PATCH:
+  // 114 rutas con política × 4 roles = 456 decisiones.
+  expect(evaluaciones).toBe(456);
     expect(
       desviaciones.length === 0
         ? ''

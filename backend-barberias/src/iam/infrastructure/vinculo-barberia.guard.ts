@@ -56,7 +56,7 @@ export class VinculoBarberiaGuard implements CanActivate {
 
     // Personal: entra por `usuario_roles`.
     const rol = await this.prisma.usuarioRol.findFirst({
-      where: { usuarioId: user.id, barberiaId },
+      where: { usuarioId: user.id, barberiaId, estado: 'ACTIVO' },
       select: { id: true },
     });
     if (rol) {

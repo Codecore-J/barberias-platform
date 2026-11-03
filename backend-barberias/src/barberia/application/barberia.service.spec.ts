@@ -15,42 +15,54 @@ const CLIENTE: UsuarioAutenticado = {
   id: 'usuario-cliente',
   correo: 'cliente@test.com',
   roles: ['CLIENTE'],
-  rolesDetallados: [{ nombre: 'CLIENTE', barberiaId: BARBERIA_A, ambito: 'BARBERIA' }],
+  rolesDetallados: [
+    { nombre: 'CLIENTE', barberiaId: BARBERIA_A, ambito: 'BARBERIA' },
+  ],
 };
 
 const ADMIN_A: UsuarioAutenticado = {
   id: 'usuario-admin-a',
   correo: 'admin.a@test.com',
   roles: ['ADMIN_BARBERIA'],
-  rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: BARBERIA_A, ambito: 'BARBERIA' }],
+  rolesDetallados: [
+    { nombre: 'ADMIN_BARBERIA', barberiaId: BARBERIA_A, ambito: 'BARBERIA' },
+  ],
 };
 
 const ADMIN_B: UsuarioAutenticado = {
   id: 'usuario-admin-b',
   correo: 'admin.b@test.com',
   roles: ['ADMIN_BARBERIA'],
-  rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: BARBERIA_B, ambito: 'BARBERIA' }],
+  rolesDetallados: [
+    { nombre: 'ADMIN_BARBERIA', barberiaId: BARBERIA_B, ambito: 'BARBERIA' },
+  ],
 };
 
 const ADMINISTRADOR: UsuarioAutenticado = {
   id: 'usuario-global',
   correo: 'global@test.com',
   roles: ['ADMINISTRADOR'],
-  rolesDetallados: [{ nombre: 'ADMINISTRADOR', barberiaId: null, ambito: 'GLOBAL' }],
+  rolesDetallados: [
+    { nombre: 'ADMINISTRADOR', barberiaId: null, ambito: 'GLOBAL' },
+  ],
 };
 
 const BARBERO_A: UsuarioAutenticado = {
   id: 'usuario-barbero-a',
   correo: 'barbero.a@test.com',
   roles: ['BARBERO'],
-  rolesDetallados: [{ nombre: 'BARBERO', barberiaId: BARBERIA_A, ambito: 'BARBERIA' }],
+  rolesDetallados: [
+    { nombre: 'BARBERO', barberiaId: BARBERIA_A, ambito: 'BARBERIA' },
+  ],
 };
 
 const BARBERO_B: UsuarioAutenticado = {
   id: 'usuario-barbero-b',
   correo: 'barbero.b@test.com',
   roles: ['BARBERO'],
-  rolesDetallados: [{ nombre: 'BARBERO', barberiaId: BARBERIA_B, ambito: 'BARBERIA' }],
+  rolesDetallados: [
+    { nombre: 'BARBERO', barberiaId: BARBERIA_B, ambito: 'BARBERIA' },
+  ],
 };
 
 /** ADMIN_BARBERIA con barberia_id nulo: la fila corrupta que E1-04 corrige. */
@@ -58,25 +70,37 @@ const ADMIN_BARBERIA_SIN_BARBERIA: UsuarioAutenticado = {
   id: 'usuario-admin-sin-barberia',
   correo: 'admin.sin.barberia@test.com',
   roles: ['ADMIN_BARBERIA'],
-  rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: null, ambito: 'BARBERIA' }],
+  rolesDetallados: [
+    { nombre: 'ADMIN_BARBERIA', barberiaId: null, ambito: 'BARBERIA' },
+  ],
 };
 
 /**
  * E3-13 · contrato D40: `{ statusCode, codigo, mensaje }` en el cuerpo de la
  * excepción. Devuelve solo lo que se quiere asertar.
  */
-async function capturarError(promesa: Promise<unknown>): Promise<{ status: number; codigo: string }> {
+async function capturarError(
+  promesa: Promise<unknown>,
+): Promise<{ status: number; codigo: string }> {
   try {
     await promesa;
   } catch (error: any) {
-    const respuesta = typeof error?.getResponse === 'function' ? error.getResponse() : {};
-    return { status: error?.getStatus?.() ?? respuesta.statusCode, codigo: respuesta.codigo };
+    const respuesta =
+      typeof error?.getResponse === 'function' ? error.getResponse() : {};
+    return {
+      status: error?.getStatus?.() ?? respuesta.statusCode,
+      codigo: respuesta.codigo,
+    };
   }
   throw new Error('Se esperaba una excepción y la promesa se resolvió.');
 }
 
 /** Fila de usuario_roles tal y como la devuelve Prisma. */
-function filaRol(usuarioId: string, nombreRol: string, barberiaId = BARBERIA_B) {
+function filaRol(
+  usuarioId: string,
+  nombreRol: string,
+  barberiaId = BARBERIA_B,
+) {
   return {
     barberiaId,
     usuario: {
@@ -97,7 +121,11 @@ describe('BarberiaService', () => {
   let notificacion: { enviarNotificacion: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
-    notificacion = { enviarNotificacion: vi.fn().mockResolvedValue({ id: 'uuid-notificacion' }) };
+    notificacion = {
+      enviarNotificacion: vi
+        .fn()
+        .mockResolvedValue({ id: 'uuid-notificacion' }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -110,6 +138,9 @@ describe('BarberiaService', () => {
             }),
             usuario: {
               findUnique: vi.fn(),
+              findFirst: vi.fn(),
+              create: vi.fn(),
+              update: vi.fn(),
             },
             barberia: {
               create: vi.fn(),
@@ -124,7 +155,9 @@ describe('BarberiaService', () => {
             usuarioRol: {
               // E0 · el rol de sede se asigna con createMany + skipDuplicates.
               createMany: vi.fn(),
+              create: vi.fn(),
               findMany: vi.fn(),
+              update: vi.fn(),
               // E1-06: `seleccionarBarberiaActiva` admite el vínculo por rol
               findFirst: vi.fn(),
             },
@@ -133,21 +166,26 @@ describe('BarberiaService', () => {
             },
             categoriaServicio: {
               createMany: vi.fn().mockResolvedValue({ count: 7 }),
-            },              clienteBarberia: {
-                findMany: vi.fn(),
-                findUnique: vi.fn(),
-                count: vi.fn(),
-                create: vi.fn(),
-                updateMany: vi.fn(),
-                update: vi.fn(),
-              },
+            },
+            clienteBarberia: {
+              findMany: vi.fn(),
+              findUnique: vi.fn(),
+              count: vi.fn(),
+              create: vi.fn(),
+              updateMany: vi.fn(),
+              update: vi.fn(),
+            },
           },
         },
         {
           // P-SD-4: suspender/reactivar una sede deja rastro en auditoría,
           // así que el servicio lo exige en el módulo y aquí se mockea.
           provide: AuditoriaService,
-          useValue: { registrarEvento: vi.fn().mockResolvedValue({ id: 'uuid-auditoria' }) },
+          useValue: {
+            registrarEvento: vi
+              .fn()
+              .mockResolvedValue({ id: 'uuid-auditoria' }),
+          },
         },
         {
           // H71: reabrir un vínculo cerrado avisa a la plataforma.
@@ -164,6 +202,108 @@ describe('BarberiaService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('invitarPersonal · reutilización segura de cuentas', () => {
+    const dto = {
+      nombreCompleto: 'Nombre enviado',
+      correo: 'Cuenta.Existente@Example.com',
+      telefono: '8095550101',
+      password: 'Temporal123',
+      rolNombre: 'BARBERO',
+    } as any;
+    const usuarioExistente = {
+      id: 'usuario-existente',
+      nombreCompleto: 'Nombre original',
+      correo: 'cuenta.existente@example.com',
+      telefono: '8095550199',
+      estadoCuenta: 'ACTIVO',
+    };
+
+    beforeEach(() => {
+      vi.mocked(prisma.barberia.findUnique).mockResolvedValue({
+        id: BARBERIA_A,
+      } as any);
+      vi.mocked(prisma.usuario.findFirst).mockResolvedValue(
+        usuarioExistente as any,
+      );
+      vi.mocked(prisma.rol.findUnique).mockResolvedValue({
+        id: 'rol-barbero',
+        nombre: 'BARBERO',
+      } as any);
+    });
+
+    it('reutiliza la cuenta existente y crea solo su asignación activa en la sede dentro de la transacción', async () => {
+      vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([] as any);
+      vi.mocked(prisma.usuarioRol.create).mockResolvedValue({
+        estado: 'ACTIVO',
+        rol: { nombre: 'BARBERO' },
+      } as any);
+
+      const resultado = await service.invitarPersonal(BARBERIA_A, dto, ADMIN_A);
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.usuario.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            correo: {
+              equals: 'cuenta.existente@example.com',
+              mode: 'insensitive',
+            },
+          },
+        }),
+      );
+      expect(prisma.usuario.create).not.toHaveBeenCalled();
+      expect(prisma.usuario.update).not.toHaveBeenCalled();
+      expect(prisma.usuarioRol.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            usuarioId: usuarioExistente.id,
+            barberiaId: BARBERIA_A,
+            rolId: 'rol-barbero',
+            estado: 'ACTIVO',
+          },
+        }),
+      );
+      expect(resultado).toMatchObject({
+        id: usuarioExistente.id,
+        nombreCompleto: usuarioExistente.nombreCompleto,
+        correo: usuarioExistente.correo,
+        telefono: usuarioExistente.telefono,
+        estadoSede: 'ACTIVO',
+        roles: ['BARBERO'],
+        reutilizado: true,
+      });
+      expect(auditoria.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accion: 'PERSONAL_SEDE_VINCULADO',
+          entidadId: usuarioExistente.id,
+        }),
+        prisma,
+      );
+    });
+
+    it('reactiva y actualiza la relación local existente sin crear otra ni tocar la cuenta', async () => {
+      vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([
+        { id: 'asignacion-existente' },
+      ] as any);
+      vi.mocked(prisma.usuarioRol.update).mockResolvedValue({
+        estado: 'ACTIVO',
+        rol: { nombre: 'BARBERO' },
+      } as any);
+
+      const resultado = await service.invitarPersonal(BARBERIA_A, dto, ADMIN_A);
+
+      expect(prisma.usuarioRol.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'asignacion-existente' },
+          data: { rolId: 'rol-barbero', estado: 'ACTIVO' },
+        }),
+      );
+      expect(prisma.usuarioRol.create).not.toHaveBeenCalled();
+      expect(prisma.usuario.create).not.toHaveBeenCalled();
+      expect(resultado.estadoSede).toBe('ACTIVO');
+    });
   });
 
   describe('create · E0-07 y E1-07', () => {
@@ -189,7 +329,9 @@ describe('BarberiaService', () => {
     };
 
     beforeEach(() => {
-      vi.mocked(prisma.usuario.findUnique).mockResolvedValue({ id: responsableId } as any);
+      vi.mocked(prisma.usuario.findUnique).mockResolvedValue({
+        id: responsableId,
+      } as any);
       vi.mocked(prisma.barberia.count).mockResolvedValue(0);
       vi.mocked(prisma.usuarioRol.findFirst).mockResolvedValue(null);
       vi.mocked(prisma.rol.findUnique).mockResolvedValue({
@@ -197,9 +339,15 @@ describe('BarberiaService', () => {
         nombre: 'ADMIN_BARBERIA',
         ambito: 'BARBERIA',
       } as any);
-      vi.mocked(prisma.barberia.create).mockResolvedValue(barberiaCreada as any);
-      vi.mocked(prisma.configuracionBarberia.create).mockResolvedValue({} as any);
-      vi.mocked(prisma.usuarioRol.createMany).mockResolvedValue({ count: 1 } as any);
+      vi.mocked(prisma.barberia.create).mockResolvedValue(
+        barberiaCreada as any,
+      );
+      vi.mocked(prisma.configuracionBarberia.create).mockResolvedValue(
+        {} as any,
+      );
+      vi.mocked(prisma.usuarioRol.createMany).mockResolvedValue({
+        count: 1,
+      } as any);
     });
 
     it('crea la sede y asigna ADMIN_BARBERIA al responsable en ESA sede', async () => {
@@ -263,7 +411,9 @@ describe('BarberiaService', () => {
     });
 
     it('un ADMINISTRADOR global no necesita la fila de ADMIN_BARBERIA', async () => {
-      vi.mocked(prisma.usuarioRol.findFirst).mockResolvedValue({ id: 'rol-global' } as any);
+      vi.mocked(prisma.usuarioRol.findFirst).mockResolvedValue({
+        id: 'rol-global',
+      } as any);
 
       await service.create(responsableId, dto);
 
@@ -278,13 +428,34 @@ describe('BarberiaService', () => {
         expect.objectContaining({
           skipDuplicates: true,
           data: expect.arrayContaining([
-            expect.objectContaining({ barberiaId: 'sede-nueva', nombre: 'Cortes Premium y Degradados' }),
-            expect.objectContaining({ barberiaId: 'sede-nueva', nombre: 'Cortes Básicos y Tradicionales' }),
-            expect.objectContaining({ barberiaId: 'sede-nueva', nombre: 'Arreglos Rápidos y Mantenimiento' }),
-            expect.objectContaining({ barberiaId: 'sede-nueva', nombre: 'Barba y Afeitado' }),
-            expect.objectContaining({ barberiaId: 'sede-nueva', nombre: 'Combos (Corte + Barba)' }),
-            expect.objectContaining({ barberiaId: 'sede-nueva', nombre: 'Extras y Cuidado Personal' }),
-            expect.objectContaining({ barberiaId: 'sede-nueva', nombre: 'Cortes Infantiles' }),
+            expect.objectContaining({
+              barberiaId: 'sede-nueva',
+              nombre: 'Cortes Premium y Degradados',
+            }),
+            expect.objectContaining({
+              barberiaId: 'sede-nueva',
+              nombre: 'Cortes Básicos y Tradicionales',
+            }),
+            expect.objectContaining({
+              barberiaId: 'sede-nueva',
+              nombre: 'Arreglos Rápidos y Mantenimiento',
+            }),
+            expect.objectContaining({
+              barberiaId: 'sede-nueva',
+              nombre: 'Barba y Afeitado',
+            }),
+            expect.objectContaining({
+              barberiaId: 'sede-nueva',
+              nombre: 'Combos (Corte + Barba)',
+            }),
+            expect.objectContaining({
+              barberiaId: 'sede-nueva',
+              nombre: 'Extras y Cuidado Personal',
+            }),
+            expect.objectContaining({
+              barberiaId: 'sede-nueva',
+              nombre: 'Cortes Infantiles',
+            }),
           ]),
         }),
       );
@@ -315,7 +486,9 @@ describe('BarberiaService', () => {
         id: 'cli-1',
         correo: 'cli@demo.com',
         roles: ['CLIENTE'],
-        rolesDetallados: [{ nombre: 'CLIENTE', barberiaId: null, ambito: 'GLOBAL' }],
+        rolesDetallados: [
+          { nombre: 'CLIENTE', barberiaId: null, ambito: 'GLOBAL' },
+        ],
       });
 
       expect(result.id).toBe(mockBarberia.id);
@@ -331,7 +504,13 @@ describe('BarberiaService', () => {
         id: 'adm-1',
         correo: 'adm@demo.com',
         roles: ['ADMIN_BARBERIA'],
-        rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: 'uuid-1', ambito: 'BARBERIA' }],
+        rolesDetallados: [
+          {
+            nombre: 'ADMIN_BARBERIA',
+            barberiaId: 'uuid-1',
+            ambito: 'BARBERIA',
+          },
+        ],
       });
 
       expect((result as any).codigoAcceso).toBe('CODIGO1');
@@ -345,7 +524,9 @@ describe('BarberiaService', () => {
         id: 'adm-2',
         correo: 'adm2@demo.com',
         roles: ['ADMINISTRADOR'],
-        rolesDetallados: [{ nombre: 'ADMINISTRADOR', barberiaId: null, ambito: 'GLOBAL' }],
+        rolesDetallados: [
+          { nombre: 'ADMINISTRADOR', barberiaId: null, ambito: 'GLOBAL' },
+        ],
       });
 
       expect((result as any).codigoAcceso).toBe('CODIGO1');
@@ -353,11 +534,13 @@ describe('BarberiaService', () => {
 
     it('debe arrojar NotFoundException si no existe', async () => {
       (prisma.barberia.findUnique as any).mockResolvedValue(null);
-      await expect(service.findOne('uuid-invalid', {
-        id: 'cli-1',
-        correo: 'cli@demo.com',
-        roles: ['CLIENTE'],
-      })).rejects.toThrow(NotFoundException);
+      await expect(
+        service.findOne('uuid-invalid', {
+          id: 'cli-1',
+          correo: 'cli@demo.com',
+          roles: ['CLIENTE'],
+        }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -388,7 +571,9 @@ describe('BarberiaService', () => {
       id: 'usuario-cliente-vinculado',
       correo: 'cliente.vinculado@test.com',
       roles: ['CLIENTE'],
-      rolesDetallados: [{ nombre: 'CLIENTE', barberiaId: SEDE, ambito: 'BARBERIA' }],
+      rolesDetallados: [
+        { nombre: 'CLIENTE', barberiaId: SEDE, ambito: 'BARBERIA' },
+      ],
     };
 
     beforeEach(() => {
@@ -468,10 +653,16 @@ describe('BarberiaService', () => {
 
   describe('update', () => {
     it('debe arrojar ForbiddenException si no es super admin ni responsable', async () => {
-      const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1' };
+      const mockBarberia = {
+        id: 'uuid-1',
+        nombre: 'Barberia 1',
+        responsableId: 'res-1',
+      };
       (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
 
-      await expect(service.update('uuid-1', 'other-user', {}, false)).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.update('uuid-1', 'other-user', {}, false),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     /**
@@ -479,19 +670,35 @@ describe('BarberiaService', () => {
      * único camino es una solicitud aprobada por el ADMINISTRADOR (D26).
      */
     it('422 NOMBRE_REQUIERE_SOLICITUD al intentar cambiar el nombre y NO toca la base', async () => {
-      const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1' };
+      const mockBarberia = {
+        id: 'uuid-1',
+        nombre: 'Barberia 1',
+        responsableId: 'res-1',
+      };
       (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
 
       const error = await capturarError(
-        service.update('uuid-1', 'res-1', { nombre: 'Nombre por la puerta de atrás' }, false),
+        service.update(
+          'uuid-1',
+          'res-1',
+          { nombre: 'Nombre por la puerta de atrás' },
+          false,
+        ),
       );
 
-      expect(error).toEqual({ status: 422, codigo: 'NOMBRE_REQUIERE_SOLICITUD' });
+      expect(error).toEqual({
+        status: 422,
+        codigo: 'NOMBRE_REQUIERE_SOLICITUD',
+      });
       expect(prisma.barberia.update).not.toHaveBeenCalled();
     });
 
     it('el responsable puede actualizar descripcion, ubicacion y logo', async () => {
-      const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1' };
+      const mockBarberia = {
+        id: 'uuid-1',
+        nombre: 'Barberia 1',
+        responsableId: 'res-1',
+      };
       (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
       (prisma.barberia.update as any).mockResolvedValue({
         ...mockBarberia,
@@ -523,7 +730,11 @@ describe('BarberiaService', () => {
     });
 
     it('E1-04: el ADMINISTRADOR puede editar una barbería ajena', async () => {
-      const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'otro-res' };
+      const mockBarberia = {
+        id: 'uuid-1',
+        nombre: 'Barberia 1',
+        responsableId: 'otro-res',
+      };
       (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
       (prisma.barberia.update as any).mockResolvedValue({
         ...mockBarberia,
@@ -572,7 +783,12 @@ describe('BarberiaService', () => {
       });
 
       const error = await capturarError(
-        service.update('uuid-1', 'res-1', { telefono: '8096666666', passwordActual: 'NoEs' }, false),
+        service.update(
+          'uuid-1',
+          'res-1',
+          { telefono: '8096666666', passwordActual: 'NoEs' },
+          false,
+        ),
       );
 
       expect(error).toEqual({ status: 422, codigo: 'PASSWORD_INCORRECTA' });
@@ -657,7 +873,12 @@ describe('BarberiaService', () => {
         descripcion: 'Solo cambia la descripción',
       });
 
-      await service.update('uuid-1', 'res-1', { descripcion: 'Solo cambia la descripción' }, false);
+      await service.update(
+        'uuid-1',
+        'res-1',
+        { descripcion: 'Solo cambia la descripción' },
+        false,
+      );
 
       const datos = (prisma.barberia.update as any).mock.calls[0][0].data;
       expect(datos).toEqual({ descripcion: 'Solo cambia la descripción' });
@@ -722,7 +943,9 @@ describe('BarberiaService', () => {
       id: 'usuario-z',
       correo: 'admin.z@test.com',
       roles: ['ADMIN_BARBERIA'],
-      rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: SEDE, ambito: 'BARBERIA' }],
+      rolesDetallados: [
+        { nombre: 'ADMIN_BARBERIA', barberiaId: SEDE, ambito: 'BARBERIA' },
+      ],
     };
 
     /**
@@ -734,7 +957,9 @@ describe('BarberiaService', () => {
       id: 'usuario-z',
       correo: 'admin.z@test.com',
       roles: ['CLIENTE'],
-      rolesDetallados: [{ nombre: 'CLIENTE', barberiaId: null, ambito: 'GLOBAL' }],
+      rolesDetallados: [
+        { nombre: 'CLIENTE', barberiaId: null, ambito: 'GLOBAL' },
+      ],
     };
 
     beforeEach(() => {
@@ -753,6 +978,7 @@ describe('BarberiaService', () => {
                 usuarioRoles: {
                   some: {
                     usuarioId: 'usuario-z',
+                    estado: 'ACTIVO',
                     rol: { nombre: { in: ['ADMIN_BARBERIA', 'BARBERO'] } },
                   },
                 },
@@ -764,7 +990,10 @@ describe('BarberiaService', () => {
     });
 
     it('entrega el código al responsable que sí es ADMIN_BARBERIA de esa sede', async () => {
-      const result = await service.findAllByResponsable('usuario-z', RESPONSABLE_ADMIN);
+      const result = await service.findAllByResponsable(
+        'usuario-z',
+        RESPONSABLE_ADMIN,
+      );
 
       expect(result).toHaveLength(1);
       expect((result[0] as any).codigoAcceso).toBe('CODIGOZ');
@@ -776,7 +1005,10 @@ describe('BarberiaService', () => {
       (prisma.clienteBarberia.findMany as any).mockResolvedValue([
         { barberia: mockSede },
       ]);
-      const result = await service.findAllByResponsable('usuario-z', RESPONSABLE_SIN_ROL);
+      const result = await service.findAllByResponsable(
+        'usuario-z',
+        RESPONSABLE_SIN_ROL,
+      );
 
       expect(prisma.clienteBarberia.findMany).toHaveBeenCalled();
       expect(result).toHaveLength(1);
@@ -804,7 +1036,9 @@ describe('BarberiaService', () => {
         id: 'usuario-z',
         correo: 'admin.z@test.com',
         roles: ['ADMIN_BARBERIA'],
-        rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: SEDE, ambito: 'BARBERIA' }],
+        rolesDetallados: [
+          { nombre: 'ADMIN_BARBERIA', barberiaId: SEDE, ambito: 'BARBERIA' },
+        ],
       });
 
       expect(result).toHaveLength(2);
@@ -816,10 +1050,18 @@ describe('BarberiaService', () => {
     it('el ADMINISTRADOR global recibe el código de todas las sedes de la lista', async () => {
       (prisma.barberia.findMany as any).mockResolvedValue([
         mockSede,
-        { ...mockSede, id: 'barberia-w', codigoAcceso: 'CODIGOW', enlaceUnico: 'enlace-w' },
+        {
+          ...mockSede,
+          id: 'barberia-w',
+          codigoAcceso: 'CODIGOW',
+          enlaceUnico: 'enlace-w',
+        },
       ]);
 
-      const result = await service.findAllByResponsable('usuario-z', ADMINISTRADOR);
+      const result = await service.findAllByResponsable(
+        'usuario-z',
+        ADMINISTRADOR,
+      );
 
       expect(result).toHaveLength(2);
       expect((result[0] as any).codigoAcceso).toBe('CODIGOZ');
@@ -851,7 +1093,9 @@ describe('BarberiaService', () => {
       id: 'staff-nuevo',
       correo: 'staff.nuevo@test.com',
       roles: ['ADMIN_BARBERIA'],
-      rolesDetallados: [{ nombre: 'ADMIN_BARBERIA', barberiaId: SEDE, ambito: 'BARBERIA' }],
+      rolesDetallados: [
+        { nombre: 'ADMIN_BARBERIA', barberiaId: SEDE, ambito: 'BARBERIA' },
+      ],
     };
 
     it('H-01: el ADMIN_BARBERIA asignado por rol recibe su sede aunque no sea responsable', async () => {
@@ -859,7 +1103,10 @@ describe('BarberiaService', () => {
       const sedeAsignada = { ...mockSede, responsableId: 'dueno-original' };
       (prisma.barberia.findMany as any).mockResolvedValue([sedeAsignada]);
 
-      const result = await service.findAllByResponsable('staff-nuevo', STAFF_POR_ROL_ADMIN);
+      const result = await service.findAllByResponsable(
+        'staff-nuevo',
+        STAFF_POR_ROL_ADMIN,
+      );
 
       // Una sola consulta `findMany` con OR: sin duplicados y sin el antiguo
       // `where: { responsableId }` suelto.
@@ -873,6 +1120,7 @@ describe('BarberiaService', () => {
                 usuarioRoles: {
                   some: {
                     usuarioId: 'staff-nuevo',
+                    estado: 'ACTIVO',
                     rol: { nombre: { in: ['ADMIN_BARBERIA', 'BARBERO'] } },
                   },
                 },
@@ -895,7 +1143,9 @@ describe('BarberiaService', () => {
         id: 'barbero-nuevo',
         correo: 'barbero.nuevo@test.com',
         roles: ['BARBERO'],
-        rolesDetallados: [{ nombre: 'BARBERO', barberiaId: SEDE, ambito: 'BARBERIA' }],
+        rolesDetallados: [
+          { nombre: 'BARBERO', barberiaId: SEDE, ambito: 'BARBERIA' },
+        ],
       });
 
       expect(result).toHaveLength(1);
@@ -911,143 +1161,193 @@ describe('BarberiaService', () => {
    * que comparten ruta y reglas. Antes solo existía el camino hacia INACTIVO.
    */
   describe('cambiarEstado (E2-07 · D29)', () => {
-      it('suspende: actualiza el estado a INACTIVO', async () => {
-        const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1', estado: 'ACTIVO' };
-        (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
-        (prisma.barberia.update as any).mockResolvedValue({ ...mockBarberia, estado: 'INACTIVO' });
-  
-        await service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false);
-        expect(prisma.barberia.update).toHaveBeenCalledWith({
-            where: { id: 'uuid-1' },
-            data: { estado: 'INACTIVO' }
-        });
+    it('suspende: actualiza el estado a INACTIVO', async () => {
+      const mockBarberia = {
+        id: 'uuid-1',
+        nombre: 'Barberia 1',
+        responsableId: 'res-1',
+        estado: 'ACTIVO',
+      };
+      (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
+      (prisma.barberia.update as any).mockResolvedValue({
+        ...mockBarberia,
+        estado: 'INACTIVO',
       });
 
-      it('reactiva: la vuelta atrás que el DELETE no ofrecía', async () => {
-        const mockBarberia = { id: 'uuid-1', nombre: 'Barberia 1', responsableId: 'res-1', estado: 'INACTIVO' };
-        (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
-        (prisma.barberia.update as any).mockResolvedValue({ ...mockBarberia, estado: 'ACTIVO' });
+      await service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false);
+      expect(prisma.barberia.update).toHaveBeenCalledWith({
+        where: { id: 'uuid-1' },
+        data: { estado: 'INACTIVO' },
+      });
+    });
 
-        await service.cambiarEstado('uuid-1', 'res-1', 'ACTIVO', false);
-
-        expect(prisma.barberia.update).toHaveBeenCalledWith({
-            where: { id: 'uuid-1' },
-            data: { estado: 'ACTIVO' }
-        });
+    it('reactiva: la vuelta atrás que el DELETE no ofrecía', async () => {
+      const mockBarberia = {
+        id: 'uuid-1',
+        nombre: 'Barberia 1',
+        responsableId: 'res-1',
+        estado: 'INACTIVO',
+      };
+      (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
+      (prisma.barberia.update as any).mockResolvedValue({
+        ...mockBarberia,
+        estado: 'ACTIVO',
       });
 
-      it('es idempotente: pedir el estado que ya tiene no escribe', async () => {
-        (prisma.barberia.findUnique as any).mockResolvedValue({
-          id: 'uuid-1', responsableId: 'res-1', estado: 'INACTIVO',
-        });
+      await service.cambiarEstado('uuid-1', 'res-1', 'ACTIVO', false);
 
-        await service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false);
+      expect(prisma.barberia.update).toHaveBeenCalledWith({
+        where: { id: 'uuid-1' },
+        data: { estado: 'ACTIVO' },
+      });
+    });
 
-        expect(prisma.barberia.update).not.toHaveBeenCalled();
+    it('es idempotente: pedir el estado que ya tiene no escribe', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue({
+        id: 'uuid-1',
+        responsableId: 'res-1',
+        estado: 'INACTIVO',
       });
 
-      // P-SD-4: antes el único rastro era un `logger.log` en consola. La
-      // suspensión de una sede es una decisión de plataforma y tiene que
-      // poderse auditar después, con anterior y nuevo.
-      it('suspende: deja BARBERIA_SUSPENDIDA en auditoría con el estado anterior y el nuevo', async () => {
-        (prisma.barberia.findUnique as any).mockResolvedValue({
-          id: 'uuid-1', responsableId: 'res-1', estado: 'ACTIVO',
-        });
+      await service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false);
 
-        await service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false);
+      expect(prisma.barberia.update).not.toHaveBeenCalled();
+    });
 
-        expect(auditoria.registrarEvento).toHaveBeenCalledWith(
-          expect.objectContaining({
-            usuarioId: 'res-1',
-            accion: 'BARBERIA_SUSPENDIDA',
-            entidad: 'barberias',
-            entidadId: 'uuid-1',
-            contexto: {
-              anterior: { estado: 'ACTIVO' },
-              nuevo: { estado: 'INACTIVO' },
-            },
-          }),
-          expect.anything(),
-        );
+    // P-SD-4: antes el único rastro era un `logger.log` en consola. La
+    // suspensión de una sede es una decisión de plataforma y tiene que
+    // poderse auditar después, con anterior y nuevo.
+    it('suspende: deja BARBERIA_SUSPENDIDA en auditoría con el estado anterior y el nuevo', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue({
+        id: 'uuid-1',
+        responsableId: 'res-1',
+        estado: 'ACTIVO',
       });
 
-      it('reactiva: el evento es BARBERIA_REACTIVADA', async () => {
-        (prisma.barberia.findUnique as any).mockResolvedValue({
-          id: 'uuid-1', responsableId: 'res-1', estado: 'INACTIVO',
-        });
+      await service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false);
 
-        await service.cambiarEstado('uuid-1', 'res-1', 'ACTIVO', false);
+      expect(auditoria.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({
+          usuarioId: 'res-1',
+          accion: 'BARBERIA_SUSPENDIDA',
+          entidad: 'barberias',
+          entidadId: 'uuid-1',
+          contexto: {
+            anterior: { estado: 'ACTIVO' },
+            nuevo: { estado: 'INACTIVO' },
+          },
+        }),
+        expect.anything(),
+      );
+    });
 
-        expect(auditoria.registrarEvento).toHaveBeenCalledWith(
-          expect.objectContaining({
-            accion: 'BARBERIA_REACTIVADA',
-            contexto: {
-              anterior: { estado: 'INACTIVO' },
-              nuevo: { estado: 'ACTIVO' },
-            },
-          }),
-          expect.anything(),
-        );
+    it('reactiva: el evento es BARBERIA_REACTIVADA', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue({
+        id: 'uuid-1',
+        responsableId: 'res-1',
+        estado: 'INACTIVO',
       });
 
-      it('el evento y la escritura salen juntos, en la MISMA transacción', async () => {
-        (prisma.barberia.findUnique as any).mockResolvedValue({
-          id: 'uuid-1', responsableId: 'res-1', estado: 'ACTIVO',
-        });
+      await service.cambiarEstado('uuid-1', 'res-1', 'ACTIVO', false);
 
-        await service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false);
+      expect(auditoria.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accion: 'BARBERIA_REACTIVADA',
+          contexto: {
+            anterior: { estado: 'INACTIVO' },
+            nuevo: { estado: 'ACTIVO' },
+          },
+        }),
+        expect.anything(),
+      );
+    });
 
-        expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-        // El segundo argumento es el `tx` de la transacción: si hiciera rollback
-        // no puede quedar el evento sin el cambio ni el cambio sin el evento.
-        expect((auditoria.registrarEvento as any).mock.calls[0][1]).toBe(prisma);
+    it('el evento y la escritura salen juntos, en la MISMA transacción', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue({
+        id: 'uuid-1',
+        responsableId: 'res-1',
+        estado: 'ACTIVO',
       });
 
-      it('sin cambio no hay evento: la auditoría no registra nada que no pasó', async () => {
-        (prisma.barberia.findUnique as any).mockResolvedValue({
-          id: 'uuid-1', responsableId: 'res-1', estado: 'ACTIVO',
-        });
+      await service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false);
 
-        await service.cambiarEstado('uuid-1', 'res-1', 'ACTIVO', false);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      // El segundo argumento es el `tx` de la transacción: si hiciera rollback
+      // no puede quedar el evento sin el cambio ni el cambio sin el evento.
+      expect((auditoria.registrarEvento as any).mock.calls[0][1]).toBe(prisma);
+    });
 
-        expect(auditoria.registrarEvento).not.toHaveBeenCalled();
+    it('sin cambio no hay evento: la auditoría no registra nada que no pasó', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue({
+        id: 'uuid-1',
+        responsableId: 'res-1',
+        estado: 'ACTIVO',
       });
 
-      it('un responsable ajeno sigue recibiendo ForbiddenException', async () => {
-        (prisma.barberia.findUnique as any).mockResolvedValue({
-          id: 'uuid-1', responsableId: 'otro', estado: 'ACTIVO',
-        });
+      await service.cambiarEstado('uuid-1', 'res-1', 'ACTIVO', false);
 
-        await expect(
-          service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false),
-        ).rejects.toThrow(ForbiddenException);
-        expect(prisma.barberia.update).not.toHaveBeenCalled();
+      expect(auditoria.registrarEvento).not.toHaveBeenCalled();
+    });
+
+    it('un responsable ajeno sigue recibiendo ForbiddenException', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue({
+        id: 'uuid-1',
+        responsableId: 'otro',
+        estado: 'ACTIVO',
       });
+
+      await expect(
+        service.cambiarEstado('uuid-1', 'res-1', 'INACTIVO', false),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.barberia.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('vincularCliente (T2.2)', () => {
     it('debe vincular al cliente con estado ACTIVO y esBarberiaActiva true si es la primera', async () => {
-      const mockBarberia = { id: 'barberia-1', codigoAcceso: 'ABC12345', estado: 'ACTIVO' };
+      const mockBarberia = {
+        id: 'barberia-1',
+        codigoAcceso: 'ABC12345',
+        estado: 'ACTIVO',
+      };
       (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
       (prisma.clienteBarberia.findUnique as any).mockResolvedValue(null);
       (prisma.clienteBarberia.count as any).mockResolvedValue(0); // 0 previas
-      const mockCreated = { usuarioId: 'user-1', barberiaId: 'barberia-1', estadoVinculacion: 'ACTIVO', esBarberiaActiva: true };
+      const mockCreated = {
+        usuarioId: 'user-1',
+        barberiaId: 'barberia-1',
+        estadoVinculacion: 'ACTIVO',
+        esBarberiaActiva: true,
+      };
       (prisma.clienteBarberia.create as any).mockResolvedValue(mockCreated);
 
-      const result = await service.vincularCliente('user-1', { codigoAcceso: 'ABC12345' });
+      const result = await service.vincularCliente('user-1', {
+        codigoAcceso: 'ABC12345',
+      });
       expect(result.estadoVinculacion).toBe('ACTIVO');
       expect(result.esBarberiaActiva).toBe(true);
     });
 
     it('debe vincular al cliente con estado PENDIENTE_APROBACION si ya tiene 5 o más vinculaciones', async () => {
-      const mockBarberia = { id: 'barberia-1', codigoAcceso: 'ABC12345', estado: 'ACTIVO' };
+      const mockBarberia = {
+        id: 'barberia-1',
+        codigoAcceso: 'ABC12345',
+        estado: 'ACTIVO',
+      };
       (prisma.barberia.findUnique as any).mockResolvedValue(mockBarberia);
       (prisma.clienteBarberia.findUnique as any).mockResolvedValue(null);
       (prisma.clienteBarberia.count as any).mockResolvedValue(5); // 5 previas
-      const mockCreated = { usuarioId: 'user-1', barberiaId: 'barberia-1', estadoVinculacion: 'PENDIENTE_APROBACION', esBarberiaActiva: false };
+      const mockCreated = {
+        usuarioId: 'user-1',
+        barberiaId: 'barberia-1',
+        estadoVinculacion: 'PENDIENTE_APROBACION',
+        esBarberiaActiva: false,
+      };
       (prisma.clienteBarberia.create as any).mockResolvedValue(mockCreated);
 
-      const result = await service.vincularCliente('user-1', { codigoAcceso: 'ABC12345' });
+      const result = await service.vincularCliente('user-1', {
+        codigoAcceso: 'ABC12345',
+      });
       expect(result.estadoVinculacion).toBe('PENDIENTE_APROBACION');
       expect(result.esBarberiaActiva).toBe(false);
     });
@@ -1075,9 +1375,13 @@ describe('BarberiaService', () => {
         usuarioId: 'user-1',
         estadoVinculacion: 'PENDIENTE_APROBACION',
       });
-      (prisma.usuarioRol.findMany as any).mockResolvedValue([{ usuarioId: 'admin-global' }]);
+      (prisma.usuarioRol.findMany as any).mockResolvedValue([
+        { usuarioId: 'admin-global' },
+      ]);
 
-      const result = await service.vincularCliente('user-1', { codigoAcceso: 'ABC12345' });
+      const result = await service.vincularCliente('user-1', {
+        codigoAcceso: 'ABC12345',
+      });
 
       expect(prisma.clienteBarberia.create).not.toHaveBeenCalled();
       // E3-12/3: el conteo mira los vínculos VIVOS. La fila que vuelve sigue
@@ -1137,7 +1441,9 @@ describe('BarberiaService', () => {
         estadoVinculacion: 'ACTIVO',
       });
 
-      const result = await service.vincularCliente('user-1', { codigoAcceso: 'ABC12345' });
+      const result = await service.vincularCliente('user-1', {
+        codigoAcceso: 'ABC12345',
+      });
 
       expect(prisma.clienteBarberia.update).toHaveBeenCalledWith({
         where: { id: 'vinculo-1' },
@@ -1163,15 +1469,22 @@ describe('BarberiaService', () => {
       (prisma.clienteBarberia.findUnique as any).mockResolvedValue(null);
       // Cuatro vínculos vigentes: el quinto que hubo quedó DESVINCULADO.
       (prisma.clienteBarberia.count as any).mockResolvedValue(4);
-      (prisma.clienteBarberia.create as any).mockImplementation(async (args: any) => ({
-        id: 'vinculo-2',
-        ...args.data,
-      }));
+      (prisma.clienteBarberia.create as any).mockImplementation(
+        async (args: any) => ({
+          id: 'vinculo-2',
+          ...args.data,
+        }),
+      );
 
-      const result = await service.vincularCliente('user-1', { codigoAcceso: 'ABC12345' });
+      const result = await service.vincularCliente('user-1', {
+        codigoAcceso: 'ABC12345',
+      });
 
       expect(prisma.clienteBarberia.count).toHaveBeenCalledWith({
-        where: { usuarioId: 'user-1', estadoVinculacion: { not: 'DESVINCULADO' } },
+        where: {
+          usuarioId: 'user-1',
+          estadoVinculacion: { not: 'DESVINCULADO' },
+        },
       });
       expect(prisma.clienteBarberia.create).toHaveBeenCalledWith({
         data: {
@@ -1202,7 +1515,9 @@ describe('BarberiaService', () => {
         };
         (prisma.clienteBarberia.findUnique as any).mockResolvedValue(existente);
 
-        const result = await service.vincularCliente('user-1', { codigoAcceso: 'ABC12345' });
+        const result = await service.vincularCliente('user-1', {
+          codigoAcceso: 'ABC12345',
+        });
 
         // Idempotencia intacta: ni un UPDATE de más ni una segunda aprobación.
         expect(result).toBe(existente);
@@ -1220,12 +1535,16 @@ describe('BarberiaService', () => {
     });
 
     it('debe rechazar a un CLIENTE antes de leer nada', async () => {
-      await expect(service.findPersonal(BARBERIA_B, CLIENTE)).rejects.toThrow(ForbiddenException);
+      await expect(service.findPersonal(BARBERIA_B, CLIENTE)).rejects.toThrow(
+        ForbiddenException,
+      );
       expect(prisma.usuarioRol.findMany).not.toHaveBeenCalled();
     });
 
     it('debe rechazar a un ADMIN de otra barbería antes de leer nada', async () => {
-      await expect(service.findPersonal(BARBERIA_B, ADMIN_A)).rejects.toThrow(ForbiddenException);
+      await expect(service.findPersonal(BARBERIA_B, ADMIN_A)).rejects.toThrow(
+        ForbiddenException,
+      );
       expect(prisma.usuarioRol.findMany).not.toHaveBeenCalled();
     });
 
@@ -1250,7 +1569,9 @@ describe('BarberiaService', () => {
     });
 
     it('debe dejar pasar al ADMINISTRADOR global (regla global) con correo y teléfono', async () => {
-      (prisma.usuarioRol.findMany as any).mockResolvedValue([filaRol('admin-1', 'ADMIN_BARBERIA')]);
+      (prisma.usuarioRol.findMany as any).mockResolvedValue([
+        filaRol('admin-1', 'ADMIN_BARBERIA'),
+      ]);
 
       const result = await service.findPersonal(BARBERIA_B, ADMINISTRADOR);
 
@@ -1284,15 +1605,21 @@ describe('BarberiaService', () => {
     });
 
     it('debe rechazar a un BARBERO de otra barbería antes de leer nada', async () => {
-      (prisma.usuarioRol.findMany as any).mockResolvedValue([filaRol('barbero-1', 'BARBERO')]);
+      (prisma.usuarioRol.findMany as any).mockResolvedValue([
+        filaRol('barbero-1', 'BARBERO'),
+      ]);
 
-      await expect(service.findPersonal(BARBERIA_B, BARBERO_A)).rejects.toThrow(ForbiddenException);
+      await expect(service.findPersonal(BARBERIA_B, BARBERO_A)).rejects.toThrow(
+        ForbiddenException,
+      );
 
       expect(prisma.usuarioRol.findMany).not.toHaveBeenCalled();
     });
 
     it('E1-04: un ADMIN_BARBERIA con barberiaId nulo ya no es comodín', async () => {
-      (prisma.usuarioRol.findMany as any).mockResolvedValue([filaRol('admin-1', 'ADMIN_BARBERIA')]);
+      (prisma.usuarioRol.findMany as any).mockResolvedValue([
+        filaRol('admin-1', 'ADMIN_BARBERIA'),
+      ]);
 
       await expect(
         service.findPersonal(BARBERIA_B, ADMIN_BARBERIA_SIN_BARBERIA),
@@ -1304,29 +1631,58 @@ describe('BarberiaService', () => {
 
   describe('seleccionarBarberiaActiva (T2.3)', () => {
     it('debe desactivar las demás barberías y activar la seleccionada', async () => {
-      const mockVinculacion = { usuarioId: 'user-1', barberiaId: 'barberia-1', estadoVinculacion: 'ACTIVO', esBarberiaActiva: false };
-      (prisma.clienteBarberia.findUnique as any).mockResolvedValue(mockVinculacion);
-      (prisma.clienteBarberia.updateMany as any).mockResolvedValue({ count: 1 });
-      (prisma.clienteBarberia.update as any).mockResolvedValue({ ...mockVinculacion, esBarberiaActiva: true });
+      const mockVinculacion = {
+        usuarioId: 'user-1',
+        barberiaId: 'barberia-1',
+        estadoVinculacion: 'ACTIVO',
+        esBarberiaActiva: false,
+      };
+      (prisma.clienteBarberia.findUnique as any).mockResolvedValue(
+        mockVinculacion,
+      );
+      (prisma.clienteBarberia.updateMany as any).mockResolvedValue({
+        count: 1,
+      });
+      (prisma.clienteBarberia.update as any).mockResolvedValue({
+        ...mockVinculacion,
+        esBarberiaActiva: true,
+      });
 
-      const result = await service.seleccionarBarberiaActiva('user-1', 'barberia-1');
+      const result = await service.seleccionarBarberiaActiva(
+        'user-1',
+        'barberia-1',
+      );
 
       expect(prisma.clienteBarberia.updateMany).toHaveBeenCalledWith({
         where: { usuarioId: 'user-1' },
         data: { esBarberiaActiva: false },
       });
       expect(prisma.clienteBarberia.update).toHaveBeenCalledWith({
-        where: { uk_cliente_barberia: { usuarioId: 'user-1', barberiaId: 'barberia-1' } },
+        where: {
+          uk_cliente_barberia: {
+            usuarioId: 'user-1',
+            barberiaId: 'barberia-1',
+          },
+        },
         data: { esBarberiaActiva: true },
       });
       expect(result.esBarberiaActiva).toBe(true);
     });
 
     it('debe arrojar ForbiddenException si la vinculación está en PENDIENTE_APROBACION', async () => {
-      const mockVinculacion = { usuarioId: 'user-1', barberiaId: 'barberia-1', estadoVinculacion: 'PENDIENTE_APROBACION', esBarberiaActiva: false };
-      (prisma.clienteBarberia.findUnique as any).mockResolvedValue(mockVinculacion);
+      const mockVinculacion = {
+        usuarioId: 'user-1',
+        barberiaId: 'barberia-1',
+        estadoVinculacion: 'PENDIENTE_APROBACION',
+        esBarberiaActiva: false,
+      };
+      (prisma.clienteBarberia.findUnique as any).mockResolvedValue(
+        mockVinculacion,
+      );
 
-      await expect(service.seleccionarBarberiaActiva('user-1', 'barberia-1')).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.seleccionarBarberiaActiva('user-1', 'barberia-1'),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     /**
@@ -1345,7 +1701,10 @@ describe('BarberiaService', () => {
       });
 
       it('un BARBERO con rol en la sede la puede seleccionar (antes: 404)', async () => {
-        const result = await service.seleccionarBarberiaActiva('barbero-1', 'barberia-1');
+        const result = await service.seleccionarBarberiaActiva(
+          'barbero-1',
+          'barberia-1',
+        );
 
         expect(result).toEqual({
           usuarioId: 'barbero-1',
@@ -1369,7 +1728,10 @@ describe('BarberiaService', () => {
           responsableId: 'dueno-1',
         });
 
-        const result = await service.seleccionarBarberiaActiva('dueno-1', 'barberia-1');
+        const result = await service.seleccionarBarberiaActiva(
+          'dueno-1',
+          'barberia-1',
+        );
 
         expect(result.vinculo).toBe('ROL');
       });
@@ -1410,10 +1772,18 @@ describe('BarberiaService', () => {
         // Con la sesión no se consulta `usuario_roles` por ADMINISTRADOR.
         (prisma.usuarioRol.findFirst as any).mockResolvedValue(null);
 
-        await service.seleccionarBarberiaActiva('global-1', 'barberia-1', ADMINISTRADOR);
+        await service.seleccionarBarberiaActiva(
+          'global-1',
+          'barberia-1',
+          ADMINISTRADOR,
+        );
 
         expect(prisma.usuarioRol.findFirst).toHaveBeenCalledWith({
-          where: { usuarioId: 'global-1', barberiaId: 'barberia-1' },
+          where: {
+            usuarioId: 'global-1',
+            barberiaId: 'barberia-1',
+            estado: 'ACTIVO',
+          },
           select: { id: true },
         });
       });
@@ -1425,14 +1795,21 @@ describe('BarberiaService', () => {
           estadoVinculacion: 'ACTIVO',
           esBarberiaActiva: false,
         };
-        (prisma.clienteBarberia.findUnique as any).mockResolvedValue(mockVinculacion);
-        (prisma.clienteBarberia.updateMany as any).mockResolvedValue({ count: 1 });
+        (prisma.clienteBarberia.findUnique as any).mockResolvedValue(
+          mockVinculacion,
+        );
+        (prisma.clienteBarberia.updateMany as any).mockResolvedValue({
+          count: 1,
+        });
         (prisma.clienteBarberia.update as any).mockResolvedValue({
           ...mockVinculacion,
           esBarberiaActiva: true,
         });
 
-        const result = await service.seleccionarBarberiaActiva('cliente-1', 'barberia-1');
+        const result = await service.seleccionarBarberiaActiva(
+          'cliente-1',
+          'barberia-1',
+        );
 
         expect(result.esBarberiaActiva).toBe(true);
         expect(prisma.clienteBarberia.updateMany).toHaveBeenCalled();
@@ -1477,28 +1854,30 @@ describe('BarberiaService', () => {
      * tiene que recibir 403, no un 200 con los datos abiertos de la sede ajena.
      */
     it('el ADMIN_BARBERIA de OTRA sede recibe 403 y no ve ningún dato de la sede ajena', async () => {
-      await expect(service.obtenerInvitacion(SEDE, ADMIN_B).then(() => 'sin error')).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        service.obtenerInvitacion(SEDE, ADMIN_B).then(() => 'sin error'),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('un BARBERO de esa misma sede recibe 403: no es quien comparte la entrada', async () => {
-      await expect(service.obtenerInvitacion(SEDE, BARBERO_A).then(() => 'sin error')).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        service.obtenerInvitacion(SEDE, BARBERO_A).then(() => 'sin error'),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('un CLIENTE recibe 403 aunque esté vinculado a esa sede', async () => {
-      await expect(service.obtenerInvitacion(SEDE, CLIENTE).then(() => 'sin error')).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        service.obtenerInvitacion(SEDE, CLIENTE).then(() => 'sin error'),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('una sede inexistente responde 404', async () => {
       (prisma.barberia.findUnique as any).mockResolvedValue(null);
 
       await expect(
-        service.obtenerInvitacion('barberia-fantasma', ADMIN_A).then(() => 'sin error'),
+        service
+          .obtenerInvitacion('barberia-fantasma', ADMIN_A)
+          .then(() => 'sin error'),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -1519,7 +1898,9 @@ describe('BarberiaService', () => {
     });
 
     it('resuelve la sede por `enlaceUnico` y aplica el MISMO camino de D10', async () => {
-      const result = await service.vincularCliente('user-1', { enlaceUnico: 'ENLACE-UNO' });
+      const result = await service.vincularCliente('user-1', {
+        enlaceUnico: 'ENLACE-UNO',
+      });
 
       // El enlace viaja impreso: se recorta y se baja a minúsculas antes de
       // buscar, que es como lo guarda `create`.
@@ -1538,7 +1919,9 @@ describe('BarberiaService', () => {
         esBarberiaActiva: false,
       });
 
-      const result = await service.vincularCliente('user-1', { enlaceUnico: ' enlace-uno ' });
+      const result = await service.vincularCliente('user-1', {
+        enlaceUnico: ' enlace-uno ',
+      });
 
       expect(result.estadoVinculacion).toBe('PENDIENTE_APROBACION');
     });
@@ -1552,12 +1935,18 @@ describe('BarberiaService', () => {
     });
 
     it('sin código y sin enlace responden 422 INVITACION_REQUERIDA (contrato D40)', async () => {
-      expect(await capturarError(service.vincularCliente('user-1', {}))).toEqual({
+      expect(
+        await capturarError(service.vincularCliente('user-1', {})),
+      ).toEqual({
         status: 422,
         codigo: 'INVITACION_REQUERIDA',
       });
       // Un campo en blanco no es una puerta: es una falta de puerta.
-      expect(await capturarError(service.vincularCliente('user-1', { codigoAcceso: '   ' }))).toEqual({
+      expect(
+        await capturarError(
+          service.vincularCliente('user-1', { codigoAcceso: '   ' }),
+        ),
+      ).toEqual({
         status: 422,
         codigo: 'INVITACION_REQUERIDA',
       });
@@ -1568,7 +1957,10 @@ describe('BarberiaService', () => {
     it('con las dos puertas a la vez responden 422 INVITACION_AMBIGUA', async () => {
       expect(
         await capturarError(
-          service.vincularCliente('user-1', { codigoAcceso: 'ABC12345', enlaceUnico: 'enlace-uno' }),
+          service.vincularCliente('user-1', {
+            codigoAcceso: 'ABC12345',
+            enlaceUnico: 'enlace-uno',
+          }),
         ),
       ).toEqual({ status: 422, codigo: 'INVITACION_AMBIGUA' });
       expect(prisma.barberia.findUnique).not.toHaveBeenCalled();
@@ -1578,7 +1970,9 @@ describe('BarberiaService', () => {
       (prisma.barberia.findUnique as any).mockResolvedValue(null);
 
       await expect(
-        service.vincularCliente('user-1', { enlaceUnico: 'enlace-fantasma' }).then(() => 'sin error'),
+        service
+          .vincularCliente('user-1', { enlaceUnico: 'enlace-fantasma' })
+          .then(() => 'sin error'),
       ).rejects.toThrow(NotFoundException);
       expect(prisma.clienteBarberia.create).not.toHaveBeenCalled();
     });
