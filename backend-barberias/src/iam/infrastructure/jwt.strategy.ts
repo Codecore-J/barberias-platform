@@ -36,6 +36,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         telefonoVerificado: true,
         correoVerificado: true,
         usuarioRoles: {
+          where: { estado: 'ACTIVO' },
           select: {
             barberiaId: true,
             rol: {
@@ -50,7 +51,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
 
     if (!usuario || usuario.estadoCuenta !== 'ACTIVO') {
-      throw new UnauthorizedException('La sesión no es válida o la cuenta está inactiva.');
+      throw new UnauthorizedException(
+        'La sesión no es válida o la cuenta está inactiva.',
+      );
     }
 
     // D24 (E4-03/5): un token firmado con una versión anterior a la vigente ya no
@@ -58,7 +61,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // rechazo por `estadoCuenta` desaparecería al reactivarla, este no. Un token
     // sin `tv` es de antes de la migración y se lee como versión 0.
     if ((payload.tv ?? 0) !== usuario.tokenVersion) {
-      throw new UnauthorizedException('La sesión no es válida o la cuenta está inactiva.');
+      throw new UnauthorizedException(
+        'La sesión no es válida o la cuenta está inactiva.',
+      );
     }
 
     const rolesDetallados = usuario.usuarioRoles.map((ur) => ({
@@ -67,7 +72,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ambito: ur.rol.ambito,
     }));
 
-    const rolesUnicos = Array.from(new Set(usuario.usuarioRoles.map((ur) => ur.rol.nombre)));
+    const rolesUnicos = Array.from(
+      new Set(usuario.usuarioRoles.map((ur) => ur.rol.nombre)),
+    );
 
     return {
       id: usuario.id,

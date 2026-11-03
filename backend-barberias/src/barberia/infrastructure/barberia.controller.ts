@@ -17,6 +17,10 @@ import { SolicitudCambioService } from '../application/solicitud-cambio.service.
 import { CreateBarberiaDto } from '../application/dto/create-barberia.dto.js';
 import { CreateSolicitudCambioDto } from '../application/dto/create-solicitud-cambio.dto.js';
 import { UpdateBarberiaDto } from '../application/dto/update-barberia.dto.js';
+import {
+  ActualizarPersonalDto,
+  InvitarPersonalDto,
+} from '../application/dto/gestionar-personal.dto.js';
 import { CambiarEstadoBarberiaDto } from '../application/dto/cambiar-estado-barberia.dto.js';
 import { VincularBarberiaDto } from '../application/dto/vincular-barberia.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
@@ -138,6 +142,29 @@ export class BarberiaController {
     return this.barberiaService.findPersonal(id, user);
   }
 
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Post(':shopId/staff')
+  @HttpCode(HttpStatus.CREATED)
+  invitarPersonal(
+    @Param('shopId', ParseUUIDPipe) id: string,
+    @Body() dto: InvitarPersonalDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.barberiaService.invitarPersonal(id, dto, user);
+  }
+
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Patch(':shopId/staff/:userId')
+  @HttpCode(HttpStatus.OK)
+  actualizarPersonal(
+    @Param('shopId', ParseUUIDPipe) shopId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: ActualizarPersonalDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.barberiaService.actualizarPersonal(shopId, userId, dto, user);
+  }
+
   /**
    * GET /shops/:shopId
    * Cualquier usuario autenticado puede consultar una barbería por ID
@@ -238,7 +265,12 @@ export class BarberiaController {
     @Body() dto: UpdateBarberiaDto,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.barberiaService.update(id, user.id, dto, esAdministradorGlobal(user));
+    return this.barberiaService.update(
+      id,
+      user.id,
+      dto,
+      esAdministradorGlobal(user),
+    );
   }
 
   /**
@@ -260,6 +292,11 @@ export class BarberiaController {
     @Body() dto: CambiarEstadoBarberiaDto,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.barberiaService.cambiarEstado(id, user.id, dto.estado, esAdministradorGlobal(user));
+    return this.barberiaService.cambiarEstado(
+      id,
+      user.id,
+      dto.estado,
+      esAdministradorGlobal(user),
+    );
   }
 }
