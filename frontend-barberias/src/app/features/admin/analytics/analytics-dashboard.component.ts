@@ -2,6 +2,7 @@ import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { mensajeDeError } from '../../../core/utils/error-message';
 import { finalize } from 'rxjs/operators';
 import { AnalyticsService, ShopAnalyticsResponse, ShopsOverviewResponse } from '../../../core/services/analytics.service';
 import { TenantService } from '../../../core/services/tenant.service';
@@ -108,8 +109,7 @@ export class AnalyticsDashboardComponent implements OnInit {
         },
         error: (err) => {
           this.data = null;
-          this.error =
-            err?.error?.mensaje || err?.error?.message || 'No se pudieron cargar las analíticas de la sede.';
+          this.error = mensajeDeError(err, 'No se pudieron cargar las analíticas de la sede.');
           this.cdr.markForCheck();
         },
       });
@@ -134,8 +134,7 @@ export class AnalyticsDashboardComponent implements OnInit {
         },
         error: (err) => {
           this.overview = null;
-          this.errorOverview =
-            err?.error?.mensaje || err?.error?.message || 'No se pudo cargar el resumen multisede.';
+          this.errorOverview = mensajeDeError(err, 'No se pudo cargar el resumen multisede.');
           this.cdr.markForCheck();
         },
       });

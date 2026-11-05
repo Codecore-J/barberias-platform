@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
+import { mensajeDeError } from '../../../core/utils/error-message';
 import { FormsModule } from '@angular/forms';
 import {
   BarberiaOpcion,
@@ -868,11 +869,7 @@ export class AdminUsuariosComponent implements OnInit {
       },
       error: (err) => {
         this.procesando.set(false);
-        this.errorModal.set(
-          err.error?.mensaje ||
-            err.error?.message ||
-            'No se pudo cambiar el estado de la cuenta',
-        );
+        this.errorModal.set(mensajeDeError(err, 'No se pudo cambiar el estado de la cuenta'));
       },
     });
   }
@@ -939,9 +936,7 @@ export class AdminUsuariosComponent implements OnInit {
       error: (err) => {
         this.creando.set(false);
         // 409 de duplicado y 422 de ámbito llegan con el `mensaje` de D40.
-        this.errorCreacion.set(
-          err.error?.mensaje || err.error?.message || 'No se pudo crear la cuenta',
-        );
+        this.errorCreacion.set(mensajeDeError(err, 'No se pudo crear la cuenta'));
       },
     });
   }
@@ -958,9 +953,7 @@ export class AdminUsuariosComponent implements OnInit {
       error: (err) => {
         this.cargandoBarberias.set(false);
         this.errorBarberias.set(
-          err.error?.mensaje ||
-            err.error?.message ||
-            'No se pudieron cargar las sedes: no se puede asignar un rol de sede.',
+          mensajeDeError(err, 'No se pudieron cargar las sedes: no se puede asignar un rol de sede.'),
         );
       },
     });
@@ -982,9 +975,7 @@ export class AdminUsuariosComponent implements OnInit {
       },
       error: (err) => {
         this.cargandoHistorial.set(false);
-        this.errorHistorial.set(
-          err.error?.mensaje || err.error?.message || 'No se pudo cargar el historial de la cuenta',
-        );
+        this.errorHistorial.set(mensajeDeError(err, 'No se pudo cargar el historial de la cuenta'));
       },
     });
   }

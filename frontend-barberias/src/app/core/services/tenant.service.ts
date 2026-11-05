@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, of, map, switchMap, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 import type { PuertaDeEntrada } from '../utils/invitacion.util.js';
+import { mensajeDeError } from '../utils/error-message.js';
 
 /**
  * E3-12/2 · la invitación de una sede (regla 1.10): lo que el staff comparte.
@@ -134,7 +135,7 @@ export class TenantService {
       }),
       catchError((err) => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al cargar barberías');
+        this.error.set(mensajeDeError(err, 'Error al cargar barberías'));
         return of([]);
       }),
     );
@@ -210,7 +211,7 @@ export class TenantService {
       tap(() => this.isLoading.set(false)),
       catchError((err) => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || err.message || 'No se pudo seleccionar la sede');
+        this.error.set(mensajeDeError(err, 'No se pudo seleccionar la sede'));
         throw err;
       }),
     );
@@ -249,7 +250,7 @@ export class TenantService {
     return this.http.get<InvitacionSede>(`${this.apiUrl}/${barberiaId}/invitation`).pipe(
       catchError((err) => {
         this.error.set(
-          err.error?.mensaje || err.error?.message || 'No se pudo obtener la invitación de la sede',
+          mensajeDeError(err, 'No se pudo obtener la invitación de la sede'),
         );
         throw err;
       }),
@@ -276,7 +277,7 @@ export class TenantService {
       }),
       catchError((err) => {
         this.isLoading.set(false);
-        this.error.set(err.error?.mensaje || err.error?.message || 'No se pudo completar la unión');
+        this.error.set(mensajeDeError(err, 'No se pudo completar la unión'));
         throw err;
       }),
     );
@@ -300,7 +301,7 @@ export class TenantService {
       }),
       catchError((err) => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al crear la barbería');
+        this.error.set(mensajeDeError(err, 'Error al crear la barbería'));
         throw err;
       }),
     );
@@ -376,7 +377,7 @@ export class TenantService {
       .pipe(
         tap(() => this.setBarberiaActiva(candidata)),
         catchError((err) => {
-          this.error.set(err.error?.message || 'No se pudo seleccionar la sede activa');
+          this.error.set(mensajeDeError(err, 'No se pudo seleccionar la sede activa'));
           return of(null);
         }),
       )

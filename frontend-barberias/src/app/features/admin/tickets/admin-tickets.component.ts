@@ -1,6 +1,7 @@
 import { Component, DestroyRef, inject, signal, computed, resource } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
+import { mensajeDeError } from '../../../core/utils/error-message';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { PagosService, PagoHistorial } from '../../../core/services/pagos.service';
@@ -734,10 +735,12 @@ export class AdminTicketsComponent {
       error: (err) => {
         this.anulando.set(false);
         this.errorAnulacion.set(
-          err.error?.mensaje ||
-            (err.status === 409
+          mensajeDeError(
+            err,
+            err?.status === 409
               ? 'Este cobro ya fue anulado o no está registrado como pago.'
-              : 'No se pudo anular el cobro.'),
+              : 'No se pudo anular el cobro.',
+          ),
         );
       },
     });

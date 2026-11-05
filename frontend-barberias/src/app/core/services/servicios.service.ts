@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { mensajeDeError } from '../utils/error-message.js';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, of, map, forkJoin } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
@@ -153,7 +154,7 @@ export class ServiciosService {
       }),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.mensaje || err.error?.message || 'Error al crear servicio');
+        this.error.set(mensajeDeError(err, 'Error al crear servicio'));
         throw err;
       })
     );
@@ -171,7 +172,7 @@ export class ServiciosService {
       }),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.mensaje || err.error?.message || 'Error al actualizar servicio');
+        this.error.set(mensajeDeError(err, 'Error al actualizar servicio'));
         throw err;
       })
     );
@@ -191,7 +192,7 @@ export class ServiciosService {
       }),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.mensaje || err.error?.message || 'Error al desactivar servicio');
+        this.error.set(mensajeDeError(err, 'Error al desactivar servicio'));
         throw err;
       })
     );
@@ -211,7 +212,7 @@ export class ServiciosService {
       }),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.mensaje || err.error?.message || 'Error al reactivar servicio');
+        this.error.set(mensajeDeError(err, 'Error al reactivar servicio'));
         throw err;
       })
     );
@@ -226,7 +227,7 @@ export class ServiciosService {
       }),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.mensaje || err.error?.message || 'Error al desactivar combo');
+        this.error.set(mensajeDeError(err, 'Error al desactivar combo'));
         throw err;
       })
     );
@@ -240,7 +241,7 @@ export class ServiciosService {
       }),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.mensaje || err.error?.message || 'Error al reactivar combo');
+        this.error.set(mensajeDeError(err, 'Error al reactivar combo'));
         throw err;
       })
     );

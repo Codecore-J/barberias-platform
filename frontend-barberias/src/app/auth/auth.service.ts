@@ -2,6 +2,7 @@ import { Injectable, signal, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, of, shareReplay } from 'rxjs';
 import { Router } from '@angular/router';
+import { mensajeDeError } from '../core/utils/error-message.js';
 import {
   AuthResponseDto,
   LoginDto,
@@ -105,7 +106,7 @@ export class AuthService {
         });
       }),
       catchError(error => {
-        const errorMsg = error.error?.message || 'Error en el registro';
+        const errorMsg = mensajeDeError(error, 'Error en el registro');
         this.updateState({ isLoading: false, error: errorMsg });
         throw error;
       })
@@ -185,7 +186,7 @@ export class AuthService {
         }
       }),
       catchError(error => {
-        const errorMsg = error.error?.message || 'Credenciales inválidas';
+        const errorMsg = mensajeDeError(error, 'Credenciales inválidas');
         this.updateState({ isLoading: false, error: errorMsg });
         throw error;
       })

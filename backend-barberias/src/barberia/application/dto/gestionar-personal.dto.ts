@@ -21,8 +21,19 @@ export class InvitarPersonalDto {
   @MaxLength(150)
   correo!: string;
 
-  @IsString()
-  @Matches(/^\d{10}$/)
+  /**
+   * Teléfono local: exactamente 10 dígitos, sin separadores.
+   *
+   * Se valida como texto (`@IsString`) y no como número a propósito: convertir
+   * a `number` es lo que produjo los valores `600NaN2222` que había que limpiar
+   * en la base. El mensaje es explícito porque el genérico de `@Matches` no dice
+   * al usuario qué formato se espera.
+   */
+  @IsString({ message: 'El teléfono debe enviarse como texto.' })
+  @IsNotEmpty({ message: 'El teléfono es obligatorio.' })
+  @Matches(/^\d{10}$/, {
+    message: 'El teléfono debe tener exactamente 10 dígitos numéricos, sin separadores.',
+  })
   telefono!: string;
 
   @IsString()

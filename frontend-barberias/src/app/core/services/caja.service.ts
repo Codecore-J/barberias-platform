@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { mensajeDeError as mensajeDelBackend } from '../utils/error-message.js';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, firstValueFrom, of, tap } from 'rxjs';
 import { API_URL } from '../constants/api.constants';
@@ -124,8 +125,10 @@ export class CajaService {
   }
 
   private mensajeDeError(err: any, porDefecto: string): string {
-    const backend = err?.error?.mensaje || err?.error?.message;
-    if (typeof backend === 'string' && backend.trim()) return backend;
+    // La extracción vive en un solo sitio; aquí solo se añade el texto propio
+    // del 403 que este módulo necesita.
+    const backend = mensajeDelBackend(err, '');
+    if (backend) return backend;
     if (err?.status === 403) return 'Solo el administrador de la sede puede gestionar su caja.';
     return porDefecto;
   }

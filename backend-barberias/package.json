@@ -29,6 +29,10 @@
     "admin:create": "tsx src/cli/create-admin.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
+    "purga:dry": "tsx prisma/purge-test-relics.ts",
+    "purga:aplicar": "tsx prisma/purge-test-relics.ts --aplicar",
+    "db:status": "prisma migrate status",
+    "db:validate": "prisma validate",
     "postinstall": "prisma skills sync || exit 0"
   },
   "prisma": {

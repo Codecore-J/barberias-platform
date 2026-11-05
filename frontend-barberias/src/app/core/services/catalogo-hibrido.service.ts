@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { mensajeDeError as mensajeDelBackend } from '../utils/error-message.js';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, of, tap, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
@@ -140,7 +141,7 @@ export class CatalogoHibridoService {
 
   /** Texto mostrable de un error HTTP, con el mensaje D40 del backend si lo hay. */
   static mensajeDeError(error: any, porDefecto: string): string {
-    const mensaje: string | undefined = error?.error?.mensaje || error?.error?.message;
+    const mensaje: string | undefined = mensajeDelBackend(error, '') || undefined;
 
     switch (error?.status) {
       case 403:

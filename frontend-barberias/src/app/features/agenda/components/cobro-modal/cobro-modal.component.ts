@@ -1,6 +1,7 @@
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { ReservasService } from '../../../../core/services/reservas.service.js';
+import { mensajeDeError as mensajeDelBackend } from '../../../../core/utils/error-message.js';
 import { ModalShellComponent } from '../../../../shared/ui/modal-shell/modal-shell.component.js';
 
 type MetodoCobro = 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA';
@@ -191,8 +192,10 @@ export class CobroModalComponent {
   }
 
   private mensajeDeError(err: any): string {
-    const backend = err?.error?.mensaje || err?.error?.message;
-    if (typeof backend === 'string' && backend.trim()) return backend;
+    // La extracción vive en un solo sitio; aquí solo quedan los textos propios
+    // de cada código de estado de este modal.
+    const backend = mensajeDelBackend(err, '');
+    if (backend) return backend;
 
     switch (err?.status) {
       case 409:

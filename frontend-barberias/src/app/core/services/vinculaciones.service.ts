@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { mensajeDeError } from '../utils/error-message.js';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, tap, map, catchError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
@@ -81,9 +82,7 @@ export class VinculacionesService {
           this.pendientes.set([]);
           this.total.set(0);
           this.error.set(
-            err.error?.mensaje ||
-              err.error?.message ||
-              'No se pudieron cargar las vinculaciones pendientes',
+            mensajeDeError(err, 'No se pudieron cargar las vinculaciones pendientes'),
           );
           throw err;
         }),
@@ -105,7 +104,7 @@ export class VinculacionesService {
         tap(() => this.recargarBandeja()),
         catchError((err) => {
           this.error.set(
-            err.error?.mensaje || err.error?.message || 'No se pudo aprobar la vinculación',
+            mensajeDeError(err, 'No se pudo aprobar la vinculación'),
           );
           throw err;
         }),
@@ -126,7 +125,7 @@ export class VinculacionesService {
         tap(() => this.recargarBandeja()),
         catchError((err) => {
           this.error.set(
-            err.error?.mensaje || err.error?.message || 'No se pudo rechazar la vinculación',
+            mensajeDeError(err, 'No se pudo rechazar la vinculación'),
           );
           throw err;
         }),

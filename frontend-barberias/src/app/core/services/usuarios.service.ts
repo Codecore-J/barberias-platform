@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { mensajeDeError } from '../utils/error-message.js';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, map, catchError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
@@ -127,7 +128,7 @@ export class UsuariosService {
         this.isLoading.set(false);
         this.usuarios.set([]);
         this.error.set(
-          err.error?.mensaje || err.error?.message || 'No se pudieron cargar los usuarios',
+          mensajeDeError(err, 'No se pudieron cargar los usuarios'),
         );
         throw err;
       }),

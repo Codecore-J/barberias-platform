@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { mensajeDeError } from '../utils/error-message.js';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, of, tap, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
@@ -107,9 +108,7 @@ export class MiEstadoService {
       catchError((err) => {
         this.isLoading.set(false);
         this.error.set(
-          err.error?.mensaje ||
-            err.error?.message ||
-            'No se pudo cerrar tu vinculación con esta barbería',
+          mensajeDeError(err, 'No se pudo cerrar tu vinculación con esta barbería'),
         );
         return throwError(() => err);
       }),
