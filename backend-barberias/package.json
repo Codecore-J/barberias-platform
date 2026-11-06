@@ -26,6 +26,7 @@
     "test:smoke": "npx tsx test/manual/smoke-test-live.ts",
     "seed": "npx tsx prisma/seed.ts",
     "seed:bandejas": "npx tsx prisma/seed-bandejas.ts",
+    "seed:demo": "npx tsx prisma/seed-demo-users.ts",
     "admin:create": "tsx src/cli/create-admin.ts",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",

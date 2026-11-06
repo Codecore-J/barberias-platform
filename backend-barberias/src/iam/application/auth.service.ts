@@ -135,11 +135,19 @@ export class AuthService {
    * - El JWT incluye: sub (UUID), correo, roles del usuario.
    */
   async login(dto: LoginDto): Promise<{ accessToken: string; usuario: UsuarioResponseDto }> {
-    // Buscar usuario por correo incluyendo sus roles
+    // Buscar usuario por correo incluyendo sus roles ACTIVOS.
+    //
+    // I-01: el filtro `estado: 'ACTIVO'` no es cosmético. `JwtStrategy` ya lo
+    // aplica al leer el usuario en cada petición, pero los roles del TOKEN los
+    // decide esta consulta: sin el filtro, desactivar a un miembro en una sede
+    // (`usuario_roles.estado = 'INACTIVO'`) no revocaba nada, porque el login
+    // volvía a firmar el rol y `RolesGuard` lee el claim, no la fila. El
+    // resultado era un «Cambiar Estado» decorativo en Mi Personal.
     const usuario = await this.prisma.usuario.findUnique({
       where: { correo: dto.correo },
       include: {
         usuarioRoles: {
+          where: { estado: 'ACTIVO' },
           include: { rol: true },
         },
       },
@@ -204,10 +212,14 @@ export class AuthService {
    * Incluye sus roles actuales y omite de forma defensiva el passwordHash.
    */
   async getProfile(userId: string): Promise<UsuarioResponseDto> {
+    // I-01: mismo filtro que `login` y que `JwtStrategy`. Si el perfil listara
+    // vínculos INACTIVO, la interfaz ofrecería menús para permisos que el token
+    // ya no concede.
     const usuario = await this.prisma.usuario.findUnique({
       where: { id: userId },
       include: {
         usuarioRoles: {
+          where: { estado: 'ACTIVO' },
           include: { rol: true },
         },
       },

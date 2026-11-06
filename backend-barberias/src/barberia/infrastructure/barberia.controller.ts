@@ -178,6 +178,8 @@ export class BarberiaController {
     return this.barberiaService.actualizarPersonal(shopId, userId, dto, user);
   }
 
+
+
   /**
    * GET /shops/:shopId
    * Cualquier usuario autenticado puede consultar una barbería por ID

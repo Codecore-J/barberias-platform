@@ -68,9 +68,9 @@ describe('SolicitudCambioService (E3-13)', () => {
     prisma = {
       $transaction: vi.fn().mockImplementation(async (cb: any) => cb(prisma)),
       barberia: { findUnique: vi.fn(), update: vi.fn() },
-      usuario: { findUnique: vi.fn() },
+      usuario: { findUnique: vi.fn(), updateMany: vi.fn() },
       rol: { findUnique: vi.fn() },
-      usuarioRol: { deleteMany: vi.fn(), createMany: vi.fn() },
+      usuarioRol: { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() },
       solicitudCambioBarberia: {
         findUnique: vi.fn(),
         findFirst: vi.fn(),
@@ -195,6 +195,9 @@ describe('SolicitudCambioService (E3-13)', () => {
         nombre: 'ADMIN_BARBERIA',
         ambito: 'BARBERIA',
       });
+      // I-01: el rol lo tenía el responsable saliente, así que hay que invalidar
+      // sus tokens al mover el rol.
+      prisma.usuarioRol.findMany.mockResolvedValue([{ usuarioId: ADMIN_A.id }]);
       prisma.barberia.update.mockResolvedValue({
         id: BARBERIA_A,
         nombre: 'Barbería Original',
@@ -235,7 +238,13 @@ describe('SolicitudCambioService (E3-13)', () => {
         ],
         skipDuplicates: true,
       });
-      // 3. la solicitud queda resuelta
+      // 3. I-01: al responsable saliente se le sube `tokenVersion`, así que sus
+      //    tokens vigentes mueren en la petición siguiente (401 en JwtStrategy).
+      expect(prisma.usuario.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: [ADMIN_A.id] } },
+        data: { tokenVersion: { increment: 1 } },
+      });
+      // 4. la solicitud queda resuelta
       expect(prisma.solicitudCambioBarberia.update).toHaveBeenCalledWith({
         where: { id: SOLICITUD_ID },
         data: expect.objectContaining({
@@ -254,6 +263,40 @@ describe('SolicitudCambioService (E3-13)', () => {
         expect.anything(),
       );
       expect(result.estado).toBe('APROBADA');
+    });
+
+    it('no sube tokenVersion si nadie más tenía el rol ADMIN_BARBERIA en la sede', async () => {
+      prisma.solicitudCambioBarberia.findUnique.mockResolvedValue(
+        filaSolicitud({ tipo: 'RESPONSABLE', valorNuevo: NUEVO_RESPONSABLE }),
+      );
+      prisma.barberia.findUnique.mockResolvedValue({
+        id: BARBERIA_A,
+        nombre: 'Barbería Original',
+        responsableId: ADMIN_A.id,
+      });
+      prisma.usuario.findUnique.mockResolvedValue({ id: NUEVO_RESPONSABLE });
+      prisma.rol.findUnique.mockResolvedValue({
+        id: ROL_ADMIN_BARBERIA_ID,
+        nombre: 'ADMIN_BARBERIA',
+        ambito: 'BARBERIA',
+      });
+      prisma.usuarioRol.findMany.mockResolvedValue([]);
+      prisma.barberia.update.mockResolvedValue({
+        id: BARBERIA_A,
+        nombre: 'Barbería Original',
+        responsableId: NUEVO_RESPONSABLE,
+      });
+      prisma.solicitudCambioBarberia.update.mockResolvedValue(
+        filaSolicitud({
+          tipo: 'RESPONSABLE',
+          valorNuevo: NUEVO_RESPONSABLE,
+          estado: 'APROBADA',
+        }),
+      );
+
+      await service.resolver(SOLICITUD_ID, ADMINISTRADOR, { aprobar: true } as any);
+
+      expect(prisma.usuario.updateMany).not.toHaveBeenCalled();
     });
 
     it('al aprobar un NOMBRE actualiza la sede sin tocar roles', async () => {

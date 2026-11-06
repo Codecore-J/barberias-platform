@@ -6,11 +6,13 @@ import {
   BarberiaOpcion,
   CrearUsuarioRequest,
   ROLES_PLATAFORMA,
+  RolDeUsuario,
   RolPlataforma,
   UsuarioAuditoriaEvento,
   UsuarioListResponse,
   UsuariosService,
 } from '../../../core/services/usuarios.service';
+import { AuthService } from '../../../auth/auth.service';
 import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 
@@ -286,6 +288,18 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                           class="px-3 py-2 rounded-xl font-semibold text-xs text-zinc-300 bg-zinc-800/80 border border-zinc-700 hover:border-amber-500/40 hover:text-amber-300 transition-all flex items-center gap-1.5 whitespace-nowrap"
                         >
                           <i class="pi pi-history"></i> Historial
+                        </button>
+                        <!--
+                          I-05 · gestión de roles. Abre el detalle por sede: los
+                          roles de barbería NO se pueden tocar sin saber en qué
+                          sede están, y el rol global de administrador es el
+                          único que se concede desde plataforma.
+                        -->
+                        <button
+                          (click)="abrirRoles(usuario)"
+                          class="px-3 py-2 rounded-xl font-semibold text-xs text-zinc-300 bg-zinc-800/80 border border-zinc-700 hover:border-amber-500/40 hover:text-amber-300 transition-all flex items-center gap-1.5 whitespace-nowrap"
+                        >
+                          <i class="pi pi-shield"></i> Roles
                         </button>
                         <button
                           (click)="abrirModal(usuario)"
@@ -681,11 +695,144 @@ type FiltroRol = 'TODOS' | RolPlataforma;
             </div>
         </app-modal-shell>
       }
+
+      <!--
+        I-05 · Roles de la cuenta, por sede.
+
+        Se listan los vínculos reales de usuario_roles con la sede a la que
+        pertenecen, porque «ADMIN_BARBERIA» sin saber en qué sede no dice nada y
+        no se puede editar. El rol global de administrador se concede o se
+        retira aquí; los de sede se cambian en su propia fila.
+      -->
+      @if (rolesAbierto() && usuarioRoles(); as usuario) {
+        <app-modal-shell
+          [visible]="true"
+          titulo="Roles de la cuenta"
+          [subtitulo]="usuario.nombreCompleto + ' · ' + usuario.correo"
+          icono="pi pi-shield"
+          ancho="xl"
+          [cerrarBloqueado]="procesandoRol()"
+          (cerrar)="cerrarRoles()">
+          @if (errorRoles()) {
+            <div class="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-start gap-2">
+              <i class="pi pi-exclamation-triangle mt-0.5"></i>
+              <span>{{ errorRoles() }}</span>
+            </div>
+          }
+
+          @if (esUsuarioActual(usuario)) {
+            <div class="p-3 rounded-xl bg-zinc-800/60 border border-zinc-700/60 text-[11px] text-zinc-400">
+              Esta es tu cuenta: el backend no permite cambiarte tu propio rol de
+              plataforma.
+            </div>
+          }
+
+          <!-- Rol global de plataforma -->
+          <div class="rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-sm font-bold text-white flex items-center gap-2">
+                <i class="pi pi-shield text-amber-400"></i>
+                Administrador de plataforma
+              </p>
+              <p class="text-[11px] text-zinc-400 mt-0.5">
+                Rol GLOBAL: no pertenece a ninguna sede y da acceso a toda la
+                plataforma. Retirarlo cierra las sesiones abiertas de la cuenta.
+              </p>
+            </div>
+            @if (esAdministradorPlataforma()) {
+              <button
+                (click)="retirarAdministrador()"
+                [disabled]="procesandoRol() || esUsuarioActual(usuario)"
+                class="px-4 py-2.5 rounded-xl text-xs font-bold text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap flex items-center gap-2">
+                <i class="pi" [ngClass]="procesandoRol() ? 'pi-spin pi-spinner' : 'pi-times-circle'"></i>
+                Retirar rol
+              </button>
+            } @else {
+              <button
+                (click)="concederAdministrador()"
+                [disabled]="procesandoRol()"
+                class="px-4 py-2.5 rounded-xl text-xs font-bold text-zinc-950 gold-gradient-bg disabled:opacity-40 transition-all whitespace-nowrap flex items-center gap-2">
+                <i class="pi" [ngClass]="procesandoRol() ? 'pi-spin pi-spinner' : 'pi-check-circle'"></i>
+                Conceder rol
+              </button>
+            }
+          </div>
+
+          <!-- Roles de sede -->
+          <div class="space-y-2">
+            <p class="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+              Roles de sede
+            </p>
+
+            @if (rolesDeSede().length === 0) {
+              <p class="text-xs text-zinc-400 p-3 rounded-xl bg-zinc-800/40 border border-zinc-700/50">
+                Esta cuenta no está vinculada a ninguna sede. Los roles de sede se
+                asignan desde Mi Personal, en la sede correspondiente.
+              </p>
+            } @else {
+              @for (vinculo of rolesDeSede(); track vinculo.id) {
+                <div class="rounded-2xl border border-zinc-700/60 bg-zinc-800/40 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-sm font-semibold text-white truncate">
+                      {{ vinculo.barberiaNombre ?? 'Sede' }}
+                    </p>
+                    <p class="text-[11px] text-zinc-400">
+                      {{ vinculo.rolNombre }}
+                      <span
+                        class="ml-1 font-semibold"
+                        [class.text-emerald-400]="vinculo.estado === 'ACTIVO'"
+                        [class.text-rose-400]="vinculo.estado !== 'ACTIVO'"
+                      >· {{ vinculo.estado }}</span>
+                    </p>
+                  </div>
+
+                  <div class="flex items-center gap-2 shrink-0">
+                    <select
+                      [value]="vinculo.rolNombre"
+                      (change)="cambiarRolSede(vinculo, $any($event.target).value)"
+                      [disabled]="procesandoRol()"
+                      aria-label="Rol en la sede"
+                      class="bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
+                    >
+                      <option value="BARBERO">BARBERO</option>
+                      <option value="ADMIN_BARBERIA">ADMIN_BARBERIA</option>
+                    </select>
+                    @if (vinculo.estado === 'ACTIVO') {
+                      <button
+                        (click)="revocarAccesoSede(vinculo)"
+                        [disabled]="procesandoRol()"
+                        class="px-3 py-2 rounded-xl text-xs font-semibold text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 disabled:opacity-40 transition-colors whitespace-nowrap">
+                        Revocar
+                      </button>
+                    } @else {
+                      <button
+                        (click)="reactivarAccesoSede(vinculo)"
+                        [disabled]="procesandoRol()"
+                        class="px-3 py-2 rounded-xl text-xs font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-40 transition-colors whitespace-nowrap">
+                        Reactivar
+                      </button>
+                    }
+                  </div>
+                </div>
+              }
+            }
+          </div>
+
+          <div modal-footer class="p-4 border-t border-zinc-800 flex justify-end shrink-0">
+            <button
+              (click)="cerrarRoles()"
+              class="px-4 py-2.5 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors">
+              Cerrar
+            </button>
+          </div>
+        </app-modal-shell>
+      }
     </div>
   `,
 })
 export class AdminUsuariosComponent implements OnInit {
   protected readonly service = inject(UsuariosService);
+  private readonly authService = inject(AuthService);
   private readonly toast = inject(ToastService);
   protected readonly MOTIVO_MAXIMO = MOTIVO_MAXIMO;
   protected readonly ROLES_PLATAFORMA = ROLES_PLATAFORMA;
@@ -985,6 +1132,153 @@ export class AdminUsuariosComponent implements OnInit {
     this.usuarioHistorial.set(null);
     this.eventos.set([]);
     this.errorHistorial.set(null);
+  }
+
+  // ── I-05 · Roles de la cuenta ─────────────────────────────────────────────
+
+  readonly rolesAbierto = signal(false);
+  readonly usuarioRoles = signal<UsuarioListResponse | null>(null);
+  readonly roles = signal<RolDeUsuario[]>([]);
+  readonly cargandoRoles = signal(false);
+  readonly procesandoRol = signal(false);
+  readonly errorRoles = signal<string | null>(null);
+
+  /** Los roles de sede son los que se pueden editar aquí; los globales, no. */
+  readonly rolesDeSede = computed(() => this.roles().filter((r) => !!r.barberiaId));
+
+  /** ¿La cuenta tiene el rol GLOBAL de administrador activo? */
+  readonly esAdministradorPlataforma = computed(() =>
+    this.roles().some((r) => r.rolNombre === 'ADMINISTRADOR' && r.estado === 'ACTIVO'),
+  );
+
+  /** El backend rechaza el autobloqueo (422 `ADMIN_PROPIO_ROL`): se desactiva antes. */
+  esUsuarioActual(usuario: UsuarioListResponse): boolean {
+    return this.authService.authState().user?.id === usuario.id;
+  }
+
+  abrirRoles(usuario: UsuarioListResponse): void {
+    this.usuarioRoles.set(usuario);
+    this.roles.set([]);
+    this.errorRoles.set(null);
+    this.rolesAbierto.set(true);
+    this.cargarRoles(usuario.id);
+  }
+
+  cerrarRoles(): void {
+    if (this.procesandoRol()) return;
+    this.rolesAbierto.set(false);
+    this.usuarioRoles.set(null);
+    this.roles.set([]);
+    this.errorRoles.set(null);
+  }
+
+  private cargarRoles(usuarioId: string): void {
+    this.cargandoRoles.set(true);
+    this.service.obtenerRolesUsuario(usuarioId).subscribe({
+      next: (roles) => {
+        this.roles.set(roles);
+        this.cargandoRoles.set(false);
+      },
+      error: (err) => {
+        this.cargandoRoles.set(false);
+        this.errorRoles.set(mensajeDeError(err, 'No se pudieron cargar los roles de la cuenta'));
+      },
+    });
+  }
+
+  concederAdministrador(): void {
+    this.cambiarAdministrador(true);
+  }
+
+  retirarAdministrador(): void {
+    this.cambiarAdministrador(false);
+  }
+
+  private cambiarAdministrador(habilitado: boolean): void {
+    const usuario = this.usuarioRoles();
+    if (!usuario || this.procesandoRol()) return;
+
+    this.procesandoRol.set(true);
+    this.errorRoles.set(null);
+
+    this.service.cambiarAdministrador(usuario.id, habilitado).subscribe({
+      next: () => {
+        this.procesandoRol.set(false);
+        this.avisar(
+          habilitado
+            ? `${usuario.nombreCompleto} es ahora administrador de plataforma.`
+            : `Se retiró el rol de administrador a ${usuario.nombreCompleto}.`,
+        );
+        this.recargar();
+      },
+      error: (err) => {
+        this.procesandoRol.set(false);
+        // Los 422 de negocio (último administrador, rol propio) se pintan tal cual.
+        this.errorRoles.set(mensajeDeError(err, 'No se pudo cambiar el rol de plataforma'));
+      },
+    });
+  }
+
+  cambiarRolSede(vinculo: RolDeUsuario, rolNombre: string): void {
+    if (!vinculo.barberiaId || this.procesandoRol()) return;
+    if (rolNombre !== 'BARBERO' && rolNombre !== 'ADMIN_BARBERIA') return;
+    if (rolNombre === vinculo.rolNombre) return;
+    this.aplicarCambioSede(vinculo, { rolNombre }, `Rol actualizado en ${vinculo.barberiaNombre ?? 'la sede'}.`);
+  }
+
+  revocarAccesoSede(vinculo: RolDeUsuario): void {
+    this.aplicarCambioSede(
+      vinculo,
+      { estado: 'INACTIVO' },
+      `Acceso revocado en ${vinculo.barberiaNombre ?? 'la sede'}.`,
+    );
+  }
+
+  reactivarAccesoSede(vinculo: RolDeUsuario): void {
+    this.aplicarCambioSede(
+      vinculo,
+      { estado: 'ACTIVO' },
+      `Acceso reactivado en ${vinculo.barberiaNombre ?? 'la sede'}.`,
+    );
+  }
+
+  /**
+   * I-06 · un solo camino para los tres cambios de sede. El backend ya no exige
+   * `rolNombre` cuando solo cambia el estado, así que cada acción manda lo suyo
+   * y nada más.
+   */
+  private aplicarCambioSede(
+    vinculo: RolDeUsuario,
+    dto: { rolNombre?: 'BARBERO' | 'ADMIN_BARBERIA'; estado?: 'ACTIVO' | 'INACTIVO' },
+    mensaje: string,
+  ): void {
+    const usuario = this.usuarioRoles();
+    if (!usuario || !vinculo.barberiaId || this.procesandoRol()) return;
+
+    this.procesandoRol.set(true);
+    this.errorRoles.set(null);
+
+    this.service.actualizarVinculoSede(vinculo.barberiaId, usuario.id, dto).subscribe({
+      next: () => {
+        this.procesandoRol.set(false);
+        this.avisar(mensaje);
+        this.cargarRoles(usuario.id);
+        this.recargar();
+      },
+      error: (err) => {
+        this.procesandoRol.set(false);
+        this.errorRoles.set(
+          mensajeDeError(err, 'No se pudo actualizar el rol en la sede'),
+        );
+        // El select vuelve al valor real: el cambio no se aplicó.
+        this.cargarRoles(usuario.id);
+      },
+    });
+  }
+
+  /** La columna ROLES de la tabla se alimenta del listado, no del modal. */
+  private recargar(): void {
+    this.service.obtenerUsuarios().subscribe({ error: () => undefined });
   }
 
   // ── Etiquetas y colores ────────────────────────────────────────────────────

@@ -152,9 +152,13 @@ export class AuthService {
         // vacío al que lo llevaba una lista filtrada por pertenencia. Se pide el
         // listado SIN autoasignar sede para que la elección sea suya.
         if (esGlobal) {
+          // I-10 · el ADMINISTRADOR global no necesita sede activa: su pantalla de entrada
+          // es el panel transversal de la plataforma, no /barberias (que requiere
+          // barbería individual). Cargar barberias solo para disponer del listado,
+          // sin autoasignar sede.
           this.tenantService.cargarBarberias({ autoSeleccionar: false }).subscribe({
-            next: () => this.router.navigate(['/barberias']),
-            error: () => this.router.navigate(['/barberias'])
+            next: () => this.router.navigate(['/admin/usuarios']),
+            error: () => this.router.navigate(['/admin/usuarios'])
           });
           return;
         }

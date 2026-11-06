@@ -197,6 +197,12 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // Historial de auditoría de UNA cuenta (suspensiones, reactivaciones, motivos).
   // Es la vista global del comportamiento de una cuenta: solo plataforma.
   'GET /plataforma/usuarios/:id/auditoria': [ROL_ADMINISTRADOR],
+  // I-05 (2026-11-05): vínculos de rol de una cuenta, con su sede. Alimenta el
+  // modal de roles de la bandeja; la sede no los ve.
+  'GET /plataforma/usuarios/:id/roles': [ROL_ADMINISTRADOR],
+  // I-05: conceder o retirar el rol GLOBAL de administrador. Es el único que
+  // tiene sentido desde plataforma; los de sede se cambian en `.../staff`.
+  'PATCH /plataforma/usuarios/:id/administrador': [ROL_ADMINISTRADOR],
 
   'GET /shops/:shopId/appointments/schedule/blocks': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
   'POST /shops/:shopId/appointments/schedule/blocks': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -647,8 +653,10 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // plantilla base semanal del barbero suma sus dos verbos: 111 × 4 = 444.
   // La bandeja local de solicitudes de cambio (E3-13, lectura de la sede) suma
   // la 112: 112 × 4 = 448. La gestión local de personal añade POST y PATCH:
-  // 114 rutas con política × 4 roles = 456 decisiones.
-  expect(evaluaciones).toBe(456);
+  // 114 rutas con política × 4 roles = 448. I-05 suma los vínculos de rol de
+  // una cuenta (GET) y la concesión/retirada del rol global (PATCH): 116 rutas
+  // con política × 4 roles = 464 decisiones.
+  expect(evaluaciones).toBe(464);
     expect(
       desviaciones.length === 0
         ? ''

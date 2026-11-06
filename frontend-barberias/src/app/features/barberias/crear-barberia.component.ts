@@ -77,6 +77,8 @@ import { TenantService } from '../../core/services/tenant.service';
                 </div>
                 @if (form.get('ubicacion')?.touched && form.get('ubicacion')?.invalid) {
                   <p class="text-[11px] text-red-400 pl-1">Indica la ubicación o ciudad de la sede.</p>
+                } @else if (form.get('ubicacion')?.dirty && !form.get('ubicacion')?.value) {
+                  <p class="text-[11px] text-red-400 pl-1">Indica la ubicación o ciudad de la sede.</p>
                 }
               </div>
 

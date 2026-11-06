@@ -2,6 +2,7 @@ import {
   IsEmail,
   IsIn,
   IsNotEmpty,
+  IsOptional,
   IsString,
   Matches,
   MaxLength,
@@ -46,10 +47,24 @@ export class InvitarPersonalDto {
   rolNombre!: RolPersonalSede;
 }
 
+/**
+ * I-06 · cambio de rol y de estado del personal de una sede.
+ *
+ * Los dos campos son OPCIONALES por separado (al menos uno debe llegar, y lo
+ * valida el servicio): apagar a un miembro y cambiarle el rol son operaciones
+ * distintas, y exigir `rolNombre` para «Cambiar Estado» obligaba al cliente a
+ * reenviar un rol que no quería tocar —y a fallar con 400 si lo omitía—.
+ *
+ * Revocar el acceso NO es asignar `CLIENTE`: los roles de sede viven en
+ * `usuario_roles` con su `barberiaId`, y el rol base `CLIENTE` es GLOBAL (sin
+ * sede). Revocar es `DELETE /shops/:shopId/staff/:userId`, que borra el vínculo.
+ */
 export class ActualizarPersonalDto {
+  @IsOptional()
   @IsIn(['ACTIVO', 'INACTIVO'])
-  estado!: 'ACTIVO' | 'INACTIVO';
+  estado?: 'ACTIVO' | 'INACTIVO';
 
+  @IsOptional()
   @IsIn([...ROLES_PERSONAL_SEDE])
-  rolNombre!: RolPersonalSede;
+  rolNombre?: RolPersonalSede;
 }

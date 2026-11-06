@@ -45,6 +45,11 @@ describe('VinculoBarberiaGuard · el catálogo exige vínculo (E1-06 paso 5)', (
       clienteBarberia: {
         findFirst: vi.fn(async ({ where }: any) => ({ id: 'vinculo-1' })),
       },
+      // I-01: la sede se consulta antes de la pertenencia. Por defecto ACTIVO,
+      // que es el estado normal de las sedes en el resto de estos tests.
+      barberia: {
+        findUnique: vi.fn(async () => ({ estado: 'ACTIVO' })),
+      },
     };
     guard = new VinculoBarberiaGuard(prisma);
   });
@@ -126,6 +131,47 @@ describe('VinculoBarberiaGuard · el catálogo exige vínculo (E1-06 paso 5)', (
     // El bypass es total: ni consulta las tablas de pertenencia.
     expect(prisma.usuarioRol.findFirst).not.toHaveBeenCalled();
     expect(prisma.clienteBarberia.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('I-01 · una sede SUSPENDIDA deniega aunque el vínculo esté ACTIVO', async () => {
+    // El vínculo del ADMIN_BARBERIA sigue ACTIVO en `usuario_roles`: lo que
+    // cambió es la sede. Sin esta comprobación, el personal seguiría operando
+    // con normalidad sobre una sede suspendida.
+    prisma.barberia.findUnique.mockResolvedValue({ estado: 'INACTIVO' });
+
+    await expect(
+      guard.canActivate(ctx({ user: cliente('adm-a', ['ADMIN_BARBERIA']), params: { shopId: SEDE_A } })),
+    ).rejects.toThrow(ForbiddenException);
+
+    // Ni siquiera se llega a mirar la pertenencia.
+    expect(prisma.usuarioRol.findFirst).not.toHaveBeenCalled();
+    expect(prisma.clienteBarberia.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('I-01 · una sede SUSPENDIDA deniega también al CLIENTE vinculado', async () => {
+    prisma.barberia.findUnique.mockResolvedValue({ estado: 'INACTIVO' });
+
+    await expect(
+      guard.canActivate(ctx({ user: cliente('cli-vinc'), params: { shopId: SEDE_A } })),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('I-01 · una sede inexistente deniega (no se filtra que no existe)', async () => {
+    prisma.barberia.findUnique.mockResolvedValue(null);
+
+    await expect(
+      guard.canActivate(ctx({ user: cliente('cli-vinc'), params: { shopId: SEDE_A } })),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('I-01 · el ADMINISTRADOR global no consulta el estado de la sede (bypass D05)', async () => {
+    prisma.barberia.findUnique.mockResolvedValue({ estado: 'INACTIVO' });
+
+    await expect(
+      guard.canActivate(ctx({ user: cliente('adm-global', ['ADMINISTRADOR']), params: { shopId: SEDE_A } })),
+    ).resolves.toBe(true);
+
+    expect(prisma.barberia.findUnique).not.toHaveBeenCalled();
   });
 
   it('sin sesión no pasa, aunque las tablas digan que sí', async () => {

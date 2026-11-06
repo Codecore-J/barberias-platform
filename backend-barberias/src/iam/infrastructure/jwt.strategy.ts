@@ -76,10 +76,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       new Set(usuario.usuarioRoles.map((ur) => ur.rol.nombre)),
     );
 
+    // I-01 · los roles salen SIEMPRE de los vínculos ACTIVOS de la base, nunca
+    // del claim del token. El `?? payload.roles` que había aquí resucitaba un
+    // rol que ya no existe en `usuario_roles`: si el vínculo se desactivaba o se
+    // borraba (traspaso de responsable) y el usuario se quedaba sin ninguno
+    // activo, `rolesUnicos` venía vacío y volvía a entrar `ADMIN_BARBERIA` desde
+    // el token, con `RolesGuard` tomando la rama de roles globales. Un conjunto
+    // vacío es la respuesta correcta: sin vínculos activos no hay rol que
+    // ejercer, y las rutas con `@Roles` fallan cerradas.
     return {
       id: usuario.id,
       correo: usuario.correo,
-      roles: rolesUnicos.length > 0 ? rolesUnicos : payload.roles,
+      roles: rolesUnicos,
       rolesDetallados,
       telefonoVerificado: usuario.telefonoVerificado,
       correoVerificado: usuario.correoVerificado,

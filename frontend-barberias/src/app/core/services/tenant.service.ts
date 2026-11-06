@@ -17,6 +17,22 @@ export interface InvitacionSede {
   enlaceUnico: string;
 }
 
+/**
+ * E3-13 · lo que se edita de una sede ya creada (D26/D27).
+ *
+ * `nombre` y `estado` NO están: el backend los rechaza con 422
+ * (`NOMBRE_REQUIERE_SOLICITUD` / `ESTADO_NO_EDITABLE`) porque el nombre solo
+ * cambia por solicitud aprobada y el estado tiene su propia ruta. `passwordActual`
+ * viaja solo cuando cambia el teléfono: es la exigencia de D27.
+ */
+export interface ActualizarBarberiaRequest {
+  descripcion?: string;
+  ubicacion?: string;
+  logoUrl?: string;
+  telefono?: string;
+  passwordActual?: string;
+}
+
 /** El vínculo que devuelven las rutas de vinculación: el estado es el de D10. */
 export interface VinculoDeCliente {
   id: string;
@@ -30,6 +46,8 @@ export interface BarberiaResumen {
   id: string;
   nombre: string;
   descripcion?: string | null;
+  /** E3-13 · editable desde `PATCH /shops/:shopId` (los tres últimos campos). */
+  logoUrl?: string | null;
   telefono: string;
   ubicacion: string;
   /**
@@ -303,6 +321,35 @@ export class TenantService {
         this.isLoading.set(false);
         this.error.set(mensajeDeError(err, 'Error al crear la barbería'));
         throw err;
+      }),
+    );
+  }
+
+  /**
+   * E3-13 · edición directa de la sede (`PATCH /shops/:shopId`).
+   *
+   * Solo `descripcion`, `ubicacion`, `logoUrl` y `telefono`; el teléfono exige
+   * `passwordActual` y el backend responde 422 `PASSWORD_REQUERIDA` si falta. La
+   * respuesta se escribe en la lista y en la sede activa en lugar de recargar:
+   * el `PATCH` devuelve la sede completa, así que otra petición solo para ver los
+   * datos que ya vienen en el cuerpo dejaría la pantalla parpadeando.
+   */
+  actualizarBarberia(
+    barberiaId: string,
+    dto: ActualizarBarberiaRequest,
+  ): Observable<BarberiaResumen> {
+    return this.http.patch<BarberiaResumen>(`${this.apiUrl}/${barberiaId}`, dto).pipe(
+      tap((actualizada) => {
+        this.barberiasVinculadas.update((lista) =>
+          lista.map((sede) =>
+            sede.id === barberiaId ? { ...sede, ...actualizada, id: sede.id } : sede,
+          ),
+        );
+
+        const activa = this.barberiaActiva();
+        if (activa?.id === barberiaId) {
+          this.setBarberiaActiva({ ...activa, ...actualizada, id: activa.id });
+        }
       }),
     );
   }

@@ -146,6 +146,8 @@ describe('BarberiaService', () => {
               findFirst: vi.fn(),
               create: vi.fn(),
               update: vi.fn(),
+              // I-01: suspender la sede sube tokenVersion de todo su personal.
+              updateMany: vi.fn(),
             },
             barberia: {
               create: vi.fn(),
@@ -165,6 +167,8 @@ describe('BarberiaService', () => {
               update: vi.fn(),
               // E1-06: `seleccionarBarberiaActiva` admite el vínculo por rol
               findFirst: vi.fn(),
+              // I-06: revocar el acceso borra el vínculo de la sede.
+              deleteMany: vi.fn(),
             },
             configuracionBarberia: {
               create: vi.fn(),
@@ -203,6 +207,10 @@ describe('BarberiaService', () => {
     service = module.get<BarberiaService>(BarberiaService);
     prisma = module.get<PrismaService>(PrismaService);
     auditoria = module.get<AuditoriaService>(AuditoriaService);
+
+    // I-01: `cambiarEstado` lee el personal activo de la sede. Sin respuesta por
+    // defecto, cualquier test que suspenda una sede vería `undefined.map`.
+    (prisma.usuarioRol.findMany as any).mockResolvedValue([]);
   });
 
   it('should be defined', () => {
@@ -444,7 +452,7 @@ describe('BarberiaService', () => {
   });
 
   describe('actualizarPersonal · aislamiento de propiedades locales', () => {
-    it('actualiza solo rol y estado de la asignación, sin escribir sobre Usuario', async () => {
+    it('actualiza solo rol y estado de la asignación, y no toca los datos globales de Usuario', async () => {
       vi.mocked(prisma.usuario.findUnique).mockResolvedValue({
         id: 'miembro-1',
       } as any);
@@ -472,7 +480,13 @@ describe('BarberiaService', () => {
       );
 
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-      expect(prisma.usuario.update).not.toHaveBeenCalled();
+      // I-01 · D24: la única escritura que se permite sobre `Usuario` es la
+      // versión del token, que es lo que corta las sesiones ya abiertas.
+      expect(prisma.usuario.update).toHaveBeenCalledTimes(1);
+      expect(prisma.usuario.update).toHaveBeenCalledWith({
+        where: { id: 'miembro-1' },
+        data: { tokenVersion: { increment: 1 } },
+      });
       expect(prisma.usuarioRol.update).toHaveBeenCalledWith({
         where: { id: 'asignacion-sede-a' },
         data: { rolId: 'rol-admin-sede', estado: 'INACTIVO' },
@@ -485,6 +499,110 @@ describe('BarberiaService', () => {
         estadoSede: 'INACTIVO',
         roles: ['ADMIN_BARBERIA'],
       });
+    });
+
+    // I-01: un token ya firmado lleva `tv`; si la versión no sube, el rol
+    // desactivado sigue valiendo hasta 24 h. Este es el test que fija el
+    // contrato: inactivar incrementa, reactivar no.
+    it('inactiva: incrementa tokenVersion para invalidar los tokens vigentes', async () => {
+      vi.mocked(prisma.usuario.findUnique).mockResolvedValue({ id: 'miembro-1' } as any);
+      vi.mocked(prisma.usuario.findUniqueOrThrow).mockResolvedValue({
+        id: 'miembro-1',
+        nombreCompleto: 'Barbero Uno',
+        correo: 'barbero@example.com',
+        telefono: '8095554321',
+        estadoCuenta: 'ACTIVO',
+      } as any);
+      vi.mocked(prisma.rol.findUnique).mockResolvedValue({
+        id: 'rol-barbero',
+        nombre: 'BARBERO',
+      } as any);
+      vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([
+        { id: 'asignacion-sede-a' },
+      ] as any);
+      vi.mocked(prisma.usuarioRol.update).mockResolvedValue({} as any);
+
+      await service.actualizarPersonal(
+        BARBERIA_A,
+        'miembro-1',
+        { estado: 'INACTIVO', rolNombre: 'BARBERO' },
+        ADMIN_A,
+      );
+
+      expect(prisma.usuario.update).toHaveBeenCalledWith({
+        where: { id: 'miembro-1' },
+        data: { tokenVersion: { increment: 1 } },
+      });
+    });
+
+    // I-06: «Cambiar Estado» no debe obligar a reenviar el rol actual.
+    it('acepta un cambio solo de estado, sin rolNombre', async () => {
+      vi.mocked(prisma.usuario.findUnique).mockResolvedValue({ id: 'miembro-1' } as any);
+      vi.mocked(prisma.usuario.findUniqueOrThrow).mockResolvedValue({
+        id: 'miembro-1',
+        nombreCompleto: 'Barbero Uno',
+        correo: 'barbero@example.com',
+        telefono: '8095554321',
+        estadoCuenta: 'ACTIVO',
+      } as any);
+      vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([
+        { id: 'asignacion-sede-a', estado: 'ACTIVO', rol: { nombre: 'BARBERO' } },
+      ] as any);
+      vi.mocked(prisma.usuarioRol.update).mockResolvedValue({} as any);
+
+      const resultado = await service.actualizarPersonal(
+        BARBERIA_A,
+        'miembro-1',
+        { estado: 'INACTIVO' },
+        ADMIN_A,
+      );
+
+      // No se resuelve ningún rol ni se escribe `rolId`: el vínculo conserva el suyo.
+      expect(prisma.rol.findUnique).not.toHaveBeenCalled();
+      expect(prisma.usuarioRol.update).toHaveBeenCalledWith({
+        where: { id: 'asignacion-sede-a' },
+        data: { estado: 'INACTIVO' },
+      });
+      expect(resultado.roles).toEqual(['BARBERO']);
+      expect(resultado.estadoSede).toBe('INACTIVO');
+    });
+
+    it('rechaza una petición sin estado ni rol (422 SIN_CAMBIOS)', async () => {
+      const error = await capturarError(
+        service.actualizarPersonal(BARBERIA_A, 'miembro-1', {}, ADMIN_A),
+      );
+
+      expect(error.status).toBe(422);
+      expect(error.codigo).toBe('SIN_CAMBIOS');
+      expect(prisma.usuarioRol.update).not.toHaveBeenCalled();
+    });
+
+    it('reactiva: no incrementa tokenVersion, porque el vínculo vuelve a estar activo', async () => {
+      vi.mocked(prisma.usuario.findUnique).mockResolvedValue({ id: 'miembro-1' } as any);
+      vi.mocked(prisma.usuario.findUniqueOrThrow).mockResolvedValue({
+        id: 'miembro-1',
+        nombreCompleto: 'Barbero Uno',
+        correo: 'barbero@example.com',
+        telefono: '8095554321',
+        estadoCuenta: 'ACTIVO',
+      } as any);
+      vi.mocked(prisma.rol.findUnique).mockResolvedValue({
+        id: 'rol-barbero',
+        nombre: 'BARBERO',
+      } as any);
+      vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([
+        { id: 'asignacion-sede-a' },
+      ] as any);
+      vi.mocked(prisma.usuarioRol.update).mockResolvedValue({} as any);
+
+      await service.actualizarPersonal(
+        BARBERIA_A,
+        'miembro-1',
+        { estado: 'ACTIVO', rolNombre: 'BARBERO' },
+        ADMIN_A,
+      );
+
+      expect(prisma.usuario.update).not.toHaveBeenCalled();
     });
   });
 
@@ -565,6 +683,15 @@ describe('BarberiaService', () => {
       );
     });
 
+    it('I-08 · rechaza un teléfono de secuencia repetitiva sin crear la sede', async () => {
+      const error = await capturarError(
+        service.create(responsableId, { ...dto, telefono: '1111111111' }),
+      );
+
+      expect(error.status).toBe(409);
+      expect(prisma.barberia.create).not.toHaveBeenCalled();
+    });
+
     it('permite crear la segunda sede ACTIVA (borde del límite)', async () => {
       vi.mocked(prisma.barberia.count).mockResolvedValue(1);
 
@@ -600,6 +727,31 @@ describe('BarberiaService', () => {
       await service.create(responsableId, dto);
 
       expect(prisma.usuarioRol.createMany).not.toHaveBeenCalled();
+    });
+
+    // I-04 · D04 es un límite de RESPONSABILIDAD, no de plataforma. El
+    // ADMINISTRADOR global supervisa sedes que no necesariamente responsabiliza,
+    // pero antes quedaba igualmente bloqueado al llegar a dos y no podía dar de
+    // alta la tercera. El ADMIN_BARBERIA sigue sujeto al cupo.
+    it('I-04 · el ADMINISTRADOR global crea una tercera sede sin toparse con el cupo', async () => {
+      vi.mocked(prisma.usuarioRol.findFirst).mockResolvedValue({ id: 'rol-global' } as any);
+      // Aunque ya responsabilice varias sedes activas, el cupo no se le aplica.
+      vi.mocked(prisma.barberia.count).mockResolvedValue(5);
+
+      await expect(service.create(responsableId, dto)).resolves.toBeDefined();
+
+      expect(prisma.barberia.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('I-04 · al ADMIN_BARBERIA sí se le sigue cobrando el cupo de dos sedes', async () => {
+      vi.mocked(prisma.usuarioRol.findFirst).mockResolvedValue(null);
+      vi.mocked(prisma.barberia.count).mockResolvedValue(2);
+
+      const error = await capturarError(service.create(responsableId, dto));
+
+      expect(error.status).toBe(422);
+      expect(error.codigo).toBe('LIMITE_BARBERIAS');
+      expect(prisma.barberia.create).not.toHaveBeenCalled();
     });
 
     it('siembra las 7 categorías oficiales al crear la sede (V3 · ON CONFLICT DO NOTHING)', async () => {
@@ -1106,6 +1258,85 @@ describe('BarberiaService', () => {
    * que la regla de E1-05 solo estaba escrita en `findOne`. Aquí se exige la
    * misma regla que en la lectura por id, sede a sede.
    */
+  /**
+   * I-01 · suspender una sede revoca las sesiones de su personal.
+   *
+   * `usuario_roles` NO cambia al suspender la sede, así que sin subir
+   * `tokenVersion` el personal conservaba tokens válidos hasta 24 h y seguía
+   * operando sobre una sede apagada: el «Suspendida» solo apagaba la ficha.
+   */
+  describe('cambiarEstado · suspensión revoca sesiones del personal (I-01)', () => {
+    const SEDE_ACTIVA = {
+      id: 'uuid-1',
+      nombre: 'Barberia 1',
+      responsableId: 'res-1',
+      estado: 'ACTIVO',
+    };
+
+    it('suspender sube tokenVersion de todo el personal ACTIVO de la sede', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue(SEDE_ACTIVA);
+      (prisma.barberia.update as any).mockResolvedValue({
+        ...SEDE_ACTIVA,
+        estado: 'INACTIVO',
+      });
+      // Dos personas y una de ellas con dos filas: la versión sube UNA vez.
+      (prisma.usuarioRol.findMany as any).mockResolvedValue([
+        { usuarioId: 'u-1' },
+        { usuarioId: 'u-2' },
+        { usuarioId: 'u-1' },
+      ]);
+      (prisma.usuario.updateMany as any).mockResolvedValue({ count: 2 });
+
+      await service.cambiarEstado('uuid-1', 'admin-global', 'INACTIVO', true);
+
+      expect(prisma.usuarioRol.findMany).toHaveBeenCalledWith({
+        where: { barberiaId: 'uuid-1', estado: 'ACTIVO' },
+        select: { usuarioId: true },
+      });
+      expect(prisma.usuario.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['u-1', 'u-2'] } },
+        data: { tokenVersion: { increment: 1 } },
+      });
+    });
+
+    it('reactivar NO sube tokenVersion: el acceso vuelve con un login nuevo', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue({
+        ...SEDE_ACTIVA,
+        estado: 'INACTIVO',
+      });
+      (prisma.barberia.update as any).mockResolvedValue(SEDE_ACTIVA);
+
+      await service.cambiarEstado('uuid-1', 'admin-global', 'ACTIVO', true);
+
+      expect(prisma.usuario.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('una sede sin personal ACTIVO no escribe tokenVersion', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue(SEDE_ACTIVA);
+      (prisma.barberia.update as any).mockResolvedValue({
+        ...SEDE_ACTIVA,
+        estado: 'INACTIVO',
+      });
+      (prisma.usuarioRol.findMany as any).mockResolvedValue([]);
+
+      await service.cambiarEstado('uuid-1', 'admin-global', 'INACTIVO', true);
+
+      expect(prisma.usuario.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('pedir el estado que ya tiene no escribe ni revoca (idempotente)', async () => {
+      (prisma.barberia.findUnique as any).mockResolvedValue({
+        ...SEDE_ACTIVA,
+        estado: 'INACTIVO',
+      });
+
+      await service.cambiarEstado('uuid-1', 'admin-global', 'INACTIVO', true);
+
+      expect(prisma.barberia.update).not.toHaveBeenCalled();
+      expect(prisma.usuario.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('findAllByResponsable · E1-07', () => {
     const SEDE = 'barberia-z';
     const mockSede = {
