@@ -97,7 +97,7 @@ let contadorInstancias = 0;
       #overlay
       [appModalOverlay]="visible()"
       [style.display]="visible() ? 'flex' : 'none'"
-      class="fixed inset-0 z-[60] items-center justify-center p-4 bg-black/70 backdrop-blur-md overflow-y-auto"
+      class="modal-shell-overlay fixed inset-0 items-center justify-center p-4 bg-black/70 backdrop-blur-md overflow-y-auto"
       (click)="alClicEnFondo()"
     >
         <div
@@ -224,15 +224,15 @@ export class ModalShellComponent {
    * El overlay se monta dentro de `<main class="relative z-10">`, y además cada
    * vista suele envolver su contenido en otro `relative z-10` (más
    * `animate-fade-in`, que también abre contexto mientras anima). Un
-   * `position: fixed` NO escapa de eso: su `z-[60]` solo compite dentro de ese
-   * contexto y el `<header>` (`z-50`) y el `<footer>` (`z-10`), que son hermanos
-   * de `<main>`, se pintan por encima. El resultado era un modal visible cuyos
-   * botones no recibían el clic: el `elementFromPoint` devolvía el pie de página.
+   * `position: fixed` NO escapa de eso: su `z-index` solo compite dentro de ese
+   * contexto y el `<header>` y el `<footer>`, que son hermanos de `<main>`, se
+   * pintan por encima. El resultado era un modal visible cuyos botones no
+   * recibían el clic: el `elementFromPoint` devolvía el pie de página.
    *
-   * Se mueve el nodo a `<body>` —el mismo nivel que usan el toast (`z-[70]`) y el
-   * diálogo de confirmación (`z-[80])`, que por eso nunca sufrieron el problema—
-   * y se deja el `z-[60]` deliberadamente entre ambos: por encima de la cabecera
-   * y del pie, por debajo de las notificaciones.
+   * Se mueve el nodo a `<body>`, el mismo nivel que ya usaban el toast y el
+   * diálogo de confirmación, y la escala de `styles.css` lo coloca en 1100:
+   * por encima de la cabecera y del pie, por debajo de notificaciones y
+   * confirmaciones.
    *
    * El elemento se monta siempre (y se oculta con `display: none`) precisamente
    * para poder moverlo sin que Angular intente retirarlo después de un padre
