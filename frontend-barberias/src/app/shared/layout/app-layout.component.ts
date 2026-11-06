@@ -183,6 +183,14 @@ import { NotificationService } from '../../core/services/notification.service';
                         <span class="text-[10px] text-zinc-500">Apertura, cierres y bloqueos</span>
                       </span>
                     </a>
+                    <a routerLink="/admin/propuestas-horario" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-inbox text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Propuestas de horario</span>
+                        <span class="text-[10px] text-zinc-500">Cambios de hora propuestos por los clientes</span>
+                      </span>
+                    </a>
                     <a routerLink="/admin/tickets" (click)="configDropdownOpen.set(false)"
                        class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
                       <i class="pi pi-receipt text-amber-400/80 mt-0.5"></i>
@@ -257,6 +265,14 @@ import { NotificationService } from '../../core/services/notification.service';
                       <span class="flex flex-col">
                         <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Horarios</span>
                         <span class="text-[10px] text-zinc-500">Apertura, excepciones y bloqueos</span>
+                      </span>
+                    </a>
+                    <a routerLink="/admin/propuestas-horario" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-inbox text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Propuestas de horario</span>
+                        <span class="text-[10px] text-zinc-500">Bandeja de cambios de hora pendientes</span>
                       </span>
                     </a>
                     <a routerLink="/admin/servicios" (click)="configDropdownOpen.set(false)"
@@ -466,6 +482,9 @@ import { NotificationService } from '../../core/services/notification.service';
                 <a routerLink="/admin/tickets" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-receipt text-amber-400"></i>Pagos
                 </a>
+                <a routerLink="/admin/propuestas-horario" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-inbox text-amber-400"></i>Propuestas de horario
+                </a>
                 <a routerLink="/admin/solicitudes-cambio" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-send text-amber-400"></i>Solicitudes de cambio
                 </a>
@@ -511,6 +530,9 @@ import { NotificationService } from '../../core/services/notification.service';
                 </a>
                 <a routerLink="/admin/tickets" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-receipt text-amber-400"></i>Pagos
+                </a>
+                <a routerLink="/admin/propuestas-horario" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-inbox text-amber-400"></i>Propuestas de horario
                 </a>
                 <a routerLink="/admin/solicitudes-cambio" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-send text-amber-400"></i>Solicitudes de cambio

@@ -275,6 +275,21 @@ export class ReservaController {
     return this.reservaService.rechazarPropuestaHorario(barberiaId, reservaId, user);
   }
 
+  /**
+   * GET /shops/:shopId/appointments/proposals/pending (H-03)
+   * Bandeja dedicada: SOLO las propuestas de horario en estado PENDIENTE de la
+   * sede, con la cita actual, el bloque propuesto y la ventana de expiración.
+   * Declarada antes de `:id` para que la ruta no la capture el detalle.
+   */
+  @Get('proposals/pending')
+  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  listarPropuestasHorarioPendientes(
+    @CurrentBarberiaId() barberiaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.reservaService.listarPropuestasHorarioPendientes(barberiaId, user);
+  }
+
   @Get(':id')
   @Roles('ADMIN_BARBERIA', 'BARBERO', 'CLIENTE') // SEC-E2: requiere rol en la barbería del parámetro
   obtenerDetalle(

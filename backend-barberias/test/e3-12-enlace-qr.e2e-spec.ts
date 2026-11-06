@@ -173,7 +173,7 @@ describe('E3-12/2 · enlace único y QR: la puerta de entrada del cliente (regla
         await prisma.barberia.create({
           data: {
             nombre: `Barbería ${etiqueta} ${sufijo}`,
-            telefono: '955555555',
+            telefono: '9555555555',
             ubicacion: `Sede ${etiqueta}`,
             codigoAcceso: codigo,
             enlaceUnico: enlace,

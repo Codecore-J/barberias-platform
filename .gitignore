@@ -39,3 +39,5 @@ scratch/
 .freebuff/
 endpoints.json
 *.tsbuildinfo
+.vercel
+.env*

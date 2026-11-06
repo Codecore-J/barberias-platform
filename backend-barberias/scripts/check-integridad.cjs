@@ -62,9 +62,11 @@ function checksDeclarados() {
     for (const archivo of fs.readdirSync(directorio)) {
       if (!archivo.endsWith('.sql')) continue;
       const sql = fs.readFileSync(path.join(directorio, archivo), 'utf8');
-      // Tanto `ALTER TABLE ... ADD CONSTRAINT "x_check"` como los declarados
-      // dentro de un `CREATE TABLE` siguen el mismo patrón.
-      for (const m of sql.matchAll(/CONSTRAINT\s+"([a-zA-Z0-9_]+_check)"/g)) {
+      // Tanto `ALTER TABLE ... ADD CONSTRAINT "x_check"` (sufijo) como los que
+      // usan el prefijo `chk_` (ej. chk_barberia_telefono_10_digitos) siguen el
+      // mismo patrón CONSTRAINT "nombre". Se capturan ambas convenciones para
+      // que el script no emita falsos positivos (FI-01 · 2026-11-06).
+      for (const m of sql.matchAll(/CONSTRAINT\s+"(chk_[a-zA-Z0-9_]+|[a-zA-Z0-9_]+_check)"/g)) {
         nombres.add(m[1]);
       }
     }

@@ -104,7 +104,7 @@ describe('ClientesRestringidosService (E4-03)', () => {
             id: CLIENTE_ID,
             nombreCompleto: 'Cliente Uno',
             correo: 'cliente@test.com',
-            telefono: '600000001',
+            telefono: '6000000011',
           },
         },
       ]);

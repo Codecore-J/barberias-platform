@@ -160,7 +160,7 @@ describe('E3-04 · aceptar y rechazar solicitudes MANUALES', () => {
         telefonoVerificado: true,
         nombreCompleto: 'E304 global',
         correo: correos[4],
-        telefono: '99970000004',
+        telefono: '9997000000',
         passwordHash: '$2b$10$HashFalsoE304NoSeUsaParaLogin',
       },
       select: { id: true },

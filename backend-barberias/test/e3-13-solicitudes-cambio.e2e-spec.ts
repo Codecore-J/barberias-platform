@@ -129,7 +129,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       await prisma.barberia.create({
         data: {
           nombre: nombreA,
-          telefono: '911111111',
+          telefono: '9111111111',
           ubicacion: 'Sede A E313',
           codigoAcceso: `E3A${String(sufijo).slice(-4)}`,
           enlaceUnico: `e313-a-${sufijo}`,
@@ -143,7 +143,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       await prisma.barberia.create({
         data: {
           nombre: nombreB,
-          telefono: '922222222',
+          telefono: '9222222222',
           ubicacion: 'Sede B E313',
           codigoAcceso: `E3B${String(sufijo).slice(-4)}`,
           enlaceUnico: `e313-b-${sufijo}`,
@@ -268,7 +268,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
         where: { id: barberiaA },
         select: { telefono: true },
       });
-      expect(sede.telefono).toBe('911111111');
+      expect(sede.telefono).toBe('9111111111');
     });
 
     it('422 PASSWORD_INCORRECTA si la contraseña actual no coincide', async () => {

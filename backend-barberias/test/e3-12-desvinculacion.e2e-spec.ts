@@ -138,7 +138,7 @@ describe('E3-12/3 · desvinculación por el cliente (D20/D21)', () => {
         await prisma.barberia.create({
           data: {
             nombre: `Barbería E312DS ${etiqueta} ${sufijo}`,
-            telefono: '944444444',
+            telefono: '9444444444',
             ubicacion: `Sede ${etiqueta}`,
             codigoAcceso: codigo,
             enlaceUnico: enlace,

@@ -23,7 +23,7 @@ describe('VinculacionesService · bandeja de plataforma (E3-12)', () => {
     clienteId: 'c1',
     nombreCompleto: 'Cliente Pendiente',
     correo: 'cliente@test.com',
-    telefono: '600000001',
+    telefono: '6000000011',
     barberiaId: 'b6',
     barberiaNombre: 'Barbería Sexta',
     estadoVinculacion: 'PENDIENTE_APROBACION',
