@@ -104,8 +104,7 @@ describe('ClientesRestringidosService (E4-03)', () => {
             id: CLIENTE_ID,
             nombreCompleto: 'Cliente Uno',
             correo: 'cliente@test.com',
-            telefono: '6000000011',
-          },
+            telefono: '6000000011',          },
         },
       ]);
 
@@ -121,7 +120,7 @@ describe('ClientesRestringidosService (E4-03)', () => {
           clienteId: CLIENTE_ID,
           nombreCompleto: 'Cliente Uno',
           correo: 'cliente@test.com',
-          telefono: '600000001',
+          telefono: '6000000011',
           contadorNoPresentado: 5,
           motivoRestriccion:
             'Bloqueo automático: alcanzaste el límite de 5 inasistencias en esta barbería.',

@@ -322,8 +322,11 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /shops/:shopId/appointments/:id/propose-time': [ROL_CLIENTE],
   'POST /shops/:shopId/appointments/:id/proposed-time/accept': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'POST /shops/:shopId/appointments/:id/proposed-time/reject': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // H-03: bandeja de propuestas de horario pendientes de la sede. Misma política
+  // que aceptar/rechazar (D02): es decisión de la SEDE, no del barbero ni del
+  // cliente. El ADMINISTRADOR global entra por jerarquía (E1-04).
+  'GET /shops/:shopId/appointments/proposals/pending': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /shops/:shopId/appointments/day': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_ADMINISTRADOR],
-
   // D16 (Especificación §2/§3.1): el catálogo lo opera el personal de la sede.
   // Las escrituras son del BARBERO y del ADMIN_BARBERIA (en V1 suele ser el
   // único responsable/operador). El ADMINISTRADOR global queda FUERA de la
@@ -655,8 +658,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // la 112: 112 × 4 = 448. La gestión local de personal añade POST y PATCH:
   // 114 rutas con política × 4 roles = 448. I-05 suma los vínculos de rol de
   // una cuenta (GET) y la concesión/retirada del rol global (PATCH): 116 rutas
-  // con política × 4 roles = 464 decisiones.
-  expect(evaluaciones).toBe(464);
+  // con política × 4 roles = 464 decisiones. H-03 suma la bandeja de
+  // propuestas de horario pendientes: 117 × 4 = 468 decisiones.
+  expect(evaluaciones).toBe(468);
     expect(
       desviaciones.length === 0
         ? ''
