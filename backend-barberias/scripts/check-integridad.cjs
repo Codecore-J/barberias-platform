@@ -165,19 +165,35 @@ async function main() {
         ].join('\n'),
       );
     }
-
     if (problemas.length > 0) {
-      console.error('[check:integridad] FALLO\n' + problemas.join('\n\n'));
+      console.error("[check:integridad] FALLO");
+      console.error("[check:integridad] problemas detectados: " + problemas.length);
+      for (const bloque of problemas) {
+        for (const linea of bloque.split("\n")) {
+          console.error("  " + linea);
+        }
+        console.error("");
+      }
+      console.error("");
+      console.error("[check:integridad] DEBUG — dumps completos antes de exit(1)");
+      console.error("esperadas (repo): " + JSON.stringify(esperadas));
+      console.error("aplicadas (ledger): " + JSON.stringify(aplicadas));
+      console.error("soloEnA (repo sin aplicar): " + JSON.stringify(migraciones.soloEnA));
+      console.error("soloEnB (aplicada sin repo): " + JSON.stringify(migraciones.soloEnB));
+      console.error("declarados (repo): " + JSON.stringify(declarados));
+      console.error("enBase (base): " + JSON.stringify(enBase));
+      console.error("checks soloEnA (repo sin crear en base): " + JSON.stringify(checks.soloEnA));
+      console.error("checks soloEnB (base sin declarar en repo): " + JSON.stringify(checks.soloEnB));
+      console.error("[check:integridad] DEBUG — fin de dumps");
       process.exit(1);
     }
 
-    console.log(
-      `[check:integridad] OK — ${esperadas.length} migraciones y ${declarados.length} CHECK coinciden con el esquema «${esquema}».`,
-    );
+    console.log(`[check-integridad] OK: no se encontraron problemas...`);
   } finally {
     await prisma.$disconnect();
   }
 }
+
 
 main().catch((e) => {
   console.error(`[check:integridad] Error inesperado: ${e.message}`);

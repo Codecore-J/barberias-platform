@@ -53,8 +53,6 @@ describe('E3-12/3 · desvinculación por el cliente (D20/D21)', () => {
   let adminSedeS1Id: string;
   let clienteAId: string;
   let clienteBId: string;
-
-  let tokenGlobal: string;
   let tokenAdminSedeS1: string;
   let tokenClienteA: string;
   let tokenClienteB: string;

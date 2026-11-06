@@ -40,10 +40,10 @@ describe('VinculoBarberiaGuard · el catálogo exige vínculo (E1-06 paso 5)', (
     // separa las dos tablas para que cada test exprese la regla y no el mock.
     prisma = {
       usuarioRol: {
-        findFirst: vi.fn(async ({ where }: any) => ({ id: 'rol-1' })),
+        findFirst: vi.fn(async ({ where: _where }: any) => ({ id: 'rol-1' })),
       },
       clienteBarberia: {
-        findFirst: vi.fn(async ({ where }: any) => ({ id: 'vinculo-1' })),
+        findFirst: vi.fn(async ({ where: _where }: any) => ({ id: 'vinculo-1' })),
       },
       // I-01: la sede se consulta antes de la pertenencia. Por defecto ACTIVO,
       // que es el estado normal de las sedes en el resto de estos tests.

@@ -1,7 +1,7 @@
-import { registerDecorator, ValidationOptions, ValidationArguments } from 'class-validator';
+import { registerDecorator, ValidationOptions } from 'class-validator';
 
 export function PhoneNotRepetitive(validationOptions?: ValidationOptions) {
-  return function (target: Object, propertyKey: string, parameterIndex: number) {
+  return function (target: Object, propertyKey: string, _parameterIndex: number) {
     registerDecorator({
       name: 'PhoneNotRepetitive',
       target: target.constructor,
