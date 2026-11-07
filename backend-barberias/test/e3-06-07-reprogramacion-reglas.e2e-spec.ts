@@ -170,20 +170,19 @@ describe('E3-06/E3-07 · reprogramación y reglas de cancelación del cliente', 
       ).id;
     }
 
-    const [duenio] = await Promise.all(
-      correos.map((correo, i) =>
-        prisma.usuario.create({
-          data: {
-            telefonoVerificado: true,
-            nombreCompleto: `E3067 ${i}`,
-            correo,
-            telefono: '9997100000',
-            passwordHash: '$2b$10$HashFalsoE3067NoSeUsaParaLogin',
-          },
-          select: { id: true },
-        }),
-      ),
-    );
+    // Solo el dueño se crea aquí; el resto de `correos` tiene su propio alta
+    // más abajo. `telefono` es único, así que no se puede crear la lista entera
+    // con el mismo número.
+    const duenio = await prisma.usuario.create({
+      data: {
+        telefonoVerificado: true,
+        nombreCompleto: 'E3067 0',
+        correo: correos[0],
+        telefono: '9997100000',
+        passwordHash: '$2b$10$HashFalsoE3067NoSeUsaParaLogin',
+      },
+      select: { id: true },
+    });
 
     const adminSede = await prisma.usuario.create({
       data: {

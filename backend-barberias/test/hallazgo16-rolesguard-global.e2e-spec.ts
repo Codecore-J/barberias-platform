@@ -71,7 +71,8 @@ describe('Hallazgo 16 - RolesGuard Global (e2e)', () => {
         telefonoVerificado: true,
         nombreCompleto: 'Cliente Hallazgo 16',
         correo: 'test_hallazgo16@demo.com',
-        telefono: '9998887770',
+        // `telefono` es único: no puede repetir el del dueño de arriba.
+        telefono: '9998887771',
         passwordHash: '$2b$10$EpicHashFalsoParaTest...',
         estadoCuenta: 'ACTIVO',
         usuarioRoles: {

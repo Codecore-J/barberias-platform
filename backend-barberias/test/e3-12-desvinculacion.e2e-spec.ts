@@ -199,7 +199,8 @@ describe('E3-12/3 · desvinculación por el cliente (D20/D21)', () => {
       correo: correoDe(adminGlobalId),
       roles: ['ADMINISTRADOR'],
     });
-    const tokenAdminSedeS1 = await jwtService.signAsync({
+    // Sin `const`: el token vive en el `let` del describe y lo usan los tests.
+    tokenAdminSedeS1 = await jwtService.signAsync({
       sub: adminSedeS1Id,
       correo: correoDe(adminSedeS1Id),
       roles: ['ADMIN_BARBERIA'],

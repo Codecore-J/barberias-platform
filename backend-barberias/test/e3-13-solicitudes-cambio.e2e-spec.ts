@@ -520,6 +520,20 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
     });
 
     it('el antiguo responsable pierde la edición directa de esa sede (403)', async () => {
+      // El traspaso cierra las sesiones del responsable saliente (D24, sube
+      // `tokenVersion`): se emite un token con la versión vigente, como haría
+      // cualquier re-login, para que el 403 venga de los permisos y no del token.
+      const saliente = await prisma.usuario.findUniqueOrThrow({
+        where: { id: adminBId },
+        select: { correo: true, tokenVersion: true },
+      });
+      tokenAdminB = await jwtService.signAsync({
+        sub: adminBId,
+        correo: saliente.correo,
+        roles: ['ADMIN_BARBERIA'],
+        tv: saliente.tokenVersion,
+      });
+
       await request(app.getHttpServer())
         .patch(`${API}/shops/${barberiaB}`)
         .set('Authorization', `Bearer ${tokenAdminB}`)
