@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { mensajeDeError } from '../utils/error-message.js';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
@@ -62,9 +63,7 @@ export class ClientesRestringidosService {
           this.isLoading.set(false);
           this.clientes.set([]);
           this.error.set(
-            err.error?.mensaje ||
-              err.error?.message ||
-              'No se pudieron cargar los clientes restringidos',
+            mensajeDeError(err, 'No se pudieron cargar los clientes restringidos'),
           );
           throw err;
         }),
@@ -90,7 +89,7 @@ export class ClientesRestringidosService {
         }),
         catchError((err) => {
           this.error.set(
-            err.error?.mensaje || err.error?.message || 'No se pudo reactivar al cliente',
+            mensajeDeError(err, 'No se pudo reactivar al cliente'),
           );
           throw err;
         }),

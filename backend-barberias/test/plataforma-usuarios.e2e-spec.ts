@@ -178,7 +178,7 @@ describe('Plataforma · usuarios (E2E)', () => {
     const sede = await prisma.barberia.create({
       data: {
         nombre: `Sede PU-${sufijo}`,
-        telefono: `809${digitos}2`,
+        telefono: `809${String(1).padStart(7, '0')}`,
         ubicacion: 'Plataforma usuarios E2E',
         estado: 'ACTIVO',
         codigoAcceso: `${PREFIJO_SEDE}${sufijo}`,

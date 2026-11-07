@@ -223,27 +223,9 @@ export class BarberiaService {
         throw new NotFoundException(`Usuario ${responsableId} no encontrado.`);
       }
 
-      // 2. E1-07 · D04: límite de DOS sedes ACTIVAS por responsable. El conteo
-      //    vive dentro de la transacción SERIALIZABLE: dos altas simultáneas
-      //    del mismo usuario no pueden saltarse el cupo. Las sedes INACTIVAS no
-      //    cuentan, de modo que suspender una devuelve el cupo (D04).
-      const barberiasActivas = await tx.barberia.count({
-        where: { responsableId, estado: 'ACTIVO' },
-      });
-
-      if (barberiasActivas >= MAX_BARBERIAS_POR_RESPONSABLE) {
-        throw reglaDeNegocio(
-          'LIMITE_BARBERIAS',
-          `Alcanzaste el límite máximo de ${MAX_BARBERIAS_POR_RESPONSABLE} sedes activas por responsable.`,
-          { limite: MAX_BARBERIAS_POR_RESPONSABLE, activas: barberiasActivas },
-        );
-      }
-
-      // 3. E0-07: el rol ADMIN_BARBERIA es requisito de la operación, no un
-      //    adorno. Antes se buscaba después de crear la sede y, si faltaba, el
-      //    `if (rolAdmin)` la dejaba creada SIN responsable operativo. Ahora se
-      //    comprueba antes de escribir y se falla con un error explícito.
-      //    El ADMINISTRADOR global está exento: es transversal (D05).
+      // 2. D05 · el ADMINISTRADOR global es transversal: opera la plataforma
+      //    entera, no un cupo personal. Se resuelve ANTES del conteo porque su
+      //    respuesta decide si el límite siquiera aplica.
       const esAdministradorDePlataforma = await tx.usuarioRol.findFirst({
         where: {
           usuarioId: responsableId,
@@ -251,6 +233,37 @@ export class BarberiaService {
         },
         select: { id: true },
       });
+
+      // 3. E1-07 · D04: límite de DOS sedes ACTIVAS por responsable. El conteo
+      //    vive dentro de la transacción SERIALIZABLE: dos altas simultáneas
+      //    del mismo usuario no pueden saltarse el cupo. Las sedes INACTIVAS no
+      //    cuentan, de modo que suspender una devuelve el cupo (D04) —salvo que
+      //    la sede quedara sin responsable al suspenderla—.
+      //
+      //    I-04 · el límite es de RESPONSABILIDAD, no de plataforma: el
+      //    ADMINISTRADOR global queda exento. Antes se le aplicaba igual y
+      //    quedaba bloqueado al llegar a dos sedes, sin poder dar de alta la
+      //    tercera que la plataforma necesita supervisar. La regla sigue
+      //    intacta para el ADMIN_BARBERIA, que es a quien D04 protege.
+      if (!esAdministradorDePlataforma) {
+        const barberiasActivas = await tx.barberia.count({
+          where: { responsableId, estado: 'ACTIVO' },
+        });
+
+        if (barberiasActivas >= MAX_BARBERIAS_POR_RESPONSABLE) {
+          throw reglaDeNegocio(
+            'LIMITE_BARBERIAS',
+            `Alcanzaste el límite máximo de ${MAX_BARBERIAS_POR_RESPONSABLE} sedes activas por responsable.`,
+            { limite: MAX_BARBERIAS_POR_RESPONSABLE, activas: barberiasActivas },
+          );
+        }
+      }
+
+      // 4. E0-07: el rol ADMIN_BARBERIA es requisito de la operación, no un
+      //    adorno. Antes se buscaba después de crear la sede y, si faltaba, el
+      //    `if (rolAdmin)` la dejaba creada SIN responsable operativo. Ahora se
+      //    comprueba antes de escribir y se falla con un error explícito.
+      //    El ADMINISTRADOR global está exento: es transversal (D05).
 
       let rolAdminBarberia: {
         id: string;
@@ -269,6 +282,13 @@ export class BarberiaService {
             'Configuración incompleta: el rol ADMIN_BARBERIA no existe. Ejecuta el seed antes de crear sedes.',
           );
         }
+      }
+
+      // I-08 · rechazar secuencias repetitivas al crear sede (0000000000, 1111111111, etc.)
+      if (/^(\d)\1{9}$/.test(dto.telefono)) {
+        throw new ConflictException(
+          'El teléfono no puede ser una secuencia repetitiva (ej. 0000000000).',
+        );
       }
 
       // 4. Identificadores generados en el servidor.
@@ -530,6 +550,13 @@ export class BarberiaService {
           throw new ConflictException('El teléfono ya está registrado.');
         }
 
+        // I-08 · rechazar secuencias triviales (0000000000, 1111111111, etc.)
+        if (/^(\d)\1{9}$/.test(telefono)) {
+          throw new ConflictException(
+            'El teléfono no puede ser una secuencia repetitiva (ej. 0000000000).',
+          );
+        }
+
         const passwordHash = await bcrypt.hash(dto.password, 10);
         const usuario = await tx.usuario.create({
           data: {
@@ -620,24 +647,40 @@ export class BarberiaService {
         'No puedes cambiar tu propio rol o estado en esta sede.',
       );
     }
+
+    // I-06: los campos son independientes, pero una petición vacía no describe
+    // ninguna operación. Se rechaza aquí y no con un 400 de validación para que
+    // el mensaje diga qué falta en lugar de listar los campos del DTO.
+    if (dto.estado === undefined && dto.rolNombre === undefined) {
+      throw reglaDeNegocio(
+        'SIN_CAMBIOS',
+        'Indica al menos el estado o el rol que quieres cambiar.',
+      );
+    }
+
     const [usuario, rol] = await Promise.all([
       this.prisma.usuario.findUnique({
         where: { id: usuarioId },
         select: { id: true },
       }),
-      this.prisma.rol.findUnique({
-        where: { nombre: dto.rolNombre },
-        select: { id: true, nombre: true },
-      }),
+      // Sin `rolNombre` no hay nada que resolver: se conserva el rol actual.
+      dto.rolNombre
+        ? this.prisma.rol.findUnique({
+            where: { nombre: dto.rolNombre },
+            select: { id: true, nombre: true },
+          })
+        : Promise.resolve(null),
     ]);
     if (!usuario) throw new NotFoundException('Miembro no encontrado.');
-    if (!rol)
+    if (dto.rolNombre && !rol)
       throw new InternalServerErrorException(
         `El rol ${dto.rolNombre} no existe en el catálogo.`,
       );
     const relaciones = await this.prisma.usuarioRol.findMany({
       where: { usuarioId, barberiaId },
-      select: { id: true },
+      // I-06: se leen estado y rol actuales para poder devolver cómo queda el
+      // vínculo cuando la petición no envió uno de los dos campos.
+      select: { id: true, estado: true, rol: { select: { nombre: true } } },
     });
     if (relaciones.length === 0)
       throw new NotFoundException(
@@ -652,8 +695,29 @@ export class BarberiaService {
       const actualizado = await this.prisma.$transaction(async (tx) => {
         await tx.usuarioRol.update({
           where: { id: relaciones[0].id },
-          data: { rolId: rol.id, estado: dto.estado },
+          // Solo se escribe lo que llegó: `rolId` sin `rolNombre` borraría el
+          // rol del miembro, y `estado` sin `estado` es un no-op que la
+          // auditoría registraría como cambio.
+          data: {
+            ...(rol && { rolId: rol.id }),
+            ...(dto.estado && { estado: dto.estado }),
+          },
         });
+
+        // I-01 · D24: desactivar el vínculo tiene que cortar la sesión YA, no en
+        // el siguiente login. Filtrar `usuario_roles` en `login` impide volver a
+        // firmar el rol, pero un token ya emitido conserva su claim hasta 24 h
+        // (`expiresIn`). Subir `tokenVersion` invalida todos sus tokens en la
+        // petición siguiente —401 en `JwtStrategy`— y es la misma palanca que ya
+        // usan las suspensiones de cuenta. Al reactivar NO se sube: el vínculo
+        // vuelve a estar ACTIVO y el usuario entra de nuevo con sus roles.
+        if (dto.estado === 'INACTIVO') {
+          await tx.usuario.update({
+            where: { id: usuarioId },
+            data: { tokenVersion: { increment: 1 } },
+          });
+        }
+
         await this.auditoria.registrarEvento(
           {
             usuarioId: solicitante.id,
@@ -661,7 +725,10 @@ export class BarberiaService {
             accion: 'PERSONAL_SEDE_ACTUALIZADO',
             entidad: 'usuarios',
             entidadId: usuarioId,
-            contexto: { rol: rol.nombre, estado: dto.estado },
+            contexto: {
+              rol: rol?.nombre ?? null,
+              estado: dto.estado ?? null,
+            },
           },
           tx,
         );
@@ -679,8 +746,10 @@ export class BarberiaService {
       return {
         ...actualizado,
         estado: actualizado.estadoCuenta,
-        estadoSede: dto.estado,
-        roles: [rol.nombre],
+        // Lo que no vino se queda como estaba: el cliente recibe el estado
+        // resultante, no el que (no) envió.
+        estadoSede: dto.estado ?? relaciones[0].estado,
+        roles: [dto.rolNombre ?? relaciones[0].rol.nombre],
       };
     } catch (error: any) {
       if (error?.code === 'P2002')
@@ -1009,6 +1078,12 @@ export class BarberiaService {
     }
 
     if (dto.telefono !== undefined && dto.telefono !== barberia.telefono) {
+      // I-08 · validar secuencia repetitiva al cambiar teléfono
+      if (/^(\d)\1{9}$/.test(dto.telefono)) {
+        throw new ConflictException(
+          'El teléfono no puede ser una secuencia repetitiva (ej. 0000000000).',
+        );
+      }
       await this.verificarPasswordActual(authUserId, dto.passwordActual);
     }
 
@@ -1101,6 +1176,31 @@ export class BarberiaService {
         where: { id },
         data: { estado },
       });
+
+      // I-01 · suspender la sede tiene que cortar las sesiones de TODO su
+      // personal, no solo impedir el login futuro: el token ya firmado lleva
+      // `ADMIN_BARBERIA`/`BARBERO` con esta sede en su claim hasta 24 h
+      // (`expiresIn`). Se sube `tokenVersion` en la MISMA transacción —misma
+      // palanca que la suspensión de cuenta (D24) y la baja de un miembro en Mi
+      // Personal— así que el personal sale con 401 en su petición siguiente.
+      //
+      // Al REACTIVAR no se toca: igual que al reactivar un vínculo, el acceso
+      // vuelve entrando por `login`, donde ya se firma la sede activa.
+      if (estado === 'INACTIVO') {
+        const personal = await tx.usuarioRol.findMany({
+          where: { barberiaId: id, estado: 'ACTIVO' },
+          select: { usuarioId: true },
+        });
+        // Un usuario puede tener más de una fila aquí; `id: { in }` no admite
+        // repetidos y la versión debe subir UNA vez, no una por fila.
+        const ids = [...new Set(personal.map((p) => p.usuarioId))];
+        if (ids.length > 0) {
+          await tx.usuario.updateMany({
+            where: { id: { in: ids } },
+            data: { tokenVersion: { increment: 1 } },
+          });
+        }
+      }
 
       await this.auditoria.registrarEvento(
         {

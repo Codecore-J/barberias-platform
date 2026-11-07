@@ -11,6 +11,10 @@ model Usuario {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   nombreCompleto String    @map("nombre_completo") @db.VarChar(150)
   correo         String    @unique @db.VarChar(150)
+  // H-02 · el formato (exactamente 10 dígitos) lo impone además PostgreSQL con
+  // el CHECK `chk_usuario_telefono_10_digitos` de la migración
+  // `add_telefono_check_constraint`. Prisma no sabe expresar CHECKs, así que
+  // aquí solo queda la validación del DTO; la garantía real vive en la base.
   telefono       String    @unique @db.VarChar(30)
   cedula         String?   @unique @db.VarChar(30)
   passwordHash   String    @map("password_hash") @db.VarChar(255)
@@ -106,7 +110,12 @@ model UsuarioRol {
 
   usuario  Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   rol      Rol       @relation(fields: [rolId], references: [id])
-  barberia Barberia? @relation(fields: [barberiaId], references: [id])
+  // CASCADE, no SET NULL: una asignación de ámbito sede sin sede no significa
+  // nada. Con la regla por defecto de una relación opcional, borrar una sede
+  // dejaba filas con `barberia_id = NULL` que ni dan acceso (`alcanceCumple`
+  // exige `ambito = GLOBAL`) ni se limpian solas. Las filas globales
+  // (`barberia_id IS NULL`) no se tocan: no coinciden con ninguna sede.
+  barberia Barberia? @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
 
   // E0 · la unicidad NO se declara aquí. Un `@@unique` con `barberiaId`
   // nullable no protege los roles globales: PostgreSQL considera distintos dos
@@ -123,6 +132,10 @@ model Barberia {
   id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   nombre        String  @db.VarChar(150)
   descripcion   String? @db.Text
+  // H-02 · formato de 10 dígitos garantizado además por PostgreSQL con el CHECK
+  // `chk_barberia_telefono_10_digitos` (migración `add_barberias_telefono_check`).
+  // Prisma no expresa CHECKs: `CreateBarberiaDto`/`UpdateBarberiaDto` validan
+  // primero y esta restricción cubre cualquier escritura que los esquive.
   telefono      String  @db.VarChar(30)
   ubicacion     String  @db.Text
   codigoAcceso  String  @unique @map("codigo_acceso") @db.VarChar(50)
@@ -233,7 +246,10 @@ model CategoriaServicio {
 
   // Nomenclatura única por sede: dos «Corte» en la misma sede confundirían al
   // cliente y al barbero que elige dónde publicar.
-  @@unique([barberiaId, nombre], name: "uk_categoria_sede_nombre")
+  // `name` nombra el ACCESOR del cliente; `map` el índice real en PostgreSQL.
+  // Faltaba `map`, así que Prisma quería renombrar el índice al nombre por
+  // defecto que él mismo generaría.
+  @@unique([barberiaId, nombre], name: "uk_categoria_sede_nombre", map: "uk_categoria_sede_nombre")
   @@map("categorias_servicio")
 }
 
@@ -264,7 +280,7 @@ model ServicioBarbero {
   // mitad del vínculo opcional de `participante_servicios`.
   participanteServicios ParticipanteServicio[]
 
-  @@unique([barberoId, categoriaId, nombrePersonalizado], name: "uk_servicio_barbero_categoria_nombre")
+  @@unique([barberoId, categoriaId, nombrePersonalizado], name: "uk_servicio_barbero_categoria_nombre", map: "uk_servicio_barbero_categoria_nombre")
   @@index([categoriaId, activo], name: "idx_servicios_barbero_categoria")
   @@index([barberoId, activo], name: "idx_servicios_barbero_barbero")
   @@map("servicios_barbero")
@@ -357,7 +373,7 @@ model HorarioBarbero {
   barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
   barbero  Usuario  @relation("HorarioDeBarbero", fields: [barberoId], references: [id], onDelete: Cascade)
 
-  @@unique([barberiaId, barberoId, diaSemana], name: "uk_horario_barbero_dia")
+  @@unique([barberiaId, barberoId, diaSemana], name: "uk_horario_barbero_dia", map: "uk_horario_barbero_dia")
   @@map("horarios_barbero")
 }
 
@@ -489,6 +505,10 @@ model Reserva {
   pago          Pago?
 
   @@index([barberiaId, fechaCita, estado, horaInicio, horaFin], name: "idx_reservas_concurrencia")
+  // Fase 7 · lo usa el cron de recordatorios. Lo creó la migración
+  // `add_recordatorio_flag` y no estaba declarado aquí, así que cada diff
+  // proponía borrarlo (`DROP INDEX idx_reservas_recordatorio_pendiente`).
+  @@index([fechaCita, estado, recordatorioEnviado], map: "idx_reservas_recordatorio_pendiente")
   // E0 · consultas calientes sin cobertura: "mis reservas" por cliente y la
   // agenda por barbero. Sin estos índices cada una es un Seq Scan con sort.
   @@index([clienteId])
@@ -557,7 +577,10 @@ model ParticipanteServicio {
   margenHistorico   Int     @map("margen_historico")
 
   participante    ParticipanteReserva @relation(fields: [participanteId], references: [id], onDelete: Cascade)
-  servicio        Servicio?           @relation(fields: [servicioId], references: [id])
+  // RESTRICT explícito: coincide con la FK que creó `init`. Sin declararlo,
+  // Prisma asume SET NULL para una relación opcional y su diff proponía
+  // recrear la constraint cambiando la regla de borrado.
+  servicio        Servicio?           @relation(fields: [servicioId], references: [id], onDelete: Restrict)
   servicioBarbero ServicioBarbero?    @relation(fields: [servicioBarberoId], references: [id], onDelete: Restrict)
 
   @@index([servicioId], name: "idx_participante_servicios_servicio")
@@ -627,7 +650,7 @@ model CierreCaja {
   abridor  Usuario? @relation("CierreAbiertoPor", fields: [abiertoPor], references: [id])
   cerrador Usuario? @relation("CierreCerradoPor", fields: [cerradoPor], references: [id])
 
-  @@unique([barberiaId, fechaArqueo], name: "uk_cierre_caja_sede_fecha")
+  @@unique([barberiaId, fechaArqueo], name: "uk_cierre_caja_sede_fecha", map: "uk_cierre_caja_sede_fecha")
   @@index([barberiaId, fechaArqueo], name: "idx_cierre_caja_sede_fecha")
   @@map("cierres_caja")
 }

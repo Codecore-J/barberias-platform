@@ -145,7 +145,7 @@ describe('E3-03 · partición de POST /reservas: cliente vs walk-in', () => {
             telefonoVerificado: true,
             nombreCompleto: `Split E303 ${i}`,
             correo,
-            telefono: `9998${String(i).padStart(7, '0')}`,
+            telefono: `999${String(i).padStart(7, '0')}`,
             passwordHash: '$2b$10$HashFalsoSplitE303NoSeUsaParaLogin',
           },
           select: { id: true },

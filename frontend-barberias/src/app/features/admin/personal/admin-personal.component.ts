@@ -2,6 +2,7 @@ import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { mensajeDeError } from '../../../core/utils/error-message';
 import {
   ActualizarPersonalRequest,
   InvitarPersonalRequest,
@@ -10,6 +11,7 @@ import {
 } from '../../../core/services/personal.service';
 import { HorariosService, ExcepcionHorario } from '../../../core/services/horarios.service';
 import { TenantService } from '../../../core/services/tenant.service';
+import { PATRON_TELEFONO, sanearTelefono } from '../../../core/utils/telefono.util';
 
 import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.component';
 import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service';
@@ -335,8 +337,10 @@ import { AuthService } from '../../../auth/auth.service';
                   inputmode="numeric"
                   formControlName="telefono"
                   autocomplete="tel"
+                  maxlength="10"
                   required
                   aria-required="true"
+                  (input)="onTelefonoInput($event, formularioInvitacion)"
                   [attr.aria-invalid]="campoInvalido(formularioInvitacion, 'telefono')"
                   [attr.aria-describedby]="
                     campoInvalido(formularioInvitacion, 'telefono')
@@ -534,7 +538,7 @@ export class AdminPersonalComponent implements OnInit {
   readonly formularioInvitacion = this.fb.group({
     nombreCompleto: ['', [Validators.required, Validators.maxLength(150)]],
     correo: ['', [Validators.required, Validators.email, Validators.maxLength(150)]],
-    telefono: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
+    telefono: ['', [Validators.required, Validators.pattern(PATRON_TELEFONO)]],
     password: [
       '',
       [
@@ -688,6 +692,23 @@ export class AdminPersonalComponent implements OnInit {
     this.formularioPersonalAbierto.set(true);
   }
 
+  /**
+   * Deja en el control solo los dígitos del teléfono.
+   *
+   * Sin esto, pegar "809-555-0101" dejaba el formulario inválido con un mensaje
+   * que no explicaba nada y el usuario tenía que limpiarlo a mano. Se escribe en
+   * el `<input>` y en el control a la vez para que ambos queden sincronizados sin
+   * disparar otra ronda de validación por cada tecla borrada.
+   */
+  onTelefonoInput(evento: Event, formulario: FormGroup): void {
+    const input = evento.target as HTMLInputElement;
+    const limpio = sanearTelefono(input.value);
+    if (input.value === limpio) return;
+
+    input.value = limpio;
+    formulario.get('telefono')?.setValue(limpio, { emitEvent: false });
+  }
+
   campoInvalido(formulario: FormGroup, nombre: string): boolean {
     const control = formulario.get(nombre);
     return !!control && control.invalid && (control.dirty || control.touched);
@@ -758,7 +779,7 @@ export class AdminPersonalComponent implements OnInit {
 
   private manejarErrorPersonal(err: any, respaldo: string): void {
     this.guardandoPersonal.set(false);
-    const mensaje = err?.error?.mensaje || err?.error?.message || err?.message || respaldo;
+    const mensaje = mensajeDeError(err, respaldo);
     this.errorPersonal.set(mensaje);
     this.toast.error(mensaje, 'No se pudo guardar');
   }
@@ -790,8 +811,7 @@ export class AdminPersonalComponent implements OnInit {
         );
       },
       error: (err) => {
-        const mensaje =
-          err?.error?.mensaje || err?.error?.message || 'No se pudo desactivar al miembro.';
+        const mensaje = mensajeDeError(err, 'No se pudo desactivar al miembro.');
         this.toast.error(mensaje, 'No se pudo desactivar');
       },
     });

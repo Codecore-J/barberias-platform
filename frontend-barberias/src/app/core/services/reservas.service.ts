@@ -4,6 +4,7 @@ import { Observable, tap, catchError, of, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 import { TenantService } from './tenant.service.js';
 import type { ReservaCliente, Turno } from '../models/turno.model.js';
+import { mensajeDeError } from '../utils/error-message.js';
 
 export interface DisponibilidadSlot {
   inicio: string;
@@ -79,7 +80,7 @@ export class ReservasService {
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al consultar disponibilidad');
+        this.error.set(mensajeDeError(err, 'Error al consultar disponibilidad'));
         return of([]);
       })
     );
@@ -100,7 +101,7 @@ export class ReservasService {
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al crear la reserva');
+        this.error.set(mensajeDeError(err, 'Error al crear la reserva'));
         return throwError(() => err);
       })
     );
@@ -123,7 +124,7 @@ export class ReservasService {
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al crear la reserva walk-in');
+        this.error.set(mensajeDeError(err, 'Error al crear la reserva walk-in'));
         return throwError(() => err);
       })
     );
@@ -140,7 +141,7 @@ export class ReservasService {
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al obtener tus reservas');
+        this.error.set(mensajeDeError(err, 'Error al obtener tus reservas'));
         return of([]);
       })
     );
@@ -161,7 +162,7 @@ export class ReservasService {
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al obtener la agenda');
+        this.error.set(mensajeDeError(err, 'Error al obtener la agenda'));
         return of([]);
       })
     );
@@ -179,7 +180,7 @@ export class ReservasService {
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.mensaje || err.error?.message || 'No se pudo confirmar la reserva');
+        this.error.set(mensajeDeError(err, 'No se pudo confirmar la reserva'));
         return throwError(() => err);
       })
     );
@@ -197,7 +198,7 @@ export class ReservasService {
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.mensaje || err.error?.message || 'No se pudo cancelar la reserva');
+        this.error.set(mensajeDeError(err, 'No se pudo cancelar la reserva'));
         return throwError(() => err);
       })
     );
@@ -219,7 +220,7 @@ export class ReservasService {
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al cambiar estado de la reserva');
+        this.error.set(mensajeDeError(err, 'Error al cambiar estado de la reserva'));
         return throwError(() => err);
       })
     );
@@ -248,7 +249,7 @@ export class ReservasService {
         catchError((err) => {
           this.isLoading.set(false);
           this.error.set(
-            err.error?.mensaje || err.error?.message || 'No se pudo asignar el barbero',
+            mensajeDeError(err, 'No se pudo asignar el barbero'),
           );
           return throwError(() => err);
         }),
@@ -266,7 +267,7 @@ export class ReservasService {
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al procesar el cobro');
+        this.error.set(mensajeDeError(err, 'Error al procesar el cobro'));
         return throwError(() => err);
       })
     );

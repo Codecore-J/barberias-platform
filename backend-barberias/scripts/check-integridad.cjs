@@ -62,9 +62,11 @@ function checksDeclarados() {
     for (const archivo of fs.readdirSync(directorio)) {
       if (!archivo.endsWith('.sql')) continue;
       const sql = fs.readFileSync(path.join(directorio, archivo), 'utf8');
-      // Tanto `ALTER TABLE ... ADD CONSTRAINT "x_check"` como los declarados
-      // dentro de un `CREATE TABLE` siguen el mismo patrón.
-      for (const m of sql.matchAll(/CONSTRAINT\s+"([a-zA-Z0-9_]+_check)"/g)) {
+      // Tanto `ALTER TABLE ... ADD CONSTRAINT "x_check"` (sufijo) como los que
+      // usan el prefijo `chk_` (ej. chk_barberia_telefono_10_digitos) siguen el
+      // mismo patrón CONSTRAINT "nombre". Se capturan ambas convenciones para
+      // que el script no emita falsos positivos (FI-01 · 2026-11-06).
+      for (const m of sql.matchAll(/CONSTRAINT\s+"(chk_[a-zA-Z0-9_]+|[a-zA-Z0-9_]+_check)"/g)) {
         nombres.add(m[1]);
       }
     }
@@ -163,19 +165,35 @@ async function main() {
         ].join('\n'),
       );
     }
-
     if (problemas.length > 0) {
-      console.error('[check:integridad] FALLO\n' + problemas.join('\n\n'));
+      console.error("[check:integridad] FALLO");
+      console.error("[check:integridad] problemas detectados: " + problemas.length);
+      for (const bloque of problemas) {
+        for (const linea of bloque.split("\n")) {
+          console.error("  " + linea);
+        }
+        console.error("");
+      }
+      console.error("");
+      console.error("[check:integridad] DEBUG — dumps completos antes de exit(1)");
+      console.error("esperadas (repo): " + JSON.stringify(esperadas));
+      console.error("aplicadas (ledger): " + JSON.stringify(aplicadas));
+      console.error("soloEnA (repo sin aplicar): " + JSON.stringify(migraciones.soloEnA));
+      console.error("soloEnB (aplicada sin repo): " + JSON.stringify(migraciones.soloEnB));
+      console.error("declarados (repo): " + JSON.stringify(declarados));
+      console.error("enBase (base): " + JSON.stringify(enBase));
+      console.error("checks soloEnA (repo sin crear en base): " + JSON.stringify(checks.soloEnA));
+      console.error("checks soloEnB (base sin declarar en repo): " + JSON.stringify(checks.soloEnB));
+      console.error("[check:integridad] DEBUG — fin de dumps");
       process.exit(1);
     }
 
-    console.log(
-      `[check:integridad] OK — ${esperadas.length} migraciones y ${declarados.length} CHECK coinciden con el esquema «${esquema}».`,
-    );
+    console.log(`[check-integridad] OK: no se encontraron problemas...`);
   } finally {
     await prisma.$disconnect();
   }
 }
+
 
 main().catch((e) => {
   console.error(`[check:integridad] Error inesperado: ${e.message}`);

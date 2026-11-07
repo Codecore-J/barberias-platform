@@ -147,7 +147,7 @@ describe('E2-07 · P-SD-3/P-SD-4 · sede suspendida: no reserva, no expone agend
     const sede = await prisma.barberia.create({
       data: {
         nombre: `Sede PSD34-${sufijo}`,
-        telefono: `703${sufijo.slice(-6).padEnd(6, '0')}01`,
+        telefono: `7031${String(1).padStart(6, '0')}`,
         ubicacion: 'Sede P-SD-3',
         estado: 'ACTIVO',
         codigoAcceso: `PSD34-${sufijo}`,

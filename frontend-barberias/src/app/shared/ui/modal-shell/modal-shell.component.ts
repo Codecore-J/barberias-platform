@@ -3,6 +3,7 @@ import {
   DestroyRef,
   ElementRef,
   HostListener,
+  afterNextRender,
   effect,
   inject,
   input,
@@ -92,12 +93,13 @@ let contadorInstancias = 0;
     `,
   ],
   template: `
-    @if (visible()) {
-      <div
-        appModalOverlay
-        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md overflow-y-auto"
-        (click)="alClicEnFondo()"
-      >
+    <div
+      #overlay
+      [appModalOverlay]="visible()"
+      [style.display]="visible() ? 'flex' : 'none'"
+      class="modal-shell-overlay fixed inset-0 items-center justify-center p-4 bg-black/70 backdrop-blur-md overflow-y-auto"
+      (click)="alClicEnFondo()"
+    >
         <div
           #panel
           role="dialog"
@@ -152,8 +154,7 @@ let contadorInstancias = 0;
             <ng-content select="[modal-footer]" />
           </div>
         </div>
-      </div>
-    }
+    </div>
   `,
 })
 export class ModalShellComponent {
@@ -172,12 +173,17 @@ export class ModalShellComponent {
   protected readonly anchoPx = signal(ANCHOS.md);
 
   private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
+  private readonly overlay = viewChild<ElementRef<HTMLElement>>('overlay');
 
   /** Elemento que tenía el foco antes de abrir: se le devuelve al cerrar. */
   private ultimoFoco: HTMLElement | null = null;
   private estabaAbierto = false;
 
   constructor() {
+    // Se ejecuta tras el primer render: en ese momento el overlay ya está en el
+    // DOM y `viewChild` lo resuelve.
+    afterNextRender(() => this.portarOverlay());
+
     effect(() => {
       const abierto = this.visible();
       this.anchoPx.set(ANCHOS[this.ancho()]);
@@ -203,7 +209,40 @@ export class ModalShellComponent {
     // destruye sin que `visible` llegue a pasar por `false`. Sin este gancho el
     // foco se quedaría en el `<body>` y con el teclado habría que empezar a
     // tabular desde el principio de la página.
-    inject(DestroyRef).onDestroy(() => this.restaurarFoco());
+    inject(DestroyRef).onDestroy(() => {
+      this.restaurarFoco();
+      // El overlay vive fuera del host (ver `portarOverlay`): si no se retira a
+      // mano, quedarse en `<body>` sería una fuga al cambiar de ruta.
+      this.overlay()?.nativeElement.remove();
+    });
+  }
+
+  /**
+   * H-01 · saca el overlay del árbol de la página para que su `z-index` no
+   * quede encerrado en un contexto de apilamiento ajeno.
+   *
+   * El overlay se monta dentro de `<main class="relative z-10">`, y además cada
+   * vista suele envolver su contenido en otro `relative z-10` (más
+   * `animate-fade-in`, que también abre contexto mientras anima). Un
+   * `position: fixed` NO escapa de eso: su `z-index` solo compite dentro de ese
+   * contexto y el `<header>` y el `<footer>`, que son hermanos de `<main>`, se
+   * pintan por encima. El resultado era un modal visible cuyos botones no
+   * recibían el clic: el `elementFromPoint` devolvía el pie de página.
+   *
+   * Se mueve el nodo a `<body>`, el mismo nivel que ya usaban el toast y el
+   * diálogo de confirmación, y la escala de `styles.css` lo coloca en 1100:
+   * por encima de la cabecera y del pie, por debajo de notificaciones y
+   * confirmaciones.
+   *
+   * El elemento se monta siempre (y se oculta con `display: none`) precisamente
+   * para poder moverlo sin que Angular intente retirarlo después de un padre
+   * equivocado: con un `@if` alrededor, el `removeChild` del cierre lanzaría
+   * `NotFoundError` porque el nodo ya no cuelga del host.
+   */
+  private portarOverlay(): void {
+    const overlay = this.overlay()?.nativeElement;
+    if (!overlay || overlay.parentNode === document.body) return;
+    document.body.appendChild(overlay);
   }
 
   protected solicitarCierre(): void {

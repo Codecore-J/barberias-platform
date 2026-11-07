@@ -113,6 +113,19 @@ export const ESTADOS_CANCELABLES = [
 export const ESTADOS_REPROGRAMABLES = ESTADOS_CANCELABLES;
 
 /**
+ * H-03 · texto que la bandeja muestra como «motivo».
+ *
+ * `propuestas_horario` no guarda un motivo libre: el hecho de que el cliente
+ * haya propuesto un bloque nuevo ya es la razón. Se deriva del catálogo
+ * `TIPOS_PROPUESTA` para no inventar una columna que el contrato D18 no define.
+ */
+const MOTIVO_PROPUESTA: Record<string, string> = {
+  [TIPOS_PROPUESTA.REPROGRAMACION]: 'Reprogramación de la cita solicitada por el cliente',
+  [TIPOS_PROPUESTA.ADELANTO]: 'Adelanto de la cita solicitado por el cliente',
+  [TIPOS_PROPUESTA.PROPUESTA_INICIAL]: 'Propuesta inicial de horario del cliente',
+};
+
+/**
  * V3 · estados en los que se puede reasignar el barbero de una reserva.
  *
  * Son los mismos en los que la reserva sigue «viva» para la agenda: una cita
@@ -2823,6 +2836,104 @@ export class ReservaService {
       );
 
       return rechazada;
+    });
+  }
+
+  /**
+   * H-03 · Bandeja de propuestas de horario pendientes de una sede.
+   *
+   * El listado es SOLO de `propuestas_horario.estado = PENDIENTE`: la agenda
+   * diaria sigue mostrando la cita en su hora actual, así que una propuesta no
+   * se mezcla con las reservas ni obliga a abrir el día para encontrarla.
+   *
+   * No incluye propuestas ya vencidas como «accionables»: vienen marcadas con
+   * `expirada: true` para que la bandeja las muestre y deshabilite los botones.
+   * La resolución (aceptar/rechazar) es la de E3-08/D18 y se reutiliza tal
+   * cual: este método solo LEE.
+   *
+   * El aislamiento por sede es doble: `reserva.barberiaId` filtra el query y
+   * el alcance del usuario se comprueba antes, con la misma regla que la agenda.
+   */
+  async listarPropuestasHorarioPendientes(barberiaId: string, user: UsuarioAutenticado) {
+    if (!barberiaId) {
+      throw new BadRequestException('ID de barbería es requerido');
+    }
+
+    const rolesEnBarberia = user.rolesDetallados?.filter((r) => alcanceCumple(r, barberiaId)) || [];
+
+    if (rolesEnBarberia.length === 0) {
+      throw new ForbiddenException('No tienes acceso a las propuestas de esta barbería.');
+    }
+
+    const propuestas = await this.prisma.propuestaHorario.findMany({
+      where: {
+        estado: ESTADOS_PROPUESTA.PENDIENTE,
+        reserva: { is: { barberiaId } },
+      },
+      include: {
+        creador: {
+          select: { id: true, nombreCompleto: true, correo: true, telefono: true },
+        },
+        reserva: {
+          select: {
+            id: true,
+            estado: true,
+            fechaCita: true,
+            horaInicio: true,
+            horaFin: true,
+            cliente: {
+              select: { id: true, nombreCompleto: true, correo: true, telefono: true },
+            },
+            barbero: {
+              select: { id: true, nombreCompleto: true },
+            },
+          },
+        },
+      },
+      orderBy: { creadoAt: 'asc' },
+    });
+
+    const ahora = this.tiempo.ahora().getTime();
+
+    return propuestas.map((p) => {
+      const expirada = !!p.expiraAt && p.expiraAt.getTime() <= ahora;
+
+      return {
+        id: p.id,
+        reservaId: p.reservaId,
+        tipo: p.tipo,
+        estado: p.estado,
+        motivo: MOTIVO_PROPUESTA[p.tipo] ?? 'Cambio de horario propuesto por el cliente',
+        fechaPropuesta: fechaCalendarioISO(p.fechaCita),
+        horaInicioPropuesta: horaRelojHHMM(p.horaInicio),
+        horaFinPropuesta: horaRelojHHMM(p.horaFin),
+        expiraAt: p.expiraAt ? p.expiraAt.toISOString() : null,
+        expirada,
+        creadoAt: p.creadoAt ? p.creadoAt.toISOString() : null,
+        solicitante: {
+          id: p.creador.id,
+          nombre: p.creador.nombreCompleto,
+        },
+        reserva: {
+          id: p.reserva.id,
+          estado: p.reserva.estado,
+          fechaActual: fechaCalendarioISO(p.reserva.fechaCita),
+          horaInicioActual: horaRelojHHMM(p.reserva.horaInicio),
+          horaFinActual: horaRelojHHMM(p.reserva.horaFin),
+          cliente: {
+            id: p.reserva.cliente.id,
+            nombre: p.reserva.cliente.nombreCompleto,
+            correo: p.reserva.cliente.correo,
+            telefono: p.reserva.cliente.telefono,
+          },
+          barbero: p.reserva.barbero
+            ? {
+                id: p.reserva.barbero.id,
+                nombre: p.reserva.barbero.nombreCompleto,
+              }
+            : null,
+        },
+      };
     });
   }
 

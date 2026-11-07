@@ -146,3 +146,74 @@ select:-webkit-autofill {
     radial-gradient(circle at 100% 50%, rgba(245, 158, 11, 0.05) 0%, transparent 40%),
     radial-gradient(circle at 0% 80%, rgba(212, 175, 55, 0.05) 0%, transparent 40%);
 }
+
+/*
+ * H-01 · Escala única de apilamiento.
+ *
+ * El pie del modal quedaba debajo del `<footer>` del layout: el overlay es
+ * `position: fixed`, pero su `z-index` solo competía dentro del contexto de
+ * apilamiento del ancestro (el `<main class="relative z-10">` y los wrappers
+ * `relative z-10` de cada vista). Así el `z-index` del overlay nunca llegaba a
+ * compararse con el del footer y el clic lo interceptaba el pie de página.
+ *
+ * Dos medidas complementarias:
+ *   1. `ModalShellComponent` porta el overlay a `<body>` (fuera de cualquier
+ *      contexto de apilamiento ajeno).
+ *   2. Aquí se declara una escala explícita para que ninguna capa dependa de un
+ *      valor arbitrario de Tailwind que pueda no emitirse en el build.
+ *
+ * El orden es deliberado: cabecera/pie por debajo; modales por encima del
+ * chrome; toasts y confirmaciones por encima de los modales para seguir siendo
+ * visibles y operables con un diálogo abierto.
+ */
+:root {
+  --app-z-footer: 10;
+  --app-z-header: 50;
+  --app-z-modal: 1100;
+  --app-z-prime-overlay: 1150;
+  --app-z-toast: 1200;
+  --app-z-confirm: 1300;
+  --app-z-drawer: 1400;
+}
+
+.app-footer {
+  z-index: var(--app-z-footer);
+}
+
+.app-header {
+  z-index: var(--app-z-header);
+}
+
+.modal-shell-overlay {
+  z-index: var(--app-z-modal);
+}
+
+/*
+ * Superficies flotantes de PrimeNG. Sin `!important`: PrimeNG administra su
+ * propio orden con `autoZIndex` y forzarlo rompería el apilamiento entre
+ * paneles anidados. La regla solo garantiza el mínimo frente al layout.
+ */
+.p-dialog-mask,
+.p-component-overlay,
+.p-dialog {
+  z-index: var(--app-z-modal);
+}
+
+/* Tooltips, dropdowns y calendarios deben quedar SOBRE el diálogo que los abre. */
+.p-overlay,
+.p-connected-overlay,
+.p-tooltip {
+  z-index: var(--app-z-prime-overlay);
+}
+
+.toast-layer {
+  z-index: var(--app-z-toast);
+}
+
+.confirm-layer {
+  z-index: var(--app-z-confirm);
+}
+
+.drawer-layer {
+  z-index: var(--app-z-drawer);
+}

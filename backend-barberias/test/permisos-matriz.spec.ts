@@ -197,6 +197,12 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // Historial de auditoría de UNA cuenta (suspensiones, reactivaciones, motivos).
   // Es la vista global del comportamiento de una cuenta: solo plataforma.
   'GET /plataforma/usuarios/:id/auditoria': [ROL_ADMINISTRADOR],
+  // I-05 (2026-11-05): vínculos de rol de una cuenta, con su sede. Alimenta el
+  // modal de roles de la bandeja; la sede no los ve.
+  'GET /plataforma/usuarios/:id/roles': [ROL_ADMINISTRADOR],
+  // I-05: conceder o retirar el rol GLOBAL de administrador. Es el único que
+  // tiene sentido desde plataforma; los de sede se cambian en `.../staff`.
+  'PATCH /plataforma/usuarios/:id/administrador': [ROL_ADMINISTRADOR],
 
   'GET /shops/:shopId/appointments/schedule/blocks': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
   'POST /shops/:shopId/appointments/schedule/blocks': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -316,8 +322,11 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /shops/:shopId/appointments/:id/propose-time': [ROL_CLIENTE],
   'POST /shops/:shopId/appointments/:id/proposed-time/accept': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'POST /shops/:shopId/appointments/:id/proposed-time/reject': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // H-03: bandeja de propuestas de horario pendientes de la sede. Misma política
+  // que aceptar/rechazar (D02): es decisión de la SEDE, no del barbero ni del
+  // cliente. El ADMINISTRADOR global entra por jerarquía (E1-04).
+  'GET /shops/:shopId/appointments/proposals/pending': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'GET /shops/:shopId/appointments/day': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_ADMINISTRADOR],
-
   // D16 (Especificación §2/§3.1): el catálogo lo opera el personal de la sede.
   // Las escrituras son del BARBERO y del ADMIN_BARBERIA (en V1 suele ser el
   // único responsable/operador). El ADMINISTRADOR global queda FUERA de la
@@ -647,8 +656,11 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // plantilla base semanal del barbero suma sus dos verbos: 111 × 4 = 444.
   // La bandeja local de solicitudes de cambio (E3-13, lectura de la sede) suma
   // la 112: 112 × 4 = 448. La gestión local de personal añade POST y PATCH:
-  // 114 rutas con política × 4 roles = 456 decisiones.
-  expect(evaluaciones).toBe(456);
+  // 114 rutas con política × 4 roles = 448. I-05 suma los vínculos de rol de
+  // una cuenta (GET) y la concesión/retirada del rol global (PATCH): 116 rutas
+  // con política × 4 roles = 464 decisiones. H-03 suma la bandeja de
+  // propuestas de horario pendientes: 117 × 4 = 468 decisiones.
+  expect(evaluaciones).toBe(468);
     expect(
       desviaciones.length === 0
         ? ''

@@ -54,6 +54,25 @@ export class VinculoBarberiaGuard implements CanActivate {
       return true;
     }
 
+    // I-01 · la sede tiene que seguir OPERANDO, no solo existir el vínculo. Sin
+    // esto, suspender una barbería (E2-07) apagaba su ficha pero su personal
+    // seguía leyendo y escribiendo el catálogo: `usuario_roles` no cambia al
+    // suspender la sede. Se comprueba ANTES de la pertenencia porque es la
+    // condición más barata y la que aplica a las dos puertas (personal y
+    // cliente): una sede suspendida no admite operaciones de nadie.
+    const sede = await this.prisma.barberia.findUnique({
+      where: { id: barberiaId },
+      select: { estado: true },
+    });
+    if (!sede) {
+      throw new ForbiddenException('La barbería indicada no existe.');
+    }
+    if (sede.estado !== 'ACTIVO') {
+      throw new ForbiddenException(
+        'La barbería está suspendida: no admite operaciones mientras permanezca inactiva.',
+      );
+    }
+
     // Personal: entra por `usuario_roles`.
     const rol = await this.prisma.usuarioRol.findFirst({
       where: { usuarioId: user.id, barberiaId, estado: 'ACTIVO' },

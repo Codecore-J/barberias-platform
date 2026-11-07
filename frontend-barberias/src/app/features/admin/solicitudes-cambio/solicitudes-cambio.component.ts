@@ -299,7 +299,7 @@ type FiltroEstado = 'TODAS' | EstadoSolicitudCambio;
               placeholder="Explica por qué no se aprueba el cambio"
             ></textarea>
             <p class="text-[11px] mt-1.5" [ngClass]="motivoValido() ? 'text-zinc-500' : 'text-rose-400'">
-              {{ motivo().trim().length }}/{{ MOTIVO_RECHAZO_MIN }} caracteres mínimos
+              {{ motivoAyuda() }}
             </p>
           </div>
 
@@ -370,6 +370,20 @@ export class AdminSolicitudesCambioComponent implements OnInit {
   });
 
   readonly motivoValido = computed(() => this.motivo().trim().length >= MOTIVO_RECHAZO_MIN);
+
+  /**
+   * H-05: el contador crudo («48/5») se lee como una fracción —más del mínimo,
+   * pero con aspecto de «48 de 5»— y el número suelto no dice qué se cuenta.
+   * En lenguaje llano: cuántos caracteres hay y, si aún no llega, cuántos
+   * faltan. En singular para no escribir «1 caracteres».
+   */
+  readonly motivoAyuda = computed(() => {
+    const escritos = this.motivo().trim().length;
+    const recuento = escritos === 1 ? '1 carácter' : `${escritos} caracteres`;
+    return escritos >= MOTIVO_RECHAZO_MIN
+      ? `${recuento} (mínimo ${MOTIVO_RECHAZO_MIN})`
+      : `${recuento} · faltan ${MOTIVO_RECHAZO_MIN - escritos}`;
+  });
 
   ngOnInit(): void {
     this.cargar();

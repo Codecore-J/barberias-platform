@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { mensajeDeError } from '../utils/error-message.js';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, map, tap, catchError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
@@ -83,7 +84,7 @@ export class SolicitudesCambioService {
         this.solicitudes.set([]);
         this.total.set(0);
         this.error.set(
-          err.error?.mensaje || err.error?.message || 'No se pudieron cargar las solicitudes de cambio',
+          mensajeDeError(err, 'No se pudieron cargar las solicitudes de cambio'),
         );
         throw err;
       }),
@@ -117,7 +118,7 @@ export class SolicitudesCambioService {
           this.solicitudes.set([]);
           this.total.set(0);
           this.error.set(
-            err.error?.mensaje || err.error?.message || 'No se pudieron cargar las solicitudes de cambio',
+            mensajeDeError(err, 'No se pudieron cargar las solicitudes de cambio'),
           );
           throw err;
         }),
@@ -150,7 +151,7 @@ export class SolicitudesCambioService {
         }),
         catchError((err) => {
           this.error.set(
-            err.error?.mensaje || err.error?.message || 'No se pudo resolver la solicitud',
+            mensajeDeError(err, 'No se pudo resolver la solicitud'),
           );
           throw err;
         }),

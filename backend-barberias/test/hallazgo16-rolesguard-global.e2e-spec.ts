@@ -47,7 +47,7 @@ describe('Hallazgo 16 - RolesGuard Global (e2e)', () => {
       create: {
         nombreCompleto: 'Owner Hallazgo 16',
         correo: 'test_hallazgo16_owner@demo.com',
-        telefono: '999888777161',
+        telefono: '9998887770',
         passwordHash: '$2b$10$HashFalsoOwnerNoSeUsaEnLoginTest16',
         estadoCuenta: 'ACTIVO',
       },
@@ -55,7 +55,7 @@ describe('Hallazgo 16 - RolesGuard Global (e2e)', () => {
     const barberia = await prisma.barberia.create({
       data: {
         nombre: 'Barberia Hallazgo 16',
-        telefono: '12345678',
+        telefono: '9876543210',
         estado: 'ACTIVO',
         ubicacion: 'Lat, Long',
         codigoAcceso: 'TEST16',
@@ -71,7 +71,7 @@ describe('Hallazgo 16 - RolesGuard Global (e2e)', () => {
         telefonoVerificado: true,
         nombreCompleto: 'Cliente Hallazgo 16',
         correo: 'test_hallazgo16@demo.com',
-        telefono: '99988877716',
+        telefono: '9998887770',
         passwordHash: '$2b$10$EpicHashFalsoParaTest...',
         estadoCuenta: 'ACTIVO',
         usuarioRoles: {

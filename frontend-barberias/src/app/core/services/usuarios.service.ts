@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { mensajeDeError } from '../utils/error-message.js';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, map, catchError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
@@ -82,6 +83,28 @@ export interface UsuarioAuditoriaEvento {
 }
 
 /** Sede para el selector del alta (`GET /barberias/all`, solo ADMINISTRADOR). */
+/**
+ * I-05 · un vínculo de rol de la cuenta, tal y como lo devuelve
+ * `GET /plataforma/usuarios/:id/roles`.
+ *
+ * `barberiaId` es `null` en los roles GLOBALES (CLIENTE y ADMINISTRADOR): esos
+ * no pertenecen a ninguna sede y solo el de administrador se gestiona aquí.
+ */
+export interface RolDeUsuario {
+  id: string;
+  rolNombre: string;
+  ambito: string;
+  estado: string;
+  barberiaId: string | null;
+  barberiaNombre: string | null;
+}
+
+/** `PATCH /plataforma/usuarios/:id/administrador` (I-05). */
+export interface CambioAdministradorResponse {
+  id: string;
+  esAdministrador: boolean;
+}
+
 export interface BarberiaOpcion {
   id: string;
   nombre: string;
@@ -127,7 +150,7 @@ export class UsuariosService {
         this.isLoading.set(false);
         this.usuarios.set([]);
         this.error.set(
-          err.error?.mensaje || err.error?.message || 'No se pudieron cargar los usuarios',
+          mensajeDeError(err, 'No se pudieron cargar los usuarios'),
         );
         throw err;
       }),
@@ -180,6 +203,47 @@ export class UsuariosService {
     return this.http
       .get<UsuarioAuditoriaEvento[]>(`${this.apiUrl}/${id}/auditoria`)
       .pipe(map((eventos) => eventos ?? []));
+  }
+
+  /**
+   * `GET /plataforma/usuarios/:id/roles` · vínculos de rol con su sede (I-05).
+   */
+  obtenerRolesUsuario(id: string): Observable<RolDeUsuario[]> {
+    return this.http
+      .get<RolDeUsuario[]>(`${this.apiUrl}/${id}/roles`)
+      .pipe(map((roles) => roles ?? []));
+  }
+
+  /**
+   * `PATCH /plataforma/usuarios/:id/administrador` · concede o retira el rol
+   * GLOBAL de administrador. El backend rechaza el autobloqueo (422
+   * `ADMIN_PROPIO_ROL`) y dejar la plataforma sin administradores (422
+   * `ULTIMO_ADMINISTRADOR`).
+   */
+  cambiarAdministrador(
+    id: string,
+    habilitado: boolean,
+    motivo?: string,
+  ): Observable<CambioAdministradorResponse> {
+    return this.http.patch<CambioAdministradorResponse>(
+      `${this.apiUrl}/${id}/administrador`,
+      { habilitado, ...(motivo ? { motivo } : {}) },
+    );
+  }
+
+  /**
+   * `PATCH /shops/:shopId/staff/:userId` · cambia el rol de sede o su estado.
+   *
+   * I-06: los dos campos son opcionales por separado —apagar a un miembro no
+   * obliga a reenviar el rol—, y `estado: 'INACTIVO'` es la forma de revocar el
+   * acceso sin borrar nada (este backend no tiene rutas `@Delete`).
+   */
+  actualizarVinculoSede(
+    barberiaId: string,
+    usuarioId: string,
+    dto: { rolNombre?: 'BARBERO' | 'ADMIN_BARBERIA'; estado?: 'ACTIVO' | 'INACTIVO' },
+  ): Observable<unknown> {
+    return this.http.patch(`${API_URL}/shops/${barberiaId}/staff/${usuarioId}`, dto);
   }
 
   /**

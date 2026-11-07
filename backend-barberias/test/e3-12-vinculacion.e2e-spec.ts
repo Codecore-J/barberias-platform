@@ -140,7 +140,7 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
         await prisma.barberia.create({
           data: {
             nombre: `Barbería ${etiqueta} ${sufijo}`,
-            telefono: '955555555',
+            telefono: '9555555555',
             ubicacion: `Sede ${etiqueta}`,
             codigoAcceso: codigo,
             enlaceUnico: enlace,

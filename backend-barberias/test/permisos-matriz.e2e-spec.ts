@@ -207,7 +207,7 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
       await prisma.barberia.create({
         data: {
           nombre: 'Barbería Matriz B',
-          telefono: '600000002',
+          telefono: '6000000022',
           ubicacion: 'Segunda sede',
           estado: 'ACTIVO',
           codigoAcceso: 'TESTPMB',
@@ -226,7 +226,7 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
       await prisma.barberia.create({
         data: {
           nombre: 'Barbería Matriz A',
-          telefono: '600000001',
+          telefono: '6000000011',
           ubicacion: 'Sede principal',
           estado: 'ACTIVO',
           codigoAcceso: 'TESTPMA',
@@ -422,7 +422,7 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
 
     const res = await request(app.getHttpServer())
       .patch(`/shops/${barberia.b}/status`)
-      .set('Authorization', `Bearer ${tokens.ADMINISTRADOR}`)
+      .set('Authorization', `Bearer ${tokens.ADMINISTRADOR}`)
       .send({ estado: 'INACTIVO' });
 
     expect(res.status).toBe(200);

@@ -11,7 +11,7 @@ import { ModalOverlayDirective } from '../../../../shared/directives/modal-overl
   imports: [CommonModule, FormsModule, DatePipe, ModalOverlayDirective],
   template: `
     <!-- Overlay/Backdrop -->
-    <div appModalOverlay class="fixed inset-0 z-[100] flex justify-end">
+    <div appModalOverlay class="drawer-layer fixed inset-0 flex justify-end">
       <div class="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" (click)="cerrar()"></div>
 
       <!-- Drawer Content -->

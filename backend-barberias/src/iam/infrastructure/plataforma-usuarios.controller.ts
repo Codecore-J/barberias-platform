@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { UsuariosPlataformaService } from '../application/usuarios-plataforma.service.js';
 import { CambiarEstadoCuentaDto } from '../application/dto/cambiar-estado-cuenta.dto.js';
+import { AdministradorCuentaDto } from '../application/dto/administrador-cuenta.dto.js';
 import { CrearUsuarioPlataformaDto } from '../application/dto/crear-usuario-plataforma.dto.js';
 import { CurrentUser } from './current-user.decorator.js';
 import { Roles } from './roles.decorator.js';
@@ -91,6 +92,38 @@ export class PlataformaUsuariosController {
     @CurrentUser() user: UsuarioAutenticado,
   ): Promise<UsuarioListResponseDto> {
     return this.usuariosPlataformaService.crearUsuario(dto, user);
+  }
+
+  /**
+   * GET /plataforma/usuarios/:id/roles · I-05
+   *
+   * Vínculos de rol de la cuenta, cada uno con su sede y su estado. Es lo que
+   * alimenta el modal de roles: la bandeja solo trae los nombres agregados.
+   */
+  @Get(':id/roles')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMINISTRADOR')
+  @HttpCode(HttpStatus.OK)
+  obtenerRoles(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usuariosPlataformaService.obtenerRolesDeUsuario(id);
+  }
+
+  /**
+   * PATCH /plataforma/usuarios/:id/administrador · I-05
+   *
+   * `{ habilitado: boolean, motivo? }`. Concede o retira el rol global
+   * `ADMINISTRADOR`; rechaza el autobloqueo (422 `ADMIN_PROPIO_ROL`) y dejar la
+   * plataforma sin administradores (422 `ULTIMO_ADMINISTRADOR`).
+   */
+  @Roles('ADMINISTRADOR')
+  @Patch(':id/administrador')
+  @HttpCode(HttpStatus.OK)
+  cambiarAdministrador(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdministradorCuentaDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.usuariosPlataformaService.cambiarAdministrador(id, user, dto);
   }
 
   /**

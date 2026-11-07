@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 import { TenantService } from './tenant.service.js';
+import { mensajeDeError } from '../utils/error-message.js';
 
 export interface NotaCliente {
   id: string;
@@ -54,7 +55,7 @@ export class ClientesService {
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al obtener la ficha del cliente');
+        this.error.set(mensajeDeError(err, 'Error al obtener la ficha del cliente'));
         return throwError(() => err);
       })
     );
@@ -71,7 +72,7 @@ export class ClientesService {
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al guardar la nota');
+        this.error.set(mensajeDeError(err, 'Error al guardar la nota'));
         return throwError(() => err);
       })
     );

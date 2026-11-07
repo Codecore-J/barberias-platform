@@ -4,6 +4,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService } from '../auth.service';
 import { CommonModule } from '@angular/common';
 import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
+import { mensajeDeError } from '../../core/utils/error-message';
 
 import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.component';
 
@@ -310,7 +311,7 @@ export class LoginComponent {
       },
       error: (err) => {
         this.isRecoveryLoading.set(false);
-        this.recoveryErrorMsg.set(err.error?.message || 'Error al procesar la solicitud.');
+        this.recoveryErrorMsg.set(mensajeDeError(err, 'Error al procesar la solicitud.'));
       }
     });
   }
@@ -333,7 +334,7 @@ export class LoginComponent {
       },
       error: (err) => {
         this.isRecoveryLoading.set(false);
-        this.recoveryErrorMsg.set(err.error?.message || 'El token es inválido o ha expirado.');
+        this.recoveryErrorMsg.set(mensajeDeError(err, 'El token es inválido o ha expirado.'));
       }
     });
   }

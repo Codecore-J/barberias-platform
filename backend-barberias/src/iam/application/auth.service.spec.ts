@@ -182,6 +182,43 @@ describe('AuthService', () => {
       expect(result.usuario.roles).toEqual(['CLIENTE']);
     });
 
+    // I-01: desactivar a un miembro de una sede debe revocar el acceso de
+    // verdad. El rol sale del claim del token, así que el filtro tiene que
+    // estar en la consulta: `JwtStrategy` ya lo aplica por petición, pero no
+    // reescribe un token ya emitido.
+    it('no emite en el token un rol cuyo vínculo está INACTIVO', async () => {
+      const passwordPlana = 'Password123';
+      const hash = await bcrypt.hash(passwordPlana, 10);
+
+      // Fixture con los dos vínculos; el mock aplica el `where` recibido, así
+      // que el test falla si alguien quita el filtro de la consulta.
+      const vinculos = [
+        { estado: 'ACTIVO', rol: { nombre: 'CLIENTE' } },
+        { estado: 'INACTIVO', rol: { nombre: 'BARBERO' } },
+      ];
+      mockPrisma.usuario.findUnique.mockImplementation(async (args: any) => {
+        const estado = args?.include?.usuarioRoles?.where?.estado;
+        return {
+          id: 'user-2',
+          correo: 'barbero@example.com',
+          estadoCuenta: 'ACTIVO',
+          tokenVersion: 0,
+          passwordHash: hash,
+          usuarioRoles: vinculos.filter((v) => !estado || v.estado === estado),
+        };
+      });
+
+      const result = await service.login({
+        correo: 'barbero@example.com',
+        password: passwordPlana,
+      });
+
+      expect(result.usuario.roles).toEqual(['CLIENTE']);
+      expect(mockJwtService.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ roles: ['CLIENTE'] }),
+      );
+    });
+
     it('debe lanzar UnauthorizedException si la contraseña no coincide', async () => {
       const hash = await bcrypt.hash('OtraPassword123', 10);
 

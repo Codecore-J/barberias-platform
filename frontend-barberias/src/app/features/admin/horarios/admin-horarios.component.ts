@@ -11,6 +11,7 @@ import {
 import { HorariosService, Horario, ExcepcionHorario, BloqueoAgenda, CreateBloqueoDto } from '../../../core/services/horarios.service';
 import { TenantService } from '../../../core/services/tenant.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
+import { mensajeDeError } from '../../../core/utils/error-message';
 
 /** Nombres por día ISO (1 = lunes … 7 = domingo), el mismo orden del motor. */
 const NOMBRES_DIA: Record<number, string> = {
@@ -1061,7 +1062,7 @@ export class AdminHorariosComponent implements OnInit {
       },
       error: (err) => {
         this.guardandoExcepcion.set(false);
-        this.mostrarError(err.error?.message || 'Error al guardar la excepción');
+        this.mostrarError(mensajeDeError(err, 'Error al guardar la excepción'));
       }
     });
   }
@@ -1120,7 +1121,7 @@ export class AdminHorariosComponent implements OnInit {
       },
       error: (err) => {
         this.guardandoBloqueo.set(false);
-        this.mostrarError(err.error?.message || 'Error al crear el bloqueo');
+        this.mostrarError(mensajeDeError(err, 'Error al crear el bloqueo'));
       }
     });
   }
@@ -1145,7 +1146,7 @@ export class AdminHorariosComponent implements OnInit {
         this.mostrarExito('Bloqueo eliminado y franja horaria liberada.');
       },
       error: (err) => {
-        this.mostrarError(err.error?.message || 'Error al eliminar el bloqueo');
+        this.mostrarError(mensajeDeError(err, 'Error al eliminar el bloqueo'));
       }
     });
   }

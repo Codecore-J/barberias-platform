@@ -54,7 +54,7 @@ import { ModalOverlayDirective } from '../../directives/modal-overlay.directive'
     @if (dialogo.activo(); as d) {
       <div
         appModalOverlay
-        class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
+        class="confirm-layer fixed inset-0 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
         (click)="dialogo.cancelar()"
       >
         <div

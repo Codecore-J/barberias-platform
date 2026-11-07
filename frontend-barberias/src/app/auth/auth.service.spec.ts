@@ -26,7 +26,7 @@ import { PARAM_RETURN_URL } from '../core/utils/return-url.util';
  *    seguridad contra el open redirect;
  *  - sin `returnUrl` nada cambia para cliente y sede (cliente → `/`, admin con
  *    sede → `/admin/agenda`), y el ADMINISTRADOR global entra a su hub de
- *    sedes (`/barberias`) sin que se le autoasigne una (D05).
+ *    sede (`/admin/usuarios`) sin que se le autoasigne una (D05).
  *
  * El `Router` es el REAL (spy sobre `navigate`/`navigateByUrl`), para no atar la
  * prueba a la forma exacta con que se navega.
@@ -154,7 +154,7 @@ describe('AuthService · H75 (el destino pedido sobrevive al login)', () => {
     responderLogin(['ADMINISTRADOR']);
 
     expect(cargarBarberias).toHaveBeenCalledWith({ autoSeleccionar: false });
-    expect(router.navigate).toHaveBeenCalledWith(['/barberias']);
+    expect(router.navigate).toHaveBeenCalledWith(['/admin/usuarios']);
     expect(router.navigate).not.toHaveBeenCalledWith(['/admin/agenda']);
   });
 
