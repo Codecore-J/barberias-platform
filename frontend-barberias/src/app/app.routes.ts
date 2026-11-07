@@ -109,6 +109,20 @@ export const routes: Routes = [
           import('./features/admin/horarios/admin-horarios.component').then((m) => m.AdminHorariosComponent),
       },
       {
+        //
+        // H-03 · bandeja dedicada de propuestas de horario (D18/§5.4).
+        // Los mismos roles que resuelven la propuesta en el backend
+        // (`ADMIN_BARBERIA` y `ADMINISTRADOR`); el BARBERO no decide sobre su
+        // propia agenda, así que no entra.
+        //
+        path: 'admin/propuestas-horario',
+        canActivate: [tenantGuard, roleGuard(['ADMIN_BARBERIA', 'ADMINISTRADOR'])],
+        loadComponent: () =>
+          import('./features/admin/propuestas-horario/propuestas-horario.component').then(
+            (m) => m.AdminPropuestasHorarioComponent,
+          ),
+      },
+      {
         path: 'admin/personal',
         canActivate: [tenantGuard, roleGuard(['ADMIN'])],
         loadComponent: () =>

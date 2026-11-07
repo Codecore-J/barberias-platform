@@ -6,16 +6,31 @@
  * contraseña estática que esos botones usan (Password123!), más una barbería
  * demo para poder vincularse/seleccionar desde la UI.
  *
- * Regla E0-07: la contraseña NO se escribe en el código; se toma de la variable
- * de entorno DEMO_USERS_PASSWORD y el script solo corre con APP_ENV=dev.
- * (Debe coincidir con la que rellena fillDemo() en login.component.ts.)
+ * Regla E0-07: el script solo corre con APP_ENV=dev. La contraseña se toma de
+ * DEMO_USERS_PASSWORD y, si no está definida, cae al valor que rellena
+ * `fillDemo()` en login.component.ts: los botones son un fixture de desarrollo y
+ * su contraseña ya viaja en el bundle del cliente, así que exigir una variable
+ * extra solo producía botones que devolvían 401 en una base recién creada
+ * (I-07). La barrera real contra producción es el guard de APP_ENV.
  *
- * Ejecutar con la DATABASE_URL apuntando a la base local:
- *   APP_ENV=dev DEMO_USERS_PASSWORD=<valor> DATABASE_URL="postgresql://...@localhost:5432/barberias_db" npx tsx prisma/seed-demo-users.ts
+ * Ejecutar (un solo comando; lee el `.env` del backend si hace falta):
+ *   npm run seed:demo
  * Re-ejecutable (idempotente).
  */
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { existsSync } from 'node:fs';
+
+// I-07 · sin este bootstrap el operador tenía que exportar APP_ENV y
+// DEMO_USERS_PASSWORD a mano, y en Windows `APP_ENV=dev cmd` ni siquiera existe.
+// Prisma ya carga DATABASE_URL por su cuenta; esto cubre las variables del seed.
+if (!process.env.APP_ENV && existsSync('.env')) {
+  try {
+    process.loadEnvFile('.env');
+  } catch {
+    // .env ilegible: lo decide el guard de abajo con su mensaje.
+  }
+}
 
 // Guard E0-07: este seed solo tiene sentido en entorno local de desarrollo.
 if (process.env.APP_ENV !== 'dev') {
@@ -23,10 +38,14 @@ if (process.env.APP_ENV !== 'dev') {
   process.exit(1);
 }
 
-const PASSWORD = process.env.DEMO_USERS_PASSWORD;
-if (!PASSWORD) {
-  console.error('ABORTADO (E0-07): falta la variable de entorno DEMO_USERS_PASSWORD.');
-  process.exit(1);
+/** La misma que rellena `fillDemo()` en `login.component.ts`. */
+const PASSWORD_POR_DEFECTO = 'Password123!';
+
+const PASSWORD = process.env.DEMO_USERS_PASSWORD ?? PASSWORD_POR_DEFECTO;
+if (!process.env.DEMO_USERS_PASSWORD) {
+  console.warn(
+    '⚠️  DEMO_USERS_PASSWORD no definida: se usa la del botón demo del login.',
+  );
 }
 
 const prisma = new PrismaClient();
@@ -41,8 +60,19 @@ async function upsertUsuario(
 
   const usuario = await prisma.usuario.upsert({
     where: { correo },
-    update: { passwordHash },
-    create: { correo, nombreCompleto, telefono, passwordHash },
+    // I-07 · `telefonoVerificado` es obligatorio para que los botones demo sirvan
+    // de algo: `authGuard` manda a /auth/verify a todo cliente sin teléfono
+    // verificado, así que el botón 👤 Cliente aterrizaba en un OTP que nadie iba
+    // a recibir en una cuenta sembrada.
+    update: { passwordHash, telefonoVerificado: true, estadoCuenta: 'ACTIVO' },
+    create: {
+      correo,
+      nombreCompleto,
+      telefono,
+      passwordHash,
+      telefonoVerificado: true,
+      estadoCuenta: 'ACTIVO',
+    },
   });
   return usuario.id;
 }

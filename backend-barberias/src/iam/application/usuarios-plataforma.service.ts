@@ -9,9 +9,13 @@ import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
 import { errorDeConflicto, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
-import { AMBITO_BARBERIA } from '../domain/roles.js';
+import { AMBITO_BARBERIA, ROL_ADMINISTRADOR } from '../domain/roles.js';
 import type { UsuarioAutenticado } from '../domain/jwt.interface.js';
 import type { CambiarEstadoCuentaDto } from './dto/cambiar-estado-cuenta.dto.js';
+import type {
+  AdministradorCuentaDto,
+  RolDeUsuarioResponseDto,
+} from './dto/administrador-cuenta.dto.js';
 import type { CrearUsuarioPlataformaDto } from './dto/crear-usuario-plataforma.dto.js';
 import type { UsuarioAuditoriaResponseDto } from './dto/usuario-auditoria-response.dto.js';
 import { UsuarioListResponseDto } from './dto/usuario-list-response.dto.js';
@@ -168,6 +172,177 @@ export class UsuariosPlataformaService {
         tokenVersion,
         sesionesCerradas: suspender,
       } satisfies CambioEstadoCuentaResultado;
+    });
+
+    return resultado;
+  }
+
+  // ── I-05 · gestión de roles desde el panel de plataforma ────────────────
+
+  /**
+   * Vínculos de rol de una cuenta, para pintarlos en el panel.
+   *
+   * Devuelve cada asignación con la sede a la que pertenece (o `null` si es
+   * global) y su estado: la bandeja solo mostraba `roles: string[]` agregado y
+   * sin sede, así que «ADMIN_BARBERIA» no decía de dónde ni permitía tocarlo.
+   */
+  async obtenerRolesDeUsuario(usuarioId: string): Promise<RolDeUsuarioResponseDto[]> {
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { id: usuarioId },
+      select: { id: true },
+    });
+    if (!usuario) throw new NotFoundException('Usuario no encontrado.');
+
+    const filas = await this.prisma.usuarioRol.findMany({
+      where: { usuarioId },
+      select: {
+        id: true,
+        estado: true,
+        rol: { select: { nombre: true, ambito: true } },
+        barberia: { select: { id: true, nombre: true } },
+      },
+    });
+
+    return filas
+      .map((fila) => ({
+        id: fila.id,
+        rolNombre: fila.rol.nombre,
+        ambito: fila.rol.ambito,
+        estado: fila.estado,
+        barberiaId: fila.barberia?.id ?? null,
+        barberiaNombre: fila.barberia?.nombre ?? null,
+      }))
+      .sort((a, b) =>
+        `${a.ambito}-${a.rolNombre}-${a.barberiaNombre ?? ''}`.localeCompare(
+          `${b.ambito}-${b.rolNombre}-${b.barberiaNombre ?? ''}`,
+        ),
+      );
+  }
+
+  /**
+   * I-05 · concede o retira el rol global `ADMINISTRADOR`.
+   *
+   * Reglas que no se pueden saltar desde el cliente:
+   * - Nadie cambia su propio rol de plataforma (evita el autobloqueo y el
+   *   autoascenso sin testigo).
+   * - No se puede retirar el ÚLTIMO administrador: dejaría la plataforma sin
+   *   nadie que pueda administrarla.
+   * - Retirar sube `tokenVersion`: el token ya firmado llevaba `ADMINISTRADOR`
+   *   en el claim y seguiría sirviendo hasta 24 h (mismo criterio que I-01).
+   *   Conceder no la sube —quitar sesiones a quien acaba de recibir permisos no
+   *   protege nada—: el rol entra en su siguiente login.
+   */
+  async cambiarAdministrador(
+    usuarioId: string,
+    solicitante: UsuarioAutenticado,
+    dto: AdministradorCuentaDto,
+  ): Promise<{ id: string; esAdministrador: boolean }> {
+    if (usuarioId === solicitante.id) {
+      throw reglaDeNegocio(
+        'ADMIN_PROPIO_ROL',
+        'No puedes cambiar tu propio rol de plataforma.',
+      );
+    }
+
+    const resultado = await withSerializableTransaction(this.prisma, async (tx) => {
+      const usuario = await tx.usuario.findUnique({
+        where: { id: usuarioId },
+        select: { id: true, correo: true, estadoCuenta: true },
+      });
+      if (!usuario) throw new NotFoundException('Usuario no encontrado.');
+
+      const rol = await tx.rol.findUnique({
+        where: { nombre: ROL_ADMINISTRADOR },
+        select: { id: true },
+      });
+      if (!rol) {
+        throw new InternalServerErrorException(
+          'Configuración incompleta: el rol ADMINISTRADOR no existe. Ejecuta el seed.',
+        );
+      }
+
+      // Spec 01 §9: en este backend no se borra, se cambia de estado. El
+      // vínculo global de administrador se apaga (`INACTIVO`) y se reactiva si
+      // se vuelve a conceder; ni `JwtStrategy` ni `login` lo leen apagado, así
+      // que «revocado» y «borrado» son equivalentes para el acceso.
+      const vinculo = await tx.usuarioRol.findFirst({
+        where: { usuarioId, rolId: rol.id, barberiaId: null },
+        select: { id: true, estado: true },
+      });
+
+      if (dto.habilitado) {
+        if (vinculo?.estado === 'ACTIVO') {
+          throw errorDeConflicto(
+            'YA_ES_ADMINISTRADOR',
+            'La cuenta ya tiene el rol de administrador de plataforma.',
+          );
+        }
+
+        if (vinculo) {
+          await tx.usuarioRol.update({
+            where: { id: vinculo.id },
+            data: { estado: 'ACTIVO' },
+          });
+        } else {
+          await tx.usuarioRol.create({
+            data: { usuarioId, rolId: rol.id, barberiaId: null },
+          });
+        }
+      } else {
+        if (!vinculo || vinculo.estado !== 'ACTIVO') {
+          throw errorDeConflicto(
+            'NO_ES_ADMINISTRADOR',
+            'La cuenta no tiene el rol de administrador de plataforma.',
+          );
+        }
+
+        // Serializable + este conteo: dos retiradas simultáneas de los dos
+        // últimos administradores no pueden dejar la plataforma en cero.
+        const administradores = await tx.usuarioRol.count({
+          where: {
+            rolId: rol.id,
+            barberiaId: null,
+            estado: 'ACTIVO',
+            usuario: { estadoCuenta: 'ACTIVO' },
+          },
+        });
+
+        if (administradores <= 1) {
+          throw reglaDeNegocio(
+            'ULTIMO_ADMINISTRADOR',
+            'No puedes retirar el último administrador de la plataforma.',
+          );
+        }
+
+        await tx.usuarioRol.update({
+          where: { id: vinculo.id },
+          data: { estado: 'INACTIVO' },
+        });
+
+        await tx.usuario.update({
+          where: { id: usuarioId },
+          data: { tokenVersion: { increment: 1 } },
+        });
+      }
+
+      await this.auditoria.registrarEvento(
+        {
+          usuarioId: solicitante.id,
+          accion: dto.habilitado
+            ? 'ADMINISTRADOR_PLATAFORMA_ASIGNADO'
+            : 'ADMINISTRADOR_PLATAFORMA_REVOCADO',
+          entidad: 'usuarios',
+          entidadId: usuarioId,
+          contexto: {
+            correo: usuario.correo,
+            motivo: dto.motivo?.trim() || null,
+            sesionesCerradas: !dto.habilitado,
+          },
+        },
+        tx,
+      );
+
+      return { id: usuarioId, esAdministrador: dto.habilitado };
     });
 
     return resultado;

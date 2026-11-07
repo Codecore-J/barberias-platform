@@ -27,7 +27,14 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
       findFirst: vi.fn(),
       create: vi.fn(),
     },
-    usuarioRol: { create: vi.fn() },
+    usuarioRol: {
+      create: vi.fn(),
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      count: vi.fn(),
+    },
     rol: { findUnique: vi.fn() },
     barberia: { findUnique: vi.fn() },
     auditoria: { findMany: vi.fn() },
@@ -492,6 +499,124 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
       // Un evento sin motivo ni actor no inventa datos.
       expect(eventos[1].motivo).toBeNull();
       expect(eventos[1].actor).toBeNull();
+    });
+  });
+
+  /**
+   * I-05 · el panel de plataforma gestiona el ÚNICO rol global que existe.
+   * Lo que se fija: no hay autoascenso ni autobloqueo, la plataforma no puede
+   * quedarse sin administradores y retirar el rol cierra las sesiones abiertas.
+   */
+  describe('cambiarAdministrador · I-05', () => {
+    it('concede ADMINISTRADOR y lo audita', async () => {
+      mockPrisma.usuario.findUnique.mockResolvedValue(cuenta());
+      mockPrisma.rol.findUnique.mockResolvedValue({ id: 'rol-global' });
+      mockPrisma.usuarioRol.findFirst.mockResolvedValue(null);
+      mockPrisma.usuarioRol.create.mockResolvedValue({ id: 'vinculo-nuevo' });
+
+      const resultado = await service.cambiarAdministrador('uuid-objetivo', global, {
+        habilitado: true,
+      });
+
+      expect(resultado).toEqual({ id: 'uuid-objetivo', esAdministrador: true });
+      expect(mockPrisma.usuarioRol.create).toHaveBeenCalledWith({
+        data: { usuarioId: 'uuid-objetivo', rolId: 'rol-global', barberiaId: null },
+      });
+      // Conceder no cierra sesiones: el rol entra en el siguiente login.
+      expect(mockPrisma.usuario.update).not.toHaveBeenCalled();
+      expect(mockAuditoria.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({ accion: 'ADMINISTRADOR_PLATAFORMA_ASIGNADO' }),
+        mockPrisma,
+      );
+    });
+
+    it('no permite quitarse a sí mismo el rol de plataforma (422 ADMIN_PROPIO_ROL)', async () => {
+      await expect(
+        service.cambiarAdministrador('uuid-global', global, { habilitado: false }),
+      ).rejects.toMatchObject({ response: { codigo: 'ADMIN_PROPIO_ROL', statusCode: 422 } });
+
+      expect(mockPrisma.usuarioRol.delete).not.toHaveBeenCalled();
+    });
+
+    it('rechaza retirar el último administrador (422 ULTIMO_ADMINISTRADOR)', async () => {
+      mockPrisma.usuario.findUnique.mockResolvedValue(cuenta());
+      mockPrisma.rol.findUnique.mockResolvedValue({ id: 'rol-global' });
+      mockPrisma.usuarioRol.findFirst.mockResolvedValue({
+        id: 'vinculo-admin',
+        estado: 'ACTIVO',
+      });
+      mockPrisma.usuarioRol.count.mockResolvedValue(1);
+
+      await expect(
+        service.cambiarAdministrador('uuid-objetivo', global, { habilitado: false }),
+      ).rejects.toMatchObject({
+        response: { codigo: 'ULTIMO_ADMINISTRADOR', statusCode: 422 },
+      });
+
+      expect(mockPrisma.usuarioRol.delete).not.toHaveBeenCalled();
+    });
+
+    it('retirar el rol cierra las sesiones del afectado (tokenVersion + 1)', async () => {
+      mockPrisma.usuario.findUnique.mockResolvedValue(cuenta());
+      mockPrisma.rol.findUnique.mockResolvedValue({ id: 'rol-global' });
+      mockPrisma.usuarioRol.findFirst.mockResolvedValue({
+        id: 'vinculo-admin',
+        estado: 'ACTIVO',
+      });
+      mockPrisma.usuarioRol.count.mockResolvedValue(2);
+
+      await service.cambiarAdministrador('uuid-objetivo', global, {
+        habilitado: false,
+        motivo: 'Cambio de equipo',
+      });
+
+      // Sin `@Delete` en este backend: revocar es apagar el vínculo.
+      expect(mockPrisma.usuarioRol.update).toHaveBeenCalledWith({
+        where: { id: 'vinculo-admin' },
+        data: { estado: 'INACTIVO' },
+      });
+      expect(mockPrisma.usuario.update).toHaveBeenCalledWith({
+        where: { id: 'uuid-objetivo' },
+        data: { tokenVersion: { increment: 1 } },
+      });
+      expect(mockAuditoria.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accion: 'ADMINISTRADOR_PLATAFORMA_REVOCADO',
+          contexto: expect.objectContaining({ motivo: 'Cambio de equipo', sesionesCerradas: true }),
+        }),
+        mockPrisma,
+      );
+    });
+
+    it('obtenerRolesDeUsuario devuelve la sede de cada vínculo', async () => {
+      mockPrisma.usuario.findUnique.mockResolvedValue(cuenta());
+      mockPrisma.usuarioRol.findMany.mockResolvedValue([
+        {
+          id: 'v1',
+          estado: 'ACTIVO',
+          rol: { nombre: 'ADMIN_BARBERIA', ambito: 'BARBERIA' },
+          barberia: { id: 'sede-1', nombre: 'Sede Centro' },
+        },
+        {
+          id: 'v2',
+          estado: 'ACTIVO',
+          rol: { nombre: 'CLIENTE', ambito: 'GLOBAL' },
+          barberia: null,
+        },
+      ]);
+
+      const roles = await service.obtenerRolesDeUsuario('uuid-objetivo');
+
+      expect(roles).toHaveLength(2);
+      expect(roles.find((r) => r.id === 'v1')).toMatchObject({
+        rolNombre: 'ADMIN_BARBERIA',
+        barberiaId: 'sede-1',
+        barberiaNombre: 'Sede Centro',
+      });
+      expect(roles.find((r) => r.id === 'v2')).toMatchObject({
+        rolNombre: 'CLIENTE',
+        barberiaId: null,
+      });
     });
   });
 });

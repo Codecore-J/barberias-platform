@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { mensajeDeError } from '../utils/error-message.js';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, of } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -79,7 +80,7 @@ export class PagosService {
         }),
         catchError(err => {
           this.isLoading.set(false);
-          this.error.set(err.error?.mensaje || err.error?.message || 'Error al obtener el historial de pagos');
+          this.error.set(mensajeDeError(err, 'Error al obtener el historial de pagos'));
           return of([]);
         })
       );

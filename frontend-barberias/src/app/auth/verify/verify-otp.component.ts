@@ -4,6 +4,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../auth.service';
 import { PARAM_RETURN_URL, returnUrlSeguro } from '../../core/utils/return-url.util';
+import { mensajeDeError } from '../../core/utils/error-message';
 
 /**
  * V2.1 · Pantalla de verificación del teléfono (`/auth/verify`).
@@ -200,7 +201,7 @@ export class VerifyOtpComponent implements OnInit, OnDestroy {
       },
       error: (e) => {
         this.enviando.set(false);
-        this.error.set(e?.error?.mensaje ?? 'No se pudo enviar el código. Inténtalo de nuevo.');
+        this.error.set(mensajeDeError(e, 'No se pudo enviar el código. Inténtalo de nuevo.'));
       },
     });
   }
@@ -226,7 +227,7 @@ export class VerifyOtpComponent implements OnInit, OnDestroy {
       },
       error: (e) => {
         this.verificando.set(false);
-        this.error.set(e?.error?.mensaje ?? 'El código no es válido o ya expiró.');
+        this.error.set(mensajeDeError(e, 'El código no es válido o ya expiró.'));
         this.codigoForm.reset({ codigo: '' });
       },
     });

@@ -2,9 +2,10 @@ import { Component, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { ToastContainerComponent } from './shared/ui/toast/toast-container.component';
 import { ConfirmDialogComponent } from './shared/ui/confirm-dialog/confirm-dialog.component';
+import { BackendWakingComponent } from './shared/ui/backend-waking/backend-waking.component';
 
 @Component({
-  imports: [RouterOutlet, ToastContainerComponent, ConfirmDialogComponent],
+  imports: [RouterOutlet, ToastContainerComponent, ConfirmDialogComponent, BackendWakingComponent],
   selector: 'app-root',
   styleUrl: './app.css',
   templateUrl: './app.html',

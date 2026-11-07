@@ -1,8 +1,14 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormBuilder, ReactiveFormsModule, Validators, type FormGroup } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { TenantService } from '../../core/services/tenant.service';
-import type { BarberiaResumen, InvitacionSede } from '../../core/services/tenant.service';
+import type {
+  ActualizarBarberiaRequest,
+  BarberiaResumen,
+  InvitacionSede,
+} from '../../core/services/tenant.service';
+import { mensajeDeError } from '../../core/utils/error-message';
 import { AuthService } from '../../auth/auth.service';
 import { MiEstadoService } from '../../core/services/mi-estado.service';
 import type { MiEstado } from '../../core/services/mi-estado.service';
@@ -12,10 +18,29 @@ import { SedeCardComponent } from './components/sede-card/sede-card.component';
 
 import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.component';
 
+/**
+ * Lo que `UpdateBarberiaDto` acepta, ya normalizado a texto: el teléfono exige
+ * `passwordActual` (D27). Se guardan como instantánea para comparar y enviar
+ * únicamente lo que cambió.
+ */
+interface CamposEditables {
+  telefono: string;
+  ubicacion: string;
+  descripcion: string;
+  logoUrl: string;
+}
+
 @Component({
   selector: 'app-barberias',
   standalone: true,
-  imports: [CommonModule, RouterLink, VincularModalComponent, SedeCardComponent, ModalShellComponent],
+  imports: [
+    CommonModule,
+    RouterLink,
+    ReactiveFormsModule,
+    VincularModalComponent,
+    SedeCardComponent,
+    ModalShellComponent,
+  ],
   template: `
     <div class="space-y-12 py-8 perspective-1200 bg-ambient-mesh min-h-screen">
       
@@ -244,6 +269,20 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
                 no hay nada que cerrar— y nunca sobre una fila ya cerrada (el
                 estado se relee tras cada cambio).
               -->
+              <!--
+                E3-13 · edición directa de la sede. Solo para quien puede
+                ejercerla: el ADMINISTRADOR global (cualquier sede) y el
+                ADMIN_BARBERIA responsable de ESA sede —el PATCH responde 403
+                a cualquier otro, así que el botón no se ofrece en falso—.
+              -->
+              @if (puedeEditar(barberia)) {
+                <button (click)="abrirEdicion(barberia)"
+                        class="w-full px-4 py-2.5 rounded-xl text-xs font-semibold text-zinc-300 bg-white/5 border border-white/10 hover:border-amber-500/50 hover:text-amber-300 transition-colors flex items-center justify-center gap-2">
+                  <i class="pi pi-pencil"></i>
+                  <span>Editar datos de la sede</span>
+                </button>
+              }
+
               @if (puedeDesvincularse(barberia.id)) {
                 <button (click)="abrirDesvinculacion(barberia)"
                         class="w-full px-4 py-2.5 rounded-xl text-xs font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition-colors flex items-center justify-center gap-2">
@@ -372,6 +411,156 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
               <span>Sí, desvincularme</span>
             </button>
           </div>
+        </app-modal-shell>
+      }
+
+      <!--
+        Edición de la sede (E3-13 · D26/D27).
+
+        El nombre NO está en el formulario: cambiarlo exige una solicitud
+        aprobada por la plataforma y el backend responde 422
+        NOMBRE_REQUIERE_SOLICITUD. El teléfono sí, pero pide la contraseña
+        actual en cuanto se separa del original: es la regla de D27 y se avisa
+        ANTES de enviar, no después del 422.
+      -->
+      @if (sedeEnEdicion(); as sede) {
+        <app-modal-shell
+          [visible]="true"
+          titulo="Editar sede"
+          [subtitulo]="sede.nombre"
+          icono="pi pi-pencil"
+          [cerrarBloqueado]="guardandoSede()"
+          (cerrar)="cerrarEdicion()">
+          <form [formGroup]="formEdicion" (ngSubmit)="guardarEdicion()" class="space-y-4" novalidate>
+            <div>
+              <label for="sede-editar-ubicacion" class="block text-xs font-semibold text-zinc-400 mb-1.5">
+                Ubicación
+              </label>
+              <input
+                id="sede-editar-ubicacion"
+                formControlName="ubicacion"
+                type="text"
+                maxlength="500"
+                [disabled]="guardandoSede()"
+                [attr.aria-invalid]="campoEditInvalido('ubicacion')"
+                class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 disabled:opacity-60 transition-colors"
+                placeholder="Calle, número, sector"
+              >
+              @if (campoEditInvalido('ubicacion')) {
+                <p role="alert" class="text-[11px] text-red-400 mt-1">
+                  La ubicación es obligatoria y admite hasta 500 caracteres.
+                </p>
+              }
+            </div>
+
+            <div>
+              <label for="sede-editar-descripcion" class="block text-xs font-semibold text-zinc-400 mb-1.5">
+                Descripción
+              </label>
+              <textarea
+                id="sede-editar-descripcion"
+                formControlName="descripcion"
+                rows="3"
+                maxlength="1000"
+                [disabled]="guardandoSede()"
+                class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 disabled:opacity-60 transition-colors resize-none"
+                placeholder="Ambiente, servicios destacados, referencias…"
+              ></textarea>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label for="sede-editar-telefono" class="block text-xs font-semibold text-zinc-400 mb-1.5">
+                  Teléfono
+                </label>
+                <input
+                  id="sede-editar-telefono"
+                  formControlName="telefono"
+                  type="tel"
+                  inputmode="numeric"
+                  autocomplete="tel-national"
+                  maxlength="10"
+                  (input)="onTelefonoEdicion($event)"
+                  [disabled]="guardandoSede()"
+                  [attr.aria-invalid]="campoEditInvalido('telefono')"
+                  class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 disabled:opacity-60 transition-colors"
+                  placeholder="8090000000"
+                >
+                @if (campoEditInvalido('telefono')) {
+                  <p role="alert" class="text-[11px] text-red-400 mt-1">
+                    El teléfono debe tener exactamente 10 dígitos.
+                  </p>
+                }
+              </div>
+
+              <div>
+                <label for="sede-editar-logo" class="block text-xs font-semibold text-zinc-400 mb-1.5">
+                  Logo (URL)
+                </label>
+                <input
+                  id="sede-editar-logo"
+                  formControlName="logoUrl"
+                  type="url"
+                  maxlength="500"
+                  [disabled]="guardandoSede()"
+                  class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 disabled:opacity-60 transition-colors"
+                  placeholder="https://…"
+                >
+              </div>
+            </div>
+
+            @if (cambiaTelefono()) {
+              <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 space-y-2">
+                <p class="text-[11px] text-amber-200/90 leading-snug">
+                  El teléfono es el dato de contacto de la sede: cambiarlo exige tu
+                  contraseña actual (D27).
+                </p>
+                <label for="sede-editar-password" class="block text-xs font-semibold text-zinc-400">
+                  Tu contraseña actual
+                </label>
+                <input
+                  id="sede-editar-password"
+                  formControlName="passwordActual"
+                  type="password"
+                  autocomplete="current-password"
+                  maxlength="100"
+                  [disabled]="guardandoSede()"
+                  [attr.aria-invalid]="campoEditInvalido('passwordActual')"
+                  class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 disabled:opacity-60 transition-colors"
+                  placeholder="••••••••"
+                >
+                @if (campoEditInvalido('passwordActual')) {
+                  <p role="alert" class="text-[11px] text-red-400 mt-1">
+                    Escribe tu contraseña actual para cambiar el teléfono.
+                  </p>
+                }
+              </div>
+            }
+
+            @if (errorEdicion()) {
+              <div class="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-start gap-2">
+                <i class="pi pi-exclamation-triangle mt-0.5"></i>
+                <span>{{ errorEdicion() }}</span>
+              </div>
+            }
+
+            <div class="flex gap-3 pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                (click)="cerrarEdicion()"
+                [disabled]="guardandoSede()"
+                class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 disabled:opacity-40 transition-colors">
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                [disabled]="guardandoSede() || !hayCambios()"
+                class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-zinc-950 gold-gradient-bg disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2">
+                <i class="pi" [ngClass]="guardandoSede() ? 'pi-spin pi-spinner' : 'pi-check'"></i>
+                <span>{{ guardandoSede() ? 'Guardando…' : 'Guardar cambios' }}</span>
+              </button>
+            </div>
+          </form>
         </app-modal-shell>
       }
 
@@ -548,6 +737,172 @@ export class BarberiasComponent implements OnInit {
   private avisar(texto: string): void {
     this.mensajeExito.set(texto);
     setTimeout(() => this.mensajeExito.set(''), 6000);
+  }
+
+  // ── E3-13 · edición de la sede ──────────────────────────────────────────
+
+  private readonly fb = inject(FormBuilder);
+
+  /** Sede que se está editando; `null` cuando el modal está cerrado. */
+  readonly sedeEnEdicion = signal<BarberiaResumen | null>(null);
+  readonly guardandoSede = signal(false);
+  readonly errorEdicion = signal<string | null>(null);
+
+  /**
+   * Valores de partida. `hayCambios()` y `cambiaTelefono()` comparan contra
+   * esto: sin la referencia no se puede saber qué se tocó, y mandar todos los
+   * campos haría pasar por cambio de teléfono un simple retoque de descripción
+   * —y dispararía la exigencia de contraseña de D27 sin motivo—.
+   */
+  private readonly originalEdicion = signal<CamposEditables | null>(null);
+
+  readonly formEdicion: FormGroup = this.fb.group({
+    // Mismo contrato que `UpdateBarberiaDto`: 10 dígitos exactos, sin formato.
+    telefono: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
+    ubicacion: ['', [Validators.required, Validators.maxLength(500)]],
+    descripcion: ['', [Validators.maxLength(1000)]],
+    logoUrl: ['', [Validators.maxLength(500)]],
+    // Solo se exige cuando el teléfono cambia; el validador se activa al abrir.
+    passwordActual: [''],
+  });
+
+  /**
+   * Solo edita quien puede: el ADMINISTRADOR global sobre cualquier sede —el
+   * backend resuelve su alcance— y el ADMIN_BARBERIA que es responsable de ESA
+   * sede. Ofrecer el botón al resto sería prometer un 403.
+   */
+  puedeEditar(barberia: BarberiaResumen): boolean {
+    const rol = this.userRole();
+    if (rol === 'ADMINISTRADOR') return true;
+    if (rol !== 'ADMIN_BARBERIA') return false;
+    return barberia.responsableId === this.authService.authState().user?.id;
+  }
+
+  abrirEdicion(barberia: BarberiaResumen): void {
+    const original: CamposEditables = {
+      telefono: barberia.telefono ?? '',
+      ubicacion: barberia.ubicacion ?? '',
+      descripcion: barberia.descripcion ?? '',
+      logoUrl: barberia.logoUrl ?? '',
+    };
+
+    this.originalEdicion.set(original);
+    this.errorEdicion.set(null);
+    this.formEdicion.reset({ ...original, passwordActual: '' });
+    this.sedeEnEdicion.set(barberia);
+  }
+
+  cerrarEdicion(): void {
+    if (this.guardandoSede()) return;
+    this.sedeEnEdicion.set(null);
+    this.errorEdicion.set(null);
+  }
+
+  /** Invalido y ya tocado: mismo criterio que el alta de sede. */
+  campoEditInvalido(nombre: string): boolean {
+    const control = this.formEdicion.get(nombre);
+    return !!control && control.invalid && (control.dirty || control.touched);
+  }
+
+  /** Solo dígitos y máximo 10: el backend rechaza cualquier otra cosa con 400. */
+  onTelefonoEdicion(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const limpio = input.value.replace(/\D/g, '').slice(0, 10);
+    if (input.value !== limpio) {
+      input.value = limpio;
+      this.formEdicion.get('telefono')?.setValue(limpio);
+    }
+  }
+
+  /** D27 · el teléfono se separó del original: hay que pedir la contraseña. */
+  cambiaTelefono(): boolean {
+    const original = this.originalEdicion();
+    return !!original && this.formEdicion.get('telefono')?.value !== original.telefono;
+  }
+
+  /**
+   * El botón de guardar solo se habilita si hay algo que mandar. Se comparan los
+   * cuatro campos editables; el nombre y el estado ni se envían.
+   */
+  hayCambios(): boolean {
+    const original = this.originalEdicion();
+    if (!original) return false;
+
+    const actual = this.formEdicion.getRawValue();
+    return (
+      (actual.telefono ?? '') !== original.telefono ||
+      (actual.ubicacion ?? '').trim() !== original.ubicacion.trim() ||
+      (actual.descripcion ?? '').trim() !== original.descripcion.trim() ||
+      (actual.logoUrl ?? '').trim() !== original.logoUrl.trim()
+    );
+  }
+
+  /**
+   * `PATCH /shops/:shopId` con SOLO los campos tocados: el `ValidationPipe` usa
+   * `forbidNonWhitelisted`, y mandar `nombre`/`estado` —aunque no hayan
+   * cambiado— devuelve el 422 de negocio en vez de editar el resto.
+   *
+   * La contraseña viaja únicamente cuando cambia el teléfono (D27); si falta, el
+   * backend responde 422 `PASSWORD_REQUERIDA` y su mensaje se pinta tal cual.
+   */
+  guardarEdicion(): void {
+    const sede = this.sedeEnEdicion();
+    const original = this.originalEdicion();
+    if (!sede || !original || this.guardandoSede()) return;
+
+    // Si cambia el teléfono, la contraseña pasa a ser obligatoria.
+    const password = this.formEdicion.get('passwordActual');
+    if (this.cambiaTelefono()) {
+      password?.setValidators([Validators.required]);
+    } else {
+      password?.clearValidators();
+    }
+    password?.updateValueAndValidity({ emitEvent: false });
+
+    if (this.formEdicion.invalid) {
+      this.formEdicion.markAllAsTouched();
+      return;
+    }
+
+    const valores = this.formEdicion.getRawValue();
+    const dto: ActualizarBarberiaRequest = {};
+
+    if ((valores.ubicacion ?? '').trim() !== original.ubicacion.trim()) {
+      dto.ubicacion = (valores.ubicacion ?? '').trim();
+    }
+    if ((valores.descripcion ?? '').trim() !== original.descripcion.trim()) {
+      dto.descripcion = (valores.descripcion ?? '').trim();
+    }
+    if ((valores.logoUrl ?? '').trim() !== original.logoUrl.trim()) {
+      dto.logoUrl = (valores.logoUrl ?? '').trim();
+    }
+    if ((valores.telefono ?? '') !== original.telefono) {
+      dto.telefono = valores.telefono;
+      dto.passwordActual = valores.passwordActual;
+    }
+
+    if (Object.keys(dto).length === 0) {
+      this.errorEdicion.set('No has cambiado ningún dato todavía.');
+      return;
+    }
+
+    this.guardandoSede.set(true);
+    this.errorEdicion.set(null);
+
+    this.tenantService.actualizarBarberia(sede.id, dto).subscribe({
+      next: (actualizada) => {
+        this.guardandoSede.set(false);
+        this.sedeEnEdicion.set(null);
+        this.originalEdicion.set(null);
+        this.avisar(`Sede actualizada: ${actualizada?.nombre ?? sede.nombre}.`);
+      },
+      error: (err) => {
+        // El modal se queda abierto con lo escrito: el mensaje de negocio (422
+        // de teléfono o de contraseña) dice qué corregir.
+        this.guardandoSede.set(false);
+        this.errorEdicion.set(mensajeDeError(err, 'No se pudo actualizar la sede'));
+      },
+    });
   }
 
   /** E3-12/2 · lo que el staff comparte: código y enlace único de su sede. */

@@ -351,6 +351,18 @@ export class SolicitudCambioService {
           // CONFLICT DO NOTHING no duplica (índice parcial uk_usuario_rol_sede:
           // el `@@unique` que cubría esto ya no existe — no protegía los roles
           // globales, ver schema.prisma).
+          // I-01 · quién tenía el rol ANTES de retirarlo, para cerrarle la
+          // sesión: perder `ADMIN_BARBERIA` es una desactivación de acceso, y el
+          // token ya firmado conserva su claim hasta 24 h (`expiresIn`).
+          const anteriores = await tx.usuarioRol.findMany({
+            where: {
+              rolId: rolAdminBarberia.id,
+              barberiaId: barberia.id,
+              usuarioId: { not: nuevo.id },
+            },
+            select: { usuarioId: true },
+          });
+
           await tx.usuarioRol.deleteMany({
             where: {
               rolId: rolAdminBarberia.id,
@@ -358,6 +370,18 @@ export class SolicitudCambioService {
               usuarioId: { not: nuevo.id },
             },
           });
+
+          // Misma palanca que la suspensión de cuenta (D24) y que «inactivar» en
+          // Mi Personal: se sube `tokenVersion` en ESTA transacción, así que el
+          // responsable saliente queda fuera en su siguiente petición (401 en
+          // `JwtStrategy`) aunque su token siga vigente por fecha. Vuelve a
+          // entrar con login normal, donde ya no se le firma el rol retirado.
+          if (anteriores.length > 0) {
+            await tx.usuario.updateMany({
+              where: { id: { in: anteriores.map((a) => a.usuarioId) } },
+              data: { tokenVersion: { increment: 1 } },
+            });
+          }
 
           await tx.usuarioRol.createMany({
             data: [

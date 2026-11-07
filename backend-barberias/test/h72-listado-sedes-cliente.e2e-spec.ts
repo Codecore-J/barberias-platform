@@ -138,7 +138,7 @@ describe('H72 · el cliente lista sus sedes (GET /mi-estado/barberias)', () => {
         await prisma.barberia.create({
           data: {
             nombre: `Barbería ${etiqueta} ${sufijo}`,
-            telefono: '955555555',
+            telefono: '9555555555',
             ubicacion: `Sede ${etiqueta}`,
             codigoAcceso: `H72${etiqueta.replace(/\W/g, '').slice(0, 3)}${String(sufijo).slice(-5)}`,
             enlaceUnico: `h72-${etiqueta}-${sufijo}`,

@@ -85,7 +85,15 @@ describe('AdminPersonalComponent', () => {
 
     expect(component.formularioPersonalAbierto()).toBe(true);
     expect(component.modoFormulario()).toBe('invitar');
-    expect(fixture.nativeElement.textContent).toContain('Invitar miembro de personal');
+    // H-01: el overlay del modal se porta a `<body>` para escapar de los
+    // contextos de apilamiento de la página, así que ya no cuelga de
+    // `fixture.nativeElement`. Se comprueba además que esté *visible*: al no
+    // desmontarse, la sola presencia del texto no probaría que se abrió.
+    const dialogo = [...document.body.querySelectorAll('[role="dialog"]')].find((elemento) =>
+      elemento.textContent?.includes('Invitar miembro de personal'),
+    );
+    expect(dialogo).toBeDefined();
+    expect((dialogo!.parentElement as HTMLElement).style.display).toBe('flex');
   });
 
   it('valida campos requeridos, correo inválido y datos de invitación', () => {
@@ -144,8 +152,9 @@ describe('AdminPersonalComponent', () => {
       estado: 'ACTIVO',
       rolNombre: 'BARBERO',
     });
-    const nombre = fixture.nativeElement.querySelector('#personal-editar-nombre') as HTMLInputElement;
-    const telefono = fixture.nativeElement.querySelector('#personal-editar-telefono') as HTMLInputElement;
+    // También aquí el contenido vive en el overlay portado a `<body>` (H-01).
+    const nombre = document.body.querySelector('#personal-editar-nombre') as HTMLInputElement;
+    const telefono = document.body.querySelector('#personal-editar-telefono') as HTMLInputElement;
     expect(nombre.value).toBe('Juan Pérez');
     expect(nombre.readOnly).toBe(true);
     expect(telefono.value).toBe('8095551234');

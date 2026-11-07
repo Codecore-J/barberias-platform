@@ -25,7 +25,7 @@ import { NotificationService } from '../../core/services/notification.service';
       </div>
 
       <!-- NAVBAR FLOTANTE GLASSMORPHISM -->
-      <header class="fixed top-4 left-0 right-0 z-50 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto transition-all duration-300">
+      <header class="app-header fixed top-4 left-0 right-0 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto transition-all duration-300">
         <nav class="glass-panel rounded-2xl px-4 py-3 sm:px-6 flex items-center justify-between border border-amber-500/20 shadow-2xl backdrop-blur-xl">
           
           <!-- BRAND / LOGO -->
@@ -183,6 +183,14 @@ import { NotificationService } from '../../core/services/notification.service';
                         <span class="text-[10px] text-zinc-500">Apertura, cierres y bloqueos</span>
                       </span>
                     </a>
+                    <a routerLink="/admin/propuestas-horario" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-inbox text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Propuestas de horario</span>
+                        <span class="text-[10px] text-zinc-500">Cambios de hora propuestos por los clientes</span>
+                      </span>
+                    </a>
                     <a routerLink="/admin/tickets" (click)="configDropdownOpen.set(false)"
                        class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
                       <i class="pi pi-receipt text-amber-400/80 mt-0.5"></i>
@@ -259,6 +267,14 @@ import { NotificationService } from '../../core/services/notification.service';
                         <span class="text-[10px] text-zinc-500">Apertura, excepciones y bloqueos</span>
                       </span>
                     </a>
+                    <a routerLink="/admin/propuestas-horario" (click)="configDropdownOpen.set(false)"
+                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
+                      <i class="pi pi-inbox text-amber-400/80 mt-0.5"></i>
+                      <span class="flex flex-col">
+                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Propuestas de horario</span>
+                        <span class="text-[10px] text-zinc-500">Bandeja de cambios de hora pendientes</span>
+                      </span>
+                    </a>
                     <a routerLink="/admin/servicios" (click)="configDropdownOpen.set(false)"
                        class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
                       <i class="pi pi-list text-amber-400/80 mt-0.5"></i>
@@ -319,7 +335,7 @@ import { NotificationService } from '../../core/services/notification.service';
             
             <!-- CAMPANA DE NOTIFICACIONES -->
             <div class="relative">
-              <button (click)="toggleNotifications()" class="relative w-9 h-9 rounded-xl bg-zinc-900/80 border border-zinc-700/60 hover:border-amber-500/40 flex items-center justify-center text-zinc-300 hover:text-amber-400 transition-colors focus:outline-none">
+              <button (click)="toggleNotifications()" aria-label="Ver notificaciones" [attr.aria-expanded]="notificationsDropdownOpen()" aria-haspopup="true" class="relative w-9 h-9 rounded-xl bg-zinc-900/80 border border-zinc-700/60 hover:border-amber-500/40 flex items-center justify-center text-zinc-300 hover:text-amber-400 transition-colors focus:outline-none">
                 <i class="pi pi-bell text-sm"></i>
                 @if (notificationService.noLeidasCount() > 0) {
                   <span class="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-[#09090b] text-[10px] font-extrabold rounded-full flex items-center justify-center animate-pulse">
@@ -466,6 +482,9 @@ import { NotificationService } from '../../core/services/notification.service';
                 <a routerLink="/admin/tickets" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-receipt text-amber-400"></i>Pagos
                 </a>
+                <a routerLink="/admin/propuestas-horario" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-inbox text-amber-400"></i>Propuestas de horario
+                </a>
                 <a routerLink="/admin/solicitudes-cambio" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-send text-amber-400"></i>Solicitudes de cambio
                 </a>
@@ -512,6 +531,9 @@ import { NotificationService } from '../../core/services/notification.service';
                 <a routerLink="/admin/tickets" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-receipt text-amber-400"></i>Pagos
                 </a>
+                <a routerLink="/admin/propuestas-horario" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
+                  <i class="pi pi-inbox text-amber-400"></i>Propuestas de horario
+                </a>
                 <a routerLink="/admin/solicitudes-cambio" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-send text-amber-400"></i>Solicitudes de cambio
                 </a>
@@ -530,7 +552,7 @@ import { NotificationService } from '../../core/services/notification.service';
       </main>
 
       <!-- FOOTER DE LUJO -->
-      <footer class="relative z-10 border-t border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md py-8 px-4 text-center text-xs text-zinc-500">
+      <footer class="app-footer relative border-t border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md py-8 px-4 text-center text-xs text-zinc-500">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>

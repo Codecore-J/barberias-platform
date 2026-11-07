@@ -73,7 +73,7 @@ const ESTILOS: Record<ToastTipo, EstiloToast> = {
   ],
   template: `
     <div
-      class="fixed bottom-6 right-4 left-4 sm:left-auto sm:right-6 z-[70] flex flex-col-reverse gap-2.5 sm:w-[22rem] pointer-events-none"
+      class="toast-layer fixed bottom-6 right-4 left-4 sm:left-auto sm:right-6 flex flex-col-reverse gap-2.5 sm:w-[22rem] pointer-events-none"
       aria-live="polite"
       aria-atomic="false"
     >

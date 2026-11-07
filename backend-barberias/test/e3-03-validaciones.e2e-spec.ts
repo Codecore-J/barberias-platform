@@ -174,7 +174,7 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
       const barberiaId = await prisma.barberia.create({
         data: {
           nombre: `Sede ${nombre} E303`,
-          telefono: `600${1000 + Number(nombre)}2222`,
+          telefono: `600${String(1).padStart(7, '0')}`,
           ubicacion: nombre,
           estado: 'ACTIVO',
           codigoAcceso: `E303${nombre}`,

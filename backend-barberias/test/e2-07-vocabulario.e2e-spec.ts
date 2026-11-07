@@ -63,6 +63,17 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     correos[rol] = correo;
   };
 
+  // D24 · suspender una sede cierra la sesión de su personal (sube
+  // `tokenVersion`), y reactivar NO la restaura: quien necesite seguir
+  // operando después de una suspensión debe volver a autenticarse.
+  const relogin = async (rol: string) => {
+    const l = await request(app.getHttpServer())
+      .post(`${api}/auth/login`)
+      .send({ correo: correos[rol], password: 'Password1!' });
+    expect(l.status, `relogin ${rol} → ${l.status} ${JSON.stringify(l.body)}`).toBe(200);
+    tokens[rol] = l.body.accessToken;
+  };
+
   const disponibilidad = async () => {
     const res = await request(app.getHttpServer())
       .get(`${api}/shops/${datos.sede}/appointments/schedule/availability?fecha=${datos.fecha}&duracionMinutos=30`)
@@ -116,7 +127,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     const sede = await prisma.barberia.create({
       data: {
         nombre: `Sede E207-${sufijo}`,
-        telefono: `702${sufijo.slice(-6).padEnd(6, '0')}01`,
+        telefono: `7021${String(1).padStart(6, '0')}`,
         ubicacion: 'Sede E2-07',
         estado: 'ACTIVO',
         codigoAcceso: `E207A-${sufijo}`,
@@ -431,6 +442,11 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
       select: { estado: true },
     });
     expect(reactivada.estado).toBe('ACTIVO');
+
+    // La suspensión invalidó los tokens del personal; se renuevan porque los
+    // tests siguientes siguen operando la sede con esos roles.
+    await relogin('admin');
+    await relogin('barbero');
   });
 
   it('visibilidad por rol: inactivos ocultos al cliente, visibles al admin', async () => {

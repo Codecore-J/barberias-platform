@@ -1,8 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "ng build",
+  "buildCommand": "node scripts/generate-runtime-env.mjs && ng build",
   "outputDirectory": "dist/frontend-barberias/browser",
   "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://barberias-api-p3br.onrender.com/api/:path*"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"

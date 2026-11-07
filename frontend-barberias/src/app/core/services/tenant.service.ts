@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, of, map, switchMap, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 import type { PuertaDeEntrada } from '../utils/invitacion.util.js';
+import { mensajeDeError } from '../utils/error-message.js';
 
 /**
  * E3-12/2 · la invitación de una sede (regla 1.10): lo que el staff comparte.
@@ -14,6 +15,22 @@ export interface InvitacionSede {
   nombre: string;
   codigoAcceso: string;
   enlaceUnico: string;
+}
+
+/**
+ * E3-13 · lo que se edita de una sede ya creada (D26/D27).
+ *
+ * `nombre` y `estado` NO están: el backend los rechaza con 422
+ * (`NOMBRE_REQUIERE_SOLICITUD` / `ESTADO_NO_EDITABLE`) porque el nombre solo
+ * cambia por solicitud aprobada y el estado tiene su propia ruta. `passwordActual`
+ * viaja solo cuando cambia el teléfono: es la exigencia de D27.
+ */
+export interface ActualizarBarberiaRequest {
+  descripcion?: string;
+  ubicacion?: string;
+  logoUrl?: string;
+  telefono?: string;
+  passwordActual?: string;
 }
 
 /** El vínculo que devuelven las rutas de vinculación: el estado es el de D10. */
@@ -29,6 +46,8 @@ export interface BarberiaResumen {
   id: string;
   nombre: string;
   descripcion?: string | null;
+  /** E3-13 · editable desde `PATCH /shops/:shopId` (los tres últimos campos). */
+  logoUrl?: string | null;
   telefono: string;
   ubicacion: string;
   /**
@@ -134,7 +153,7 @@ export class TenantService {
       }),
       catchError((err) => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al cargar barberías');
+        this.error.set(mensajeDeError(err, 'Error al cargar barberías'));
         return of([]);
       }),
     );
@@ -210,7 +229,7 @@ export class TenantService {
       tap(() => this.isLoading.set(false)),
       catchError((err) => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || err.message || 'No se pudo seleccionar la sede');
+        this.error.set(mensajeDeError(err, 'No se pudo seleccionar la sede'));
         throw err;
       }),
     );
@@ -249,7 +268,7 @@ export class TenantService {
     return this.http.get<InvitacionSede>(`${this.apiUrl}/${barberiaId}/invitation`).pipe(
       catchError((err) => {
         this.error.set(
-          err.error?.mensaje || err.error?.message || 'No se pudo obtener la invitación de la sede',
+          mensajeDeError(err, 'No se pudo obtener la invitación de la sede'),
         );
         throw err;
       }),
@@ -276,7 +295,7 @@ export class TenantService {
       }),
       catchError((err) => {
         this.isLoading.set(false);
-        this.error.set(err.error?.mensaje || err.error?.message || 'No se pudo completar la unión');
+        this.error.set(mensajeDeError(err, 'No se pudo completar la unión'));
         throw err;
       }),
     );
@@ -300,8 +319,37 @@ export class TenantService {
       }),
       catchError((err) => {
         this.isLoading.set(false);
-        this.error.set(err.error?.message || 'Error al crear la barbería');
+        this.error.set(mensajeDeError(err, 'Error al crear la barbería'));
         throw err;
+      }),
+    );
+  }
+
+  /**
+   * E3-13 · edición directa de la sede (`PATCH /shops/:shopId`).
+   *
+   * Solo `descripcion`, `ubicacion`, `logoUrl` y `telefono`; el teléfono exige
+   * `passwordActual` y el backend responde 422 `PASSWORD_REQUERIDA` si falta. La
+   * respuesta se escribe en la lista y en la sede activa en lugar de recargar:
+   * el `PATCH` devuelve la sede completa, así que otra petición solo para ver los
+   * datos que ya vienen en el cuerpo dejaría la pantalla parpadeando.
+   */
+  actualizarBarberia(
+    barberiaId: string,
+    dto: ActualizarBarberiaRequest,
+  ): Observable<BarberiaResumen> {
+    return this.http.patch<BarberiaResumen>(`${this.apiUrl}/${barberiaId}`, dto).pipe(
+      tap((actualizada) => {
+        this.barberiasVinculadas.update((lista) =>
+          lista.map((sede) =>
+            sede.id === barberiaId ? { ...sede, ...actualizada, id: sede.id } : sede,
+          ),
+        );
+
+        const activa = this.barberiaActiva();
+        if (activa?.id === barberiaId) {
+          this.setBarberiaActiva({ ...activa, ...actualizada, id: activa.id });
+        }
       }),
     );
   }
@@ -376,7 +424,7 @@ export class TenantService {
       .pipe(
         tap(() => this.setBarberiaActiva(candidata)),
         catchError((err) => {
-          this.error.set(err.error?.message || 'No se pudo seleccionar la sede activa');
+          this.error.set(mensajeDeError(err, 'No se pudo seleccionar la sede activa'));
           return of(null);
         }),
       )

@@ -84,7 +84,6 @@ describe('E3-06/E3-07 · reprogramación y reglas de cancelación del cliente', 
   ];
 
   let sede: string;
-  let sedeAjena: string;
   let servicio: string;
   let tokenAdminSede: string;
   let tokenAdminAjena: string;
@@ -171,50 +170,88 @@ describe('E3-06/E3-07 · reprogramación y reglas de cancelación del cliente', 
       ).id;
     }
 
-    const [duenio, adminSede, adminAjena, cliente, cliente2] = await Promise.all(
-      correos.map((correo, i) =>
-        prisma.usuario.create({
-          data: {
-            telefonoVerificado: true,
-            nombreCompleto: `E3067 ${i}`,
-            correo,
-            telefono: `9997${String(i).padStart(7, '0')}`,
-            passwordHash: '$2b$10$HashFalsoE3067NoSeUsaParaLogin',
-          },
-          select: { id: true },
-        }),
-      ),
-    );
+    // Solo el dueño se crea aquí; el resto de `correos` tiene su propio alta
+    // más abajo. `telefono` es único, así que no se puede crear la lista entera
+    // con el mismo número.
+    const duenio = await prisma.usuario.create({
+      data: {
+        telefonoVerificado: true,
+        nombreCompleto: 'E3067 0',
+        correo: correos[0],
+        telefono: '9997100000',
+        passwordHash: '$2b$10$HashFalsoE3067NoSeUsaParaLogin',
+      },
+      select: { id: true },
+    });
 
-    sede = (
-      await prisma.barberia.create({
-        data: {
-          nombre: 'Sede E3067',
-          telefono: '9997111111',
-          ubicacion: 'Sede E3067',
-          codigoAcceso: 'E3067A',
-          enlaceUnico: 'https://e3067.test',
-          responsableId: duenio.id,
-        },
-        select: { id: true },
-      })
-    ).id;
+    const adminSede = await prisma.usuario.create({
+      data: {
+        telefonoVerificado: true,
+        nombreCompleto: 'E3067 1',
+        correo: correos[1],
+        telefono: '9997100001',
+        passwordHash: '$2b$10$HashFalsoE3067NoSeUsaParaLogin',
+      },
+      select: { id: true },
+    });
 
-    sedeAjena = (
-      await prisma.barberia.create({
-        data: {
-          nombre: 'Sede E3067 ajena',
-          telefono: '9997222222',
-          ubicacion: 'Sede E3067 ajena',
-          codigoAcceso: 'E3067B',
-          enlaceUnico: 'https://e3067-ajena.test',
-          responsableId: duenio.id,
-        },
-        select: { id: true },
-      })
-    ).id;
+    const adminAjena = await prisma.usuario.create({
+      data: {
+        telefonoVerificado: true,
+        nombreCompleto: 'E3067 2',
+        correo: correos[2],
+        telefono: '9997100002',
+        passwordHash: '$2b$10$HashFalsoE3067NoSeUsaParaLogin',
+      },
+      select: { id: true },
+    });
 
-    // modo_reserva default = MANUAL: la reserva nace PENDIENTE y se acepta por API.
+    const cliente = await prisma.usuario.create({
+      data: {
+        telefonoVerificado: true,
+        nombreCompleto: 'E3067 3',
+        correo: correos[3],
+        telefono: '9997100003',
+        passwordHash: '$2b$10$HashFalsoE3067NoSeUsaParaLogin',
+      },
+      select: { id: true },
+    });
+
+    const cliente2 = await prisma.usuario.create({
+      data: {
+        telefonoVerificado: true,
+        nombreCompleto: 'E3067 4',
+        correo: correos[4],
+        telefono: '9997100004',
+        passwordHash: '$2b$10$HashFalsoE3067NoSeUsaParaLogin',
+      },
+      select: { id: true },
+    });
+
+    sede = (await prisma.barberia.create({
+      data: {
+        nombre: 'Sede E3067',
+        telefono: '9997100000',
+        ubicacion: 'Sede E3067',
+        codigoAcceso: 'E3067A',
+        enlaceUnico: 'https://e3067.test',
+        responsableId: duenio.id,
+      },
+      select: { id: true },
+    })).id;
+
+    const sedeAjena = (await prisma.barberia.create({
+      data: {
+        nombre: 'Sede E3067 ajena',
+        telefono: '9997100001',
+        ubicacion: 'Sede E3067 ajena',
+        codigoAcceso: 'E3067B',
+        enlaceUnico: 'https://e3067-ajena.test',
+        responsableId: duenio.id,
+      },
+      select: { id: true },
+    })).id;
+
     await prisma.configuracionBarberia.create({ data: { barberiaId: sede } });
     await prisma.configuracionBarberia.create({ data: { barberiaId: sedeAjena } });
 
@@ -234,20 +271,17 @@ describe('E3-06/E3-07 · reprogramación y reglas de cancelación del cliente', 
       data: { usuarioId: cliente2.id, barberiaId: sede, estadoVinculacion: 'ACTIVO' },
     });
 
-    servicio = (
-      await prisma.servicio.create({
-        data: {
-          barberiaId: sede,
-          nombre: 'Corte E3067',
-          precio: 30,
-          duracionEstimada: 30,
-          margenOperativo: 0,
-        },
-        select: { id: true },
-      })
-    ).id;
+    servicio = (await prisma.servicio.create({
+      data: {
+        barberiaId: sede,
+        nombre: 'Corte E3067',
+        precio: 30,
+        duracionEstimada: 30,
+        margenOperativo: 0,
+      },
+      select: { id: true },
+    })).id;
 
-    // Horario de sede 00:00-23:59 todos los días (`diaSemana` 1=Lunes … 7=Domingo).
     await prisma.horario.createMany({
       data: Array.from({ length: 7 }, (_, diaSemana) => ({
         barberiaId: sede,
@@ -262,7 +296,6 @@ describe('E3-06/E3-07 · reprogramación y reglas de cancelación del cliente', 
     tokenCliente = await jwtService.signAsync({ sub: cliente.id, correo: correos[3], roles: [] });
     tokenCliente2 = await jwtService.signAsync({ sub: cliente2.id, correo: correos[4], roles: [] });
   }, 120_000);
-
   afterAll(async () => {
     await limpiar();
     await app.close();

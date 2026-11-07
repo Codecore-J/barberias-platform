@@ -21,6 +21,13 @@ import { TenantService } from '../../core/services/tenant.service';
           <div class="text-center space-y-2">
             <h1 class="text-4xl font-display font-bold text-white">Registrar <span class="gold-gradient-text">Barbería</span></h1>
             <p class="text-zinc-400">Crea tu espacio de trabajo para comenzar a gestionar servicios y agendamientos.</p>
+            <!-- H-02: no hay un campo "responsable" en el alta. El backend toma
+                 al creador del JWT como responsableId; para designar a otra
+                 persona existe el flujo de solicitudes de cambio. -->
+            <p class="text-[11px] text-zinc-500">
+              La sede quedará a tu nombre como responsable. Para designar a otra persona,
+              envía una solicitud de cambio desde la configuración de la sede.
+            </p>
           </div>
 
           <!-- Formulario -->
@@ -42,29 +49,20 @@ import { TenantService } from '../../core/services/tenant.service';
                 }
               </div>
 
-              <!-- Responsable -->
-              <div class="space-y-2">
-                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">Responsable</label>
-                <div class="relative">
-                  <i class="pi pi-user absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
-                  <input type="text" formControlName="responsable" placeholder="Nombre de quien responde por la sede"
-                    maxlength="150"
-                    class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
-                </div>
-                <p class="text-[11px] text-zinc-500 pl-1">Opcional · queda registrado como referencia de la sede.</p>
-              </div>
-
               <!-- Teléfono -->
               <div class="space-y-2">
-                <label class="text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">Teléfono</label>
+                <label for="sede-telefono" class="text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">Teléfono</label>
                 <div class="relative">
                   <i class="pi pi-phone absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
-                  <input type="tel" formControlName="telefono" inputmode="numeric" autocomplete="tel-national"
+                  <input type="tel" id="sede-telefono" formControlName="telefono" inputmode="numeric" autocomplete="tel-national"
                     maxlength="10" placeholder="8095550199" (input)="onTelefonoInput($event)"
+                    required aria-required="true"
+                    [attr.aria-invalid]="campoInvalido('telefono')"
+                    [attr.aria-describedby]="campoInvalido('telefono') ? 'sede-telefono-error' : null"
                     class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
                 </div>
-                @if (form.get('telefono')?.touched && form.get('telefono')?.invalid) {
-                  <p class="text-[11px] text-red-400 pl-1">El teléfono debe tener exactamente 10 dígitos.</p>
+                @if (campoInvalido('telefono')) {
+                  <p id="sede-telefono-error" role="alert" class="text-[11px] text-red-400 pl-1">El teléfono debe tener exactamente 10 dígitos.</p>
                 }
               </div>
 
@@ -78,6 +76,8 @@ import { TenantService } from '../../core/services/tenant.service';
                     class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
                 </div>
                 @if (form.get('ubicacion')?.touched && form.get('ubicacion')?.invalid) {
+                  <p class="text-[11px] text-red-400 pl-1">Indica la ubicación o ciudad de la sede.</p>
+                } @else if (form.get('ubicacion')?.dirty && !form.get('ubicacion')?.value) {
                   <p class="text-[11px] text-red-400 pl-1">Indica la ubicación o ciudad de la sede.</p>
                 }
               </div>
@@ -148,9 +148,14 @@ export class CrearBarberiaComponent {
     telefono: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
     ubicacion: ['', [Validators.required]],
     descripcion: [''],
-    responsable: [''],
     logo: ['']
   });
+
+  /** Mismo criterio que los modales de personal: inválido y ya tocado. */
+  campoInvalido(nombre: string): boolean {
+    const control = this.form.get(nombre);
+    return !!control && control.invalid && (control.dirty || control.touched);
+  }
 
   /** Solo dígitos y máximo 10: el backend rechaza cualquier otra cosa con 400. */
   onTelefonoInput(event: Event): void {
@@ -169,8 +174,9 @@ export class CrearBarberiaComponent {
     }
 
     // El `ValidationPipe` del backend usa `forbidNonWhitelisted`: mandar
-    // `responsable` o `logo` (que `CreateBarberiaDto` no declara) devolvía 400 y
-    // la sede nunca se creaba. Se envía solo el contrato aceptado.
+    // `logo` (que `CreateBarberiaDto` no declara) devolvía 400 y la sede nunca
+    // se creaba. Se envía solo el contrato aceptado. El responsable no se elige
+    // aquí: el backend lo toma del JWT (creador de la sede).
     const { nombre, telefono, ubicacion, descripcion } = this.form.value;
 
     this.isSubmitting.set(true);

@@ -1,6 +1,7 @@
 import { Component, DestroyRef, computed, inject, resource, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
+import { mensajeDeError } from '../../core/utils/error-message';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import {
   ESTADOS_TERMINALES,
@@ -530,10 +531,7 @@ export class AdminAgendaComponent {
   readonly errorCarga = computed<string | null>(() => {
     const error = this.agendaResource.error() ?? this.equipoResource.error();
     if (!error) return null;
-    const cuerpo = error as { error?: { mensaje?: string; message?: string } };
-    return (
-      cuerpo?.error?.mensaje ?? cuerpo?.error?.message ?? 'No se pudo cargar la agenda del día.'
-    );
+    return mensajeDeError(error, 'No se pudo cargar la agenda del día.');
   });
 
   mostrarModalWalkIn = signal(false);
@@ -671,9 +669,7 @@ export class AdminAgendaComponent {
       },
       error: (err) => {
         this.procesandoId.set(null);
-        this.errorAccion.set(
-          err?.error?.mensaje || err?.error?.message || 'No se pudo confirmar el turno.',
-        );
+        this.errorAccion.set(mensajeDeError(err, 'No se pudo confirmar el turno.'));
       },
     });
   }
@@ -702,9 +698,7 @@ export class AdminAgendaComponent {
       },
       error: (err) => {
         this.procesandoId.set(null);
-        this.errorAccion.set(
-          err?.error?.mensaje || err?.error?.message || 'No se pudo cancelar el turno.',
-        );
+        this.errorAccion.set(mensajeDeError(err, 'No se pudo cancelar el turno.'));
       },
     });
   }
@@ -759,7 +753,7 @@ export class AdminAgendaComponent {
         },
         error: (err) =>
           this.errorAccion.set(
-            err?.error?.mensaje || err?.error?.message || 'No se pudo marcar la inasistencia.',
+            mensajeDeError(err, 'No se pudo marcar la inasistencia.'),
           ),
       });
   }
@@ -814,9 +808,7 @@ export class AdminAgendaComponent {
         this.asignando.set(false);
         // 403 (otra sede) y 409 (barbero ocupado o bloqueado) llegan con el
         // mensaje D40 del backend; se muestran tal cual en el modal.
-        this.errorAsignacion.set(
-          err?.error?.mensaje || err?.error?.message || 'No se pudo asignar el barbero.',
-        );
+        this.errorAsignacion.set(mensajeDeError(err, 'No se pudo asignar el barbero.'));
       },
     });
   }

@@ -23,6 +23,7 @@ import {
 } from '../application/dto/gestionar-personal.dto.js';
 import { CambiarEstadoBarberiaDto } from '../application/dto/cambiar-estado-barberia.dto.js';
 import { VincularBarberiaDto } from '../application/dto/vincular-barberia.dto.js';
+import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
@@ -39,12 +40,24 @@ export class BarberiaController {
 
   /**
    * POST /shops
-   * Cualquier usuario autenticado puede crear una barbería (decisión 1).
-   * El responsable se extrae automáticamente del JWT.
-   * E1-07 · D04: el servicio aplica el límite de 2 sedes ACTIVAS por
-   * responsable y asigna ADMIN_BARBERIA al creador en la sede nueva (E0-07).
+   * D04: cualquier usuario autenticado puede crear una barbería —es la vía de
+   * alta del producto—, con límite de 2 sedes ACTIVAS por responsable,
+   * auditoría y LIMITE DE PETICIONES. El responsable sale del JWT, nunca del
+   * cuerpo.
+   *
+   * H-04: la ruta era `@Autenticado()` sin más y el tercer control de D04 (el
+   * de peticiones) no existía: solo frenaba el 120/min global por IP. Un token
+   * comprometido podía martillear la ruta, y el cupo de 2 no protege de eso
+   * porque se agota en la primera sede y luego cada intento sigue costando una
+   * transacción SERIALIZABLE. 5/min es holgado para un alta legítima (el tope
+   * real son 2 sedes) y corta el abuso sin castigar a un usuario que corrige
+   * un dato y reenvía.
+   *
+   * El servicio aplica además el límite de sedes y asigna ADMIN_BARBERIA al
+   * creador en la sede nueva (E0-07).
    */
   @Autenticado()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(
@@ -164,6 +177,8 @@ export class BarberiaController {
   ) {
     return this.barberiaService.actualizarPersonal(shopId, userId, dto, user);
   }
+
+
 
   /**
    * GET /shops/:shopId

@@ -69,6 +69,16 @@ describe('E2-07 · P-SD-3/P-SD-4 · sede suspendida: no reserva, no expone agend
     correos[rol] = correo;
   };
 
+  // D24 · suspender la sede cierra las sesiones de su personal (sube
+  // `tokenVersion`) y reactivar no las restaura: hay que volver a autenticarse.
+  const relogin = async (rol: string) => {
+    const l = await request(app.getHttpServer())
+      .post(`${api}/auth/login`)
+      .send({ correo: correos[rol], password: 'Password1!' });
+    expect(l.status, `relogin ${rol} → ${l.status} ${JSON.stringify(l.body)}`).toBe(200);
+    tokens[rol] = l.body.accessToken;
+  };
+
   /** Payload de reserva del cliente (mismo esquema que el wizard, E3-03/2). */
   function payloadReserva(horaInicio: string, horaFin: string) {
     return {
@@ -147,7 +157,7 @@ describe('E2-07 · P-SD-3/P-SD-4 · sede suspendida: no reserva, no expone agend
     const sede = await prisma.barberia.create({
       data: {
         nombre: `Sede PSD34-${sufijo}`,
-        telefono: `703${sufijo.slice(-6).padEnd(6, '0')}01`,
+        telefono: `7031${String(1).padStart(6, '0')}`,
         ubicacion: 'Sede P-SD-3',
         estado: 'ACTIVO',
         codigoAcceso: `PSD34-${sufijo}`,
@@ -332,6 +342,10 @@ describe('E2-07 · P-SD-3/P-SD-4 · sede suspendida: no reserva, no expone agend
       anterior: { estado: 'INACTIVO' },
       nuevo: { estado: 'ACTIVO' },
     });
+
+    // Reactivar no devuelve las sesiones que la suspensión cerró (D24).
+    await relogin('admin');
+    await relogin('barbero');
 
     const disp = await disponibilidad();
     expect(disp.status).toBe(200);

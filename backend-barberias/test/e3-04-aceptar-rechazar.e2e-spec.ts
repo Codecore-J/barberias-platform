@@ -141,37 +141,65 @@ describe('E3-04 · aceptar y rechazar solicitudes MANUALES', () => {
       ).id;
     }
 
-    const [duenio, adminSede, adminAjena, cliente] = await Promise.all(
-      correos.slice(0, 4).map((correo, i) =>
-        prisma.usuario.create({
-          data: {
-            telefonoVerificado: true,
-            nombreCompleto: `E304 ${i}`,
-            correo,
-            telefono: `9997${String(i).padStart(7, '0')}`,
-            passwordHash: '$2b$10$HashFalsoE304NoSeUsaParaLogin',
-          },
-          select: { id: true },
-        }),
-      ),
-    );
-    const global = await prisma.usuario.create({
-      data: {
-        telefonoVerificado: true,
-        nombreCompleto: 'E304 global',
-        correo: correos[4],
-        telefono: '99970000004',
-        passwordHash: '$2b$10$HashFalsoE304NoSeUsaParaLogin',
-      },
-      select: { id: true },
-    });
+    const [duenio, adminSede, adminAjena, cliente, global] = await Promise.all([
+      prisma.usuario.create({
+        data: {
+          telefonoVerificado: true,
+          nombreCompleto: 'E304 duenio',
+          correo: correos[0],
+          telefono: '9997100000',
+          passwordHash: '$2b$10$HashFalsoE304NoSeUsaParaLogin',
+        },
+        select: { id: true },
+      }),
+      prisma.usuario.create({
+        data: {
+          telefonoVerificado: true,
+          nombreCompleto: 'E304 admin sede',
+          correo: correos[1],
+          telefono: '9997100001',
+          passwordHash: '$2b$10$HashFalsoE304NoSeUsaParaLogin',
+        },
+        select: { id: true },
+      }),
+      prisma.usuario.create({
+        data: {
+          telefonoVerificado: true,
+          nombreCompleto: 'E304 admin ajena',
+          correo: correos[2],
+          telefono: '9997100002',
+          passwordHash: '$2b$10$HashFalsoE304NoSeUsaParaLogin',
+        },
+        select: { id: true },
+      }),
+      prisma.usuario.create({
+        data: {
+          telefonoVerificado: true,
+          nombreCompleto: 'E304 cliente',
+          correo: correos[3],
+          telefono: '9997100003',
+          passwordHash: '$2b$10$HashFalsoE304NoSeUsaParaLogin',
+        },
+        select: { id: true },
+      }),
+      prisma.usuario.create({
+        data: {
+          telefonoVerificado: true,
+          nombreCompleto: 'E304 global',
+          correo: correos[4],
+          telefono: '9997100004',
+          passwordHash: '$2b$10$HashFalsoE304NoSeUsaParaLogin',
+        },
+        select: { id: true },
+      }),
+    ]);
 
     // La sede bajo prueba y una sede ajena para el 403 cross-tenant.
     sede = (
       await prisma.barberia.create({
         data: {
           nombre: 'Sede E304',
-          telefono: '9997111111',
+          telefono: '9997200000',
           ubicacion: 'Sede E304',
           codigoAcceso: 'E304A',
           enlaceUnico: 'https://e304.test',
@@ -185,7 +213,7 @@ describe('E3-04 · aceptar y rechazar solicitudes MANUALES', () => {
       await prisma.barberia.create({
         data: {
           nombre: 'Sede E304 ajena',
-          telefono: '9997222222',
+          telefono: '9997300000',
           ubicacion: 'Sede E304 ajena',
           codigoAcceso: 'E304B',
           enlaceUnico: 'https://e304-ajena.test',

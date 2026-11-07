@@ -9,6 +9,7 @@ import { AuthController } from '../src/iam/infrastructure/auth.controller.js';
 import { AnalyticsController } from '../src/analytics/infrastructure/analytics.controller.js';
 import { NotificacionesWebhookController } from '../src/notificaciones/infrastructure/notificaciones-webhook.controller.js';
 import { HealthController } from '../src/health/health.controller.js';
+import { BarberiaController } from '../src/barberia/infrastructure/barberia.controller.js';
 
 /**
  * Rate limiting (SEC-02) · Paso 16.
@@ -58,6 +59,15 @@ describe('Rate limiting (SEC-02) · configuración', () => {
   it('permite 50 webhook de WhatsApp por segundo (ráfagas del proveedor)', () => {
     expect(limiteDe(manejador(NotificacionesWebhookController, 'recibir'))).toBe(50);
     expect(ttlDe(manejador(NotificacionesWebhookController, 'recibir'))).toBe(1000);
+  });
+
+  // H-04: D04 exige «límite de peticiones» en el alta de sedes y la ruta solo
+  // tenía el 120/min global por IP. El cupo de 2 sedes no cubre el abuso: se
+  // agota en la primera alta y cada intento posterior sigue abriendo una
+  // transacción SERIALIZABLE, así que un token comprometido podía martillear.
+  it('limita el alta de sedes a 5 por minuto (H-04 · D04)', () => {
+    expect(limiteDe(manejador(BarberiaController, 'create'))).toBe(5);
+    expect(ttlDe(manejador(BarberiaController, 'create'))).toBe(60_000);
   });
 
   it('las sondas de salud quedan fuera del rate limit', () => {

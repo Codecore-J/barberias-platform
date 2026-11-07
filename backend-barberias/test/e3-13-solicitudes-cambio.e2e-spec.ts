@@ -129,7 +129,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       await prisma.barberia.create({
         data: {
           nombre: nombreA,
-          telefono: '911111111',
+          telefono: '9111111111',
           ubicacion: 'Sede A E313',
           codigoAcceso: `E3A${String(sufijo).slice(-4)}`,
           enlaceUnico: `e313-a-${sufijo}`,
@@ -143,7 +143,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       await prisma.barberia.create({
         data: {
           nombre: nombreB,
-          telefono: '922222222',
+          telefono: '9222222222',
           ubicacion: 'Sede B E313',
           codigoAcceso: `E3B${String(sufijo).slice(-4)}`,
           enlaceUnico: `e313-b-${sufijo}`,
@@ -157,6 +157,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       data: [
         { usuarioId: adminAId, rolId: rolAdminBarberia.id, barberiaId: barberiaA },
         { usuarioId: adminBId, rolId: rolAdminBarberia.id, barberiaId: barberiaB },
+        { usuarioId: nuevoResponsableId, rolId: rolAdminBarberia.id, barberiaId: barberiaB },
         { usuarioId: nuevoResponsableId, rolId: rolCliente.id, barberiaId: null },
         { usuarioId: adminGlobalId, rolId: rolAdministrador.id, barberiaId: null },
         { usuarioId: clienteId, rolId: rolCliente.id, barberiaId: null },
@@ -268,7 +269,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
         where: { id: barberiaA },
         select: { telefono: true },
       });
-      expect(sede.telefono).toBe('911111111');
+      expect(sede.telefono).toBe('9111111111');
     });
 
     it('422 PASSWORD_INCORRECTA si la contraseña actual no coincide', async () => {
@@ -519,6 +520,20 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
     });
 
     it('el antiguo responsable pierde la edición directa de esa sede (403)', async () => {
+      // El traspaso cierra las sesiones del responsable saliente (D24, sube
+      // `tokenVersion`): se emite un token con la versión vigente, como haría
+      // cualquier re-login, para que el 403 venga de los permisos y no del token.
+      const saliente = await prisma.usuario.findUniqueOrThrow({
+        where: { id: adminBId },
+        select: { correo: true, tokenVersion: true },
+      });
+      tokenAdminB = await jwtService.signAsync({
+        sub: adminBId,
+        correo: saliente.correo,
+        roles: ['ADMIN_BARBERIA'],
+        tv: saliente.tokenVersion,
+      });
+
       await request(app.getHttpServer())
         .patch(`${API}/shops/${barberiaB}`)
         .set('Authorization', `Bearer ${tokenAdminB}`)

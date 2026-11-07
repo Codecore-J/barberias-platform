@@ -53,8 +53,6 @@ describe('E3-12/3 · desvinculación por el cliente (D20/D21)', () => {
   let adminSedeS1Id: string;
   let clienteAId: string;
   let clienteBId: string;
-
-  let tokenGlobal: string;
   let tokenAdminSedeS1: string;
   let tokenClienteA: string;
   let tokenClienteB: string;
@@ -138,7 +136,7 @@ describe('E3-12/3 · desvinculación por el cliente (D20/D21)', () => {
         await prisma.barberia.create({
           data: {
             nombre: `Barbería E312DS ${etiqueta} ${sufijo}`,
-            telefono: '944444444',
+            telefono: '9444444444',
             ubicacion: `Sede ${etiqueta}`,
             codigoAcceso: codigo,
             enlaceUnico: enlace,
@@ -196,11 +194,12 @@ describe('E3-12/3 · desvinculación por el cliente (D20/D21)', () => {
     });
     const correoDe = (id: string) => correos.find((u) => u.id === id)!.correo;
 
-    tokenGlobal = await jwtService.signAsync({
+    const tokenGlobal = await jwtService.signAsync({
       sub: adminGlobalId,
       correo: correoDe(adminGlobalId),
       roles: ['ADMINISTRADOR'],
     });
+    // Sin `const`: el token vive en el `let` del describe y lo usan los tests.
     tokenAdminSedeS1 = await jwtService.signAsync({
       sub: adminSedeS1Id,
       correo: correoDe(adminSedeS1Id),

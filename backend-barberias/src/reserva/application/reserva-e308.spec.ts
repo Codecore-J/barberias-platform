@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { ReservaService } from './reserva.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
@@ -42,6 +42,7 @@ describe('ReservaService · E3-08 cancelación especial y propuesta de horario',
     participanteServicio: { findMany: vi.fn() },
     propuestaHorario: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
     },
@@ -450,6 +451,96 @@ describe('ReservaService · E3-08 cancelación especial y propuesta de horario',
       ).rejects.toMatchObject({ response: { codigo: 'SIN_PROPUESTA', statusCode: 409 } });
 
       expect(mockPrismaService.propuestaHorario.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── H-03 · bandeja de propuestas pendientes ──────────────────────────────
+
+  describe('H-03 bandeja de propuestas pendientes', () => {
+    const fila = (extra: Record<string, unknown> = {}) => ({
+      ...propuesta(),
+      tipo: 'REPROGRAMACION',
+      // Ventana viva respecto al reloj real: el caso vencido se prueba aparte.
+      expiraAt: new Date(Date.now() + 5 * 60000),
+      creadoAt: new Date('2026-10-10T09:00:00.000Z'),
+      creador: {
+        id: 'uuid-cliente',
+        nombreCompleto: 'Cliente Prueba',
+        correo: 'cliente@test.com',
+        telefono: '+59170000000',
+      },
+      reserva: {
+        id: 'uuid-reserva',
+        estado: 'CONFIRMADA',
+        fechaCita: new Date('2026-10-12'),
+        horaInicio: hora(9, 0),
+        horaFin: hora(9, 30),
+        cliente: {
+          id: 'uuid-cliente',
+          nombreCompleto: 'Cliente Prueba',
+          correo: 'cliente@test.com',
+          telefono: '+59170000000',
+        },
+        barbero: { id: 'uuid-barbero', nombreCompleto: 'Barbero Prueba' },
+      },
+      ...extra,
+    });
+
+    it('VERDE: lista SOLO pendientes de la sede con el bloque actual y el propuesto', async () => {
+      mockPrismaService.propuestaHorario.findMany.mockResolvedValue([fila()]);
+
+      const res = await service.listarPropuestasHorarioPendientes(
+        'uuid-barberia',
+        usuarioAdmin as any,
+      );
+
+      expect(mockPrismaService.propuestaHorario.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            estado: 'PENDIENTE',
+            reserva: { is: { barberiaId: 'uuid-barberia' } },
+          },
+        }),
+      );
+      expect(res).toHaveLength(1);
+      expect(res[0]).toMatchObject({
+        id: 'uuid-propuesta',
+        reservaId: 'uuid-reserva',
+        tipo: 'REPROGRAMACION',
+        motivo: expect.stringContaining('Reprogramación'),
+        fechaPropuesta: '2026-10-12',
+        horaInicioPropuesta: '10:00',
+        horaFinPropuesta: '10:30',
+        expirada: false,
+        reserva: {
+          id: 'uuid-reserva',
+          fechaActual: '2026-10-12',
+          horaInicioActual: '09:00',
+          horaFinActual: '09:30',
+          barbero: { id: 'uuid-barbero', nombre: 'Barbero Prueba' },
+        },
+      });
+    });
+
+    it('VERDE: una propuesta fuera de la ventana se marca expirada sin ocultarse', async () => {
+      mockPrismaService.propuestaHorario.findMany.mockResolvedValue([
+        fila({ expiraAt: new Date(2020, 0, 1, 0, 0, 0) }),
+      ]);
+
+      const res = await service.listarPropuestasHorarioPendientes(
+        'uuid-barberia',
+        usuarioAdmin as any,
+      );
+
+      expect(res[0].expirada).toBe(true);
+    });
+
+    it('ROJO: un usuario sin rol en la sede → 403 y no consulta', async () => {
+      await expect(
+        service.listarPropuestasHorarioPendientes('uuid-barberia', usuarioCliente as any),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+
+      expect(mockPrismaService.propuestaHorario.findMany).not.toHaveBeenCalled();
     });
   });
 });
