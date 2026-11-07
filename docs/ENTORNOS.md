@@ -153,3 +153,9 @@ Checklist antes de desplegar:
 3. Las claves de Redis y PostgreSQL se pegan **solo** en el panel del proveedor o en el `.env` local; nunca en el chat, en issues ni en logs.
 4. Si sospechas una filtración: rotar la credencial, revisar `git log -S` y ejecutar Gitleaks.
 5. Los valores de `NODE_ENV` y `APP_ENV` no son intercambiables: el primero describe Node, el segundo la plataforma y sus reglas de seguridad.
+
+---
+
+## 7. URL canónica de la API en producción
+
+La API de producción es `https://barberias-api-p3br.onrender.com/api/v1` y el frontend la consume directamente. La variable `API_URL` del proyecto de Vercel debe tener ese valor. Detalles, rewrites de `vercel.json`, keep-alive del plan gratuito y runbook: [`BACKEND_CANONICO_PRODUCCION.md`](./BACKEND_CANONICO_PRODUCCION.md).

@@ -1,0 +1,98 @@
+# Keep-alive del backend canónico de producción.
+#
+# ── Problema que resuelve ─────────────────────────────────────────────────────
+# El API vive en el plan gratuito de Render (`barberias-api-p3br`), que DUERME la
+# instancia tras ~15 minutos sin tráfico entrante. La primera petición tras el
+# sueño tarda entre 20 y 50 segundos: insoportable para el panel y para cualquier
+# monitor externo. Ese es el origen real de los timeouts de 20-25 s vistos en las
+# sondas de liveness, no un problema de código.
+#
+# ── Qué hace ──────────────────────────────────────────────────────────────────
+# Cada 10 minutos pide `/api/v1/health/liveness` (sonda de VIDA: no toca la base
+# ni Redis, así que mantenerla caliente no cuesta ni un byte de PostgreSQL) y
+# falla el job si el backend no responde 200. El fallo llega como notificación
+# del repositorio: el keep-alive también es un monitor.
+#
+# ── Por qué 10 minutos ────────────────────────────────────────────────────────
+# Render duerme a los 15 min. 10 deja 5 de margen para los retrasos habituales
+# del cron de GitHub (que puede ir varios minutos tarde en horas punta).
+#
+# ── Límites conocidos ─────────────────────────────────────────────────────────
+# · `schedule` de GitHub se DESACTIVA tras 60 días sin actividad en el repo. Si
+#   el proyecto se queda quieto, hay que reactivarlo desde la pestaña Actions o
+#   con `workflow_dispatch`.
+# · El cron de GitHub no es puntual: puede retrasarse minutos. No se usa para
+#   medir latencia, solo para no dejar dormir la instancia.
+# · Plan gratuito de Render: 750 h de instancia al mes. Un servicio siempre
+#   despierto consume ~730 h, así que cabe — pero no cabe un segundo servicio
+#   gratuito siempre despierto con la misma cuenta.
+name: keep-alive backend
+
+on:
+  schedule:
+    # Cada 10 minutos. GitHub usa UTC; aquí no importa la hora del día.
+    - cron: '*/10 * * * *'
+  # Permite despertar el backend a mano antes de una demo o una prueba E2E.
+  workflow_dispatch:
+
+# Un solo ping a la vez: si uno se cuelga esperando el arranque, el siguiente
+# no debe solaparse encima.
+concurrency:
+  group: keep-alive-backend
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: Despertar y verificar el backend canónico
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Liveness del backend canónico
+        env:
+          # Endpoint canónico. Se puede sobreescribir con una variable del repo
+          # (Settings → Variables) sin tocar este archivo.
+          LIVENESS_URL: ${{ vars.API_LIVENESS_URL || 'https://barberias-api-p3br.onrender.com/api/v1/health/liveness' }}
+        run: |
+          set -euo pipefail
+
+          echo "Objetivo: $LIVENESS_URL"
+
+          # 3 intentos con 10 s entre ellos: el primer request de una instancia
+          # dormida puede cortar la conexión a nivel de proxy mientras arranca.
+          for intento in 1 2 3; do
+            inicio=$(date +%s)
+            codigo=$(curl -sS -o /tmp/liveness.json -w '%{http_code}' \
+              --connect-timeout 10 --max-time 90 "$LIVENESS_URL" || echo '000')
+            fin=$(date +%s)
+            duracion=$((fin - inicio))
+
+            echo "Intento $intento → HTTP $codigo en ${duracion}s"
+
+            if [ "$codigo" = "200" ]; then
+              cat /tmp/liveness.json
+              echo
+              echo "OK · el backend está despierto."
+              # Deja la latencia en el resumen del run: si un día el warm-up
+              # deja de ser rápido, se ve aquí sin abrir los logs.
+              {
+                echo "### Keep-alive OK"
+                echo ""
+                echo "| dato | valor |"
+                echo "|---|---|"
+                echo "| endpoint | \`$LIVENESS_URL\` |"
+                echo "| intento | $intento |"
+                echo "| latencia | ${duracion}s |"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "::error::El backend canónico no respondió 200 en 3 intentos ($LIVENESS_URL)."
+          echo "### Keep-alive FALLIDO" >> "$GITHUB_STEP_SUMMARY"
+          echo "Sin respuesta 200 de \`$LIVENESS_URL\`. Revisa el servicio en Render." >> "$GITHUB_STEP_SUMMARY"
+          exit 1

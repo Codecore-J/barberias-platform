@@ -4,6 +4,7 @@ import { routes } from './app.routes';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { authInterceptor } from './auth/auth.interceptor';
 import { errorInterceptor } from './core/interceptors/error.interceptor';
+import { coldStartInterceptor } from './core/interceptors/cold-start.interceptor';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { providePrimeNG } from 'primeng/config';
 import Aura from '@primeuix/themes/aura';
@@ -15,7 +16,13 @@ export const appConfig: ApplicationConfig = {
     // El orden importa poco funcionalmente, pero `errorInterceptor` va después
     // de `authInterceptor` para que el 401 ya haya cerrado la sesión cuando
     // el manejador global decida si anuncia el error (los 401 se silencian).
-    provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
+    //
+    // `coldStartInterceptor` va PRIMERO: es el más externo de la cadena, así
+    // que su temporizador mide la espera completa (incluido el cold start del
+    // backend) y no solo el tramo que queda por debajo.
+    provideHttpClient(
+      withInterceptors([coldStartInterceptor, authInterceptor, errorInterceptor]),
+    ),
     provideAnimationsAsync(),
     // H-03 · primera tabla PrimeNG del panel. El tema Aura aporta los tokens
     // del `p-table`; el modo oscuro se activa con la clase `dark` que ya lleva
