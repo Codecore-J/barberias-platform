@@ -148,7 +148,7 @@ describe('E4-01 · reserva grupal', () => {
       const sede = await prisma.barberia.create({
         data: {
           nombre: `Sede ${nombre} E401`,
-          telefono: `601${String(i).padStart(7, '0')}`,
+          telefono: `601${String(1).padStart(7, '0')}`,
           ubicacion: nombre,
           estado: 'ACTIVO',
           codigoAcceso: `E401${nombre}`,

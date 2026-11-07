@@ -116,7 +116,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     const sede = await prisma.barberia.create({
       data: {
         nombre: `Sede E207-${sufijo}`,
-        telefono: `7021${String(i).padStart(6, '0')}`,
+        telefono: `7021${String(1).padStart(6, '0')}`,
         ubicacion: 'Sede E2-07',
         estado: 'ACTIVO',
         codigoAcceso: `E207A-${sufijo}`,

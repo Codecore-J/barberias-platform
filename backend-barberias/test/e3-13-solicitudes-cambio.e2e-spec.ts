@@ -157,6 +157,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       data: [
         { usuarioId: adminAId, rolId: rolAdminBarberia.id, barberiaId: barberiaA },
         { usuarioId: adminBId, rolId: rolAdminBarberia.id, barberiaId: barberiaB },
+        { usuarioId: nuevoResponsableId, rolId: rolAdminBarberia.id, barberiaId: barberiaB },
         { usuarioId: nuevoResponsableId, rolId: rolCliente.id, barberiaId: null },
         { usuarioId: adminGlobalId, rolId: rolAdministrador.id, barberiaId: null },
         { usuarioId: clienteId, rolId: rolCliente.id, barberiaId: null },

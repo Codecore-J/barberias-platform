@@ -162,19 +162,58 @@ describe('E3-05 · expiración automática y cancelación manual', () => {
             telefonoVerificado: true,
             nombreCompleto: `E305 ${i}`,
             correo,
-            telefono: `9998${String(i).padStart(7, '0')}`,
+            telefono: '9998000000',
             passwordHash: '$2b$10$HashFalsoE305NoSeUsaParaLogin',
           },
           select: { id: true },
         }),
-      ),
-    );
+        prisma.usuario.create({
+          data: {
+            telefonoVerificado: true,
+            nombreCompleto: 'E305 1',
+            correo: correos[1],
+            telefono: '9998100001',
+            passwordHash: '$2b$10$HashFalsoE305NoSeUsaParaLogin',
+          },
+          select: { id: true },
+        }),
+        prisma.usuario.create({
+          data: {
+            telefonoVerificado: true,
+            nombreCompleto: 'E305 2',
+            correo: correos[2],
+            telefono: '9998100002',
+            passwordHash: '$2b$10$HashFalsoE305NoSeUsaParaLogin',
+          },
+          select: { id: true },
+        }),
+        prisma.usuario.create({
+          data: {
+            telefonoVerificado: true,
+            nombreCompleto: 'E305 3',
+            correo: correos[3],
+            telefono: '9998000003',
+            passwordHash: '$2b$10$HashFalsoE305NoSeUsaParaLogin',
+          },
+          select: { id: true },
+        }),
+        prisma.usuario.create({
+          data: {
+            telefonoVerificado: true,
+            nombreCompleto: 'E305 4',
+            correo: correos[4],
+            telefono: '9998000004',
+            passwordHash: '$2b$10$HashFalsoE305NoSeUsaParaLogin',
+          },
+          select: { id: true },
+        }),
+      ]);
 
     sede = (
       await prisma.barberia.create({
         data: {
           nombre: 'Sede E305',
-          telefono: '9998111111',
+          telefono: '9998100000',
           ubicacion: 'Sede E305',
           codigoAcceso: 'E305A',
           enlaceUnico: 'https://e305.test',
@@ -188,7 +227,7 @@ describe('E3-05 · expiración automática y cancelación manual', () => {
       await prisma.barberia.create({
         data: {
           nombre: 'Sede E305 ajena',
-          telefono: '9998222222',
+          telefono: '9998200001',
           ubicacion: 'Sede E305 ajena',
           codigoAcceso: 'E305B',
           enlaceUnico: 'https://e305-ajena.test',

@@ -194,12 +194,12 @@ describe('E3-12/3 · desvinculación por el cliente (D20/D21)', () => {
     });
     const correoDe = (id: string) => correos.find((u) => u.id === id)!.correo;
 
-    tokenGlobal = await jwtService.signAsync({
+    const tokenGlobal = await jwtService.signAsync({
       sub: adminGlobalId,
       correo: correoDe(adminGlobalId),
       roles: ['ADMINISTRADOR'],
     });
-    tokenAdminSedeS1 = await jwtService.signAsync({
+    const tokenAdminSedeS1 = await jwtService.signAsync({
       sub: adminSedeS1Id,
       correo: correoDe(adminSedeS1Id),
       roles: ['ADMIN_BARBERIA'],

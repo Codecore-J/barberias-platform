@@ -178,19 +178,57 @@ describe('E3-06/E3-07 · reprogramación y reglas de cancelación del cliente', 
             telefonoVerificado: true,
             nombreCompleto: `E3067 ${i}`,
             correo,
-            telefono: `9997${String(i).padStart(7, '0')}`,
+            telefono: '9997100000',
             passwordHash: '$2b$10$HashFalsoE3067NoSeUsaParaLogin',
           },
           select: { id: true },
         }),
-      ),
-    );
+        prisma.usuario.create({
+          data: {
+            telefonoVerificado: true,
+            nombreCompleto: 'E3067 1',
+            correo: correos[1],
+            telefono: '9997100001',
+            passwordHash: '$2b$10$HashFalsoE3067NoSeUsaParaLogin',
+          },
+          select: { id: true },
+        }),
+        prisma.usuario.create({
+          data: {
+            telefonoVerificado: true,
+            nombreCompleto: 'E3067 2',
+            correo: correos[2],
+            telefono: '9997100002',
+            passwordHash: '$2b$10$HashFalsoE3067NoSeUsaParaLogin',
+          },
+          select: { id: true },
+        }),
+        prisma.usuario.create({      data: {
+        telefonoVerificado: true,
+        nombreCompleto: 'E3067 3',
+        correo: correos[3],
+        telefono: '9997100003',
+        passwordHash: '$2b$10$HashFalsoE3067NoSeUsaParaLogin',
+      },
+      select: { id: true },
+    }),
+    prisma.usuario.create({
+      data: {
+        telefonoVerificado: true,
+        nombreCompleto: 'E3067 4',
+        correo: correos[4],
+        telefono: '9997100004',
+        passwordHash: '$2b$10$HashFalsoE3067NoSeUsaParaLogin',
+      },
+      select: { id: true },
+    }),
+  ]);
 
     sede = (
       await prisma.barberia.create({
         data: {
           nombre: 'Sede E3067',
-          telefono: '9997111111',
+          telefono: '9997100000',
           ubicacion: 'Sede E3067',
           codigoAcceso: 'E3067A',
           enlaceUnico: 'https://e3067.test',
@@ -204,7 +242,7 @@ describe('E3-06/E3-07 · reprogramación y reglas de cancelación del cliente', 
       await prisma.barberia.create({
         data: {
           nombre: 'Sede E3067 ajena',
-          telefono: '9997222222',
+          telefono: '9997100001',
           ubicacion: 'Sede E3067 ajena',
           codigoAcceso: 'E3067B',
           enlaceUnico: 'https://e3067-ajena.test',

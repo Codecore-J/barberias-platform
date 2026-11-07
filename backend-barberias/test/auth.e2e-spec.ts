@@ -70,7 +70,7 @@ describe('Auth Endpoints (e2e)', () => {
         .send({
           nombreCompleto: 'Juan Pérez',
           correo: 'juan.tel@example.com',
-          telefono: '8095551122', // 9 dígitos
+          telefono: '809555112', // 9 dígitos
           password: 'Password123',
         })
         .expect(400);

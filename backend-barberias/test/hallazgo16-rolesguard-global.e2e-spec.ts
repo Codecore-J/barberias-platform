@@ -55,7 +55,7 @@ describe('Hallazgo 16 - RolesGuard Global (e2e)', () => {
     const barberia = await prisma.barberia.create({
       data: {
         nombre: 'Barberia Hallazgo 16',
-        telefono: '1234567890',
+        telefono: '9876543210',
         estado: 'ACTIVO',
         ubicacion: 'Lat, Long',
         codigoAcceso: 'TEST16',

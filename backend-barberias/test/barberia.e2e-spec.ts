@@ -160,7 +160,7 @@ describe('Barberias Endpoints (e2e)', () => {
         const barberia = await prisma.barberia.create({
           data: {
             nombre: `Barberia Extra ${i}`,
-            telefono: `00000${i}`,
+            telefono: '1122220000',
             ubicacion: 'Sur',
             enlaceUnico: `barberia-extra-${sufijo}`,
             codigoAcceso: `EXTRA${sufijo}`.toUpperCase(),
