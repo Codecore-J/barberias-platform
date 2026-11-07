@@ -2337,10 +2337,16 @@ describe('ReservaService', () => {
         const crudo =
           typeof valor === 'object' && valor !== null && 'strings' in valor
             ? (valor as { strings: string[] }).strings.join('')
-            : String(valor ?? '');
+            : comoTexto(valor);
 
         return texto + parte + (indice < valores.length ? crudo : '');
       }, '');
+
+      function comoTexto(v: unknown): string {
+        if (typeof v === 'string') return v;
+        if (v == null) return '';
+        return '';
+      }
     }
 
     it('ROJO: la consulta del bloqueo nombra la tabla con su esquema, no a secas', async () => {
