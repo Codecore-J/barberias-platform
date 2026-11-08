@@ -1,4 +1,5 @@
 import { Type } from 'class-transformer';
+import { BooleanoEstricto } from '../../../shared/booleano-estricto.decorator.js';
 import { 
   IsString, 
   IsNotEmpty, 
@@ -44,7 +45,7 @@ export class CreateComboDto {
   @IsOptional()
   margenPropio?: number; // T3.3 Validación mayor o igual a cero
 
-  @IsBoolean()
+  @BooleanoEstricto()
   @IsOptional()
   destacado?: boolean;
 

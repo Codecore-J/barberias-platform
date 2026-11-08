@@ -5,17 +5,35 @@ services:
     region: ohio # Co-localizado en AWS us-east-2 con Neon PostgreSQL
     plan: free
     rootDir: backend-barberias
-    buildCommand: rm -f ../package.json && npm install --include=dev && npm run build
-    # Migraciones + catálogo de roles/permisos. El seed es IDEMPOTENTE (solo
-    # upserts, sin borrados) y no es opcional en producción: `POST /auth/register`
-    # aborta con 500 si falta el rol CLIENTE y `npm run admin:create` exige el rol
-    # ADMINISTRADOR. Los dos pipelines de CI lo ejecutan por el mismo motivo.
-    # Desbloqueo P3009: migración fallida registrada en _prisma_migrations
-    # bloquea todo migrate deploy. Se resuelve esa migración conocida como
-    # rolled-back (best-effort/idempotente) antes de reintentar; si ya no
-    # está fallida, el resolve no detiene el deploy.
-    preDeployCommand: npx prisma migrate resolve --rolled-back 20261103220350_add_barberias_telefono_check || true; npx prisma migrate deploy && npm run seed
-    startCommand: npm run start:prod
+    # ── Build ─────────────────────────────────────────────────────────────────
+    # `npm install` y no `npm ci`: Render instala sin lockfile estricto y necesita
+    # las devDependencies (`--include=dev`) porque el build de NestJS usa la CLI.
+    # `npx prisma generate` va AQUÍ y no en el start: el cliente de Prisma no se
+    # versiona, y sin generarlo el `nest build` compila contra tipos inexistentes.
+    buildCommand: npm install --include=dev && npx prisma generate && npm run build
+    # ── Start ─────────────────────────────────────────────────────────────────
+    # LAS MIGRACIONES VAN EN `startCommand`, NO EN `preDeployCommand`.
+    # `preDeployCommand` solo existe en planes de pago: en el plan Free Render lo
+    # IGNORA EN SILENCIO. Declararlo aquí (como hacía este archivo antes) daba la
+    # falsa impresión de que las migraciones corrían, cuando en realidad nunca se
+    # ejecutaban. Si algún día se sube a un plan de pago, mover este bloque a
+    # `preDeployCommand` y dejar `startCommand: npm run start:prod`.
+    #
+    # Coste actual de este diseño: cada arranque en frío ejecuta `prisma migrate`
+    # antes de levantar Nest, lo que añade ~14 s sobre un cold start de ~41 s.
+    # La alternativa soportada en Free es mover migraciones + seed al
+    # `buildCommand` (se ejecutaría una vez por deploy, no en cada arranque). No
+    # se ha hecho todavía para no cambiar el comportamiento de un servicio sano.
+    #
+    # Desbloqueo P3009: una migración fallida registrada en _prisma_migrations
+    # bloquea todo `migrate deploy`. Se marca como rolled-back (best-effort e
+    # idempotente) antes de reintentar; si ya no está fallida, `|| true` evita
+    # que el resolve detenga el arranque.
+    #
+    # OJO: este servicio NO ejecuta el seed en el deploy. `npm run seed` debe
+    # lanzarse a mano cuando cambien roles/permisos; `POST /auth/register` aborta
+    # con 500 si falta el rol CLIENTE y `npm run admin:create` exige ADMINISTRADOR.
+    startCommand: npx prisma migrate resolve --rolled-back 20261103220350_add_barberias_telefono_check || true; npx prisma migrate deploy && npm run start:prod
     # H64: sonda de VIDA, no de preparación. `/health` comprueba Base de Datos Y
     # Redis, así que con la cola caída devolvía 503 y Render podía reiniciar en
     # bucle una instancia que estaba sirviendo con normalidad. La preparación
@@ -38,7 +56,17 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
-      # El código lee FRONTEND_URL (lista separada por comas) para CORS;
-      # `CORS_ORIGINS` no la consume nadie y se elimina del blueprint.
+      # `FRONTEND_URL` es la ÚNICA variable que el código lee para orígenes
+      # extra de CORS (`backend-barberias/src/main.ts`). `CORS_ORIGINS` no la
+      # consume nadie: existía en el servicio antiguo y no tenía efecto.
+      # Los orígenes de producción ya están hardcodeados en `main.ts`, así que
+      # esta lista solo hace falta para dominios adicionales.
       - key: FRONTEND_URL
         value: https://barberias-platform-git-main-developerstem.vercel.app,https://barberias-platform.vercel.app
+      # Secreto del webhook entrante de WhatsApp (/webhooks/whatsapp).
+      # Los adaptadores de SALIDA no están configurados en producción: sin
+      # WHATSAPP_API_URL/WHATSAPP_API_TOKEN y sin RESEND_API_KEY, los logs de
+      # arranque confirman que WhatsApp queda deshabilitado y el correo sale por
+      # MockEmailProvider (no se envía ningún correo real).
+      - key: WHATSAPP_WEBHOOK_SECRET
+        sync: false

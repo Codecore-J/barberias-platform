@@ -41,3 +41,12 @@ endpoints.json
 *.tsbuildinfo
 .vercel
 .env*
+
+# Secretos locales del agente (nunca versionar)
+.render-api-key
+
+.resend-api-key
+
+.render-env-local.json
+.env-payload.json
+.respaldo-purga-produccion.json

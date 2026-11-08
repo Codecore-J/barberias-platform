@@ -24,8 +24,13 @@ export const RESEND_API_URL = 'https://api.resend.com/emails';
 /** Timeout de envío: un proveedor colgado no puede retener el proceso. */
 export const TIMEOUT_ENVIO_MS = 5000;
 
-/** Remitente por defecto de Resend si `EMAIL_FROM` no está declarado. */
-const REMITENTE_POR_DEFECTO = 'onboarding@resend.com';
+/**
+ * Remitente de pruebas de Resend si `EMAIL_FROM` no está declarado.
+ * Es `resend.dev`, no `resend.com`: el dominio `.dev` es el que Resend tiene
+ * verificado para su sandbox. Con `.com` la API responde 422 (dominio no
+ * verificado) y ningún correo sale, incluso con la API key correcta.
+ */
+const REMITENTE_POR_DEFECTO = 'onboarding@resend.dev';
 
 /** El símbolo `&` por código de punto: evita escribir la entidad a mano. */
 const AMP = String.fromCharCode(38);

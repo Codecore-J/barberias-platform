@@ -1,5 +1,5 @@
+import { BooleanoEstricto } from '../../../shared/booleano-estricto.decorator.js';
 import {
-  IsBoolean,
   IsInt,
   IsNumber,
   IsOptional,
@@ -40,7 +40,7 @@ export class UpdateServicioBarberoDto {
   @IsOptional()
   categoriaId?: string;
 
-  @IsBoolean()
+  @BooleanoEstricto()
   @IsOptional()
   activo?: boolean;
 }

@@ -1,4 +1,5 @@
-import { IsString, IsNotEmpty, IsNumber, IsPositive, IsOptional, IsBoolean, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsPositive, IsOptional, Min } from 'class-validator';
+import { BooleanoEstricto } from '../../../shared/booleano-estricto.decorator.js';
 
 export class CreateServicioDto {
   @IsString()
@@ -24,7 +25,7 @@ export class CreateServicioDto {
   @IsOptional()
   margenOperativo?: number;
 
-  @IsBoolean()
+  @BooleanoEstricto()
   @IsOptional()
   destacado?: boolean;
 }

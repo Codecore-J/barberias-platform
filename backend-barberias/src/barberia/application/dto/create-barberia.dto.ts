@@ -1,3 +1,4 @@
+import { PhoneNotRepetitive } from '../../../shared/phone.validator.js';
 import {
   IsString,
   IsOptional,
@@ -22,6 +23,7 @@ export class CreateBarberiaDto {
   /** Formato local: exactamente 10 dígitos numéricos, sin separadores. */
   @IsString()
   @IsNotEmpty()
+  @PhoneNotRepetitive()
   @Matches(/^\d{10}$/, {
     message: 'El teléfono debe tener exactamente 10 dígitos numéricos.',
   })
