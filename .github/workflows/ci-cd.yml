@@ -37,7 +37,7 @@ jobs:
         run: npm install -g npm@11
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       # El lint es type-aware: necesita el cliente de Prisma para resolver los
       # tipos que importa PrismaService.
@@ -106,7 +106,7 @@ jobs:
         run: npm install -g npm@11
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Generate Prisma Client
         working-directory: ./backend-barberias
