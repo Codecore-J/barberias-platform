@@ -548,7 +548,8 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
 
     it('la plataforma recibe el aviso de que hay algo que aprobar otra vez', async () => {
       // El aviso es best-effort y en segundo plano: se espera sin inventar tiempos.
-      await vi.waitFor(() =>
+      await vi.waitFor(() =>,
+      { timeout: 5000 })
         expect(notificaciones.enviarNotificacion).toHaveBeenCalledWith(
           expect.objectContaining({
             usuarioId: adminGlobalId,

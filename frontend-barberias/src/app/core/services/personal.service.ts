@@ -4,7 +4,6 @@ import { Observable } from 'rxjs';
 import { API_URL } from '../constants/api.constants';
 import { mensajeDeError } from '../utils/error-message.js';
 import { TenantService } from './tenant.service.js';
-import { AuthService } from '../auth/auth.service';
 
 export interface Personal {
   id: string;
@@ -44,7 +43,7 @@ export class PersonalService {
   });
 
   /** Obtiene el personal de la sede actual o en modo global para admin */
-  obtenerPersonal(): Observable<Personal[]> {
+  obtenerPersonal(barberiaId?: string): Observable<Personal[]> {
     const user = this.auth.authState().user;
     const tieneSede = this.tenant.tieneBarberiaActiva();
 
@@ -54,14 +53,15 @@ export class PersonalService {
     }
 
     // Usuario con sede asociada: comportamiento normal
-    const barberiaId = this.tenant.barberiaActivaId();
-    if (!barberiaId) {
+    // Usar el parámetro si se proporciona, sino usar la sede activa
+    const effectiveBarberiaId = barberiaId || this.tenant.barberiaActivaId();
+    if (!effectiveBarberiaId) {
       return this.http.get<Personal[]>(`${API_URL}/shops/null/staff`).pipe(
         catchError(() => of([]))
       );
     }
 
-    return this.http.get<Personal[]>(`${API_URL}/shops/${barberiaId}/staff`).pipe(
+    return this.http.get<Personal[]>(`${API_URL}/shops/${effectiveBarberiaId}/staff`).pipe(
       catchError(err => {
         // Si es 403 y es admin global sin sede, mostramos aviso en lugar de error crudo
         if (err.status === 403 && this.esAdminGlobalSinSede) {
@@ -82,11 +82,27 @@ export class PersonalService {
     );
   }
 
+  /** Indica si el usuario actual es admin global sin sede asignada */
+  private readonly esAdminGlobalSinSedeCache = computed(() => {
+    const user = this.auth.authState().user;
+    return user?.roles?.includes('ADMINISTRADOR') && !this.tenant.tieneBarberiaActiva();
+  });
+
+  /** Carga personal en modo global para admin sin sede */
+  private obtenerPersonalGlobal2(): Observable<Personal[]> {
+    return this.http.get<Personal[]>(`${API_URL}/catalogo/admin/personal-global`).pipe(
+      catchError(err => {
+        // Intento alternativo: lista vacía con aviso
+        return of([]);
+      }),
+    );
+  }
+
   invitarMiembro(dto: InvitarPersonalRequest): Observable<Personal> {
     const user = this.auth.authState().user;
 
     // Admin global sin sede: permite la invitación pero asigna global
-    if (user.roles?.includes('ADMINISTRADOR') && this.esAdminGlobalSinSede) {
+    if (user.roles?.includes('ADMINISTRADOR') && this.esAdminGlobalSinSedeCache) {
       // Usamos un endpoint global o el primero disponible
       return this.http.post<Personal>(`${API_URL}/catalogo/admin/personal`, dto).pipe(
         catchError(err => {
@@ -115,14 +131,11 @@ export class PersonalService {
     );
   }
 
-  actualizarMiembro(
-    usuarioId: string,
-    dto: ActualizarPersonalRequest,
-  ): Observable<Personal> {
+  actualizarMiembro(usuarioId: string, dto: ActualizarPersonalRequest): Observable<Personal> {
     const user = this.auth.authState().user;
 
     // Admin global sin sede: actualiza registro global
-    if (user.roles?.includes('ADMINISTRADOR') && this.esAdminGlobalSinSede) {
+    if (user.roles?.includes('ADMINISTRADOR') && this.esAdminGlobalSinSedeCache) {
       return this.http
         .patch<Personal>(`${API_URL}/catalogo/admin/personal/${usuarioId}`, dto).pipe(
           catchError(err => {
@@ -142,7 +155,7 @@ export class PersonalService {
                 `${API_URL}/shops/00000000-0000-0000-0000-000000000000/staff/${usuarioId}`,
                 dto,
               ).pipe(catchError(err2 => mensajeDeError(err2, 'No se pudieron guardar los cambios'))),
-          );
+          ),
         );
     }
 

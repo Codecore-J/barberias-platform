@@ -41,7 +41,7 @@ import { AuthService } from '../../../auth/auth.service';
         @if (puedeMostrarBotonInvitar()) {
           <button
             type="button"
-            (click)="invitarMiembro()"
+            (click)= "invitarMiembro()"
             class="px-6 py-2.5 rounded-xl font-bold text-sm text-zinc-950 bg-gradient-to-r from-amber-400 to-amber-600 shadow-[0_5px_20px_rgba(251,191,36,0.2)] hover:shadow-[0_10px_30px_rgba(251,191,36,0.4)] transition-all"
           >
             <i class="pi pi-user-plus mr-2"></i>Invitar Miembro
@@ -145,12 +145,11 @@ import { AuthService } from '../../../auth/auth.service';
 
       <!-- Modal Excepción -->
       <app-modal-shell
-        [visible]="modalAbierto()
+        [visible]="modalAbierto()"
         titulo="Nueva Excepción"
         [subtitulo]="'Para ' + (barberoSeleccionado()?.nombreCompleto ?? '')"
         icono="pi pi-calendar-plus"
-        (cerrar)="cerrarModal()
-        "
+        (cerrar)="cerrarModal()"
       >
         <div class="space-y-4">
           <div>
@@ -222,7 +221,7 @@ import { AuthService } from '../../../auth/auth.service';
             <label
               for="personal-excepcion-motivo"
               class="block text-xs font-medium text-zinc-400 mb-1"
-              >
+            >
               Motivo (Opcional)
             </label>
             <input
@@ -237,15 +236,13 @@ import { AuthService } from '../../../auth/auth.service';
 
         <div modal-footer class="flex gap-3 pt-4 border-t border-white/5">
           <button
-            (click)="cerrarModal()
-            "
+            (click)="cerrarModal()"
             class="flex-1 py-3 px-4 rounded-xl font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors"
           >
             Cancelar
           </button>
           <button
-            (click)="guardarExcepcion()
-            "
+            (click)="guardarExcepcion()"
             class="flex-1 py-3 px-4 rounded-xl font-bold text-zinc-950 bg-gradient-to-r from-amber-400 to-amber-600 hover:brightness-110 transition-all shadow-[0_0_15px_rgba(251,191,36,0.3)]"
           >
             <i class="pi pi-check mr-2"></i>Guardar
@@ -255,7 +252,7 @@ import { AuthService } from '../../../auth/auth.service';
 
       <!-- Alta y edición de personal -->
       <app-modal-shell
-        [visible]="formularioPersonalAbierto()
+        [visible]="formularioPersonalAbierto()"
         [titulo]="
           modoFormulario() === 'invitar'
             ? 'Invitar miembro de personal'
@@ -275,8 +272,7 @@ import { AuthService } from '../../../auth/auth.service';
         @if (modoFormulario() === 'invitar') {
           <form
             [formGroup]="formularioInvitacion"
-            (ngSubmit)="guardarInvitacion()
-            "
+            (ngSubmit)="guardarInvitacion()"
             class="space-y-4"
             novalidate
           >
@@ -360,7 +356,7 @@ import { AuthService } from '../../../auth/auth.service';
                       ? 'personal-invitar-telefono-error'
                       : null
                   "
-                class="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/60"
+                  class="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/60"
                 />
                 @if (campoInvalido(formularioInvitacion, 'telefono')) {
                   <p id="personal-invitar-telefono-error" class="mt-1 text-xs text-rose-300">
@@ -400,7 +396,6 @@ import { AuthService } from '../../../auth/auth.service';
                 formControlName="password"
                 autocomplete="new-password"
                 required
-                aria-required="true"
                 aria-describedby="personal-invitar-password-ayuda"
                 [attr.aria-invalid]="campoInvalido(formularioInvitacion, 'password')"
                 class="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/60"
@@ -416,10 +411,9 @@ import { AuthService } from '../../../auth/auth.service';
             <div modal-footer class="flex gap-3 pt-4 border-t border-white/5">
               <button
                 type="button"
-                (click)="cerrarFormularioPersonal()
-                "
-                [disabled]="guardandoPersonal()"
+                (click)="cerrarFormularioPersonal()"
                 class="flex-1 py-3 rounded-xl font-medium text-zinc-300 bg-white/5 hover:bg-white/10 disabled:opacity-50"
+                [disabled]="guardandoPersonal()"
               >
                 Cancelar
               </button>
@@ -521,10 +515,9 @@ import { AuthService } from '../../../auth/auth.service';
             <div modal-footer class="flex gap-3 pt-4 border-t border-white/5">
               <button
                 type="button"
-                (click)="cerrarFormularioPersonal()
-                "
-                [disabled]="guardandoPersonal()"
+                (click)="cerrarFormularioPersonal()"
                 class="flex-1 py-3 rounded-xl font-medium text-zinc-300 bg-white/5 hover:bg-white/10 disabled:opacity-50"
+                [disabled]="guardandoPersonal()"
               >
                 Cancelar
               </button>
@@ -754,7 +747,7 @@ export class AdminPersonalComponent implements OnInit {
     dto.correo = dto.correo.trim();
     this.guardandoPersonal.set(true);
     this.errorPersonal.set(null);
-    this.personalService.invitarMiembro(barberia.id, dto).subscribe({
+    this.personalService.invitarMiembro(dto).subscribe({
       next: (miembro) => {
         this.guardandoPersonal.set(false);
         this.personal.update((actual) => [...actual, miembro]);
@@ -779,7 +772,7 @@ export class AdminPersonalComponent implements OnInit {
     const dto = this.formularioEdicion.getRawValue() as ActualizarPersonalRequest;
     this.guardandoPersonal.set(true);
     this.errorPersonal.set(null);
-    this.personalService.actualizarMiembro(barberia.id, miembro.id, dto).subscribe({
+    this.personalService.actualizarMiembro(miembro.id, dto).subscribe({
       next: (actualizado) => {
         this.guardandoPersonal.set(false);
         this.personal.update((actual) =>
@@ -818,7 +811,7 @@ export class AdminPersonalComponent implements OnInit {
       estado: 'INACTIVO',
       rolNombre: miembro.roles.includes('ADMIN_BARBERIA') ? 'ADMIN_BARBERIA' : 'BARBERO',
     };
-    this.personalService.actualizarMiembro(barberia.id, miembro.id, dto).subscribe({
+    this.personalService.actualizarMiembro(miembro.id, dto).subscribe({
       next: (actualizado) => {
         this.personal.update((actual) =>
           actual.map((item) => (item.id === actualizado.id ? actualizado : item)),

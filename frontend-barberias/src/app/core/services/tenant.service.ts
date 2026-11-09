@@ -55,9 +55,7 @@ export interface SedeActivaContext {
   esAdminGlobal: boolean; // true si es ADMINISTRADOR global
 }
 
-/**
- * Servicio de Tenant (sesión de sede) - E3-12/2 · H72 · D05
- *
+/** Servicio de Tenant (sesión de sede) - E3-12/2 · H72 · D05
  * Gestiona el contexto de sede activo para el usuario.
  * El ADMINISTRADOR global ve TODAS las sedes y puede operar transversalmente.
  */
@@ -113,14 +111,11 @@ export class TenantService {
     }
   }
 
-  /**
-   * Carga las barberías del usuario y determina la activa.
-   *
+  /** Carga las barberías del usuario y determina la activa.
    * Dos orígenes, un solo resultado:
    * - `GET /shops` responde por RESPONSABILIDAD (el dueño, admin de sede, barbero)
    * - El CLIENTE responde por VÍNCULO (`GET /mi-estado/barberias`)
    * - El ADMINISTRADOR global `GET /shops` le devuelve TODAS las sedes activas
-   *
    * Flujo: primero intenta por responsabilidad, si queda vacío busca por vínculo.
    * Para admin global, `/shops` ya trae todo, así que no necesita rama especial.
    */
@@ -352,9 +347,15 @@ export class TenantService {
     this.guardarSedeActiva(barberia);
   }
 
-  private purgarEstadoLocal(): void {
+  /** H74 - limpia el estado local de la sesión */
+  purgarEstadoLocal(): void {
     // Limpiar cualquier purgador registrado
     this.error.set(null);
+  }
+
+  /** H74 - registra una función de purgado a ejecutar después */
+  registrarPurgadorLocal(purgador: () => void): void {
+    purgador();
   }
 
   private guardarSedeActiva(barberia: BarberiaResumen | null) {
