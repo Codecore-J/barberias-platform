@@ -76,7 +76,6 @@ export class TenantService {
 
   // Track if user is global admin for UI logic
   readonly esAdminGlobal = computed(() => {
-    const auth = /* inject auth service */ null; // Se inyectaría en tiempo real
     return false; // Placeholder - se evalúa en el componente
   });
 

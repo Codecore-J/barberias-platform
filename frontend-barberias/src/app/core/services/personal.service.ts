@@ -45,10 +45,9 @@ export class PersonalService {
   /** Obtiene el personal de la sede actual o en modo global para admin */
   obtenerPersonal(barberiaId?: string): Observable<Personal[]> {
     const user = this.auth.authState().user;
-    const tieneSede = this.tenant.tieneBarberiaActiva();
 
     // Admin global sin sede: mostramos personal global o aviso
-    if (this.esAdminGlobalSinSede && !tieneSede) {
+    if (this.esAdminGlobalSinSede) {
       return this.obtenerPersonalGlobal();
     }
 
@@ -62,23 +61,20 @@ export class PersonalService {
     }
 
     return this.http.get<Personal[]>(`${API_URL}/shops/${effectiveBarberiaId}/staff`).pipe(
-      catchError(err => {
+      catchError(() => {
         // Si es 403 y es admin global sin sede, mostramos aviso en lugar de error crudo
-        if (err.status === 403 && this.esAdminGlobalSinSede) {
-          return this.obtenerPersonalGlobal();
-        }
-        return mensajeDeError(err, 'No se pudo cargar el personal');
-      }),
+        return mensajeDeError({}, 'No se pudo cargar el personal');
+      })
     );
   }
 
   /** Carga personal en modo global para admin sin sede */
   private obtenerPersonalGlobal(): Observable<Personal[]> {
     return this.http.get<Personal[]>(`${API_URL}/catalogo/admin/personal-global`).pipe(
-      catchError(err => {
+      catchError(() => {
         // Intento alternativo: lista vacía con aviso
         return of([]);
-      }),
+      })
     );
   }
 
@@ -91,10 +87,10 @@ export class PersonalService {
   /** Carga personal en modo global para admin sin sede */
   private obtenerPersonalGlobal2(): Observable<Personal[]> {
     return this.http.get<Personal[]>(`${API_URL}/catalogo/admin/personal-global`).pipe(
-      catchError(err => {
+      catchError(() => {
         // Intento alternativo: lista vacía con aviso
         return of([]);
-      }),
+      })
     );
   }
 
@@ -105,9 +101,9 @@ export class PersonalService {
     if (user.roles?.includes('ADMINISTRADOR') && this.esAdminGlobalSinSedeCache) {
       // Usamos un endpoint global o el primero disponible
       return this.http.post<Personal>(`${API_URL}/catalogo/admin/personal`, dto).pipe(
-        catchError(err => {
-          return mensajeDeError(err, 'No se pudo crear el miembro');
-        }),
+        catchError(() => {
+          return mensajeDeError({}, 'No se pudo crear el miembro');
+        })
       );
     }
 
@@ -117,17 +113,18 @@ export class PersonalService {
       return this.http.post<Personal>(`${API_URL}/shops/null/staff`, dto).pipe(
         catchError(() => {
           // fallback: intentar con sede por defecto o mostrar aviso
-          return this.http.post<Personal>(`${API_URL}/shops/00000000-0000-0000-0000-000000000000/staff`, dto).pipe(
-            catchError(err2 => mensajeDeError(err2, 'No se pudo crear el miembro'))
-          );
-        }),
+          return this.http.post<Personal>(
+            `${API_URL}/shops/00000000-0000-0000-0000-000000000000/staff`,
+            dto
+          ).pipe(catchError(() => mensajeDeError({}, 'No se pudo crear el miembro')));
+        })
       );
     }
 
     return this.http.post<Personal>(`${API_URL}/shops/${barberiaId}/staff`, dto).pipe(
-      catchError(err => {
-        return mensajeDeError(err, 'No se pudo crear el miembro');
-      }),
+      catchError(() => {
+        return mensajeDeError({}, 'No se pudo crear el miembro');
+      })
     );
   }
 
@@ -138,9 +135,9 @@ export class PersonalService {
     if (user.roles?.includes('ADMINISTRADOR') && this.esAdminGlobalSinSedeCache) {
       return this.http
         .patch<Personal>(`${API_URL}/catalogo/admin/personal/${usuarioId}`, dto).pipe(
-          catchError(err => {
-            return mensajeDeError(err, 'No se pudieron guardar los cambios');
-          }),
+          catchError(() => {
+            return mensajeDeError({}, 'No se pudieron guardar los cambios');
+          })
         );
     }
 
@@ -153,17 +150,17 @@ export class PersonalService {
             this.http
               .patch<Personal>(
                 `${API_URL}/shops/00000000-0000-0000-0000-000000000000/staff/${usuarioId}`,
-                dto,
-              ).pipe(catchError(err2 => mensajeDeError(err2, 'No se pudieron guardar los cambios'))),
-          ),
+                dto
+              ).pipe(catchError(() => mensajeDeError({}, 'No se pudieron guardar los cambios')))
+          )
         );
     }
 
     return this.http
       .patch<Personal>(`${API_URL}/shops/${barberiaId}/staff/${usuarioId}`, dto).pipe(
-        catchError(err => {
-          return mensajeDeError(err, 'No se pudieron guardar los cambios');
-        }),
+        catchError(() => {
+          return mensajeDeError({}, 'No se pudieron guardar los cambios');
+        })
       );
   }
 }

@@ -7,7 +7,7 @@ import { inject } from '@angular/core';
 import { catchError, throwError } from 'rxjs';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { extraerMensaje } from '../utils/error-message';
-import { AuthService, ACCESS_TOKEN_KEY } from '../auth/auth.service';
+import { AuthService } from '../auth/auth.service';
 
 /**
  * Fase 1 · marca una petición para que su fallo NO se anuncie con un toast.
