@@ -548,15 +548,14 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
 
     it('la plataforma recibe el aviso de que hay algo que aprobar otra vez', async () => {
       // El aviso es best-effort y en segundo plano: se espera sin inventar tiempos.
-      await vi.waitFor(() =>,
-      { timeout: 5000 })
+      await vi.waitFor(() => {
         expect(notificaciones.enviarNotificacion).toHaveBeenCalledWith(
           expect.objectContaining({
             usuarioId: adminGlobalId,
             tipo: 'VINCULACION_PENDIENTE_APROBACION',
           }),
-        ),
-      );
+        )
+      }, { timeout: 5000 })
     });
 
     it('la vinculación reabierta vuelve a la bandeja: ya no hay callejón sin salida', async () => {
