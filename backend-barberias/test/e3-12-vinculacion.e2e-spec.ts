@@ -116,39 +116,37 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
 
     const hash = await bcrypt.hash(PASSWORD, 10);
 
-    const crearUsuario = async (etiqueta: string, telefono: string) =>
-      (
-        await prisma.usuario.create({
-          data: {
-            telefonoVerificado: true,
-            nombreCompleto: `${etiqueta} E312 ${sufijo}`,
-            correo: `${etiqueta}.e312.${sufijo}@test.com`,
-            telefono,
-            passwordHash: hash,
-          },
-          select: { id: true },
-        })
-      ).id;
+    const crearUsuario = async (etiqueta: string, telefono: string) => {
+      return await prisma.usuario.create({
+        data: {
+          telefonoVerificado: true,
+          nombreCompleto: `${etiqueta} E312 ${sufijo}`,
+          correo: `${etiqueta}.e312.${sufijo}@test.com`,
+          telefono,
+          passwordHash: hash,
+        },
+        select: { id: true },
+      }).id;
+    };
 
     adminGlobalId = await crearUsuario('global', `1${String(sufijo).slice(-9)}`);
     adminSedeAId = await crearUsuario('admin.sede.a', `2${String(sufijo).slice(-9)}`);
     clienteAId = await crearUsuario('cliente.a', `3${String(sufijo).slice(-9)}`);
     clienteBId = await crearUsuario('cliente.b', `4${String(sufijo).slice(-9)}`);
 
-    const crearSede = async (etiqueta: string, codigo: string, enlace: string) =>
-      (
-        await prisma.barberia.create({
-          data: {
-            nombre: `Barbería ${etiqueta} ${sufijo}`,
-            telefono: '9555555555',
-            ubicacion: `Sede ${etiqueta}`,
-            codigoAcceso: codigo,
-            enlaceUnico: enlace,
-            responsableId: adminGlobalId,
-          },
-          select: { id: true },
-        })
-      ).id;
+    const crearSede = async (etiqueta: string, codigo: string, enlace: string) => {
+      return await prisma.barberia.create({
+        data: {
+          nombre: `Barbería ${etiqueta} ${sufijo}`,
+          telefono: '9555555555',
+          ubicacion: `Sede ${etiqueta}`,
+          codigoAcceso: codigo,
+          enlaceUnico: enlace,
+          responsableId: adminGlobalId,
+        },
+        select: { id: true },
+      }).id;
+    };
 
     codigoObjetivoA = `V12A${String(sufijo).slice(-4)}`;
     codigoObjetivoB = `V12B${String(sufijo).slice(-4)}`;
