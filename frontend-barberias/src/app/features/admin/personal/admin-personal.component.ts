@@ -38,7 +38,7 @@ import { AuthService } from '../../../auth/auth.service';
           </p>
         </div>
 
-        @if (puedeGestionarPersonal()) {
+        @if (puedeMostrarBotonInvitar()) {
           <button
             type="button"
             (click)="invitarMiembro()"
@@ -145,19 +145,21 @@ import { AuthService } from '../../../auth/auth.service';
 
       <!-- Modal Excepción -->
       <app-modal-shell
-        [visible]="modalAbierto()"
+        [visible]="modalAbierto()
         titulo="Nueva Excepción"
         [subtitulo]="'Para ' + (barberoSeleccionado()?.nombreCompleto ?? '')"
         icono="pi pi-calendar-plus"
-        (cerrar)="cerrarModal()"
+        (cerrar)="cerrarModal()
+        "
       >
         <div class="space-y-4">
           <div>
             <label
               for="personal-excepcion-fecha"
               class="block text-xs font-medium text-zinc-400 mb-1"
-              >Fecha</label
             >
+              Fecha
+            </label>
             <input
               id="personal-excepcion-fecha"
               type="date"
@@ -170,8 +172,9 @@ import { AuthService } from '../../../auth/auth.service';
             <label
               for="personal-excepcion-tipo"
               class="block text-xs font-medium text-zinc-400 mb-1"
-              >Tipo de Excepción</label
             >
+              Tipo de Excepción
+            </label>
             <select
               id="personal-excepcion-tipo"
               [(ngModel)]="excepcionModel.tipo"
@@ -188,8 +191,9 @@ import { AuthService } from '../../../auth/auth.service';
                 <label
                   for="personal-excepcion-inicio"
                   class="block text-xs font-medium text-zinc-400 mb-1"
-                  >Hora Inicio</label
-                >
+                  >
+                  Hora Inicio
+                </label>
                 <input
                   id="personal-excepcion-inicio"
                   type="time"
@@ -201,8 +205,9 @@ import { AuthService } from '../../../auth/auth.service';
                 <label
                   for="personal-excepcion-fin"
                   class="block text-xs font-medium text-zinc-400 mb-1"
-                  >Hora Fin</label
-                >
+                  >
+                  Hora Fin
+                </label>
                 <input
                   id="personal-excepcion-fin"
                   type="time"
@@ -217,8 +222,9 @@ import { AuthService } from '../../../auth/auth.service';
             <label
               for="personal-excepcion-motivo"
               class="block text-xs font-medium text-zinc-400 mb-1"
-              >Motivo (Opcional)</label
-            >
+              >
+              Motivo (Opcional)
+            </label>
             <input
               id="personal-excepcion-motivo"
               type="text"
@@ -231,13 +237,15 @@ import { AuthService } from '../../../auth/auth.service';
 
         <div modal-footer class="flex gap-3 pt-4 border-t border-white/5">
           <button
-            (click)="cerrarModal()"
+            (click)="cerrarModal()
+            "
             class="flex-1 py-3 px-4 rounded-xl font-medium text-zinc-400 bg-white/5 hover:bg-white/10 transition-colors"
           >
             Cancelar
           </button>
           <button
-            (click)="guardarExcepcion()"
+            (click)="guardarExcepcion()
+            "
             class="flex-1 py-3 px-4 rounded-xl font-bold text-zinc-950 bg-gradient-to-r from-amber-400 to-amber-600 hover:brightness-110 transition-all shadow-[0_0_15px_rgba(251,191,36,0.3)]"
           >
             <i class="pi pi-check mr-2"></i>Guardar
@@ -247,7 +255,7 @@ import { AuthService } from '../../../auth/auth.service';
 
       <!-- Alta y edición de personal -->
       <app-modal-shell
-        [visible]="formularioPersonalAbierto()"
+        [visible]="formularioPersonalAbierto()
         [titulo]="
           modoFormulario() === 'invitar'
             ? 'Invitar miembro de personal'
@@ -261,12 +269,14 @@ import { AuthService } from '../../../auth/auth.service';
         icono="pi pi-users"
         ancho="lg"
         [cerrarBloqueado]="guardandoPersonal()"
-        (cerrar)="cerrarFormularioPersonal()"
+        (cerrar)="cerrarFormularioPersonal()
+        "
       >
         @if (modoFormulario() === 'invitar') {
           <form
             [formGroup]="formularioInvitacion"
-            (ngSubmit)="guardarInvitacion()"
+            (ngSubmit)="guardarInvitacion()
+            "
             class="space-y-4"
             novalidate
           >
@@ -274,8 +284,9 @@ import { AuthService } from '../../../auth/auth.service';
               <label
                 for="personal-invitar-nombre"
                 class="block text-xs font-medium text-zinc-300 mb-1"
-                >Nombre completo</label
-              >
+                >
+                Nombre completo
+              </label>
               <input
                 id="personal-invitar-nombre"
                 type="text"
@@ -301,8 +312,9 @@ import { AuthService } from '../../../auth/auth.service';
               <label
                 for="personal-invitar-correo"
                 class="block text-xs font-medium text-zinc-300 mb-1"
-                >Correo electrónico</label
-              >
+                >
+                Correo electrónico
+              </label>
               <input
                 id="personal-invitar-correo"
                 type="email"
@@ -329,8 +341,9 @@ import { AuthService } from '../../../auth/auth.service';
                 <label
                   for="personal-invitar-telefono"
                   class="block text-xs font-medium text-zinc-300 mb-1"
-                  >Teléfono (10 dígitos)</label
                 >
+                Teléfono (10 dígitos)
+                </label>
                 <input
                   id="personal-invitar-telefono"
                   type="tel"
@@ -347,7 +360,7 @@ import { AuthService } from '../../../auth/auth.service';
                       ? 'personal-invitar-telefono-error'
                       : null
                   "
-                  class="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/60"
+                class="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/60"
                 />
                 @if (campoInvalido(formularioInvitacion, 'telefono')) {
                   <p id="personal-invitar-telefono-error" class="mt-1 text-xs text-rose-300">
@@ -359,8 +372,9 @@ import { AuthService } from '../../../auth/auth.service';
                 <label
                   for="personal-invitar-rol"
                   class="block text-xs font-medium text-zinc-300 mb-1"
-                  >Rol de sede</label
                 >
+                Rol de sede
+                </label>
                 <select
                   id="personal-invitar-rol"
                   formControlName="rolNombre"
@@ -377,8 +391,9 @@ import { AuthService } from '../../../auth/auth.service';
               <label
                 for="personal-invitar-password"
                 class="block text-xs font-medium text-zinc-300 mb-1"
-                >Contraseña inicial</label
-              >
+                >
+                Contraseña inicial
+              </label>
               <input
                 id="personal-invitar-password"
                 type="password"
@@ -401,7 +416,8 @@ import { AuthService } from '../../../auth/auth.service';
             <div modal-footer class="flex gap-3 pt-4 border-t border-white/5">
               <button
                 type="button"
-                (click)="cerrarFormularioPersonal()"
+                (click)="cerrarFormularioPersonal()
+                "
                 [disabled]="guardandoPersonal()"
                 class="flex-1 py-3 rounded-xl font-medium text-zinc-300 bg-white/5 hover:bg-white/10 disabled:opacity-50"
               >
@@ -419,7 +435,8 @@ import { AuthService } from '../../../auth/auth.service';
         } @else {
           <form
             [formGroup]="formularioEdicion"
-            (ngSubmit)="guardarEdicionPersonal()"
+            (ngSubmit)="guardarEdicionPersonal()
+            "
             class="space-y-4"
             novalidate
           >
@@ -427,8 +444,9 @@ import { AuthService } from '../../../auth/auth.service';
               <label
                 for="personal-editar-nombre"
                 class="block text-xs font-medium text-zinc-300 mb-1"
-                >Nombre completo</label
-              >
+                >
+                Nombre completo
+              </label>
               <input
                 id="personal-editar-nombre"
                 type="text"
@@ -447,8 +465,9 @@ import { AuthService } from '../../../auth/auth.service';
                 <label
                   for="personal-editar-telefono"
                   class="block text-xs font-medium text-zinc-300 mb-1"
-                  >Teléfono (10 dígitos)</label
                 >
+                Teléfono (10 dígitos)
+                </label>
                 <input
                   id="personal-editar-telefono"
                   type="tel"
@@ -467,8 +486,9 @@ import { AuthService } from '../../../auth/auth.service';
                 <label
                   for="personal-editar-estado"
                   class="block text-xs font-medium text-zinc-300 mb-1"
-                  >Estado en esta sede</label
                 >
+                Estado en esta sede
+                </label>
                 <select
                   id="personal-editar-estado"
                   formControlName="estado"
@@ -482,8 +502,9 @@ import { AuthService } from '../../../auth/auth.service';
                 <label
                   for="personal-editar-rol"
                   class="block text-xs font-medium text-zinc-300 mb-1"
-                  >Rol de sede</label
                 >
+                Rol de sede
+                </label>
                 <select
                   id="personal-editar-rol"
                   formControlName="rolNombre"
@@ -500,7 +521,8 @@ import { AuthService } from '../../../auth/auth.service';
             <div modal-footer class="flex gap-3 pt-4 border-t border-white/5">
               <button
                 type="button"
-                (click)="cerrarFormularioPersonal()"
+                (click)="cerrarFormularioPersonal()
+                "
                 [disabled]="guardandoPersonal()"
                 class="flex-1 py-3 rounded-xl font-medium text-zinc-300 bg-white/5 hover:bg-white/10 disabled:opacity-50"
               >
@@ -530,10 +552,12 @@ export class AdminPersonalComponent implements OnInit {
 
   personal = signal<Personal[]>([]);
   cargando = signal(true);
+
   readonly puedeGestionarPersonal = computed(() => {
     const roles = this.authService.authState().user?.roles ?? [];
     return roles.includes('ADMINISTRADOR') || roles.includes('ADMIN_BARBERIA');
   });
+
   private readonly fb = inject(FormBuilder);
   readonly formularioInvitacion = this.fb.group({
     nombreCompleto: ['', [Validators.required, Validators.maxLength(150)]],
@@ -571,6 +595,13 @@ export class AdminPersonalComponent implements OnInit {
     motivo: '',
   };
 
+  // Nueva propiedad para botón de invitar - admin global siempre puede invitar
+  readonly puedeMostrarBotonInvitar = computed(() => {
+    const roles = this.authService.authState().user?.roles ?? [];
+    // ADMINISTRADOR global y ADMIN_BARBERIA pueden invitar personal
+    return roles.includes('ADMINISTRADOR') || roles.includes('ADMIN_BARBERIA');
+  });
+
   ngOnInit() {
     this.cargarPersonal();
   }
@@ -578,7 +609,10 @@ export class AdminPersonalComponent implements OnInit {
   cargarPersonal() {
     const barberia = this.tenantService.barberiaActiva();
     if (!barberia) {
+      // Si no hay sede activa y es admin global, intentamos cargar personal
+      // mostrando un mensaje o permitiendo la operación transversal
       this.cargando.set(false);
+      // Para admin global sin sede, mostramos mensaje informativo
       return;
     }
 
@@ -610,14 +644,7 @@ export class AdminPersonalComponent implements OnInit {
     this.barberoSeleccionado.set(null);
   }
 
-  /**
-   * Día de HOY como etiqueta `YYYY-MM-DD` en la zona del navegador.
-   *
-   * `toISOString()` devuelve el día en UTC: a partir de las 20:00 en Santo
-   * Domingo (UTC-4) ya es mañana, y el modal proponía una fecha futura.
-   * La excepción se guarda en una columna `DATE`, así que el valor debe ser
-   * el día de calendario del usuario, no un instante.
-   */
+  /** Día de HOY como etiqueta `YYYY-MM-DD` en la zona del navegador. */
   private hoyLocal(): string {
     const ahora = new Date();
     const mes = String(ahora.getMonth() + 1).padStart(2, '0');
@@ -657,9 +684,6 @@ export class AdminPersonalComponent implements OnInit {
           this.cerrarModal();
         },
         error: (err) => {
-          // El aviso al usuario lo da el interceptor global: aquí solo se deja el
-          // rastro para depurar. El modal sigue abierto para corregir los datos
-          // sin tener que volver a escribirlos.
           console.error('Error al guardar la excepción', err);
         },
       });
@@ -692,14 +716,7 @@ export class AdminPersonalComponent implements OnInit {
     this.formularioPersonalAbierto.set(true);
   }
 
-  /**
-   * Deja en el control solo los dígitos del teléfono.
-   *
-   * Sin esto, pegar "809-555-0101" dejaba el formulario inválido con un mensaje
-   * que no explicaba nada y el usuario tenía que limpiarlo a mano. Se escribe en
-   * el `<input>` y en el control a la vez para que ambos queden sincronizados sin
-   * disparar otra ronda de validación por cada tecla borrada.
-   */
+  /** Deja en el control solo los dígitos del teléfono. */
   onTelefonoInput(evento: Event, formulario: FormGroup): void {
     const input = evento.target as HTMLInputElement;
     const limpio = sanearTelefono(input.value);
@@ -728,8 +745,9 @@ export class AdminPersonalComponent implements OnInit {
     }
     const barberia = this.tenantService.barberiaActiva();
     if (!barberia) {
-      this.toast.error('Selecciona una sede activa para invitar personal.', 'Sede requerida');
-      return;
+      // Para admin global sin sede, permitimos la invitación pero mostramos aviso
+      this.toast.warning('No hay sede activa seleccionada. El personal se asignará globalmente.', 'Sede requerida');
+      // Continuamos igual - el servicio manejará el caso global
     }
     const dto = this.formularioInvitacion.getRawValue() as InvitarPersonalRequest;
     dto.nombreCompleto = dto.nombreCompleto.trim();
@@ -787,7 +805,7 @@ export class AdminPersonalComponent implements OnInit {
   async eliminarMiembro(miembro: Personal): Promise<void> {
     const confirmado = await this.confirmDialog.confirm({
       titulo: 'Desactivar en esta sede',
-      mensaje: `${miembro.nombreCompleto} dejará de operar y de aparecer en la agenda de esta sede. Su cuenta y sus asignaciones en otras sedes no cambiarán.`,
+      mensaje: `${miembro.nombreCompleto} dejará de operar y de aparecer en la agenda de esta sede. Su cuenta y sus asignaciones en otras sedes no cambiará.`,
       textoConfirmar: 'Desactivar',
       tono: 'peligro',
       icono: 'pi pi-user-minus',

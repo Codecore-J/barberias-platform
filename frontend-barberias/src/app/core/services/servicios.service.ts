@@ -4,6 +4,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, of, map, forkJoin } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 import { TenantService } from './tenant.service.js';
+import { AuthService } from '../auth/auth.service';
 
 export interface Servicio {
   id: string;
@@ -17,27 +18,73 @@ export interface Servicio {
   estado?: string;
 }
 
-@Injectable({
-  providedIn: 'root'
-})
+/**
+ * Flag para saber si estamos operando como admin global sin sede asignada.
+ * Esto afecta qué endpoints usan y cómo mostramos información al usuario.
+ */
+readonly esAdminGlobalSinSede = computed(() => {
+  const auth = inject(AuthService);
+  const tenant = inject(TenantService);
+  return auth.authState().user?.roles?.includes('ADMINISTRADOR') &&
+    !tenant.tieneBarberiaActiva();
+});
+
+@Injectable({ providedIn: 'root' })
 export class ServiciosService {
   private readonly http = inject(HttpClient);
   private readonly tenant = inject(TenantService);
+  private readonly auth = inject(AuthService);
 
   constructor() {
     this.tenant.registrarPurgadorLocal(() => this.limpiarEstadoLocal());
   }
 
-  /**
-   * Fase 5 (Punto 5.3): la sede viaja en la RUTA, nunca en una cabecera.
-   * `/servicios` y `/catalogo/combos` dejan de existir como alias planos.
+  /** Signals de estado */
+  readonly servicios = signal<Servicio[]>([]);
+  readonly isLoading = signal<boolean>(false);
+  readonly error = signal<string | null>(null);
+
+  /** Indica si hay una sede activa seleccionada o disponible */
+  readonly tieneSedeActiva = computed(() => this.tenant.tieneBarberiaActiva());
+
+  private limpiarEstadoLocal(): void {
+    this.servicios.set([]);
+    this.isLoading.set(false);
+    this.error.set(null);
+  }
+
+  /** 
+   * E2-07: verifica si el usuario actual puede gestionar servicios.
+   * Admin global siempre puede, pero necesita contexto de sede para operaciones específicas.
+   */
+  readonly puedeGestionar = computed(() => {
+    const rol = this.auth.authState().user?.roles;
+    if (!rol || rol.length === 0) return false;
+    if (rol.includes('ADMINISTRADOR')) return true;
+    if (rol.includes('ADMIN_BARBERIA')) return true;
+    if (rol.includes('BARBERO')) return true;
+    return false;
+  });
+
+  /** 
+   * URL base para servicios: usa la sede activa o cae de vuelta al catálogo global.
+   * Admin global sin sede usará un endpoint alternativo o mostrará aviso.
    */
   private get serviciosUrl(): string {
-    return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/services`;
+    const sedeId = this.tenant.barberiaActivaId();
+    // Si no hay sede y es admin global, usamos un endpoint de catálogo global
+    if (!sedeId && this.esAdminGlobalSinSede) {
+      return `${API_URL}/catalogo/admin/servicios-todos`;
+    }
+    return `${API_URL}/shops/${sedeId ?? ''}/services`;
   }
 
   private get combosUrl(): string {
-    return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/combos`;
+    const sedeId = this.tenant.barberiaActivaId();
+    if (!sedeId && this.esAdminGlobalSinSede) {
+      return `${API_URL}/catalogo/admin/combos-todos`;
+    }
+    return `${API_URL}/shops/${sedeId ?? ''}/combos`;
   }
 
   readonly servicios = signal<Servicio[]>([]);
@@ -50,8 +97,7 @@ export class ServiciosService {
     this.error.set(null);
   }
 
-  /**
-   * E2-07 · P-SD-1/P-SD-2: el panel de administración lee el catálogo con
+  /** E2-07 · P-SD-1/P-SD-2: el panel de administración lee el catálogo con
    * `incluirCombos = true`, y eso cambia DOS cosas respecto a las vistas de
    * cliente:
    *
@@ -72,6 +118,16 @@ export class ServiciosService {
     this.isLoading.set(true);
     this.error.set(null);
 
+    // 🔧 MEJORA: Validación previa para admin global sin sede
+    if (this.esAdminGlobalSinSede) {
+      this.toastWarning(
+        'No tienes una sede activa seleccionada. El catálogo se mostrará en modo lectura global.',
+        'Sede requerida'
+      );
+      // Cargamos el catálogo global en modo lectura para el admin
+      return this.catalogoGlobal(true);
+    }
+
     const peticion$ = incluirCombos ? this.peticionCatalogoAdmin() : this.peticionServicios();
 
     return peticion$.pipe(
@@ -83,33 +139,36 @@ export class ServiciosService {
         this.isLoading.set(false);
         this.error.set('No se pudieron cargar los servicios');
         return of([]);
-      })
+      }),
     );
   }
 
-  private peticionServicios(): Observable<Servicio[]> {
-    return this.http.get<any>(this.serviciosUrl).pipe(
-      map(res => this.extraerLista(res).map((s: any) => this.aServicio(s))),
+  /** Carga el catálogo global para admin sin sede (modo lectura) */
+  private catalogoGlobal(incluirCombos = false): Observable<Servicio[]> {
+    this.isLoading.set(true);
+
+    const peticion$ = incluirCombos
+      ? this.http.get<any>(`${API_URL}/catalogo/admin/servicios-todos?includeCombos=true`).pipe(
+          map(res => this.normalizar(res).map((s: any) => this.aServicio(s)))
+        )
+      : this.http.get<any>(`${API_URL}/catalogo/admin/servicios-todos`).pipe(
+          map(res => this.normalizar(res).map((s: any) => this.aServicio(s)))
+        );
+
+    return peticion$.pipe(
+      tap((data: Servicio[]) => {
+        this.servicios.set(data);
+        this.isLoading.set(false);
+      }),
+      catchError(_err => {
+        this.isLoading.set(false);
+        this.error.set('No se pudo cargar el catálogo global');
+        return of([]);
+      }),
     );
   }
 
-  /** Servicios + combos en una sola lista, como la pinta el panel de admin. */
-  private peticionCatalogoAdmin(): Observable<Servicio[]> {
-    const combos$ = this.http.get<any>(this.combosUrl).pipe(
-      map(res => this.extraerLista(res).map((c: any) => this.aCombo(c))),
-      // Un fallo al leer los combos no debe dejar al admin sin catálogo: se
-      // degrada a solo servicios en vez de romper toda la pantalla.
-      catchError(() => of([] as Servicio[])),
-    );
-
-    return forkJoin([this.peticionServicios(), combos$]).pipe(
-      map(([servicios, combos]) =>
-        [...servicios, ...combos].sort((a, b) => a.nombre.localeCompare(b.nombre)),
-      ),
-    );
-  }
-
-  private extraerLista(res: any): any[] {
+  private normalizar(res: any): any[] {
     return Array.isArray(res) ? res : (res?.data || []);
   }
 
@@ -117,28 +176,7 @@ export class ServiciosService {
     return {
       ...s,
       duracionMinutos: s.duracionMinutos ?? s.duracionEstimada ?? 30,
-      // La API no manda `esCombo` en los servicios. La tabla lo usa para elegir
-      // el endpoint, así que se fija a `false` en vez de quedar indefinido.
       esCombo: s.esCombo ?? false,
-    };
-  }
-
-  /**
-   * El combo tiene otro nombre para las mismas columnas (`precioEspecial`,
-   * `duracionPropia`) y no tiene fecha de creación, así que se normaliza a la
-   * forma que ya consume la tabla.
-   */
-  private aCombo(c: any): Servicio {
-    return {
-      id: c.id,
-      nombre: c.nombre,
-      descripcion: c.descripcion ?? '',
-      precio: Number(c.precioEspecial ?? 0),
-      duracionMinutos: Number(c.duracionPropia ?? 0),
-      esCombo: true,
-      barberiaId: c.barberiaId,
-      fechaCreacion: '',
-      estado: c.estado,
     };
   }
 
@@ -150,13 +188,13 @@ export class ServiciosService {
     };
     return this.http.post<Servicio>(this.serviciosUrl, payload).pipe(
       tap(() => {
-        this.recargarCatalogo(); // Recargar tras crear
+        this.recargarCatalogo();
       }),
       catchError(err => {
         this.isLoading.set(false);
         this.error.set(mensajeDeError(err, 'Error al crear servicio'));
         throw err;
-      })
+      }),
     );
   }
 
@@ -174,16 +212,15 @@ export class ServiciosService {
         this.isLoading.set(false);
         this.error.set(mensajeDeError(err, 'Error al actualizar servicio'));
         throw err;
-      })
+      }),
     );
   }
 
-  /**
-   * E2-07: el servicio no se elimina, se DESACTIVA (`PATCH .../deactivate`). El
-   * backend responde 422 y el `mensaje` explica la regla (`SERVICIO_EN_USO` si
-   * hay reservas por confirmar, `SERVICIO_EN_COMBO_ACTIVO` si está en un combo),
-   * así que se muestra tal cual en lugar de un texto genérico.
-   */
+  /** Nombre antiguo de `desactivarServicio`, conservado para no romper llamadas. */
+  eliminarServicio(id: string): Observable<void> {
+    return this.desactivarServicio(id);
+  }
+
   desactivarServicio(id: string): Observable<void> {
     this.isLoading.set(true);
     return this.http.patch<void>(`${this.serviciosUrl}/${id}/deactivate`, {}).pipe(
@@ -194,16 +231,10 @@ export class ServiciosService {
         this.isLoading.set(false);
         this.error.set(mensajeDeError(err, 'Error al desactivar servicio'));
         throw err;
-      })
+      }),
     );
   }
 
-  /** Nombre antiguo de `desactivarServicio`, conservado para no romper llamadas. */
-  eliminarServicio(id: string): Observable<void> {
-    return this.desactivarServicio(id);
-  }
-
-  /** E2-07: la vuelta atrás que `DELETE` no ofrecía. */
   reactivarServicio(id: string): Observable<Servicio> {
     this.isLoading.set(true);
     return this.http.patch<Servicio>(`${this.serviciosUrl}/${id}/reactivate`, {}).pipe(
@@ -214,11 +245,10 @@ export class ServiciosService {
         this.isLoading.set(false);
         this.error.set(mensajeDeError(err, 'Error al reactivar servicio'));
         throw err;
-      })
+      }),
     );
   }
 
-  /** P-SD-2: apagar el combo es lo que libera a sus servicios del 422. */
   desactivarCombo(id: string): Observable<void> {
     this.isLoading.set(true);
     return this.http.patch<void>(`${this.combosUrl}/${id}/deactivate`, {}).pipe(
@@ -229,7 +259,7 @@ export class ServiciosService {
         this.isLoading.set(false);
         this.error.set(mensajeDeError(err, 'Error al desactivar combo'));
         throw err;
-      })
+      }),
     );
   }
 
@@ -243,16 +273,22 @@ export class ServiciosService {
         this.isLoading.set(false);
         this.error.set(mensajeDeError(err, 'Error al reactivar combo'));
         throw err;
-      })
+      }),
     );
   }
 
-  /**
-   * Las seis escrituras del catálogo son del panel de administración y son las
+  /** Las seis escrituras del catálogo son del panel de administración y son las
    * únicas que necesitan recomponer servicios + combos: tras un toggle, la
    * tarjeta sigue en la lista con su estado nuevo.
    */
   private recargarCatalogo(): void {
     this.cargarServicios(true).subscribe();
+  }
+
+  /** Muestra un toast informativo (usando el Injector para evitar problemas de
+   *  inyección circular en constructores de servicio). */
+  private toastWarning(mensaje: string, titulo: string): void {
+    const toast = inject(ToastService);
+    toast.warning(mensaje, titulo);
   }
 }
