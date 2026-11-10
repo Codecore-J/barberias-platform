@@ -49,14 +49,14 @@ assertSafeSmokeDatabase();
 
 const BASE_URL = 'http://localhost:3000/api/v1';
 
-async function request(path: string, options: { method?: string; body?: any; token?: string; headers?: Record<string, string> } = {}) {
+async function request(path: string, _options: { method?: string; body?: any; token?: string; headers?: Record<string, string> } = {}) {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
+    ..._options.headers,
   };
 
-  if (options.token) {
-    headers['Authorization'] = `Bearer ${options.token}`;
+  if (_options.token) {
+    headers['Authorization'] = `Bearer ${_options.token}`;
   }
 
   const response = await fetch(`${BASE_URL}${path}`, {

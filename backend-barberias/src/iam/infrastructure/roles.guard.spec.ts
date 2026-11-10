@@ -15,7 +15,7 @@ type Politica = {
 
 /** Las rutas reales llevan UUID; un id inventado ya no llega al guard. */
 const SEDE_PROPIA = '11111111-1111-4111-8111-111111111111';
-const SEDE_AJENA = '22222222-2222-4222-8222-222222222222';
+const _SEDE_AJENA = '22222222-2222-4222-8222-222222222222';
 
 describe('RolesGuard', () => {
   let guard: RolesGuard;
@@ -113,7 +113,7 @@ describe('RolesGuard', () => {
 
     it('debe permitir acceso a un BARBERO en su propia barbería específica', () => {
       mockPolitica({ roles: ['BARBERO'] });
-      const barberiaId = '11111111-1111-4111-8111-111111111111';
+      const _barberiaId = '11111111-1111-4111-8111-111111111111';
       const context = createMockContext(
         {
           id: '1',

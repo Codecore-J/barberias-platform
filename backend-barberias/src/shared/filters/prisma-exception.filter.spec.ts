@@ -88,7 +88,7 @@ describe('PrismaExceptionFilter', () => {
     expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
     expect(mockResponse.json).toHaveBeenCalledWith(
       expect.objectContaining({
-        statusCode: 409 ? 404 : 404,
+        statusCode: 404,
         code: 'RECORD_NOT_FOUND',
       }),
     );

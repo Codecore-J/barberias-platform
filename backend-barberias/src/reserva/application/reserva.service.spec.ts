@@ -58,7 +58,7 @@ describe('ReservaService', () => {
     barberia: { findUnique: vi.fn() },
     usuarioRol: { findFirst: vi.fn(), findMany: vi.fn() },
     antecedente: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
-    $transaction: vi.fn(async (cb, options) => {
+    $transaction: vi.fn(async (cb, _options) => {
       return cb(mockPrismaService);
     }),
   };

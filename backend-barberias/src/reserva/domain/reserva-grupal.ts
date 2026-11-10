@@ -190,7 +190,7 @@ export function validarGrupoGrupal(
     return { tipo: 'GRUPO_INCOMPLETO' };
   }
 
-  const { personas, ninos, adultos } = contarParticipantes(participantes);
+  const { personas, adultos } = contarParticipantes(participantes);
 
   if (adultos !== 1) {
     return { tipo: 'ADULTOS', adultos };

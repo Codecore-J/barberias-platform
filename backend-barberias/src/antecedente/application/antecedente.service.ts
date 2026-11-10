@@ -8,7 +8,6 @@ import {
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { CreateAntecedenteDto } from './dto/create-antecedente.dto.js';
 import { EvaluarAntecedenteDto, DecisionAntecedente } from './dto/evaluar-antecedente.dto.js';
-import { maskName, maskEmail, maskPhone } from '../domain/anonymizer.utils.js';
 import { esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
 
 @Injectable()

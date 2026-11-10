@@ -11,7 +11,7 @@ const crearStore = (claves: string[]) => {
   return {
     restantes,
     iterator: async function* () {
-      for (const clave of [...restantes]) {
+      for (const clave of restantes) {
         yield [clave, { valor: 1 }];
       }
     },
@@ -86,7 +86,8 @@ describe('AnalyticsCacheListener (Paso 14)', () => {
   it('nunca deja escapar el error del store', async () => {
     const roto = {
       iterator: async function* () {
-        throw new Error('redis caído');
+        yield undefined;
+        throw new Error("redis caído");
       },
       deleteMany: vi.fn(),
     };

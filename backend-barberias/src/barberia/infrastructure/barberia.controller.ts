@@ -6,8 +6,8 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
-  Patch,
   Post,
+  Patch,
   Query,
 } from '@nestjs/common';
 import { BarberiaService } from '../application/barberia.service.js';
