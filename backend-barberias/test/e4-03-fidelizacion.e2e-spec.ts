@@ -54,15 +54,35 @@ describe('E4-03 · fidelización por inasistencias y reactivación', () => {
   const telefono = (n: number) => `809${serie}${String(n).padStart(3, '0')}`;
 
   const registrar = async (correo: string, n: number) => {
-    const res = await request(app.getHttpServer())
-      .post(`${api}/auth/register`)
-      .send({ nombreCompleto: correo, correo, telefono: telefono(n), password: 'Password1!' });
-    expect([200, 201, 409]).toContain(res.status);
-    // V2.1 · el fixture se da de alta con el teléfono VERIFICADO: sin esto
-    // `VerificacionGuard` respondería 403 en la creación de reserva y este
-    // test no mide la verificación OTP.
-    await prisma.usuario.update({ where: { correo }, data: { telefonoVerificado: true } });
+    // El 409 puede venir del correo (rerun idempotente) o del teléfono, que se
+    // genera al azar y puede chocar con restos de una corrida anterior. Solo
+    // el segundo caso se reintenta con otro número: si el correo ya existe no
+    // hay nada que registrar.
+    for (let intento = 0; intento < 3; intento += 1) {
+      const res = await request(app.getHttpServer())
+        .post(`${api}/auth/register`)
+        .send({
+          nombreCompleto: correo,
+          correo,
+          telefono: telefono(n + intento * 10),
+          password: 'Password1!',
+        });
 
+      if (res.status === 409) {
+        const existente = await prisma.usuario.findUnique({ where: { correo } });
+        if (existente) return;
+        continue;
+      }
+
+      expect([200, 201]).toContain(res.status);
+      // V2.1 · el fixture se da de alta con el teléfono VERIFICADO: sin esto
+      // `VerificacionGuard` respondería 403 en la creación de reserva y este
+      // test no mide la verificación OTP.
+      await prisma.usuario.update({ where: { correo }, data: { telefonoVerificado: true } });
+      return;
+    }
+
+    throw new Error(`No se pudo registrar ${correo}: los teléfonos de prueba están ocupados.`);
   };
 
   const login = async (correo: string) => {

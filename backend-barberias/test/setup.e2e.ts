@@ -6,8 +6,14 @@ import { existsSync, readFileSync } from 'node:fs';
  *
  * `dotenv` no es dependencia del proyecto, así que el parser es deliberadamente
  * mínimo: cubre el formato `CLAVE=valor` (con comillas opcionales) de
- * `.env.test` y nada más. Las variables que el entorno YA tenga exportadas
- * (CI exporta las suyas) tienen prioridad: este loader solo rellena huecos.
+ * `.env.test` y nada más.
+ *
+ * `.env.test` NO está versionado: solo existe en la máquina del desarrollador.
+ * Por eso sus valores tienen prioridad sobre lo que el shell ya tenga exportado
+ * (por ejemplo un `DATABASE_URL` de Neon heredado de `.env`). Sin esto, la
+ * suite podía escribir y borrar fixtures contra la base de desarrollo remota
+ * creyendo que usaba el Postgres local. En CI el archivo no existe, así que
+ * se usan las variables que exporta el workflow.
  */
 function cargarEnvDePruebas(): void {
   const archivo = new URL('../.env.test', import.meta.url);
@@ -29,9 +35,7 @@ function cargarEnvDePruebas(): void {
       valor = valor.slice(1, -1);
     }
 
-    if (process.env[clave] === undefined) {
-      process.env[clave] = valor;
-    }
+    process.env[clave] = valor;
   }
 }
 
