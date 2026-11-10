@@ -7,7 +7,7 @@ import { inject } from '@angular/core';
 import { catchError, throwError } from 'rxjs';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { extraerMensaje } from '../utils/error-message';
-import { AuthService } from '../auth/auth.service';
+import { AuthService } from '../../auth/auth.service';
 
 /**
  * Fase 1 · marca una petición para que su fallo NO se anuncie con un toast.
@@ -68,9 +68,7 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
               mensaje && mensaje.includes('permisos')
                 ? mensaje
                 : `No tienes permisos para realizar esta acción en la sede actual. ` +
-                  (user?.barberiaAsociada
-                    ? `Sede: ${user.barberiaAsociada}`
-                    : 'Selecciona una sede en el panel de administración.') +
+                  'Selecciona una sede en el panel de administración.' +
                   `. ${mensaje || ''}`.trim();
 
             toast.error(mensajeContexto, titulo);

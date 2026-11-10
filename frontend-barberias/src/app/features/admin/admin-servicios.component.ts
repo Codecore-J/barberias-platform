@@ -47,7 +47,7 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
           <div class="flex items-center gap-2 overflow-x-auto text-xs">
             <button (click)="filtroTipo.set('TODOS')"
                     class="px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5"
-                    [ngClass]="filtroTipo() === 'TODOS' "
+                    [ngClass]="filtroTipo() === 'TODOS'
                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'">
               <span>Todos</span>
@@ -56,7 +56,7 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
 
             <button (click)="filtroTipo.set('SERVICIOS')"
                     class="px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5"
-                    [ngClass]="filtroTipo() === 'SERVICIOS' "
+                    [ngClass]="filtroTipo() === 'SERVICIOS'
                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'">
               <i class="pi pi-tag text-[10px]"></i>
@@ -66,7 +66,7 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
 
             <button (click)="filtroTipo.set('COMBOS')"
                     class="px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5"
-                    [ngClass]="filtroTipo() === 'COMBOS' "
+                    [ngClass]="filtroTipo() === 'COMBOS'
                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'">
               <i class="pi pi-star text-[10px]"></i>
@@ -101,10 +101,10 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
               <div class="flex justify-between items-start mb-3 transform translate-z-12">
                 <div class="flex items-center gap-3">
                   <div class="w-10 h-10 rounded-xl flex items-center justify-center border"
-                       [ngClass]="servicio.esCombo "
+                       [ngClass]="servicio.esCombo
                          ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
-                         : 'bg-zinc-800 border-zinc-700 text-zinc-300'>
-                    <i [class]="servicio.esCombo ? 'pi pi-star text-base' : 'pi pi-tag text-base'></i>
+                         : 'bg-zinc-800 border-zinc-700 text-zinc-300'">
+                    <i [class]="servicio.esCombo ? 'pi pi-star text-base' : 'pi pi-tag text-base'"></i>
                   </div>
                   <div>
                     <h3 class="font-bold text-white leading-tight">{{ servicio.nombre }}</h3>
@@ -141,7 +141,7 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
                   </button>
                   <button (click)="toggleEstado(servicio)"
                           class="px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5"
-                          [ngClass]="servicio.estado === 'INACTIVO'"
+                          [ngClass]="servicio.estado === 'INACTIVO'
                             ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300'
                             : 'bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300'">
                     <i [class]="servicio.estado === 'INACTIVO' ? 'pi pi-refresh' : 'pi pi-ban'"></i>

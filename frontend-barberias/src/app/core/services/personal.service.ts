@@ -1,9 +1,10 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, of, catchError, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants';
 import { mensajeDeError } from '../utils/error-message.js';
 import { TenantService } from './tenant.service.js';
+import { AuthService } from '../../auth/auth.service';
 
 export interface Personal {
   id: string;
@@ -44,10 +45,8 @@ export class PersonalService {
 
   /** Obtiene el personal de la sede actual o en modo global para admin */
   obtenerPersonal(barberiaId?: string): Observable<Personal[]> {
-    const user = this.auth.authState().user;
-
     // Admin global sin sede: mostramos personal global o aviso
-    if (this.esAdminGlobalSinSede) {
+    if (this.esAdminGlobalSinSede()) {
       return this.obtenerPersonalGlobal();
     }
 
@@ -63,7 +62,7 @@ export class PersonalService {
     return this.http.get<Personal[]>(`${API_URL}/shops/${effectiveBarberiaId}/staff`).pipe(
       catchError(() => {
         // Si es 403 y es admin global sin sede, mostramos aviso en lugar de error crudo
-        return mensajeDeError({}, 'No se pudo cargar el personal');
+        return throwError(() => new Error(mensajeDeError({}, 'No se pudo cargar el personal')));
       })
     );
   }
@@ -98,11 +97,11 @@ export class PersonalService {
     const user = this.auth.authState().user;
 
     // Admin global sin sede: permite la invitación pero asigna global
-    if (user.roles?.includes('ADMINISTRADOR') && this.esAdminGlobalSinSedeCache) {
+    if (user?.roles?.includes('ADMINISTRADOR') && this.esAdminGlobalSinSedeCache()) {
       // Usamos un endpoint global o el primero disponible
       return this.http.post<Personal>(`${API_URL}/catalogo/admin/personal`, dto).pipe(
         catchError(() => {
-          return mensajeDeError({}, 'No se pudo crear el miembro');
+          return throwError(() => new Error(mensajeDeError({}, 'No se pudo crear el miembro')));
         })
       );
     }
@@ -116,14 +115,14 @@ export class PersonalService {
           return this.http.post<Personal>(
             `${API_URL}/shops/00000000-0000-0000-0000-000000000000/staff`,
             dto
-          ).pipe(catchError(() => mensajeDeError({}, 'No se pudo crear el miembro')));
+          ).pipe(catchError(() => throwError(() => new Error(mensajeDeError({}, 'No se pudo crear el miembro')))));
         })
       );
     }
 
     return this.http.post<Personal>(`${API_URL}/shops/${barberiaId}/staff`, dto).pipe(
       catchError(() => {
-        return mensajeDeError({}, 'No se pudo crear el miembro');
+        return throwError(() => new Error(mensajeDeError({}, 'No se pudo crear el miembro')));
       })
     );
   }
@@ -132,11 +131,11 @@ export class PersonalService {
     const user = this.auth.authState().user;
 
     // Admin global sin sede: actualiza registro global
-    if (user.roles?.includes('ADMINISTRADOR') && this.esAdminGlobalSinSedeCache) {
+    if (user?.roles?.includes('ADMINISTRADOR') && this.esAdminGlobalSinSedeCache()) {
       return this.http
         .patch<Personal>(`${API_URL}/catalogo/admin/personal/${usuarioId}`, dto).pipe(
           catchError(() => {
-            return mensajeDeError({}, 'No se pudieron guardar los cambios');
+            return throwError(() => new Error(mensajeDeError({}, 'No se pudieron guardar los cambios')));
           })
         );
     }
@@ -151,7 +150,13 @@ export class PersonalService {
               .patch<Personal>(
                 `${API_URL}/shops/00000000-0000-0000-0000-000000000000/staff/${usuarioId}`,
                 dto
-              ).pipe(catchError(() => mensajeDeError({}, 'No se pudieron guardar los cambios')))
+              ).pipe(
+                catchError(() =>
+                  throwError(
+                    () => new Error(mensajeDeError({}, 'No se pudieron guardar los cambios')),
+                  ),
+                ),
+              )
           )
         );
     }
@@ -159,7 +164,7 @@ export class PersonalService {
     return this.http
       .patch<Personal>(`${API_URL}/shops/${barberiaId}/staff/${usuarioId}`, dto).pipe(
         catchError(() => {
-          return mensajeDeError({}, 'No se pudieron guardar los cambios');
+          return throwError(() => new Error(mensajeDeError({}, 'No se pudieron guardar los cambios')));
         })
       );
   }

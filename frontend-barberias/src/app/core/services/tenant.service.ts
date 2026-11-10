@@ -10,7 +10,6 @@ import { mensajeDeError } from '../utils/error-message.js';
  * Solo la sirve `GET /shops/:shopId/invitation`, y solo al ADMIN_BARBERIA de esa
  * sede o al ADMINISTRADOR global.
  */
-
 export interface InvitacionSede {
   barberiaId: string;
   nombre: string;
@@ -18,6 +17,14 @@ export interface InvitacionSede {
   enlaceUnico: string;
 }
 
+/**
+ * E3-13 · lo que se edita de una sede ya creada (D26/D27).
+ *
+ * `nombre` y `estado` NO están: el backend los rechaza con 422
+ * (`NOMBRE_REQUIERE_SOLICITUD` / `ESTADO_NO_EDITABLE`) porque el nombre solo
+ * cambia por solicitud aprobada y el estado tiene su propia ruta. `passwordActual`
+ * viaja solo cuando cambia el teléfono: es la exigencia de D27.
+ */
 export interface ActualizarBarberiaRequest {
   descripcion?: string;
   ubicacion?: string;
@@ -26,6 +33,7 @@ export interface ActualizarBarberiaRequest {
   passwordActual?: string;
 }
 
+/** El vínculo que devuelven las rutas de vinculación: el estado es el de D10. */
 export interface VinculoDeCliente {
   id: string;
   usuarioId: string;
@@ -38,34 +46,45 @@ export interface BarberiaResumen {
   id: string;
   nombre: string;
   descripcion?: string | null;
+  /** E3-13 · editable desde `PATCH /shops/:shopId` (los tres últimos campos). */
   logoUrl?: string | null;
   telefono: string;
   ubicacion: string;
+  /**
+   * H72 · `codigoAcceso` y `enlaceUnico` solo los sirve `GET /shops` (la
+   * sede que uno RESPONSABILIZA): son la puerta de entrada y quien ya está
+   * dentro no los necesita. El listado del CLIENTE
+   * (`GET /mi-estado/barberias`) no los trae, así que la tarjeta no puede
+   * depender de ellos.
+   */
   codigoAcceso?: string;
   enlaceUnico?: string;
   responsableId: string;
   estado: string;
+  esBarberiaActiva?: boolean;
+  /** D10 · `ACTIVO`, `PENDIENTE_APROBACION` o `DESVINCULADO`. */
   estadoVinculacion?: string;
 }
 
-/** Indica si una sede es la activa actualmente en la sesión */
-export interface SedeActivaContext {
-  esSedePropia: boolean; // true si la sede pertenece al usuario por responsabilidad
-  esSedeVinculada: boolean; // true si tiene vínculo cliente
-  esAdminGlobal: boolean; // true si es ADMINISTRADOR global
-}
-
-/** Servicio de Tenant (sesión de sede) - E3-12/2 · H72 · D05
- * Gestiona el contexto de sede activo para el usuario.
- * El ADMINISTRADOR global ve TODAS las sedes y puede operar transversalmente.
- */
-
-@Injectable({ providedIn: 'root' })
+@Injectable({
+  providedIn: 'root',
+})
 export class TenantService {
   private readonly http = inject(HttpClient);
   private readonly apiUrl = `${API_URL}/shops`;
-  /** GET /mi-estado/barberias - sedes del vínculo propio (H72) */
+  /**
+   * H72 · las sedes del CLIENTE son las de su VÍNCULO, no las que responsabiliza.
+   * `GET /shops` filtra por `responsableId`, así que a un cliente puro le
+   * devuelve `[]` aunque tenga vínculos en `cliente_barberias`.
+   */
   private readonly apiUrlMisSedes = `${API_URL}/mi-estado/barberias`;
+  /**
+   * E3-12/2 · la entrada del cliente. La ruta vive bajo `mi-estado` —el espacio
+   * del vínculo propio— y es la MISMA lógica blindada que `POST /shops/link`
+   * (`vincularCliente`): el límite de D10, la reapertura de H71 y su auditoría
+   * son del backend, no de esta pantalla.
+   */
+  private readonly apiUrlUnirse = `${API_URL}/mi-estado/unirse`;
   private readonly storageKey = 'active_barberia_id';
 
   // Signals reactivos para el tenant
@@ -74,10 +93,8 @@ export class TenantService {
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
 
-  // Track if user is global admin for UI logic
-  readonly esAdminGlobal = computed(() => {
-    return false; // Placeholder - se evalúa en el componente
-  });
+  /** Los servicios de dominio registran aquí la purga de sus cachés de sede. */
+  private readonly purgadoresEstadoLocal = new Set<() => void>();
 
   // Computeds útiles
   readonly tieneBarberiaActiva = computed(() => !!this.barberiaActiva());
@@ -85,15 +102,6 @@ export class TenantService {
   readonly nombreBarberiaActiva = computed(
     () => this.barberiaActiva()?.nombre ?? 'Sin Barbería Seleccionada',
   );
-
-  readonly esSedePropia = computed(() => {
-    const user = this.authService?.authState()?.user;
-    if (!user?.roles?.includes('ADMINISTRADOR')) {
-      return this.barberiaActiva()?.responsableId === this.barberiaActivaId();
-    }
-    // Admin global siempre tiene acceso transversal
-    return true;
-  });
 
   constructor() {
     this.cargarCacheInicial();
@@ -110,30 +118,38 @@ export class TenantService {
     }
   }
 
-  /** Carga las barberías del usuario y determina la activa.
-   * Dos orígenes, un solo resultado:
-   * - `GET /shops` responde por RESPONSABILIDAD (el dueño, admin de sede, barbero)
-   * - El CLIENTE responde por VÍNCULO (`GET /mi-estado/barberias`)
-   * - El ADMINISTRADOR global `GET /shops` le devuelve TODAS las sedes activas
-   * Flujo: primero intenta por responsabilidad, si queda vacío busca por vínculo.
-   * Para admin global, `/shops` ya trae todo, así que no necesita rama especial.
+  /**
+   * Carga las barberías del usuario y determina la activa.
+   *
+   * H72 · dos orígenes, un solo resultado. `GET /shops` responde por
+   * RESPONSABILIDAD (el dueño, el admin de sede y el barbero que entró por rol);
+   * el CLIENTE responde por VÍNCULO, y esa lista la sirve
+   * `GET /mi-estado/barberias`. Se pregunta primero por responsabilidad y, si
+   * viene vacía, por vínculo: así el selector de sede funciona para los cuatro
+   * roles sin que este servicio tenga que adivinar el rol del token (y sin la
+   * carrera de leer `authState()` antes de que `/auth/me` haya respondido).
+   *
+   * D05 · al ADMINISTRADOR global `GET /shops` le devuelve TODAS las sedes
+   * activas de la plataforma (el backend resuelve su alcance), así que el mismo
+   * camino sirve sin una rama por rol en el navegador.
+   *
+   * `autoSeleccionar: false` sirve para el superadmin: su pantalla de entrada es
+   * el hub y la sede la elige él, en lugar de quedar anclado a la primera de la
+   * lista por un `PATCH /select` que nadie pidió.
    */
-  cargarBarberias(): Observable<BarberiaResumen[]> {
+  cargarBarberias(opciones: { autoSeleccionar?: boolean } = {}): Observable<BarberiaResumen[]> {
     this.isLoading.set(true);
     this.error.set(null);
 
     return this.http.get<any>(this.apiUrl).pipe(
       map((res) => this.normalizar(res)),
-      switchMap((sedesPorResponsabilidad) => {
-        // Si vienen sedes por responsabilidad, úsenlas
-        if (sedesPorResponsabilidad.length > 0) {
-          this.barberiasVinculadas.set(sedesPorResponsabilidad);
-          this.isLoading.set(false);
-          this.sincronizarSedeActiva(sedesPorResponsabilidad, true);
-          return of(sedesPorResponsabilidad);
-        }
-        // Si no, caemos al vínculo (solo para CLIENTE)
-        return this.cargarSedesVinculadas();
+      switchMap((sedesPorResponsabilidad) =>
+        sedesPorResponsabilidad.length > 0 ? of(sedesPorResponsabilidad) : this.cargarSedesVinculadas(),
+      ),
+      tap((barberias: BarberiaResumen[]) => {
+        this.barberiasVinculadas.set(barberias);
+        this.isLoading.set(false);
+        this.sincronizarSedeActiva(barberias, opciones.autoSeleccionar !== false);
       }),
       catchError((err) => {
         this.isLoading.set(false);
@@ -143,7 +159,12 @@ export class TenantService {
     );
   }
 
-  /** GET /mi-estado/barberias - sedes del vínculo propio (H72) */
+  /**
+   * `GET /mi-estado/barberias` · las sedes del vínculo propio (H72), ya filtradas
+   * por el backend: solo vínculos `ACTIVO` o `PENDIENTE_APROBACION` y solo sedes
+   * activas. Un 403 (el usuario no es CLIENTE) no es un error de pantalla: es que
+   * no hay vínculos que listar, así que se traduce a lista vacía.
+   */
   private cargarSedesVinculadas(): Observable<BarberiaResumen[]> {
     return this.http.get<any>(this.apiUrlMisSedes).pipe(
       map((res) => this.normalizar(res)),
@@ -151,16 +172,31 @@ export class TenantService {
     );
   }
 
+  /** El backend puede envolver la lista (`{ data: [] }`) o devolverla directa. */
   private normalizar(res: any): BarberiaResumen[] {
     return Array.isArray(res) ? res : (res?.data ?? []);
   }
 
-  /** Fija la sede activa que eligió el usuario (el botón «Seleccionar»). */
+  /**
+   * Fija la sede activa que eligió el USUARIO (el botón «Seleccionar»).
+   *
+   * Hallazgo 2 · el cambio de manos lo autoriza y registra el backend: el
+   * estado local —señal y `localStorage`— solo se toca en el `tap`, es decir,
+   * tras el 200 de `PATCH /shops/:shopId/select`. Si el backend falla
+   * (403 de un vínculo `PENDIENTE_APROBACION`, 404 de una sede sin vínculo o
+   * caída de red) la sede anterior sigue siendo la activa, el mensaje del
+   * contrato D40 queda en `error()` y el error se propaga para que la pantalla
+   * decida qué hacer con él.
+   */
   seleccionarBarberia(barberiaId: string): Observable<any> {
     return this.cambiarSedeActiva(barberiaId);
   }
 
-  /** Cambia el contexto de sede solo después de que el backend autorice la selección. */
+  /**
+   * Cambia el contexto de sede solo después de que el backend autorice la
+   * selección. Al confirmar una sede distinta se purgan los datos compartidos
+   * en memoria antes de guardar la nueva sede activa.
+   */
   cambiarSedeActiva(shopId: string): Observable<any> {
     const idSolicitado = shopId?.trim();
     if (!idSolicitado) {
@@ -174,7 +210,7 @@ export class TenantService {
 
     const sedes$ = this.barberiasVinculadas().length > 0
       ? of(this.barberiasVinculadas())
-      : this.cargarBarberias();
+      : this.cargarBarberias({ autoSeleccionar: false });
 
     return sedes$.pipe(
       switchMap((sedes) => {
@@ -199,17 +235,34 @@ export class TenantService {
     );
   }
 
-  /** PATCH /shops/:shopId/select - la única puerta para cambiar la sede activa. */
+  /**
+   * `PATCH /shops/:shopId/select`. La ÚNICA puerta del servicio para que
+   * una sede pase a ser activa: la llaman el botón del usuario y el auto-pick
+   * de `sincronizarSedeActiva`, que por eso ya no decide nada por su cuenta.
+   */
   private pedirSeleccion(barberiaId: string): Observable<any> {
     return this.http.patch(`${this.apiUrl}/${barberiaId}/select`, {});
   }
 
-  /** Vincula al usuario con una barbería usando un código de acceso de 8 caracteres. */
+  /**
+   * Vincula al usuario con una barbería usando un código de acceso de 8 caracteres.
+   *
+   * E3-12/2: el modal de vinculación pasa a ser un caso particular de `unirse`
+   * —un código es una de las dos formas de nombrar la misma puerta de entrada—
+   * para que no existan en el navegador dos caminos distintos hacia el mismo
+   * vínculo, con dos manejos de error que podrían divergir.
+   */
   vincularBarberia(codigoAcceso: string): Observable<VinculoDeCliente> {
     return this.unirsePorInvitacion({ codigoAcceso });
   }
 
-  /** GET /mi-estado/unirse - la invitación de una sede (regla 1.10). */
+  /**
+   * E3-12/2 · la invitación de una sede (regla 1.10).
+   *
+   * El error queda en `error()` con el mensaje del contrato D40 y se propaga: la
+   * pantalla del panel decide si muestra el aviso o simplemente deja el bloque
+   * sin código.
+   */
   obtenerInvitacion(barberiaId: string): Observable<InvitacionSede> {
     this.error.set(null);
     return this.http.get<InvitacionSede>(`${this.apiUrl}/${barberiaId}/invitation`).pipe(
@@ -222,7 +275,16 @@ export class TenantService {
     );
   }
 
-  /** POST /mi-estado/unirse - el cliente ENTRA en una sede con la puerta que traiga. */
+  /**
+   * E3-12/2 · el cliente ENTRA en una sede con la puerta que traiga: el código
+   * que le dictaron o el enlace único de su QR.
+   *
+   * Tras el 200 se recarga la lista de sedes —la del vínculo propio, `GET
+   * /mi-estado/barberias`— porque la tarjeta que corresponde a la sede nueva
+   * todavía no está pintada. El estado del vínculo (`ACTIVO` o
+   * `PENDIENTE_APROBACION`) lo decide el backend con la regla de D10 y la
+   * pantalla solo lo cuenta.
+   */
   unirsePorInvitacion(puerta: PuertaDeEntrada): Observable<VinculoDeCliente> {
     this.isLoading.set(true);
     this.error.set(null);
@@ -239,20 +301,18 @@ export class TenantService {
     );
   }
 
-  /** Crea una nueva barbería y el usuario actual queda como Dueño/Responsable. */
-  crearBarberia(dto: {
-    nombre: string;
-    ubicacion: string;
-    telefono: string;
-    descripcion?: string;
-  }): Observable<any> {
+  /**
+   * Crea una nueva barbería y el usuario actual queda como Dueño/Responsable
+   */
+  crearBarberia(dto: { nombre: string; ubicacion: string; telefono: string; descripcion?: string }): Observable<any> {
     this.isLoading.set(true);
     return this.http.post(this.apiUrl, dto).pipe(
       tap((nuevaBarberia) => {
+        // Recargar la lista y seleccionarla
         this.cargarBarberias().subscribe(() => {
-          this.seleccionarBarberia(
-            (nuevaBarberia as any).id || (nuevaBarberia as any).data?.id,
-          ).subscribe({
+          this.seleccionarBarberia((nuevaBarberia as any).id || (nuevaBarberia as any).data?.id).subscribe({
+            // Si el backend rechazara la selección, el mensaje ya queda en
+            // `error()` y la pantalla de creación lo muestra; no se propaga.
             error: () => undefined,
           });
         });
@@ -265,8 +325,19 @@ export class TenantService {
     );
   }
 
-  /** E3-13 · edición directa de la sede (PATCH /shops/:shopId). */
-  actualizarBarberia(barberiaId: string, dto: ActualizarBarberiaRequest): Observable<BarberiaResumen> {
+  /**
+   * E3-13 · edición directa de la sede (`PATCH /shops/:shopId`).
+   *
+   * Solo `descripcion`, `ubicacion`, `logoUrl` y `telefono`; el teléfono exige
+   * `passwordActual` y el backend responde 422 `PASSWORD_REQUERIDA` si falta. La
+   * respuesta se escribe en la lista y en la sede activa en lugar de recargar:
+   * el `PATCH` devuelve la sede completa, así que otra petición solo para ver los
+   * datos que ya vienen en el cuerpo dejaría la pantalla parpadeando.
+   */
+  actualizarBarberia(
+    barberiaId: string,
+    dto: ActualizarBarberiaRequest,
+  ): Observable<BarberiaResumen> {
     return this.http.patch<BarberiaResumen>(`${this.apiUrl}/${barberiaId}`, dto).pipe(
       tap((actualizada) => {
         this.barberiasVinculadas.update((lista) =>
@@ -283,31 +354,58 @@ export class TenantService {
     );
   }
 
-  /** H74 · la sede activa tiene que estar EN la lista. */
+  /**
+   * H74 · la sede activa tiene que estar EN la lista.
+   *
+   * La regla anterior solo fijaba la activa cuando encontraba una sede, así que
+   * con la lista VACÍA no pasaba nada: la señal y la caché de `localStorage`
+   * conservaban la sede anterior y el usuario quedaba anclado a una sede
+   * fantasma —la cabecera la seguía anunciando y `authInterceptor` seguía
+   * mandando su `x-barberia-id`, con el backend respondiendo sobre una sede a la
+   * que ya no pertenece—.
+   *
+   * Si la sede fijada (o la que dejó la caché) ya no está en la lista, se purga
+   * en el acto.
+   *
+   * Hallazgo 2 · y la purga no era lo único que decidía el navegador: antes de
+   * este cambio, la sustituta se fijaba en local (caché → `esBarberiaActiva` →
+   * la primera) sin preguntarle a nadie, así que `es_barberia_activa` en la
+   * base podía no coincidir con la sede que operaba el navegador. Ahora las dos
+   * ramas tienen la misma dueña: la que ya era activa y SIGUE en la lista solo
+   * refresca su objeto cacheado (no hubo cambio de manos), y toda sede que
+   * PASA a ser activa lo decide el backend vía `pedirSeleccion`.
+   *
+   * Ojo con el orden de los operadores: esto vive en un `tap`, así que un fallo
+   * de RED no llega hasta aquí y no purga nada. Una carga que sí responde —aunque
+   * responda vacío o sin la sede— sí purga, y eso es lo que se quiere.
+   */
   private sincronizarSedeActiva(barberias: BarberiaResumen[], autoSeleccionar = true): void {
     const referencia = this.barberiaActiva()?.id ?? localStorage.getItem(this.storageKey);
-    const conservada = referencia
-      ? (barberias.find((b) => b.id === referencia) ?? null)
-      : null;
+    const conservada = referencia ? (barberias.find((b) => b.id === referencia) ?? null) : null;
 
-    // La sede fijada solo sigue siendo la activa si sigue EN la lista.
+    // H74 · la sede fijada (señal o caché) solo sigue siendo la activa si sigue EN la lista.
     if (referencia && !conservada) {
       this.setBarberiaActiva(null);
     }
 
-    // Misma sede que la actual: solo se refresca el objeto cacheado.
+    // Misma sede que la actual: solo se refresca el objeto cacheado (la lista
+    // trae datos más frescos que los de la caché). No hay cambio de manos, así
+    // que no vuelve a pasar por `/seleccionar`: la eligió el usuario y el
+    // backend la registró cuando la fijó.
     if (conservada && conservada.id === this.barberiaActiva()?.id) {
       this.setBarberiaActiva(conservada);
       return;
     }
 
-    // Si autoSeleccionar es false (admin global o caso especial), no autoasignamos.
-    // El admin global elegirá su sede en el hub manualmente.
+    // El superadmin elige su contexto en el hub: sin selección previa no se
+    // autoasigna la primera sede, porque entrar a auditar «la que toque» no es
+    // una decisión suya. La purga y el refresco de arriba ya se aplicaron.
     if (!autoSeleccionar) {
       return;
     }
 
-    // Rama normal: la candidata es la conservada o la primera con esBarberiaActiva
+    // Rama del cambio de manos: la sustituta (la que el backend marcó activa
+    // o, si ninguna lo está —D10 solo apaga la fila que se cierra—, la primera).
     const candidata =
       conservada ??
       barberias.find((b) => b.esBarberiaActiva) ??
@@ -318,7 +416,10 @@ export class TenantService {
       return;
     }
 
-    // El backend decide qué sede pasa a ser activa. Hasta el 200 no hay sede activa.
+    // Hallazgo 2 · una sede que PASA a ser activa la decide el backend. Hasta
+    // el 200 no hay sede activa (el guard manda al hub de sedes), y un 403/404
+    // —un vínculo que ya no opera— o una caída de red no fijan NADA: el
+    // mensaje queda en `error()` y la lista de sedes se conserva igual.
     this.pedirSeleccion(candidata.id)
       .pipe(
         tap(() => this.setBarberiaActiva(candidata)),
@@ -330,7 +431,15 @@ export class TenantService {
       .subscribe();
   }
 
-  /** H74 - purga una sede de la sesión sin esperar a que vuelva la lista. */
+  /**
+   * H74 · saca UNA sede de la sesión sin esperar a que vuelva la lista.
+   *
+   * Lo llama el flujo de desvinculación: la tarjeta desaparece en el clic y, si
+   * la sede purgada era la ACTIVA, también se va la señal y la caché (si no,
+   * `authInterceptor` seguiría mandando `x-barberia-id` de un vínculo ya
+   * cerrado hasta que llegara la recarga). Si quedan otras sedes, la recarga
+   * inmediatamente posterior elige la siguiente.
+   */
   purgarBarberia(barberiaId: string): void {
     this.barberiasVinculadas.update((lista) => lista.filter((b) => b.id !== barberiaId));
 
@@ -346,18 +455,17 @@ export class TenantService {
     this.guardarSedeActiva(barberia);
   }
 
-  /** H74 - limpia el estado local de la sesión */
-  purgarEstadoLocal(): void {
-    // Limpiar cualquier purgador registrado
+  /** Registra el reset de señales en un servicio con caché de sede. */
+  registrarPurgadorLocal(purgador: () => void): void {
+    this.purgadoresEstadoLocal.add(purgador);
+  }
+
+  private purgarEstadoLocal(): void {
+    for (const purgar of this.purgadoresEstadoLocal) purgar();
     this.error.set(null);
   }
 
-  /** H74 - registra una función de purgado a ejecutar después */
-  registrarPurgadorLocal(purgador: () => void): void {
-    purgador();
-  }
-
-  private guardarSedeActiva(barberia: BarberiaResumen | null) {
+  private guardarSedeActiva(barberia: BarberiaResumen | null): void {
     this.barberiaActiva.set(barberia);
     if (barberia) {
       localStorage.setItem(this.storageKey, barberia.id);

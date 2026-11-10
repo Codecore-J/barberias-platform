@@ -1,10 +1,11 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, computed } from '@angular/core';
 import { mensajeDeError } from '../utils/error-message.js';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, of, map, forkJoin } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 import { TenantService } from './tenant.service.js';
-import { AuthService } from '../auth/auth.service';
+import { AuthService } from '../../auth/auth.service';
+import { ToastService } from '../../shared/ui/toast/toast.service.js';
 
 export interface Servicio {
   id: string;
@@ -18,22 +19,17 @@ export interface Servicio {
   estado?: string;
 }
 
-/**
- * Flag para saber si estamos operando como admin global sin sede asignada.
- * Esto afecta qué endpoints usan y cómo mostramos información al usuario.
- */
-readonly esAdminGlobalSinSede = computed(() => {
-  const auth = inject(AuthService);
-  const tenant = inject(TenantService);
-  return auth.authState().user?.roles?.includes('ADMINISTRADOR') &&
-    !tenant.tieneBarberiaActiva();
-});
-
 @Injectable({ providedIn: 'root' })
 export class ServiciosService {
   private readonly http = inject(HttpClient);
   private readonly tenant = inject(TenantService);
   private readonly auth = inject(AuthService);
+
+  /** Flag para saber si estamos operando como admin global sin sede asignada. */
+  private readonly esAdminGlobalSinSede = computed(() => {
+    const user = this.auth.authState().user;
+    return user?.roles?.includes('ADMINISTRADOR') && !this.tenant.tieneBarberiaActiva();
+  });
 
   constructor() {
     this.tenant.registrarPurgadorLocal(() => this.limpiarEstadoLocal());
@@ -73,7 +69,7 @@ export class ServiciosService {
   private get serviciosUrl(): string {
     const sedeId = this.tenant.barberiaActivaId();
     // Si no hay sede y es admin global, usamos un endpoint de catálogo global
-    if (!sedeId && this.esAdminGlobalSinSede) {
+    if (!sedeId && this.esAdminGlobalSinSede()) {
       return `${API_URL}/catalogo/admin/servicios-todos`;
     }
     return `${API_URL}/shops/${sedeId ?? ''}/services`;
@@ -81,20 +77,10 @@ export class ServiciosService {
 
   private get combosUrl(): string {
     const sedeId = this.tenant.barberiaActivaId();
-    if (!sedeId && this.esAdminGlobalSinSede) {
+    if (!sedeId && this.esAdminGlobalSinSede()) {
       return `${API_URL}/catalogo/admin/combos-todos`;
     }
     return `${API_URL}/shops/${sedeId ?? ''}/combos`;
-  }
-
-  readonly servicios = signal<Servicio[]>([]);
-  readonly isLoading = signal<boolean>(false);
-  readonly error = signal<string | null>(null);
-
-  private limpiarEstadoLocal(): void {
-    this.servicios.set([]);
-    this.isLoading.set(false);
-    this.error.set(null);
   }
 
   /** E2-07 · P-SD-1/P-SD-2: el panel de administración lee el catálogo con
@@ -119,7 +105,7 @@ export class ServiciosService {
     this.error.set(null);
 
     // 🔧 MEJORA: Validación previa para admin global sin sede
-    if (this.esAdminGlobalSinSede) {
+    if (this.esAdminGlobalSinSede()) {
       this.toastWarning(
         'No tienes una sede activa seleccionada. El catálogo se mostrará en modo lectura global.',
         'Sede requerida'
@@ -177,6 +163,47 @@ export class ServiciosService {
       ...s,
       duracionMinutos: s.duracionMinutos ?? s.duracionEstimada ?? 30,
       esCombo: s.esCombo ?? false,
+    };
+  }
+
+  private peticionServicios(): Observable<Servicio[]> {
+    return this.http
+      .get<any>(this.serviciosUrl)
+      .pipe(map((res) => this.normalizar(res).map((s: any) => this.aServicio(s))));
+  }
+
+  /** Servicios + combos en una sola lista, como la pinta el panel de admin. */
+  private peticionCatalogoAdmin(): Observable<Servicio[]> {
+    const combos$ = this.http.get<any>(this.combosUrl).pipe(
+      map((res) => this.normalizar(res).map((c: any) => this.aCombo(c))),
+      // Un fallo al leer los combos no debe dejar al admin sin catálogo: se
+      // degrada a solo servicios en vez de romper toda la pantalla.
+      catchError(() => of([] as Servicio[])),
+    );
+
+    return forkJoin([this.peticionServicios(), combos$]).pipe(
+      map(([servicios, combos]) =>
+        [...servicios, ...combos].sort((a, b) => a.nombre.localeCompare(b.nombre)),
+      ),
+    );
+  }
+
+  /**
+   * El combo tiene otro nombre para las mismas columnas (`precioEspecial`,
+   * `duracionPropia`) y no tiene fecha de creación, así que se normaliza a la
+   * forma que ya consume la tabla.
+   */
+  private aCombo(c: any): Servicio {
+    return {
+      id: c.id,
+      nombre: c.nombre,
+      descripcion: c.descripcion ?? '',
+      precio: Number(c.precioEspecial ?? 0),
+      duracionMinutos: Number(c.duracionPropia ?? 0),
+      esCombo: true,
+      barberiaId: c.barberiaId,
+      fechaCreacion: '',
+      estado: c.estado,
     };
   }
 

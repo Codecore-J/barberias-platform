@@ -25,13 +25,13 @@ describe('AdminPersonalComponent', () => {
   };
   const barberia = { id: 'shop-qa', nombre: 'Sede QA' };
   const obtenerPersonal = vi.fn(() => of([miembro]));
-  const invitarMiembro = vi.fn((_shopId: string, _dto: any) => of({
+  const invitarMiembro = vi.fn((_dto: any) => of({
     ...miembro,
     id: 'user-2',
     nombreCompleto: 'Ana Gómez',
     correo: 'ana@example.com',
   }));
-  const actualizarMiembro = vi.fn((_shopId: string, _userId: string, dto: any) => of({
+  const actualizarMiembro = vi.fn((_userId: string, dto: any) => of({
     ...miembro,
     estadoSede: dto.estado,
     roles: [dto.rolNombre],
@@ -126,7 +126,7 @@ describe('AdminPersonalComponent', () => {
 
     component.guardarInvitacion();
 
-    expect(invitarMiembro).toHaveBeenCalledWith('shop-qa', {
+    expect(invitarMiembro).toHaveBeenCalledWith({
       nombreCompleto: 'Ana Gómez',
       correo: 'ana@example.com',
       telefono: '8095551234',
@@ -172,7 +172,7 @@ describe('AdminPersonalComponent', () => {
 
     component.guardarEdicionPersonal();
 
-    expect(actualizarMiembro).toHaveBeenCalledWith('shop-qa', 'user-1', {
+    expect(actualizarMiembro).toHaveBeenCalledWith('user-1', {
       estado: 'INACTIVO',
       rolNombre: 'ADMIN_BARBERIA',
     });

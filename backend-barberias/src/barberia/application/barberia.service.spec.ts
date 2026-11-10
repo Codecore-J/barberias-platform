@@ -386,7 +386,7 @@ describe('BarberiaService', () => {
         'usuario-ganador',
         'usuario-ganador',
       ]);
-      expect([primera.reutilizado, segunda.reutilizado].sort()).toEqual([
+      expect([primera.reutilizado, segunda.reutilizado].sort((a, b) => a - b)).toEqual([
         false,
         true,
       ]);
