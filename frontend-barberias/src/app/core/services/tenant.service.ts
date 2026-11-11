@@ -1,6 +1,16 @@
 import { Injectable, signal, computed, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, catchError, of, map, switchMap, throwError } from 'rxjs';
+import {
+  Observable,
+  tap,
+  catchError,
+  of,
+  map,
+  switchMap,
+  throwError,
+  shareReplay,
+  finalize,
+} from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 import type { PuertaDeEntrada } from '../utils/invitacion.util.js';
 import { mensajeDeError } from '../utils/error-message.js';
@@ -96,6 +106,56 @@ export class TenantService {
   /** Los servicios de dominio registran aquí la purga de sus cachés de sede. */
   private readonly purgadoresEstadoLocal = new Set<() => void>();
 
+  /**
+   * Fase 2 · caché en memoria del listado de sedes.
+   *
+   * Antes, cada montaje del layout, cada pantalla y cada guard disparaban su
+   * propio `GET /shops` (y su `GET /mi-estado/barberias` cuando la lista venía
+   * vacía): el mismo dato se pedía tres o cuatro veces por navegación. Aquí el
+   * listado resuelto se guarda como snapshot y se devuelve tal cual a quien lo
+   * pida después, hasta que algo lo invalide.
+   */
+  private sedesResueltas: BarberiaResumen[] | null = null;
+
+  /**
+   * Fase 2 · la petición EN VUELO, compartida con `shareReplay`.
+   *
+   * `refCount: true` cierra la fuente en cuanto se suelta la última
+   * suscripción, así que la ráfaga de suscripciones simultáneas —cabecera,
+   * guard y pantalla montando en el mismo instante— comparte UNA sola
+   * respuesta. El valor sobrevive entre navegaciones por `sedesResueltas`, no
+   * por el buffer del `shareReplay`.
+   */
+  private sedesEnVuelo$: Observable<BarberiaResumen[]> | null = null;
+
+  /**
+   * Fase 2 · el auto-pick ya tiene un `PATCH /select` en el aire.
+   *
+   * Dos suscriptores simultáneos reciben la MISMA lista y ambos ejecutan
+   * `sincronizarSedeActiva`; sin esta guardia, mientras el backend no contesta
+   * la sede sigue sin estar fijada y se pediría el cambio dos veces.
+   */
+  private seleccionPendienteId: string | null = null;
+
+  /**
+   * Fase 2 · la invitación de cada sede, ya resuelta.
+   *
+   * El bloque «Invitación de la Sede» la pedía en CADA montaje de `/barberias`:
+   * entrar, salir y volver eran tres `GET /shops/:id/invitation` para el mismo
+   * código que no había cambiado. La entrada es por sede porque la invitación
+   * es de la sede, no del usuario, y solo se descarta cuando algo la invalida
+   * (`invalidarSedes`), nunca por tiempo.
+   */
+  private readonly invitacionesResueltas = new Map<string, InvitacionSede>();
+
+  /**
+   * Fase 2 · la invitación EN VUELO por sede, compartida con `shareReplay`.
+   *
+   * Dos montajes simultáneos de la misma pantalla —o el guard y el bloque
+   * montando a la vez— esperan esta misma petición en lugar de abrir dos.
+   */
+  private readonly invitacionesEnVuelo = new Map<string, Observable<InvitacionSede>>();
+
   // Computeds útiles
   readonly tieneBarberiaActiva = computed(() => !!this.barberiaActiva());
   readonly barberiaActivaId = computed(() => this.barberiaActiva()?.id ?? null);
@@ -137,15 +197,13 @@ export class TenantService {
    * el hub y la sede la elige él, en lugar de quedar anclado a la primera de la
    * lista por un `PATCH /select` que nadie pidió.
    */
-  cargarBarberias(opciones: { autoSeleccionar?: boolean } = {}): Observable<BarberiaResumen[]> {
+  cargarBarberias(
+    opciones: { autoSeleccionar?: boolean; forzarRecarga?: boolean } = {},
+  ): Observable<BarberiaResumen[]> {
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.get<any>(this.apiUrl).pipe(
-      map((res) => this.normalizar(res)),
-      switchMap((sedesPorResponsabilidad) =>
-        sedesPorResponsabilidad.length > 0 ? of(sedesPorResponsabilidad) : this.cargarSedesVinculadas(),
-      ),
+    return this.sedesCompartidas(opciones.forzarRecarga === true).pipe(
       tap((barberias: BarberiaResumen[]) => {
         this.barberiasVinculadas.set(barberias);
         this.isLoading.set(false);
@@ -156,6 +214,66 @@ export class TenantService {
         this.error.set(mensajeDeError(err, 'Error al cargar barberías'));
         return of([]);
       }),
+    );
+  }
+
+  /**
+   * Fase 2 · el stream COMPARTIDO del listado de sedes.
+   *
+   * Resuelve en este orden: snapshot en memoria → petición en vuelo → petición
+   * nueva. El `tap` que escribe el snapshot va ANTES del `shareReplay` para que
+   * se ejecute una sola vez por respuesta, mientras que el `tap` de
+   * `cargarBarberias` (que sincroniza la sede activa y las señales) va después,
+   * de modo que cada suscriptor conserve su propio `autoSeleccionar` sin volver
+   * a pedir nada al backend.
+   *
+   * Un fallo NO se cachea: el error se propaga al suscriptor, que decide qué
+   * pintar, y `sedesResueltas` sigue vacío para que el siguiente intento vuelva
+   * a preguntar. Sin esto, una caída puntual de red dejaría la lista vacía en
+   * memoria hasta el recargado de la página.
+   */
+  private sedesCompartidas(forzarRecarga: boolean): Observable<BarberiaResumen[]> {
+    if (forzarRecarga) this.invalidarSedes();
+
+    if (this.sedesResueltas) return of(this.sedesResueltas);
+
+    if (!this.sedesEnVuelo$) {
+      this.sedesEnVuelo$ = this.solicitarSedes().pipe(
+        tap((sedes) => {
+          this.sedesResueltas = sedes;
+        }),
+        shareReplay({ bufferSize: 1, refCount: true }),
+      );
+    }
+
+    return this.sedesEnVuelo$;
+  }
+
+  /**
+   * Fase 2 · descarta la caché en memoria del listado de sedes.
+   *
+   * La llaman los flujos que cambian los vínculos o la propia sede —unirse,
+   * crear, desvincular, editar, cerrar sesión—: el snapshot deja de representar
+   * lo que hay en el backend y la próxima carga debe preguntarlo otra vez.
+   */
+  invalidarSedes(): void {
+    this.sedesResueltas = null;
+    this.sedesEnVuelo$ = null;
+    // Fase 2 · la invitación es un dato de la SEDE: si la sede cambió (edición,
+    // reasignación, cierre de sesión) el código cacheado ya no sirve. Una
+    // petición que ya estaba en el aire puede repoblar el snapshot al llegar;
+    // es el mismo compromiso que asume el listado de sedes.
+    this.invitacionesResueltas.clear();
+    this.invitacionesEnVuelo.clear();
+  }
+
+  /** Las dos rutas de H72 (`/shops` y, si viene vacía, `/mi-estado/barberias`). */
+  private solicitarSedes(): Observable<BarberiaResumen[]> {
+    return this.http.get<any>(this.apiUrl).pipe(
+      map((res) => this.normalizar(res)),
+      switchMap((sedesPorResponsabilidad) =>
+        sedesPorResponsabilidad.length > 0 ? of(sedesPorResponsabilidad) : this.cargarSedesVinculadas(),
+      ),
     );
   }
 
@@ -262,17 +380,45 @@ export class TenantService {
    * El error queda en `error()` con el mensaje del contrato D40 y se propaga: la
    * pantalla del panel decide si muestra el aviso o simplemente deja el bloque
    * sin código.
+   *
+   * Fase 2 · resuelve igual que el listado de sedes: snapshot en memoria →
+   * petición en vuelo → petición nueva. Volver a `/barberias` ya no vuelve a
+   * pedir el mismo código de la misma sede.
    */
-  obtenerInvitacion(barberiaId: string): Observable<InvitacionSede> {
+  obtenerInvitacion(
+    barberiaId: string,
+    opciones: { forzarRecarga?: boolean } = {},
+  ): Observable<InvitacionSede> {
+    if (opciones.forzarRecarga === true) {
+      this.invitacionesResueltas.delete(barberiaId);
+    }
+
+    const cacheada = this.invitacionesResueltas.get(barberiaId);
+    if (cacheada) return of(cacheada);
+
+    const enVuelo = this.invitacionesEnVuelo.get(barberiaId);
+    if (enVuelo) return enVuelo;
+
     this.error.set(null);
-    return this.http.get<InvitacionSede>(`${this.apiUrl}/${barberiaId}/invitation`).pipe(
-      catchError((err) => {
-        this.error.set(
-          mensajeDeError(err, 'No se pudo obtener la invitación de la sede'),
-        );
-        throw err;
-      }),
-    );
+
+    const peticion$ = this.http
+      .get<InvitacionSede>(`${this.apiUrl}/${barberiaId}/invitation`)
+      .pipe(
+        tap((invitacion) => this.invitacionesResueltas.set(barberiaId, invitacion)),
+        catchError((err) => {
+          // Un fallo NO se cachea: el reintento tiene que volver a preguntar.
+          this.invitacionesResueltas.delete(barberiaId);
+          this.error.set(
+            mensajeDeError(err, 'No se pudo obtener la invitación de la sede'),
+          );
+          throw err;
+        }),
+        finalize(() => this.invitacionesEnVuelo.delete(barberiaId)),
+        shareReplay({ bufferSize: 1, refCount: true }),
+      );
+
+    this.invitacionesEnVuelo.set(barberiaId, peticion$);
+    return peticion$;
   }
 
   /**
@@ -291,6 +437,9 @@ export class TenantService {
     return this.http.post<VinculoDeCliente>(this.apiUrlUnirse, puerta).pipe(
       tap(() => {
         this.isLoading.set(false);
+        // Fase 2 · hay un vínculo nuevo: el snapshot se descarta antes de
+        // recargar, o la recarga devolvería la lista anterior sin la sede nueva.
+        this.invalidarSedes();
         this.cargarBarberias().subscribe();
       }),
       catchError((err) => {
@@ -308,7 +457,9 @@ export class TenantService {
     this.isLoading.set(true);
     return this.http.post(this.apiUrl, dto).pipe(
       tap((nuevaBarberia) => {
-        // Recargar la lista y seleccionarla
+        // Recargar la lista y seleccionarla (sin el snapshot anterior, que no
+        // conoce la sede recién creada).
+        this.invalidarSedes();
         this.cargarBarberias().subscribe(() => {
           this.seleccionarBarberia((nuevaBarberia as any).id || (nuevaBarberia as any).data?.id).subscribe({
             // Si el backend rechazara la selección, el mensaje ya queda en
@@ -340,6 +491,8 @@ export class TenantService {
   ): Observable<BarberiaResumen> {
     return this.http.patch<BarberiaResumen>(`${this.apiUrl}/${barberiaId}`, dto).pipe(
       tap((actualizada) => {
+        // Fase 2 · la sede cambió: el snapshot cacheado ya no la representa.
+        this.invalidarSedes();
         this.barberiasVinculadas.update((lista) =>
           lista.map((sede) =>
             sede.id === barberiaId ? { ...sede, ...actualizada, id: sede.id } : sede,
@@ -416,16 +569,27 @@ export class TenantService {
       return;
     }
 
+    // Fase 2 · dos suscriptores de la MISMA respuesta (la cabecera y la
+    // pantalla) llegan aquí a la vez con la sede aún sin fijar: el segundo no
+    // puede pedir un cambio de manos que el primero ya está pidiendo.
+    if (this.seleccionPendienteId) {
+      return;
+    }
+
     // Hallazgo 2 · una sede que PASA a ser activa la decide el backend. Hasta
     // el 200 no hay sede activa (el guard manda al hub de sedes), y un 403/404
     // —un vínculo que ya no opera— o una caída de red no fijan NADA: el
     // mensaje queda en `error()` y la lista de sedes se conserva igual.
+    this.seleccionPendienteId = candidata.id;
     this.pedirSeleccion(candidata.id)
       .pipe(
         tap(() => this.setBarberiaActiva(candidata)),
         catchError((err) => {
           this.error.set(mensajeDeError(err, 'No se pudo seleccionar la sede activa'));
           return of(null);
+        }),
+        finalize(() => {
+          this.seleccionPendienteId = null;
         }),
       )
       .subscribe();
@@ -441,6 +605,9 @@ export class TenantService {
    * inmediatamente posterior elige la siguiente.
    */
   purgarBarberia(barberiaId: string): void {
+    // Fase 2 · el snapshot todavía contiene la sede purgada: la recarga que
+    // sigue al cierre del vínculo tiene que volver a preguntar, no repetirla.
+    this.invalidarSedes();
     this.barberiasVinculadas.update((lista) => lista.filter((b) => b.id !== barberiaId));
 
     if (this.barberiaActivaId() === barberiaId) {
@@ -477,6 +644,8 @@ export class TenantService {
   }
 
   limpiarTenant() {
+    this.invalidarSedes();
+    this.seleccionPendienteId = null;
     this.purgarEstadoLocal();
     this.guardarSedeActiva(null);
     this.barberiasVinculadas.set([]);
