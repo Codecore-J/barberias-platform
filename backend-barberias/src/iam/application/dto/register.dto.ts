@@ -1,4 +1,5 @@
 import { Transform } from 'class-transformer';
+import { PhoneNotRepetitive } from '../../../shared/phone.validator.js';
 import {
   IsEmail,
   IsNotEmpty,
@@ -26,6 +27,7 @@ export class RegisterDto {
    */
   @IsString()
   @IsNotEmpty({ message: 'El teléfono es obligatorio.' })
+  @PhoneNotRepetitive()
   @Matches(/^\d{10}$/, {
     message: 'El teléfono debe tener exactamente 10 dígitos numéricos.',
   })

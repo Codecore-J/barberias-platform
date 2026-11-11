@@ -6,8 +6,8 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
-  Patch,
   Post,
+  Patch,
   Query,
 } from '@nestjs/common';
 import { BarberiaService } from '../application/barberia.service.js';
@@ -74,7 +74,7 @@ export class BarberiaController {
    * Un barbero entra por su rol y un administrador gestiona por panel, así que
    * ninguno necesita un vínculo de cliente.
    */
-  @Roles('CLIENTE')
+  @Roles('CLIENTE', 'ADMINISTRADOR')
   @Post('link')
   vincular(
     @Body() dto: VincularBarberiaDto,

@@ -116,8 +116,8 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
 
     const hash = await bcrypt.hash(PASSWORD, 10);
 
-    const crearUsuario = async (etiqueta: string, telefono: string) =>
-      (
+    const crearUsuario = async (etiqueta: string, telefono: string) => {
+      return (
         await prisma.usuario.create({
           data: {
             telefonoVerificado: true,
@@ -129,14 +129,15 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
           select: { id: true },
         })
       ).id;
+    };
 
     adminGlobalId = await crearUsuario('global', `1${String(sufijo).slice(-9)}`);
     adminSedeAId = await crearUsuario('admin.sede.a', `2${String(sufijo).slice(-9)}`);
     clienteAId = await crearUsuario('cliente.a', `3${String(sufijo).slice(-9)}`);
     clienteBId = await crearUsuario('cliente.b', `4${String(sufijo).slice(-9)}`);
 
-    const crearSede = async (etiqueta: string, codigo: string, enlace: string) =>
-      (
+    const crearSede = async (etiqueta: string, codigo: string, enlace: string) => {
+      return (
         await prisma.barberia.create({
           data: {
             nombre: `Barbería ${etiqueta} ${sufijo}`,
@@ -149,6 +150,7 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
           select: { id: true },
         })
       ).id;
+    };
 
     codigoObjetivoA = `V12A${String(sufijo).slice(-4)}`;
     codigoObjetivoB = `V12B${String(sufijo).slice(-4)}`;
@@ -546,17 +548,21 @@ describe('E3-12 · aprobación de la 6.ª vinculación (D10)', () => {
         anterior: { estadoVinculacion: 'DESVINCULADO' },
         nuevo: { estadoVinculacion: 'PENDIENTE_APROBACION' },
       });
-    });
 
-    it('la plataforma recibe el aviso de que hay algo que aprobar otra vez', async () => {
-      // El aviso es best-effort y en segundo plano: se espera sin inventar tiempos.
-      await vi.waitFor(() =>
-        expect(notificaciones.enviarNotificacion).toHaveBeenCalledWith(
-          expect.objectContaining({
-            usuarioId: adminGlobalId,
-            tipo: 'VINCULACION_PENDIENTE_APROBACION',
-          }),
-        ),
+      // El aviso es best-effort y en segundo plano: se espera sin inventar
+      // tiempos. Se comprueba en ESTE caso porque Vitest limpia los mocks
+      // antes de cada `it`: asertarlo en otro test dependería de cuándo
+      // resolvió la promesa en segundo plano, que es justo lo que no se mide.
+      await vi.waitFor(
+        () => {
+          expect(notificaciones.enviarNotificacion).toHaveBeenCalledWith(
+            expect.objectContaining({
+              usuarioId: adminGlobalId,
+              tipo: 'VINCULACION_PENDIENTE_APROBACION',
+            }),
+          );
+        },
+        { timeout: 5000 },
       );
     });
 

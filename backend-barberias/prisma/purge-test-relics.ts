@@ -74,6 +74,24 @@ const CORREOS_PRUEBA = [
   'admin.e401@test.com',
 ];
 
+/**
+ * Dominios y prefijos con los que las corridas E2E y los seeds de demostración
+ * daban de alta sus cuentas. Se nombran aquí porque la lista fija de teléfonos
+ * de arriba quedó corta: en producción había 51 reliquias con teléfonos de 15
+ * dígitos que no figuraban en ninguna lista, y el CHECK no pudo convalidarse
+ * por ellas (nov-2026).
+ *
+ * Deliberadamente NO se selecciona por «teléfono con formato inválido»: eso
+ * barrería también a clientes reales con el número mal capturado, que necesitan
+ * que alguien corrija el dato, no que se borre la cuenta.
+ */
+const PATRONES_CORREO_PRUEBA = ['@t.com', '@demo.com'];
+const PREFIJOS_CORREO_PRUEBA = ['demo'];
+
+const esCorreoDePrueba = (correo: string): boolean =>
+  PATRONES_CORREO_PRUEBA.some((d) => correo.endsWith(d)) ||
+  PREFIJOS_CORREO_PRUEBA.some((p) => correo.startsWith(p));
+
 const APLICAR = process.argv.includes('--aplicar');
 
 interface ResumenDependencias {
@@ -103,16 +121,30 @@ async function main(): Promise<void> {
         { correo: { contains: '.qa.' } },
         { correo: { in: CORREOS_PRUEBA } },
         { telefono: { in: TELEFONOS_INVALIDOS } },
+        { correo: { endsWith: '@t.com' } },
+        { correo: { endsWith: '@demo.com' } },
+        { correo: { startsWith: 'demo' } },
       ],
     },
     select: { id: true, correo: true, telefono: true },
   });
 
-  const ids = usuariosPrueba.map((u) => u.id);
+  // Red de seguridad: nunca se borra una cuenta que no encaje en los patrones de
+  // prueba, aunque la selección anterior la hubiera arrastrado por otra vía.
+  const excluidas = usuariosPrueba.filter((u) => !esCorreoDePrueba(u.correo) && !CORREOS_PRUEBA.includes(u.correo));
+  if (excluidas.length > 0) {
+    console.log(`\n⚠ Se descartan ${excluidas.length} cuenta(s) que no encajan en los patrones de prueba:`);
+    excluidas.forEach((u) => console.log(`  · ${u.correo}`));
+  }
+  const seleccionFinal = usuariosPrueba.filter(
+    (u) => esCorreoDePrueba(u.correo) || CORREOS_PRUEBA.includes(u.correo),
+  );
+
+  const ids = seleccionFinal.map((u) => u.id);
   const lista = `'{${ids.join(',')}}'::uuid[]`;
 
-  console.log(`\nCuentas seleccionadas: ${usuariosPrueba.length}`);
-  for (const u of usuariosPrueba) {
+  console.log(`\nCuentas seleccionadas: ${seleccionFinal.length}`);
+  for (const u of seleccionFinal) {
     console.log(`  · ${u.telefono}  ${u.correo}`);
   }
 
@@ -183,11 +215,21 @@ async function main(): Promise<void> {
           WHERE creado_por = ANY(${lista})) AS propuestas`,
   );
 
-  if (bloqueos.barberias || bloqueos.reservas || bloqueos.propuestas) {
+  // Las reservas de clientes de prueba en sedes que sobreviven SÍ se borran: son
+  // citas de cuentas ficticias en la agenda de una sede real, no historial
+  // legítimo. Las sedes y las propuestas, en cambio, obligan a mirar a mano.
+  if (bloqueos.barberias || bloqueos.propuestas) {
     throw new Error(
       `Purga abortada: hay referencias en RESTRICT que sobreviven al alcance ` +
-        `(barberias=${bloqueos.barberias}, reservas=${bloqueos.reservas}, ` +
-        `propuestas_horario=${bloqueos.propuestas}). Resuélvelas antes de borrar usuarios.`,
+        `(barberias=${bloqueos.barberias}, propuestas_horario=${bloqueos.propuestas}). ` +
+        `Resuélvelas antes de borrar usuarios.`,
+    );
+  }
+
+  if (bloqueos.reservas > 0) {
+    console.log(
+      `  · ${bloqueos.reservas} reserva(s) de esas cuentas están en sedes que sobreviven ` +
+        `y se eliminarán con ellas (citas de prueba en la agenda de una sede real).`,
     );
   }
 
@@ -208,11 +250,15 @@ async function main(): Promise<void> {
   );
 
   if (!APLICAR) {
+    // Se descuentan las cuentas que la purga eliminaría: el número que importa es
+    // cuántos violadores sobreviven, no cuántos hay ahora.
     const [{ n: violadores }] = await prisma.$queryRawUnsafe<{ n: number }[]>(
-      `SELECT count(*)::int AS n FROM usuarios WHERE telefono !~ '^[0-9]{10}$'`,
+      `SELECT count(*)::int AS n FROM usuarios
+        WHERE telefono !~ '^[0-9]{10}$' AND NOT (id = ANY(${lista}))`,
     );
     const [{ n: sedesGenericas }] = await prisma.$queryRawUnsafe<{ n: number }[]>(
-      `SELECT count(*)::int AS n FROM barberias WHERE telefono = '${TELEFONO_SEDE_E2E}'`,
+      `SELECT count(*)::int AS n FROM barberias
+        WHERE telefono = '${TELEFONO_SEDE_E2E}'${haySedes ? ` AND NOT (id = ANY(${listaSedes}))` : ''}`,
     );
     console.log(`Violadores del CHECK tras una purga de este alcance: ${violadores}.`);
     console.log(`Sedes con teléfono ${TELEFONO_SEDE_E2E} restantes: ${sedesGenericas}.`);
@@ -244,6 +290,14 @@ async function main(): Promise<void> {
       if (propuestas.count > 0) {
         console.log(`  · propuestas de horario eliminadas: ${propuestas.count}`);
       }
+      // Restrict de `reservas.cliente_id`: citas de las cuentas de prueba que
+      // viven en sedes fuera del alcance de la purga.
+      const reservasFuera = await tx.reserva.deleteMany({
+        where: { clienteId: { in: ids }, ...(haySedes ? { barberiaId: { notIn: idsSedes } } : {}) },
+      });
+      if (reservasFuera.count > 0) {
+        console.log(`  · reservas de prueba en sedes que sobreviven: ${reservasFuera.count}`);
+      }
       const borradosRoles = await tx.usuarioRol.deleteMany({ where: { usuarioId: { in: ids } } });
       console.log(`  · roles asociados eliminados: ${borradosRoles.count}`);
       const deleted = await tx.usuario.deleteMany({ where: { id: { in: ids } } });
@@ -261,7 +315,13 @@ async function main(): Promise<void> {
   console.log(`Violadores restantes del CHECK: ${restantes}`);
   console.log(`Sedes con teléfono ${TELEFONO_SEDE_E2E} restantes: ${sedesRestantes}`);
   if (restantes > 0) {
-    throw new Error('Quedan teléfonos inválidos; no se puede validar el constraint todavía.');
+    console.log(
+      `\n⚠ Quedan ${restantes} teléfono(s) inválido(s): son cuentas reales sin residuo de prueba. ` +
+        'El CHECK sigue aplicando a toda escritura nueva, pero no puede convalidarse hasta que ' +
+        'el dueño de cada cuenta corrija su número.',
+    );
+  } else {
+    console.log('\n✅ Ningún teléfono inválido: ya se puede ejecutar VALIDATE CONSTRAINT.');
   }
   if (sedesRestantes > 0) {
     throw new Error('Quedan sedes con el teléfono genérico; revisa responsables no incluidos.');

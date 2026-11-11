@@ -851,7 +851,7 @@ export class BarberiaService {
 
     // BARBERO: se elimina el contacto del payload, no se deja en `undefined`
     // para que no aparezca al serializar.
-    return personal.map(({ correo, telefono, ...resto }) => resto);
+    return personal.map(({ correo: _correo, telefono: _telefono, ...resto }) => resto);
   }
 
   // ── LISTAR (del responsable y del staff asignado por rol) ─────────────────

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { vi } from 'vitest';
 import { BarberiaController } from './barberia.controller.js';

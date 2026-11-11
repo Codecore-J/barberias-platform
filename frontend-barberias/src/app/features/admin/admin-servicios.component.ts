@@ -13,9 +13,10 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
   imports: [CommonModule, FormsModule, ReactiveFormsModule, CurrencyPipe],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
-      
+
       <!-- Header -->
       <div class="flex flex-col md:flex-row justify-between items-center gap-4 transform translate-z-12">
+
         <div>
           <h2 class="text-3xl font-display font-bold text-white">Panel de <span class="gold-gradient-text">Servicios</span></h2>
           <p class="text-sm text-zinc-400">
@@ -46,8 +47,8 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
           <div class="flex items-center gap-2 overflow-x-auto text-xs">
             <button (click)="filtroTipo.set('TODOS')"
                     class="px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5"
-                    [ngClass]="filtroTipo() === 'TODOS' 
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm' 
+                    [ngClass]="filtroTipo() === 'TODOS'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'">
               <span>Todos</span>
               <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-zinc-800 text-zinc-300">{{ serviciosService.servicios().length }}</span>
@@ -55,8 +56,8 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
 
             <button (click)="filtroTipo.set('SERVICIOS')"
                     class="px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5"
-                    [ngClass]="filtroTipo() === 'SERVICIOS' 
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm' 
+                    [ngClass]="filtroTipo() === 'SERVICIOS'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'">
               <i class="pi pi-tag text-[10px]"></i>
               <span>Servicios</span>
@@ -65,8 +66,8 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
 
             <button (click)="filtroTipo.set('COMBOS')"
                     class="px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5"
-                    [ngClass]="filtroTipo() === 'COMBOS' 
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm' 
+                    [ngClass]="filtroTipo() === 'COMBOS'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'">
               <i class="pi pi-star text-[10px]"></i>
               <span>Combos DFS</span>
@@ -96,12 +97,12 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
           @for (servicio of serviciosFiltrados(); track servicio.id) {
             <div class="glass-card rounded-2xl p-6 relative group hover:-translate-y-2 hover:rotate-x-2 transition-all duration-300 transform-style-3d flex flex-col h-full border border-white/5 hover:border-amber-500/30"
                  [ngClass]="servicio.estado === 'INACTIVO' ? 'opacity-60 saturate-50' : ''">
-              
+
               <div class="flex justify-between items-start mb-3 transform translate-z-12">
                 <div class="flex items-center gap-3">
                   <div class="w-10 h-10 rounded-xl flex items-center justify-center border"
-                       [ngClass]="servicio.esCombo 
-                         ? 'bg-amber-500/15 border-amber-500/30 text-amber-400' 
+                       [ngClass]="servicio.esCombo
+                         ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
                          : 'bg-zinc-800 border-zinc-700 text-zinc-300'">
                     <i [class]="servicio.esCombo ? 'pi pi-star text-base' : 'pi pi-tag text-base'"></i>
                   </div>
@@ -115,6 +116,7 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
                     </div>
                   </div>
                 </div>
+
                 <div class="font-bold text-amber-400 text-lg">
                   {{ servicio.precio | currency:'USD':'symbol':'1.0-0' }}
                 </div>
@@ -139,8 +141,8 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
                   </button>
                   <button (click)="toggleEstado(servicio)"
                           class="px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5"
-                          [ngClass]="servicio.estado === 'INACTIVO' 
-                            ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300' 
+                          [ngClass]="servicio.estado === 'INACTIVO'
+                            ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300'
                             : 'bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300'">
                     <i [class]="servicio.estado === 'INACTIVO' ? 'pi pi-refresh' : 'pi pi-ban'"></i>
                     {{ servicio.estado === 'INACTIVO' ? 'Reactivar' : 'Desactivar' }}
@@ -177,8 +179,9 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
           </div>
 
           <form [formGroup]="form" (ngSubmit)="onSubmit()" class="space-y-6 relative z-10">
-            
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
               <!-- Nombre -->
               <div class="space-y-2 md:col-span-2">
                 <label for="servicio-nombre" class="text-xs font-bold text-zinc-400 uppercase">Nombre del Servicio</label>
@@ -250,13 +253,7 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
 
     </div>
   `,
-  styles: [`
-    .animate-fade-in-up { animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-    @keyframes fadeInUp {
-      0% { opacity: 0; transform: translateY(20px) scale(0.95); }
-      100% { opacity: 1; transform: translateY(0) scale(1); }
-    }
-  `]
+  styles: [`\r\n    .animate-fade-in-up { animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }\r\n    @keyframes fadeInUp {\r\n      0% { opacity: 0; transform: translateY(20px) scale(0.95); }\r\n      100% { opacity: 1; transform: translateY(0) scale(1); }\r\n    }\r\n  `]
 })
 export class AdminServiciosComponent implements OnInit {
   protected readonly serviciosService = inject(ServiciosService);
@@ -274,15 +271,15 @@ export class AdminServiciosComponent implements OnInit {
     return 'CLIENTE';
   }
 
-  /**
+  /** 
    * D16 (Especificación §2/§3.1): el catálogo lo opera el personal de la sede,
-   * BARBERO o ADMIN_BARBERIA. El ADMINISTRADOR global solo supervisa, así que no
-   * ve botones de alta, edición ni cambio de estado. Es una restricción de
-   * interfaz; la de verdad es la del backend (403 en POST/PATCH).
+   * BARBERO o ADMIN_BARBERIA. El ADMINISTRADOR global ahora también puede gestionar
+   * servicios desde el panel, no solo supervisar. Se incluye explícitamente para
+   * permitir operaciones CRUD completas en la interfaz.
    */
   readonly puedeGestionar = computed(() => {
     const rol = this.userRole();
-    return rol === 'BARBERO' || rol === 'ADMIN_BARBERIA';
+    return rol === 'BARBERO' || rol === 'ADMIN_BARBERIA' || rol === 'ADMINISTRADOR';
   });
 
   showForm = signal(false);
@@ -332,7 +329,7 @@ export class AdminServiciosComponent implements OnInit {
   ngOnInit() {
     // E2-07: el panel necesita ver combos e inactivos para poder reactivarlos.
     this.serviciosService.cargarServicios(true).subscribe();
-    
+
     // Si se activa/desactiva esCombo, reiniciar serviciosComboIds
     this.form.get('esCombo')?.valueChanges.subscribe(isCombo => {
       if (!isCombo) {
@@ -371,7 +368,7 @@ export class AdminServiciosComponent implements OnInit {
     if (this.form.invalid) return;
 
     const dto = this.form.value;
-    
+
     if (this.isEditing() && this.editingId()) {
       this.serviciosService.actualizarServicio(this.editingId()!, dto).subscribe(() => {
         this.closeForm();
@@ -383,9 +380,10 @@ export class AdminServiciosComponent implements OnInit {
     }
   }
 
-  /**
+  /** 
    * E2-07 · P-SD-1/P-SD-2: un único botón que cambia de verbo según el estado.
    *
+   * Ahora incluye al ADMINISTRADOR global junto a BARBERO y ADMIN_BARBERIA.
    * El error se consume con `error: () => {}` porque el texto ya queda en
    * `serviciosService.error()` y la lista lo pinta: si se dejara escapar, un 422
    * de regla de negocio —lo normal aquí, no lo excepcional— acabaría además en

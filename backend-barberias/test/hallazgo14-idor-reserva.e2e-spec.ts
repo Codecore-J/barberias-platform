@@ -176,7 +176,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     });
 
     // Vincular y dar rol CLIENTE a Cliente A y B
-    const rolCliente = await prisma.rol.findFirst({ where: { nombre: 'CLIENTE' } });
+    const _rolCliente = await prisma.rol.findFirst({ where: { nombre: 'CLIENTE' } });
     
     // Vincular usa vincular() para hacerlo limpiamente en vez de prisma.usuarioRol
     await request(app.getHttpServer()).post('/api/v1/shops/link')

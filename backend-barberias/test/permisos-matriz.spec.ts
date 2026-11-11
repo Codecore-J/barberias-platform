@@ -105,7 +105,7 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // resuelve la sede del parámetro y la política es la lista plana: el
   // ADMINISTRADOR global (decisión 4).
   'PATCH /shops/:shopId/status': [ROL_ADMINISTRADOR],
-  'POST /shops/link': [ROL_CLIENTE],
+  'POST /shops/link': [ROL_CLIENTE, ROL_ADMINISTRADOR],
   // E3-12/2 (2026-10-17): la invitación de la sede (regla 1.10). La ruta usa
   // `:id`, así que el guard NO resuelve la sede del parámetro y la política es
   // la lista plana del decorador: la pertenencia la exige

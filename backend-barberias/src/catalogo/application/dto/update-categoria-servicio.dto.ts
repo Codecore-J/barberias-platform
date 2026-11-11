@@ -1,4 +1,5 @@
-import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { BooleanoEstricto } from '../../../shared/booleano-estricto.decorator.js';
 
 /**
  * V3 · edición de una categoría de la sede.
@@ -19,7 +20,7 @@ export class UpdateCategoriaServicioDto {
   @MaxLength(500, { message: 'La descripción no puede superar los 500 caracteres.' })
   descripcion?: string;
 
-  @IsBoolean()
+  @BooleanoEstricto()
   @IsOptional()
   activa?: boolean;
 }

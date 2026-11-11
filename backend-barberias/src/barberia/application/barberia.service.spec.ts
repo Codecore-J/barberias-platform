@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { vi } from 'vitest';
 import * as bcrypt from 'bcrypt';
@@ -385,7 +386,7 @@ describe('BarberiaService', () => {
         'usuario-ganador',
         'usuario-ganador',
       ]);
-      expect([primera.reutilizado, segunda.reutilizado].sort()).toEqual([
+      expect([primera.reutilizado, segunda.reutilizado].sort((a, b) => a - b)).toEqual([
         false,
         true,
       ]);

@@ -93,7 +93,7 @@ describe('ResendEmailProvider (Fase 7)', () => {
 
     await new ResendEmailProvider({ apiKey: 're_abc' }).enviar(MENSAJE);
 
-    expect(cuerpoEnviado().from).toBe('onboarding@resend.com');
+    expect(cuerpoEnviado().from).toBe('onboarding@resend.dev');
   });
 
   it('escapa el HTML del contenido: un cuerpo malicioso no se convierte en etiqueta', async () => {

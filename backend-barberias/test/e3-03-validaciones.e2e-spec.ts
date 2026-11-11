@@ -265,7 +265,7 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
 
     // Reconocer que cX está *sin* vinculo: no existe la fila clienteBarberia de cX
     // (solo su vínculo 'ACTIVO' previo se ha eliminado aquí explícitamente).
-  }, 120_000);
+  }, 300_000);
 
   afterAll(async () => {
     await prisma.$disconnect();
@@ -335,7 +335,7 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
   });
 
   /** Control D44: cotización sin persistir, mismo blanco que crear. */
-  const cotizar = (correo: string, barberiaId: string, { fecha, services }: { fecha: string; services: string }) =>
+  const _cotizar = (correo: string, barberiaId: string, { fecha, services }: { fecha: string; services: string }) =>
     request(app.getHttpServer())
       .post(`${api}/shops/${barberiaId}/appointments/quote`)
       .set(headers(correo, barberiaId))

@@ -1,4 +1,5 @@
 import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { PhoneNotRepetitive } from '../../../shared/phone.validator.js';
 
 /**
  * E3-13 · edición directa de la sede (D26/D27).
@@ -26,6 +27,7 @@ export class UpdateBarberiaDto {
   /** Mismo formato que el alta: 10 dígitos, sin separadores. */
   @IsString()
   @IsOptional()
+  @PhoneNotRepetitive()
   @Matches(/^\d{10}$/, {
     message: 'El teléfono debe tener exactamente 10 dígitos numéricos.',
   })

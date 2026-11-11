@@ -70,8 +70,11 @@ jobs:
       # "workspaces": ["backend-barberias", "frontend-barberias"], asi que
       # instala ambos proyectos de una vez. Sustituye a los dos `npm ci`
       # separados, que se pisaban entre si sobre el node_modules compartido.
+      - name: Upgrade npm (Arborist edgesOut workaround)
+        run: npm install -g npm@11
+
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       # El "postinstall" del backend es "prisma skills sync", que no genera el
       # cliente. Sin este paso, `nest build` falla con 58 errores TS2694 y los

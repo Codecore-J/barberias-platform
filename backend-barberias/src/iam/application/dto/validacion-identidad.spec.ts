@@ -91,6 +91,36 @@ describe('validación de teléfono y cédula', () => {
       const fallos = erroresEn(errores, 'telefono');
       expect(fallos.matches ?? fallos.isNotEmpty).toBeDefined();
     });
+
+    /**
+     * Comportamiento verificado en vivo contra producción (nov-2026): un cliente
+     * que mande el teléfono como número JSON recibe la conversión a texto que
+     * aplica `enableImplicitConversion: true` en el `ValidationPipe` global, y
+     * el valor resultante se sigue midiendo contra la regla de 10 dígitos.
+     *
+     * No es un hueco —8, 9 y 13 dígitos rebotan igual— pero sí una sorpresa:
+     * `@IsString` no llega a rechazar el número. Este test fija el contrato para
+     * que un cambio futuro en el `ValidationPipe` no lo altere en silencio.
+     */
+    /**
+     * Tipo del teléfono: el DTO exige texto.
+     *
+     * Medido en vivo contra producción (nov-2026): un cliente que mande
+     * `{"telefono": 8095550199}` recibe la conversión a texto que aplica
+     * `enableImplicitConversion: true` en el `ValidationPipe` global, así que ese
+     * valor concreto (10 dígitos) pasa el filtro y muere después en el índice
+     * único con 409. Números de 8, 9 y 13 dígitos sí devuelven 400.
+     *
+     * Esa conversión no se puede reproducir aquí: vitest compila con esbuild, que
+     * no emite los metadatos `design:type` que class-transformer necesita. Lo que
+     * este bloque fija es la regla del DTO —texto obligatorio—, que es la que
+     * sigue vigente si algún día se apaga la conversión implícita.
+     */
+    it('rechaza el teléfono numérico: el DTO exige texto', async () => {
+      const errores = await erroresDe(RegisterDto, { ...baseRegistro, telefono: 8095550199 });
+      const fallos = erroresEn(errores, 'telefono');
+      expect(fallos.isString ?? fallos.matches).toBeDefined();
+    });
   });
 
   describe('CrearUsuarioPlataformaDto (alta desde /admin/usuarios)', () => {

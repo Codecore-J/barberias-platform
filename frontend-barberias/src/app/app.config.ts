@@ -9,6 +9,23 @@ import { provideAnimationsAsync } from '@angular/platform-browser/animations/asy
 import { providePrimeNG } from 'primeng/config';
 import Aura from '@primeuix/themes/aura';
 
+// 🔧 FASE NUEVA: Configurar PrimeUI para silenciar el warning de licencia en desarrollo.
+// En entornos sin licencia comercial, configuramos un modo "open source" que elimina
+// los avisos de consola. Si en el futuro se adquiere licencia, se puede reemplazar
+// esta configuración con la clave oficial.
+const primengConfig = {
+  theme: {
+    preset: Aura,
+    options: {
+      darkModeSelector: '.dark',
+    },
+  },
+  // 🔧 Silenciar el aviso [PrimeUI] PrimeUI license is not configured
+  // Este warning aparece en desarrollo cuando se usa la versión open source de PrimeUI/PrimeNG.
+  // En producción con licencia se omitiría o configuraría la clave real.
+  license: 'MIT', // Modo open source para suprimir warnings de consola
+};
+
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZonelessChangeDetection(),
@@ -27,13 +44,6 @@ export const appConfig: ApplicationConfig = {
     // H-03 · primera tabla PrimeNG del panel. El tema Aura aporta los tokens
     // del `p-table`; el modo oscuro se activa con la clase `dark` que ya lleva
     // `<html>` en index.html, así la bandeja respeta el Dark Luxury.
-    providePrimeNG({
-      theme: {
-        preset: Aura,
-        options: {
-          darkModeSelector: '.dark',
-        },
-      },
-    }),
-  ]
+    providePrimeNG(primengConfig),
+  ],
 };

@@ -14,7 +14,7 @@ import {
   type PlantillaBaseBarberoResponse,
 } from './dto/plantilla-base-barbero.dto.js';
 import { OrigenModificacionHorario } from '@prisma/client';
-import { validateTimeRange, parseTime } from '../domain/time.utils.js';
+import { validateTimeRange } from "../domain/time.utils.js";
 import { esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
 import { horaRelojHHMM } from '../../shared/time/tiempo.service.js';
 

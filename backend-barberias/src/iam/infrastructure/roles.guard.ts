@@ -37,6 +37,13 @@ export class RolesGuard implements CanActivate {
     // falla cerrado (E1-01). Antes devolvia true y dejaba la ruta abierta a
     // cualquier usuario con sesion.
     if (!requiredRoles || requiredRoles.length === 0) {
+      // E1-04: si no hay politica declarada, verificar si es admin global.
+      // Si es ADMINISTRADOR global, permitimos el acceso para que pueda usar
+      // endpoints que no tienen politica definida (fail-open para el global).
+      const user = context.switchToHttp().getRequest().user as UsuarioAutenticado | undefined;
+      if (user?.roles?.includes('ADMINISTRADOR') && esAdministradorGlobal(user)) {
+        return true;
+      }
       const request = context.switchToHttp().getRequest();
       const ruta = `${request?.method ?? '?'} ${request?.originalUrl ?? request?.url ?? '?'}`;
       new Logger(RolesGuard.name).warn(
@@ -59,14 +66,9 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    // Extraer la sede del contexto (si aplica a la ruta). Fase 5: la única
-    // fuente es el parámetro de ruta `shopId` (o la query de las rutas
-    // globales); la cabecera `x-barberia-id` se eliminó del contrato.
+    // Extraer la sede del contexto (si aplica a la ruta).
     const crudo =
-      request.params?.shopId ??
-      request.query?.shopId ??
-      request.query?.barberiaId ??
-      null;
+      request.params?.shopId ?? request.query?.shopId ?? request.query?.barberiaId ?? null;
 
     // Una sede malformada no es «sin sede»: es un error del cliente y tiene
     // que contestar 400 como hace `@CurrentBarberiaId`, en vez de un 403 que

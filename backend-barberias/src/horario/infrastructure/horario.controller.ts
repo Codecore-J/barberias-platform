@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Patch, Query, ParseUUIDPipe, ParseArrayPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, ParseUUIDPipe, ParseArrayPipe } from '@nestjs/common';
 import { HorarioService } from '../application/horario.service.js';
 import { CreateHorarioDto } from '../application/dto/create-horario.dto.js';
 import { CreateExcepcionHorarioDto } from '../application/dto/create-excepcion-horario.dto.js';
