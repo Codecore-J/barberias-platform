@@ -1,10 +1,11 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { mensajeDeError } from '../utils/error-message.js';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, catchError, of } from 'rxjs';
+import { Observable, tap, catchError, of, throwError } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { API_URL } from '../constants/api.constants';
 import { TenantService } from './tenant.service';
+import { SIN_SEDE_ACTIVA } from '../utils/sin-sede';
 
 /**
  * H68 · el recibo de un cobro tal como lo sirve
@@ -43,9 +44,16 @@ export class PagosService {
     this.tenant.registrarPurgadorLocal(() => this.limpiarEstadoLocal());
   }
 
-  /** Fase 5: la sede vive en la ruta (`/shops/:shopId/payments`). */
-  private get pagosUrl(): string {
-    return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/payments`;
+  /**
+   * Fase 5: la sede vive en la ruta (`/shops/:shopId/payments`).
+   *
+   * Sin sede activa no se construye la URL: interpolar `null` producía
+   * `/shops/null/payments/...`. El panel de inicio pide el historial a cualquier
+   * ADMINISTRADOR, y un global recién sembrado puede no tener sede elegida.
+   */
+  private pagosUrl(): string | null {
+    const shopId = this.tenant.barberiaActivaId();
+    return shopId ? `${API_URL}/shops/${shopId}/payments` : null;
   }
 
   readonly isLoading = signal<boolean>(false);
@@ -67,11 +75,18 @@ export class PagosService {
    * viaja en la RUTA (`/shops/:shopId/payments/history`), no en una cabecera.
    */
   obtenerHistorial(page = 1, pageSize = 50): Observable<PagoHistorial[]> {
+    const url = this.pagosUrl();
+    if (!url) {
+      this.isLoading.set(false);
+      this.error.set(SIN_SEDE_ACTIVA);
+      return of([]);
+    }
+
     this.isLoading.set(true);
     this.error.set(null);
 
     return this.http
-      .get<any>(`${this.pagosUrl}/history?page=${page}&pageSize=${pageSize}`)
+      .get<any>(`${url}/history?page=${page}&pageSize=${pageSize}`)
       .pipe(
         map(res => res.data || []),
         tap((data) => {
@@ -94,7 +109,12 @@ export class PagosService {
    * sede puede anular; el backend responde 403 si quien lo intenta es un barbero.
    */
   anularPago(pagoId: string, motivo: string): Observable<any> {
-    return this.http.post<any>(`${this.pagosUrl}/${pagoId}/void`, { motivo });
+    const url = this.pagosUrl();
+    if (!url) {
+      this.error.set(SIN_SEDE_ACTIVA);
+      return throwError(() => new Error(SIN_SEDE_ACTIVA));
+    }
+    return this.http.post<any>(`${url}/${pagoId}/void`, { motivo });
   }
 
   /**

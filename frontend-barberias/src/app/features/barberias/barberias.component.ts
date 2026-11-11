@@ -895,6 +895,9 @@ export class BarberiasComponent implements OnInit {
         this.sedeEnEdicion.set(null);
         this.originalEdicion.set(null);
         this.avisar(`Sede actualizada: ${actualizada?.nombre ?? sede.nombre}.`);
+        // Fase 2 · la invitación está cacheada por sede: tras editar hay que
+        // volver a pedirla para no seguir pintando el nombre anterior.
+        this.cargarInvitacion();
       },
       error: (err) => {
         // El modal se queda abierto con lo escrito: el mensaje de negocio (422

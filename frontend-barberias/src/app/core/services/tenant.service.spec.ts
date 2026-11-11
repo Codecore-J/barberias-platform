@@ -321,6 +321,139 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
     });
   });
 
+  /**
+   * Fase 2 · la invitación se pedía en CADA montaje de `/barberias`: entrar,
+   * salir y volver a entrar a la pantalla eran tres `GET /shops/:id/invitation`
+   * para el mismo dato —el código y el enlace de una sede que no ha cambiado—.
+   * No es una ruta que cambie sola: solo la altera el backend cuando la sede se
+   * edita o se reasigna, así que el snapshot se descarta por invalidación
+   * explícita, igual que el listado de sedes.
+   */
+  describe('Fase 2 · caché de la invitación de sede', () => {
+    const INVITACION = {
+      barberiaId: 'b1',
+      nombre: 'Sede b1',
+      codigoAcceso: 'ABC12345',
+      enlaceUnico: 'sede-b1-ab12',
+    };
+    const INVITACION_URL = `${RESPONSABILIDAD_URL}/b1/invitation`;
+
+    it('la segunda petición de la MISMA sede no vuelve a golpear el backend', () => {
+      let primera: any = null;
+      service.obtenerInvitacion('b1').subscribe((inv) => (primera = inv));
+      http.expectOne(INVITACION_URL).flush(INVITACION);
+
+      let segunda: any = null;
+      service.obtenerInvitacion('b1').subscribe((inv) => (segunda = inv));
+      http.expectNone(INVITACION_URL);
+
+      expect(primera).toMatchObject({ codigoAcceso: 'ABC12345' });
+      expect(segunda).toBe(primera);
+    });
+
+    it('dos suscripciones simultáneas comparten UNA sola petición', () => {
+      const recibidas: any[] = [];
+      service.obtenerInvitacion('b1').subscribe((inv) => recibidas.push(inv));
+      service.obtenerInvitacion('b1').subscribe((inv) => recibidas.push(inv));
+
+      // Una única petición en vuelo para las dos suscripciones.
+      http.expectOne(INVITACION_URL).flush(INVITACION);
+
+      expect(recibidas.length).toBe(2);
+      expect(recibidas[1]).toBe(recibidas[0]);
+    });
+
+    it('un 403 NO se cachea: el siguiente intento vuelve a preguntar', () => {
+      let fallo: any = null;
+      service.obtenerInvitacion('b1').subscribe({ error: (err) => (fallo = err) });
+      http
+        .expectOne(INVITACION_URL)
+        .flush(
+          { statusCode: 403, codigo: 'SIN_PERMISO', mensaje: 'Solo el ADMIN_BARBERIA ve su invitación.' },
+          { status: 403, statusText: 'Forbidden' },
+        );
+      expect(fallo).not.toBeNull();
+
+      // Sin caché del fallo, el reintento es una petición nueva.
+      service.obtenerInvitacion('b1').subscribe();
+      http.expectOne(INVITACION_URL).flush(INVITACION);
+    });
+
+    it('cada sede tiene su propia entrada, y `invalidarSedes()` las descarta', () => {
+      service.obtenerInvitacion('b1').subscribe();
+      http.expectOne(INVITACION_URL).flush(INVITACION);
+
+      service.obtenerInvitacion('b2').subscribe();
+      http
+        .expectOne(`${RESPONSABILIDAD_URL}/b2/invitation`)
+        .flush({ ...INVITACION, barberiaId: 'b2' });
+
+      // La sede cambió (edición, reasignación, cierre de sesión): el snapshot miente.
+      service.invalidarSedes();
+
+      service.obtenerInvitacion('b1').subscribe();
+      http.expectOne(INVITACION_URL).flush(INVITACION);
+    });
+  });
+
+  /**
+   * Fase 2b · invalidar mientras la respuesta viaja.
+   *
+   * `invalidarSedes()` se dispara por acciones que CAMBIAN la sede (editar,
+   * reasignar, cerrar sesión) y puede ejecutarse con una petición ya en el aire.
+   * El snapshot se escribe en el `tap` que corre al LLEGAR la respuesta, así que
+   * sin un contador de generación esa respuesta vieja repuebla la caché y el
+   * siguiente consumidor recibe datos anteriores a la invalidación.
+   *
+   * Lo que se fija aquí: la respuesta que llega tarde NO se cachea, pero sí se
+   * entrega al suscriptor que ya la estaba esperando (a él no se le deja colgado).
+   */
+  describe('Fase 2b · invalidación durante el vuelo', () => {
+    const INVITACION = {
+      barberiaId: 'b1',
+      nombre: 'Sede b1',
+      codigoAcceso: 'ABC12345',
+      enlaceUnico: 'sede-b1-ab12',
+    };
+    const INVITACION_URL = `${RESPONSABILIDAD_URL}/b1/invitation`;
+
+    it('una respuesta de /shops que llega tras invalidarSedes() NO repuebla el snapshot', () => {
+      service.cargarBarberias({ autoSeleccionar: false }).subscribe();
+      const enVuelo = http.expectOne(RESPONSABILIDAD_URL);
+
+      // La sede cambia mientras la petición viaja.
+      service.invalidarSedes();
+      enVuelo.flush([sede('b1')]);
+
+      // La siguiente carga tiene que preguntar otra vez: lo cacheado ya no vale.
+      service.cargarBarberias({ autoSeleccionar: false }).subscribe();
+      http.expectOne(RESPONSABILIDAD_URL).flush([sede('b1')]);
+    });
+
+    it('una invitación que llega tras invalidarSedes() NO repuebla la caché', () => {
+      service.obtenerInvitacion('b1').subscribe();
+      const enVuelo = http.expectOne(INVITACION_URL);
+
+      service.invalidarSedes();
+      enVuelo.flush(INVITACION);
+
+      service.obtenerInvitacion('b1').subscribe();
+      http.expectOne(INVITACION_URL).flush(INVITACION);
+    });
+
+    it('el suscriptor que ya esperaba SÍ recibe la respuesta aunque la caché se invalide', () => {
+      let recibidas: BarberiaResumen[] | null = null;
+      service.cargarBarberias({ autoSeleccionar: false }).subscribe((sedes) => (recibidas = sedes));
+
+      const enVuelo = http.expectOne(RESPONSABILIDAD_URL);
+      service.invalidarSedes();
+      enVuelo.flush([sede('b1')]);
+
+      expect(recibidas).not.toBeNull();
+      expect(recibidas!.length).toBe(1);
+    });
+  });
+
   describe('unirsePorInvitacion', () => {
     it('manda el código de acceso a POST /mi-estado/unirse', () => {
       service.unirsePorInvitacion({ codigoAcceso: 'ABC12345' }).subscribe();
@@ -399,6 +532,61 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
       expect(service.error()).toBe('Barbería no encontrada o inactiva.');
       expect(service.isLoading()).toBe(false);
       http.expectNone(RESPONSABILIDAD_URL);
+    });
+  });
+
+  // ── Fase 2 · el listado se pide UNA vez, no una por navegación ────────────
+
+  describe('caché en memoria del listado de sedes', () => {
+    it('las suscripciones simultáneas comparten una sola petición HTTP', () => {
+      const recibidas: number[] = [];
+
+      service.cargarBarberias({ autoSeleccionar: false }).subscribe((sedes) => recibidas.push(sedes.length));
+      service.cargarBarberias({ autoSeleccionar: false }).subscribe((sedes) => recibidas.push(sedes.length));
+
+      // Una única llamada para las dos suscripciones (cabecera y pantalla).
+      http.expectOne(RESPONSABILIDAD_URL).flush([sede('b1'), sede('b2')]);
+      http.expectNone(VINCULO_URL);
+
+      expect(recibidas).toEqual([2, 2]);
+    });
+
+    it('una segunda carga devuelve el snapshot sin volver a preguntar al backend', () => {
+      service.cargarBarberias({ autoSeleccionar: false }).subscribe();
+      http.expectOne(RESPONSABILIDAD_URL).flush([sede('b1')]);
+
+      let segunda: BarberiaResumen[] = [];
+      service.cargarBarberias({ autoSeleccionar: false }).subscribe((sedes) => (segunda = sedes));
+
+      http.expectNone(RESPONSABILIDAD_URL);
+      http.expectNone(VINCULO_URL);
+      expect(segunda.map((b) => b.id)).toEqual(['b1']);
+      expect(service.barberiasVinculadas().map((b) => b.id)).toEqual(['b1']);
+    });
+
+    it('un fallo de red NO se cachea: la siguiente carga vuelve a intentarlo', () => {
+      service.cargarBarberias({ autoSeleccionar: false }).subscribe();
+      http
+        .expectOne(RESPONSABILIDAD_URL)
+        .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
+      expect(service.error()).toBe('boom');
+
+      service.cargarBarberias({ autoSeleccionar: false }).subscribe();
+      http.expectOne(RESPONSABILIDAD_URL).flush([sede('b1')]);
+
+      expect(service.barberiasVinculadas().map((b) => b.id)).toEqual(['b1']);
+    });
+
+    it('invalidarSedes descarta el snapshot para que el flujo siguiente vea los cambios', () => {
+      service.cargarBarberias({ autoSeleccionar: false }).subscribe();
+      http.expectOne(RESPONSABILIDAD_URL).flush([sede('b1')]);
+
+      service.invalidarSedes();
+
+      service.cargarBarberias({ autoSeleccionar: false }).subscribe();
+      http.expectOne(RESPONSABILIDAD_URL).flush([sede('b1'), sede('b2')]);
+
+      expect(service.barberiasVinculadas().map((b) => b.id)).toEqual(['b1', 'b2']);
     });
   });
 });
