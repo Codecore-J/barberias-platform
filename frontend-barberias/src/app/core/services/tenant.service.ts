@@ -156,6 +156,18 @@ export class TenantService {
    */
   private readonly invitacionesEnVuelo = new Map<string, Observable<InvitacionSede>>();
 
+  /**
+   * Fase 2b · la generación de los datos de sede.
+   *
+   * El snapshot se escribe cuando LLEGA la respuesta, y una invalidación puede
+   * ocurrir con la petición en el aire: sin este contador, esa respuesta vieja
+   * repuebla la caché y el siguiente consumidor recibe datos anteriores al
+   * cambio. Cada petición anota la generación con la que salió y solo escribe
+   * si sigue siendo la vigente; al suscriptor se le entrega igual, así que a
+   * nadie se le deja colgado.
+   */
+  private generacion = 0;
+
   // Computeds útiles
   readonly tieneBarberiaActiva = computed(() => !!this.barberiaActiva());
   readonly barberiaActivaId = computed(() => this.barberiaActiva()?.id ?? null);
@@ -238,9 +250,12 @@ export class TenantService {
     if (this.sedesResueltas) return of(this.sedesResueltas);
 
     if (!this.sedesEnVuelo$) {
+      const generacionAlPedir = this.generacion;
       this.sedesEnVuelo$ = this.solicitarSedes().pipe(
         tap((sedes) => {
-          this.sedesResueltas = sedes;
+          // Fase 2b · si la invalidación llegó mientras la respuesta viajaba,
+          // se entrega al suscriptor pero NO se cachea.
+          if (this.generacion === generacionAlPedir) this.sedesResueltas = sedes;
         }),
         shareReplay({ bufferSize: 1, refCount: true }),
       );
@@ -257,6 +272,9 @@ export class TenantService {
    * lo que hay en el backend y la próxima carga debe preguntarlo otra vez.
    */
   invalidarSedes(): void {
+    // Fase 2b · las peticiones que ya salieron quedan marcadas como obsoletas:
+    // podrán entregarse a quien las espera, pero no escribir la caché.
+    this.generacion += 1;
     this.sedesResueltas = null;
     this.sedesEnVuelo$ = null;
     // Fase 2 · la invitación es un dato de la SEDE: si la sede cambió (edición,
@@ -401,10 +419,17 @@ export class TenantService {
 
     this.error.set(null);
 
+    const generacionAlPedir = this.generacion;
+
     const peticion$ = this.http
       .get<InvitacionSede>(`${this.apiUrl}/${barberiaId}/invitation`)
       .pipe(
-        tap((invitacion) => this.invitacionesResueltas.set(barberiaId, invitacion)),
+        tap((invitacion) => {
+          // Fase 2b · misma regla que el listado: respuesta vieja, caché intacta.
+          if (this.generacion === generacionAlPedir) {
+            this.invitacionesResueltas.set(barberiaId, invitacion);
+          }
+        }),
         catchError((err) => {
           // Un fallo NO se cachea: el reintento tiene que volver a preguntar.
           this.invitacionesResueltas.delete(barberiaId);

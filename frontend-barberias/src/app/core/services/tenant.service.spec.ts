@@ -396,6 +396,64 @@ describe('TenantService · la sede activa sigue a los vínculos (H74)', () => {
     });
   });
 
+  /**
+   * Fase 2b · invalidar mientras la respuesta viaja.
+   *
+   * `invalidarSedes()` se dispara por acciones que CAMBIAN la sede (editar,
+   * reasignar, cerrar sesión) y puede ejecutarse con una petición ya en el aire.
+   * El snapshot se escribe en el `tap` que corre al LLEGAR la respuesta, así que
+   * sin un contador de generación esa respuesta vieja repuebla la caché y el
+   * siguiente consumidor recibe datos anteriores a la invalidación.
+   *
+   * Lo que se fija aquí: la respuesta que llega tarde NO se cachea, pero sí se
+   * entrega al suscriptor que ya la estaba esperando (a él no se le deja colgado).
+   */
+  describe('Fase 2b · invalidación durante el vuelo', () => {
+    const INVITACION = {
+      barberiaId: 'b1',
+      nombre: 'Sede b1',
+      codigoAcceso: 'ABC12345',
+      enlaceUnico: 'sede-b1-ab12',
+    };
+    const INVITACION_URL = `${RESPONSABILIDAD_URL}/b1/invitation`;
+
+    it('una respuesta de /shops que llega tras invalidarSedes() NO repuebla el snapshot', () => {
+      service.cargarBarberias({ autoSeleccionar: false }).subscribe();
+      const enVuelo = http.expectOne(RESPONSABILIDAD_URL);
+
+      // La sede cambia mientras la petición viaja.
+      service.invalidarSedes();
+      enVuelo.flush([sede('b1')]);
+
+      // La siguiente carga tiene que preguntar otra vez: lo cacheado ya no vale.
+      service.cargarBarberias({ autoSeleccionar: false }).subscribe();
+      http.expectOne(RESPONSABILIDAD_URL).flush([sede('b1')]);
+    });
+
+    it('una invitación que llega tras invalidarSedes() NO repuebla la caché', () => {
+      service.obtenerInvitacion('b1').subscribe();
+      const enVuelo = http.expectOne(INVITACION_URL);
+
+      service.invalidarSedes();
+      enVuelo.flush(INVITACION);
+
+      service.obtenerInvitacion('b1').subscribe();
+      http.expectOne(INVITACION_URL).flush(INVITACION);
+    });
+
+    it('el suscriptor que ya esperaba SÍ recibe la respuesta aunque la caché se invalide', () => {
+      let recibidas: BarberiaResumen[] | null = null;
+      service.cargarBarberias({ autoSeleccionar: false }).subscribe((sedes) => (recibidas = sedes));
+
+      const enVuelo = http.expectOne(RESPONSABILIDAD_URL);
+      service.invalidarSedes();
+      enVuelo.flush([sede('b1')]);
+
+      expect(recibidas).not.toBeNull();
+      expect(recibidas!.length).toBe(1);
+    });
+  });
+
   describe('unirsePorInvitacion', () => {
     it('manda el código de acceso a POST /mi-estado/unirse', () => {
       service.unirsePorInvitacion({ codigoAcceso: 'ABC12345' }).subscribe();
