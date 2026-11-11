@@ -1,9 +1,10 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, catchError, tap, throwError } from 'rxjs';
+import { Observable, catchError, of, tap, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 import { mensajeDeError } from '../utils/error-message.js';
 import { TenantService } from './tenant.service.js';
+import { SIN_SEDE_ACTIVA } from '../utils/sin-sede.js';
 
 /**
  * H-03 · bandeja de propuestas de horario.
@@ -73,17 +74,26 @@ export class PropuestasHorarioService {
     this.procesandoId.set(null);
   }
 
-  private get appointmentsUrl(): string {
-    return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/appointments`;
+  /** Sin sede activa no se construye la URL (`/shops/null/...`). */
+  private appointmentsUrl(shopId: string): string {
+    return `${API_URL}/shops/${shopId}/appointments`;
   }
 
   /** `GET /shops/:shopId/appointments/proposals/pending`. */
   cargar(): Observable<PropuestaHorarioPendiente[]> {
+    const shopId = this.tenant.barberiaActivaId();
+    if (!shopId) {
+      this.propuestas.set([]);
+      this.isLoading.set(false);
+      this.error.set(null);
+      return of([]);
+    }
+
     this.isLoading.set(true);
     this.error.set(null);
 
     return this.http
-      .get<PropuestaHorarioPendiente[]>(`${this.appointmentsUrl}/proposals/pending`)
+      .get<PropuestaHorarioPendiente[]>(`${this.appointmentsUrl(shopId)}/proposals/pending`)
       .pipe(
         tap((filas) => {
           this.propuestas.set(Array.isArray(filas) ? filas : []);
@@ -116,11 +126,18 @@ export class PropuestasHorarioService {
     propuesta: PropuestaHorarioPendiente,
     accion: 'accept' | 'reject',
   ): Observable<unknown> {
+    const shopId = this.tenant.barberiaActivaId();
+    if (!shopId) {
+      this.procesandoId.set(null);
+      this.error.set(SIN_SEDE_ACTIVA);
+      return throwError(() => new Error(SIN_SEDE_ACTIVA));
+    }
+
     this.procesandoId.set(propuesta.id);
     this.error.set(null);
 
     return this.http
-      .post(`${this.appointmentsUrl}/${propuesta.reservaId}/proposed-time/${accion}`, {})
+      .post(`${this.appointmentsUrl(shopId)}/${propuesta.reservaId}/proposed-time/${accion}`, {})
       .pipe(
         tap(() => {
           // La bandeja solo muestra PENDIENTES: la fila resuelta sale al instante.

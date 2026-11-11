@@ -80,8 +80,12 @@ export const routes: Routes = [
           import('./features/agenda/admin-agenda.component').then((m) => m.AdminAgendaComponent),
       },
       {
+        // Las citas propias se piden SIEMPRE bajo una sede
+        // (`/shops/:shopId/appointments/mine`): sin sede activa la pantalla no
+        // tiene nada que consultar. `tenantGuard` manda al hub de sedes en vez
+        // de dejar que el servicio construya `/shops/null/...`.
         path: 'reservas/mis-reservas',
-        canActivate: [authGuard],
+        canActivate: [authGuard, tenantGuard],
         loadComponent: () =>
           import('./features/reservas/mis-reservas.component').then((m) => m.MisReservasComponent),
       },

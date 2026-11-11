@@ -1,7 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { API_URL } from '../constants/api.constants';
-import { Observable } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
+import { SIN_SEDE_ACTIVA } from '../utils/sin-sede';
 
 export interface Horario {
   id?: string;
@@ -107,16 +108,31 @@ export interface CreateBloqueoDto {
 export class HorariosService {
   private http = inject(HttpClient);
 
+  /**
+   * Sin sede no se construye la URL: interpolar `null` producía
+   * `/shops/null/hours` y un 400 con la ruta técnica en pantalla.
+   */
+  private tieneSede(barberiaId: string | null | undefined): barberiaId is string {
+    return typeof barberiaId === 'string' && barberiaId.trim().length > 0;
+  }
+
+  private sinSedeError(): Error {
+    return new Error(SIN_SEDE_ACTIVA);
+  }
+
   obtenerHorarios(barberiaId: string): Observable<Horario[]> {
+    if (!this.tieneSede(barberiaId)) return of([]);
     return this.http.get<Horario[]>(`${API_URL}/shops/${barberiaId}/hours`);
   }
 
   configurarHorarios(barberiaId: string, horarios: Omit<Horario, 'id'>[]): Observable<Horario[]> {
+    if (!this.tieneSede(barberiaId)) return throwError(() => this.sinSedeError());
     return this.http.post<Horario[]>(`${API_URL}/shops/${barberiaId}/hours`, horarios);
   }
 
   /** Semana propia del barbero (días libres y descansos). */
   obtenerMiSemana(barberiaId: string): Observable<MiHorarioSemana> {
+    if (!this.tieneSede(barberiaId)) return throwError(() => this.sinSedeError());
     return this.http.get<MiHorarioSemana>(`${API_URL}/shops/${barberiaId}/mi-horario`);
   }
 
@@ -125,6 +141,7 @@ export class HorariosService {
    * estado y nunca duplica filas. El `barberoId` lo pone el backend desde el JWT.
    */
   guardarMiSemana(barberiaId: string, dias: DiaHorarioBarbero[]): Observable<MiHorarioSemana> {
+    if (!this.tieneSede(barberiaId)) return throwError(() => this.sinSedeError());
     return this.http.put<MiHorarioSemana>(`${API_URL}/shops/${barberiaId}/mi-horario`, {
       dias,
     });
@@ -138,6 +155,7 @@ export class HorariosService {
    * JWT, nunca el cliente.
    */
   obtenerPlantillaBase(barberiaId: string): Observable<PlantillaBaseSemana> {
+    if (!this.tieneSede(barberiaId)) return throwError(() => this.sinSedeError());
     return this.http.get<PlantillaBaseSemana>(`${API_URL}/shops/${barberiaId}/mi-horario/base`);
   }
 
@@ -151,6 +169,7 @@ export class HorariosService {
     barberiaId: string,
     dias: DiaPlantillaBase[],
   ): Observable<PlantillaBaseSemana> {
+    if (!this.tieneSede(barberiaId)) return throwError(() => this.sinSedeError());
     return this.http.put<PlantillaBaseSemana>(`${API_URL}/shops/${barberiaId}/mi-horario/base`, {
       dias,
     });
@@ -168,6 +187,7 @@ export class HorariosService {
     barberoId: string,
     excepcion: NuevaExcepcionBarbero,
   ): Observable<ExcepcionHorario> {
+    if (!this.tieneSede(barberiaId)) return throwError(() => this.sinSedeError());
     return this.http.post<ExcepcionHorario>(
       `${API_URL}/shops/${barberiaId}/hours/barbers/${barberoId}/exceptions`,
       excepcion,
@@ -175,6 +195,7 @@ export class HorariosService {
   }
 
   obtenerExcepciones(barberiaId: string, from?: string, to?: string): Observable<ExcepcionHorario[]> {
+    if (!this.tieneSede(barberiaId)) return of([]);
     let params: any = {};
     if (from) params.from = from;
     if (to) params.to = to;
@@ -182,6 +203,7 @@ export class HorariosService {
   }
 
   agregarExcepcion(barberiaId: string, excepcion: ExcepcionHorario): Observable<ExcepcionHorario> {
+    if (!this.tieneSede(barberiaId)) return throwError(() => this.sinSedeError());
     return this.http.post<ExcepcionHorario>(`${API_URL}/shops/${barberiaId}/hours/exceptions`, excepcion);
   }
 
@@ -199,6 +221,7 @@ export class HorariosService {
   }
 
   obtenerBloqueos(barberiaId: string, from?: string, to?: string): Observable<BloqueoAgenda[]> {
+    if (!this.tieneSede(barberiaId)) return of([]);
     let params: any = {};
     if (from) params.from = from;
     if (to) params.to = to;
@@ -206,6 +229,7 @@ export class HorariosService {
   }
 
   crearBloqueo(barberiaId: string, bloqueo: CreateBloqueoDto): Observable<BloqueoAgenda> {
+    if (!this.tieneSede(barberiaId)) return throwError(() => this.sinSedeError());
     return this.http.post<BloqueoAgenda>(`${API_URL}/shops/${barberiaId}/appointments/schedule/blocks`, bloqueo);
   }
 
@@ -215,6 +239,7 @@ export class HorariosService {
    * bloqueo deja de ocupar la agenda. Lo que cambia es el verbo del backend.
    */
   eliminarBloqueo(barberiaId: string, id: string): Observable<any> {
+    if (!this.tieneSede(barberiaId)) return throwError(() => this.sinSedeError());
     return this.http.post(`${API_URL}/shops/${barberiaId}/appointments/schedule/blocks/${id}/release`, {});
   }
 }
