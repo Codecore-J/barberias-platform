@@ -4,12 +4,30 @@
 
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import { existsSync } from 'node:fs';
+
+// tsx no carga .env por su cuenta (el CLI de Prisma sí): sin esto
+// ADMIN_SEED_PASSWORD del archivo nunca llegaría al proceso.
+if (existsSync('.env')) {
+  try {
+    process.loadEnvFile('.env');
+  } catch {
+    // .env ilegible: se usa el respaldo de desarrollo.
+  }
+}
+
+/**
+ * La contraseña del administrador NO vive en el código: se lee de
+ * `ADMIN_SEED_PASSWORD`. El literal de respaldo es solo para que el script
+ * siga siendo ejecutable en una base de desarrollo recién creada; en
+ * producción la variable es la vía y la contraseña rota sin tocar el archivo.
+ */
+const password = process.env.ADMIN_SEED_PASSWORD || 'qa-segura-42';
 
 const adminData = {
   email: 'admin.cremaq.production@test.com',
   nombre: 'Admin Produccion QA',
   telefono: '8294728320',
-  passwordPlain: 'qa-segura-42',
 };
 const SALT_ROUNDS = 10;
 
@@ -61,7 +79,7 @@ async function main() {
 
     // PASO 3: Hash de contraseña
     logInfo('Hasheando contraseña...');
-    const passwordHash = await bcrypt.hash(adminData.passwordPlain, SALT_ROUNDS);
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
     await prisma.usuario.update({
       where: { id: usuario.id },
       data: { passwordHash: passwordHash },
