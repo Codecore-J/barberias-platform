@@ -13,9 +13,9 @@ const adminData = {
 };
 const SALT_ROUNDS = 10;
 
-function logSuccess(msg) { console.log('✅ ' + msg); }
-function logInfo(msg)  { console.log('   ' + msg); }
-function logError(msg) { console.log('❌ ' + msg); }
+function logSuccess(msg: string): void { console.log('✅ ' + msg); }
+function logInfo(msg: string): void  { console.log('   ' + msg); }
+function logError(msg: string): void { console.log('❌ ' + msg); }
 
 async function main() {
   const prisma = new PrismaClient();
@@ -57,7 +57,7 @@ async function main() {
         tokenVersion: 1,
       },
     });
-    logSuccess('Usuario administrador procesado: ' + usuario.email);
+    logSuccess('Usuario administrador procesado: ' + usuario.correo);
 
     // PASO 3: Hash de contraseña
     logInfo('Hasheando contraseña...');
@@ -93,7 +93,7 @@ async function main() {
           barberiaId = findSede?.id || '00000000-0000-0000-0000-000000000000';
           logInfo('Sede creada sin responsable_id (fallback)');
         } catch (fallbackError) {
-          logError('Error creating sede: ' + fallbackError.message);
+          logError('Error creating sede: ' + (fallbackError instanceof Error ? fallbackError.message : String(fallbackError)));
           barberiaId = '00000000-0000-0000-0000-000000000000';
         }
       }
@@ -102,11 +102,11 @@ async function main() {
     // Confirmación
     logSuccess('================================================================');
     logInfo('PROCESO COMPLETADO');
-    logInfo('Admin: ' + usuario.email);
+    logInfo('Admin: ' + usuario.correo);
     logInfo('Sede ID: ' + barberiaId);
     logSuccess('================================================================');
   } catch (error) {
-    logError(error); process.exit(1);
+    logError(error instanceof Error ? error.message : String(error)); process.exit(1);
   } finally {
     await prisma.$disconnect();
   }

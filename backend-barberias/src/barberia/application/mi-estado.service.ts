@@ -141,6 +141,54 @@ export class MiEstadoService {
   }
 
   /**
+   * `GET /mi-estado/membresias` · Fase 3 · la versión en lote de `obtener`.
+   *
+   * El cliente con varias sedes pedía una membresía por sede, en bucle: una
+   * consulta por cada una contra un pool serverless pequeño. Aquí la misma
+   * lectura se resuelve con UN `findMany` acotado por el usuario del token,
+   * así que el aislamiento multi-tenant no depende de la ruta: no hay forma de
+   * pedir las membresías de otra persona.
+   *
+   * Las sedes sin vínculo simplemente no aparecen (sin 403 en lote: un 403
+   * global ocultaría las que sí existen). El orden es estable por sede para
+   * que el cliente pueda cachear la respuesta.
+   */
+  async obtenerVarias(solicitante: UsuarioAutenticado): Promise<MiEstadoDto[]> {
+    const vinculos = await this.prisma.clienteBarberia.findMany({
+      where: { usuarioId: solicitante.id },
+      select: {
+        barberiaId: true,
+        estadoVinculacion: true,
+        contadorNoPresentado: true,
+        estaRestringido: true,
+        motivoRestriccion: true,
+      },
+      orderBy: { barberiaId: 'asc' },
+    });
+
+    return vinculos.map((vinculo) => {
+      const visible = describirEstadoFidelizacion({
+        contadorNoPresentado: vinculo.contadorNoPresentado,
+        estaRestringido: vinculo.estaRestringido,
+        motivoRestriccion: vinculo.motivoRestriccion,
+      });
+
+      return {
+        barberiaId: vinculo.barberiaId,
+        clienteId: solicitante.id,
+        estadoVinculacion: vinculo.estadoVinculacion,
+        contadorNoPresentado: visible.contadorNoPresentado,
+        estaRestringido: visible.estaRestringido,
+        motivoRestriccion: visible.motivoRestriccion,
+        advertencia: visible.advertencia,
+        inasistenciasParaRestriccion: visible.inasistenciasParaRestriccion,
+        limiteInasistencias: LIMITE_INASISTENCIAS_POR_DEFECTO,
+        mensaje: visible.mensaje,
+      };
+    });
+  }
+
+  /**
    * `POST /barberias/:barberiaId/mi-estado/desvincular` · E3-12/3.
    *
    * 403 `NO_VINCULADO` sin fila (el código se comparte con la lectura: sin

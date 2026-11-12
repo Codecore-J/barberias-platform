@@ -85,6 +85,35 @@ export class MiEstadoService {
   }
 
   /**
+   * `GET /mi-estado/membresias` · Fase 3 · la versión en lote.
+   *
+   * Antes la vista pedía `GET /shops/:id/membership` una vez por sede; con el
+   * cliente vinculado a varias sedes eso era un bucle de peticiones contra el
+   * pool de Neon. Ahora es UNA petición y el backend acota por el usuario del
+   * token, así que el resultado no puede mezclar personas.
+   *
+   * Igual que `cargarEstado`, un fallo no ensucia `error()`: sin membresías la
+   * vista simplemente no pinta la tarjeta de fidelización, y un 403 no debe
+   * romper la lista de sedes.
+   */
+  cargarEstados(): Observable<MiEstado[]> {
+    this.isLoading.set(true);
+
+    return this.http.get<MiEstado[]>(`${API_URL}/mi-estado/membresias`).pipe(
+      tap((estados) => {
+        this.isLoading.set(false);
+        this.estados.set(
+          Object.fromEntries(estados.map((estado) => [estado.barberiaId, estado])),
+        );
+      }),
+      catchError(() => {
+        this.isLoading.set(false);
+        return of([] as MiEstado[]);
+      }),
+    );
+  }
+
+  /**
    * `POST /shops/:shopId/membership/unlink`.
    *
    * El cierre es definitivo hasta que el cliente vuelva a introducir el código

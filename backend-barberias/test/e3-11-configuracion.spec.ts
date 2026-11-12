@@ -34,10 +34,10 @@ const baseConfig = {
   oportunidadesEspacioActivas: true,
   maxNinos: 10,
   maxPersonasTotal: 20,
-  motivoPausa: null,
-  pausaDesde: null,
-  reactivacionProgramada: null,
-  reactivacionReal: null,
+  motivoPausa: null as string | null,
+  pausaDesde: null as Date | null,
+  reactivacionProgramada: null as Date | null,
+  reactivacionReal: null as Date | null,
 };
 
 const usuarioAdmin = {

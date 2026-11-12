@@ -23,8 +23,9 @@ export function PhoneNotRepetitive(validationOptions?: ValidationOptions): Prope
       options: validationOptions,
       validator: {
         validate(value: unknown): boolean {
-          if (!value) return true;
-          const telefono = value.toString().trim();
+          // Solo las cadenas pueden ser un teléfono: el tipo lo valida otra regla.
+          if (typeof value !== 'string' || value.length === 0) return true;
+          const telefono = value.trim();
           return !/^(\d)\1{9}$/.test(telefono);
         },
         defaultMessage(): string {

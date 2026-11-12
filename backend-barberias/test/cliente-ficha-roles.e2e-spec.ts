@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
 import { Reflector } from '@nestjs/core';
 import request from 'supertest';
 import * as bcrypt from 'bcrypt';

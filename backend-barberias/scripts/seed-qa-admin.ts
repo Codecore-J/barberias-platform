@@ -24,8 +24,13 @@ const PASSWORD = process.env.QA_ADMIN_PASSWORD || 'qa-segura-42';
 async function main(): Promise<void> {
   const passwordHash = await bcrypt.hash(PASSWORD, 10);
 
-  const tx = await prisma.$transaction([
-    prisma.usuario.create({
+  const rol = await prisma.rol.findUnique({ where: { nombre: 'ADMINISTRADOR' } });
+  if (!rol) {
+    throw new Error('Falta el rol ADMINISTRADOR: ejecuta el seed base antes de este script.');
+  }
+
+  const admin = await prisma.$transaction(async (tx) => {
+    const usuario = await tx.usuario.create({
       data: {
         nombreCompleto: NOMBRE,
         correo: ADMIN_EMAIL,
@@ -34,17 +39,16 @@ async function main(): Promise<void> {
         estadoCuenta: 'ACTIVO',
       },
       select: { id: true },
-    }),
-    prisma.usuarioRol.create({
-      data: {
-        usuarioId: tx[0].id,
-        rolId: (await prisma.rol.findUnique({ where: { nombre: 'ADMINISTRADOR' } })).id,
-        barberiaId: null,
-      },
-    }),
-  ]);
+    });
 
-  console.log(`ADMIN_CREATED id=${tx[0].id} correo=${ADMIN_EMAIL}`);
+    await tx.usuarioRol.create({
+      data: { usuarioId: usuario.id, rolId: rol.id, barberiaId: null },
+    });
+
+    return usuario;
+  });
+
+  console.log(`ADMIN_CREATED id=${admin.id} correo=${ADMIN_EMAIL}`);
 
   const todos = await prisma.usuario.findMany({
     where: { NOT: { correo: ADMIN_EMAIL } },

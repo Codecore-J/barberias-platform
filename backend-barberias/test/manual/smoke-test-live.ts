@@ -60,9 +60,9 @@ async function request(path: string, _options: { method?: string; body?: any; to
   }
 
   const response = await fetch(`${BASE_URL}${path}`, {
-    method: options.method || 'GET',
+    method: _options.method || 'GET',
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: _options.body ? JSON.stringify(_options.body) : undefined,
   });
 
   const contentType = response.headers.get('content-type');

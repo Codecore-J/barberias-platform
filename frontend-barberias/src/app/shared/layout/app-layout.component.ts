@@ -1,3 +1,4 @@
+import { ETIQUETA_ROL, RolSesion, rolEfectivo } from '../../core/utils/rol.js';
 import { Component, inject, OnInit, signal, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
@@ -73,10 +74,6 @@ import { NotificationService } from '../../core/services/notification.service';
           <!-- ENLACES DE NAVEGACIÓN DESKTOP SEGÚN ROL -->
           <div class="hidden lg:flex items-center gap-1 xl:gap-2">
             @if (userRole() === 'CLIENTE') {
-              <a routerLink="/barberias" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
-                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-building mr-1.5 text-xs text-amber-400/80"></i>Barberías
-              </a>
               <a routerLink="/catalogo" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo
@@ -111,10 +108,6 @@ import { NotificationService } from '../../core/services/notification.service';
               <a routerLink="/catalogo" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
                 <i class="pi pi-list mr-1.5 text-xs text-amber-400/80"></i>Catálogo
-              </a>
-              <a routerLink="/barberias" routerLinkActive="text-amber-400 bg-amber-500/10 border-amber-500/30"
-                 class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-white/5 border border-transparent transition-all">
-                <i class="pi pi-building mr-1.5 text-xs text-amber-400/80"></i>Mi Barbería
               </a>
             }
 
@@ -215,15 +208,6 @@ import { NotificationService } from '../../core/services/notification.service';
                         <span class="text-[10px] text-zinc-500">Bloqueos por inasistencias y su levantamiento</span>
                       </span>
                     </a>
-                    <div class="border-t border-zinc-800 my-1"></div>
-                    <a routerLink="/barberias" (click)="configDropdownOpen.set(false)"
-                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
-                      <i class="pi pi-cog text-amber-400/80 mt-0.5"></i>
-                      <span class="flex flex-col">
-                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Ajustes de Sede</span>
-                        <span class="text-[10px] text-zinc-500">Datos, logo y equipo de la sede</span>
-                      </span>
-                    </a>
                   </div>
                 }
               </div>
@@ -315,15 +299,6 @@ import { NotificationService } from '../../core/services/notification.service';
                         <span class="text-[10px] text-zinc-500">Lista negra local de la sede activa</span>
                       </span>
                     </a>
-                    <div class="border-t border-zinc-800 my-1"></div>
-                    <a routerLink="/barberias" (click)="configDropdownOpen.set(false)"
-                       class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors group">
-                      <i class="pi pi-cog text-amber-400/80 mt-0.5"></i>
-                      <span class="flex flex-col">
-                        <span class="text-xs font-semibold text-zinc-200 group-hover:text-amber-300">Ajustes de Sede</span>
-                        <span class="text-[10px] text-zinc-500">Datos, logo y sedes vinculadas</span>
-                      </span>
-                    </a>
                   </div>
                 }
               </div>
@@ -390,7 +365,7 @@ import { NotificationService } from '../../core/services/notification.service';
                     {{ userName() }}
                   </span>
                   <span class="text-[10px] text-amber-400/90 font-medium">
-                    {{ userRole() }}
+                    {{ userRoleLabel() }}
                   </span>
                 </div>
                 <i class="pi pi-chevron-down text-[10px] text-zinc-400 hidden sm:block"></i>
@@ -403,9 +378,15 @@ import { NotificationService } from '../../core/services/notification.service';
                     Conectado como <strong class="text-zinc-200">{{ userEmail() }}</strong>
                   </div>
                   <div class="p-1 space-y-1">
-                    <a routerLink="/barberias" (click)="profileDropdownOpen.set(false)" class="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 rounded-xl transition-colors">
-                      <i class="pi pi-building text-amber-400 text-xs"></i>Gestionar Barberías
-                    </a>
+                    @if (gestionaBarberias()) {
+                      <a routerLink="/barberias" (click)="profileDropdownOpen.set(false)" class="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 rounded-xl transition-colors">
+                        <i class="pi pi-building text-amber-400 text-xs"></i>Gestionar Barberías
+                      </a>
+                    } @else if (userRole() === 'CLIENTE') {
+                      <a routerLink="/barberias" (click)="profileDropdownOpen.set(false)" class="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 rounded-xl transition-colors">
+                        <i class="pi pi-link text-amber-400 text-xs"></i>Vincularme a una barbería
+                      </a>
+                    }
                     <button (click)="onLogout()" class="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-950/30 rounded-xl transition-colors text-left">
                       <i class="pi pi-sign-out text-rose-400 text-xs"></i>Cerrar Sesión
                     </button>
@@ -437,9 +418,6 @@ import { NotificationService } from '../../core/services/notification.service';
             
             <div class="flex flex-col gap-1.5">
               @if (userRole() === 'CLIENTE') {
-                <a routerLink="/barberias" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
-                  <i class="pi pi-building text-amber-400"></i>Barberías
-                </a>
                 <a routerLink="/catalogo" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-list text-amber-400"></i>Catálogo de Servicios
                 </a>
@@ -466,9 +444,6 @@ import { NotificationService } from '../../core/services/notification.service';
                 </a>
                 <a routerLink="/catalogo" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-list text-amber-400"></i>Catálogo de Servicios
-                </a>
-                <a routerLink="/barberias" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
-                  <i class="pi pi-building text-amber-400"></i>Mi Barbería
                 </a>
               }
 
@@ -628,13 +603,24 @@ export class AppLayoutComponent implements OnInit {
     return this.authService.authState().user?.correo ?? '';
   }
 
-  userRole(): string {
-    const roles = this.authService.authState().user?.roles;
-    if (!roles || roles.length === 0) return 'CLIENTE';
-    if (roles.includes('ADMINISTRADOR')) return 'ADMINISTRADOR';
-    if (roles.includes('ADMIN_BARBERIA')) return 'ADMIN_BARBERIA';
-    if (roles.includes('BARBERO')) return 'BARBERO';
-    return 'CLIENTE';
+  /**
+   * Rol efectivo de la sesión: `SIN_ROL` cuando la cuenta todavía no tiene
+   * ningún rol. Antes se asumía `CLIENTE` y la cabecera prometía permisos
+   * que el backend no reconocía.
+   */
+  userRole(): RolSesion {
+    return rolEfectivo(this.authService.authState().user?.roles);
+  }
+
+  /** Lo que se pinta en la cabecera: la etiqueta legible, no el código. */
+  userRoleLabel(): string {
+    return ETIQUETA_ROL[this.userRole()];
+  }
+
+  /** Solo el staff con permiso de gestión entra a /barberias desde el perfil. */
+  gestionaBarberias(): boolean {
+    const rol = this.userRole();
+    return rol === 'ADMINISTRADOR' || rol === 'ADMIN_BARBERIA';
   }
 
   userInitials(): string {

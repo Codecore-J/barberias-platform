@@ -384,7 +384,7 @@ export class AnalyticsService {
 
     const ingresosConsolidados = sedes.reduce((sum, s) => sum + s.ingresos, 0);
     const totalCitasGlobal = sedes.reduce((sum, s) => sum + s.totalCitas, 0);
-    const _inasistenciasGlobal = sedes.reduce((sum, s) => {
+    const _inasistenciasGlobal = sedes.reduce((sum) => {
       // approximate from tasa * cerradas not stored; better recompute
       return sum;
     }, 0);

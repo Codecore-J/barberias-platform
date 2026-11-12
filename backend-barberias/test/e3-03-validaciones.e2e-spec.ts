@@ -179,7 +179,7 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
           estado: 'ACTIVO',
           codigoAcceso: `E303${nombre}`,
           enlaceUnico: `https://${nombre}.e303.test`,
-          responsableId: (await prisma.usuario.findUnique({ where: { correo: `admin.e303@test.com` } })).id,
+          responsableId: (await prisma.usuario.findUniqueOrThrow({ where: { correo: `admin.e303@test.com` } })).id,
         },
       });
       barberia[nombre] = barberiaId.id;
@@ -250,7 +250,7 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
       ['cH.e303@test.com', 'E', false],
       ['cI.e303@test.com', 'F', false],
     ] as [string, string, boolean?][]) {
-      const u = await prisma.usuario.findUnique({ where: { correo: mail } });
+      const u = await prisma.usuario.findUniqueOrThrow({ where: { correo: mail } });
       if (sede) {
         await prisma.clienteBarberia.create({
           data: {

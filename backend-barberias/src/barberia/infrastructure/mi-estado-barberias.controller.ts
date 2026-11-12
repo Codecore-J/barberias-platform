@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ClienteBarberiasService } from '../application/cliente-barberias.service.js';
+import { MiEstadoService } from '../application/mi-estado.service.js';
 import { BarberiaService } from '../application/barberia.service.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
@@ -33,12 +34,31 @@ export class MiEstadoBarberiasController {
   constructor(
     private readonly clienteBarberiasService: ClienteBarberiasService,
     private readonly barberiaService: BarberiaService,
+    private readonly miEstadoService: MiEstadoService,
   ) {}
 
   @Roles('CLIENTE')
   @Get('barberias')
   listar(@CurrentUser() user: UsuarioAutenticado) {
     return this.clienteBarberiasService.listarSedesDelCliente(user.id);
+  }
+
+  /**
+   * `GET /mi-estado/membresias` · Fase 3 · el estado de TODAS sus sedes.
+   *
+   * Sustituye al bucle `GET /shops/:shopId/membership` por sede: el frontend
+   * pedía una membresía por cada barbería del cliente y cada petición abría su
+   * propia consulta contra el pool de Neon. Aquí es UN `findMany` acotado por el
+   * usuario del token, así que la respuesta no puede traer el estado de otra
+   * persona aunque la ruta no lleve `:shopId`.
+   *
+   * Las sedes sin vínculo no aparecen: en lote un 403 global ocultaría las que
+   * sí existen, y `cargarEstado` sigue disponible para el detalle puntual.
+   */
+  @Roles('CLIENTE')
+  @Get('membresias')
+  membresias(@CurrentUser() user: UsuarioAutenticado) {
+    return this.miEstadoService.obtenerVarias(user);
   }
 
   /**

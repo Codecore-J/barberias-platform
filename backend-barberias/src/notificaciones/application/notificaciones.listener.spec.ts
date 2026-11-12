@@ -9,7 +9,7 @@ import {
 } from '../domain/eventos-reserva.js';
 import {
   EVENTOS_LISTA_ESPERA,
-  type EventoCupoLiberado,
+  type EventoCupoDisponible,
 } from '../domain/eventos-lista-espera.js';
 
 function evento(
@@ -34,8 +34,8 @@ function evento(
 }
 
 function eventoCupoLiberado(
-  extra: Partial<EventoCupoLiberado> = {},
-): EventoCupoLiberado {
+  extra: Partial<EventoCupoDisponible> = {},
+): EventoCupoDisponible {
   return {
     tipo: EVENTOS_LISTA_ESPERA.CUPO_DISPONIBLE,
     suscripcionId: 'espera-1',
@@ -52,7 +52,7 @@ function eventoCupoLiberado(
     horaFin: '13:00',
     reservaId: 'reserva-origen',
     ...extra,
-  } as EventoCupoLiberado;
+  } as EventoCupoDisponible;
 }
 
 describe('NotificacionesListener (Fase 7)', () => {

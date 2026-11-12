@@ -666,9 +666,7 @@ export class BarberiasComponent implements OnInit {
       return;
     }
 
-    for (const barberia of this.tenantService.barberiasVinculadas()) {
-      this.miEstado.cargarEstado(barberia.id).subscribe();
-    }
+    this.miEstado.cargarEstados().subscribe();
   }
 
   estadoDe(barberiaId: string): MiEstado | null {
