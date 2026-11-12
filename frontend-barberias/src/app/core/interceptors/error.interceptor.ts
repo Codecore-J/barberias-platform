@@ -6,11 +6,11 @@ import {
 import { inject } from '@angular/core';
 import { catchError, throwError } from 'rxjs';
 import { ToastService } from '../../shared/ui/toast/toast.service';
-import { extraerMensaje } from '../utils/error-message';
-import { AuthService } from '../../auth/auth.service';
+import { mensajeParaUsuario } from '../utils/errores';
 
 /**
- * Fase 1 · marca una petición para que su fallo NO se anuncie con un toast.
+ * Marca una petición para que su fallo NO se anuncie con un toast.
+ *
  * Sirve para las llamadas de fondo (sondeos del layout, precargas) y para las
  * que ya pintan el error dentro de su propio formulario: si el aviso saliera
  * además en la esquina, el usuario vería el mismo mensaje dos veces.
@@ -18,26 +18,19 @@ import { AuthService } from '../../auth/auth.service';
 export const SILENCIAR_TOAST = new HttpContextToken<boolean>(() => false);
 
 /**
- * Fase 1 · interceptor global de errores HTTP mejorado.
+ * Interceptor global de errores HTTP.
  *
- * Centraliza el anuncio de 4xx/5xx para que cada servicio deje de repetir el
- * mismo `catchError` que solo servía para mostrar un mensaje. Ahora el error
- * viaja al toast desde un único sitio y el `catchError` local se reserva para
- * lo que de verdad necesita lógica propia (cargar una lista vacía, marcar un
- * estado de carga, etc.).
+ * El interceptor ya NO redacta mensajes: solo decide SI hay que anunciar y deja
+ * el texto en `mensajeParaUsuario()`. Antes tenía su propia rama por estado, una
+ * segunda rama especial para 403 que volvía a extraer el mensaje (y colaba el
+ * texto crudo del backend dentro del contextual) y ningún filtro de texto
+ * técnico, que es justo lo que llegaba a la pantalla.
  *
- * Exclusiones deliberadas (aunque el `authInterceptor` ya se encarga de los 401):
+ * Exclusiones deliberadas:
  *
- *   · 401 — lo gestiona `authInterceptor`, que cierra la sesión y redirige.
- *     Un toast «no autorizado» encima del login solo confundiría.
+ *   · 401 — lo gestiona `authInterceptor`, que cierra la sesión y redirige. Un
+ *     toast «no autorizado» encima del login solo confundiría.
  *   · `SILENCIAR_TOAST` — llamadas de fondo o formularios con error en línea.
- *
- * Comportamiento nuevo:
- *   · 403 → muestra «No tienes permisos para realizar esta acción.»
- *            + mensaje contextual si el usuario es ADMINISTRADOR GLOBAL
- *   · 404 → muestra «El recurso solicitado no existe.»
- *   · 500+ → muestra error interno genérico
- *   · Otros 4xx → muestra el mensaje del backend o genérico
  *
  * El error se re-lanza siempre: el interceptor informa, no se traga la
  * respuesta. Si lo silenciara, un `subscribe(() => this.cerrarModal())` se
@@ -48,43 +41,22 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(req).pipe(
     catchError((error: unknown) => {
-      if (error instanceof HttpErrorResponse) {
-        const silenciado = req.context.get(SILENCIAR_TOAST);
-        const esSesion = error.status === 401;
-
-        // 🔧 MEJORA: Manejo específico para 403 con contexto de rol
-        if (error.status === 403 && !silenciado) {
-          const { mensaje } = extraerMensaje(error);
-
-          // Verificar si es admin global para mensaje contextual
-          const user = inject(AuthService).authState().user;
-          const esAdminGlobal = user?.roles?.includes('ADMINISTRADOR');
-
-          if (esAdminGlobal) {
-            // Admin global puede que no tenga sede asignada o no tenga permisos
-            // para esa operación específica en esa sede
-            const titulo = 'Sin permisos de operación';
-            const mensajeContexto =
-              mensaje && mensaje.includes('permisos')
-                ? mensaje
-                : `No tienes permisos para realizar esta acción en la sede actual. ` +
-                  'Selecciona una sede en el panel de administración.' +
-                  `. ${mensaje || ''}`.trim();
-
-            toast.error(mensajeContexto, titulo);
-          } else {
-            const { mensaje: msgTitulo, titulo } = extraerMensaje(error);
-            toast.error(msgTitulo || 'No tienes permisos para realizar esta acción.', titulo);
-          }
-
-          return throwError(() => error);
-        }
-
-        if (!silenciado && !esSesion && error.status >= 400) {
-          const { mensaje, titulo } = extraerMensaje(error);
-          toast.error(mensaje, titulo);
-        }
+      if (!(error instanceof HttpErrorResponse)) {
+        return throwError(() => error);
       }
+
+      const silenciado = req.context.get(SILENCIAR_TOAST);
+
+      // El status 0 (sin red, CORS o servidor caído) también se anuncia: antes
+      // se descartaba y la pantalla se quedaba muda sin explicar por qué.
+      const anunciable =
+        !silenciado && error.status !== 401 && (error.status === 0 || error.status >= 400);
+
+      if (anunciable) {
+        const { mensaje, titulo } = mensajeParaUsuario(error);
+        toast.error(mensaje, titulo);
+      }
+
       return throwError(() => error);
     }),
   );
