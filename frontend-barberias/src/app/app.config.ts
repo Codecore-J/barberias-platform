@@ -9,10 +9,13 @@ import { provideAnimationsAsync } from '@angular/platform-browser/animations/asy
 import { providePrimeNG } from 'primeng/config';
 import Aura from '@primeuix/themes/aura';
 
-// 🔧 FASE NUEVA: Configurar PrimeUI para silenciar el warning de licencia en desarrollo.
-// En entornos sin licencia comercial, configuramos un modo "open source" que elimina
-// los avisos de consola. Si en el futuro se adquiere licencia, se puede reemplazar
-// esta configuración con la clave oficial.
+/** Clave de PrimeUI leída de la página, si el despliegue la define. */
+function clavePrimeUi(): string | undefined {
+  const global = globalThis as { __PRIMEUI_LICENSE__?: string };
+  const clave = global.__PRIMEUI_LICENSE__?.trim();
+  return clave ? clave : undefined;
+}
+
 const primengConfig = {
   theme: {
     preset: Aura,
@@ -20,10 +23,13 @@ const primengConfig = {
       darkModeSelector: '.dark',
     },
   },
-  // 🔧 Silenciar el aviso [PrimeUI] PrimeUI license is not configured
-  // Este warning aparece en desarrollo cuando se usa la versión open source de PrimeUI/PrimeNG.
-  // En producción con licencia se omitiría o configuraría la clave real.
-  license: 'MIT', // Modo open source para suprimir warnings de consola
+  // PrimeUI (PrimeNG 22+) exige una clave REAL: un valor inventado como 'MIT'
+  // no silencia nada y además provoca "[PrimeUI] PrimeUI license is malformed".
+  // La clave se inyecta sin tocar código desde `index.html`:
+  //   <script>window.__PRIMEUI_LICENSE__ = '<clave>';</script>
+  // Sin clave la librería avisa "license is not configured": es un requisito
+  // de licencia (Community o Commercial en primeui.dev), no un bug de la app.
+  ...(clavePrimeUi() ? { license: clavePrimeUi() } : {}),
 };
 
 export const appConfig: ApplicationConfig = {
