@@ -240,7 +240,7 @@ interface GrupoDeBarbero {
         }
 
         <!-- Vacío de verdad: ni catálogo híbrido ni heredado -->
-        @if (!serviciosService.isLoading() && serviciosService.servicios().length === 0) {
+        @if (respaldoListo() && !serviciosService.isLoading() && serviciosService.servicios().length === 0) {
           <div class="max-w-md mx-auto px-4 text-center space-y-6 transform translate-z-12 pt-6">
             <div class="w-24 h-24 mx-auto rounded-[2rem] bg-zinc-800/40 border border-zinc-700/50 flex items-center justify-center text-4xl text-zinc-600 shadow-inner">
               <i class="pi pi-folder-open"></i>
@@ -269,6 +269,9 @@ export class CatalogoComponent implements OnInit {
   /** Ids de categoría desplegadas; el conjunto evita re-renderizar el @for. */
   readonly categoriasAbiertas = signal<Set<string>>(new Set());
 
+  /** true cuando el respaldo heredado ya respondió (o no hizo falta pedirlo). */
+  readonly respaldoListo = signal(false);
+
   readonly categorias = computed(() => this.catalogoService.catalogo());
 
   readonly totalServicios = computed(() =>
@@ -276,9 +279,8 @@ export class CatalogoComponent implements OnInit {
   );
 
   ngOnInit(): void {
-    // Los dos catálogos se piden en paralelo: el híbrido manda y el heredado
-    // hace de respaldo, así que la pantalla nunca queda en blanco mientras uno
-    // de los dos responda.
+    // El híbrido manda; el heredado solo se pide si vino vacío o falló, para
+    // no gastar una petición de más en cada visita.
     this.cargar();
   }
 
@@ -287,15 +289,27 @@ export class CatalogoComponent implements OnInit {
   }
 
   private cargar(): void {
-    this.serviciosService.cargarServicios().subscribe();
     this.catalogoService.cargarCatalogo().subscribe({
       next: (categorias) => {
         // La primera categoría se abre sola: el cliente ve contenido sin tener
         // que adivinar que las filas son desplegables.
         const primera = categorias[0];
         this.categoriasAbiertas.set(primera ? new Set([primera.id]) : new Set());
+        // El catálogo heredado solo se pide si el híbrido vino vacío: antes se
+        // lanzaban las dos peticiones en paralelo y una siempre era de más.
+        if (categorias.length === 0) this.cargarRespaldo();
       },
-      error: () => this.categoriasAbiertas.set(new Set()),
+      error: () => {
+        this.categoriasAbiertas.set(new Set());
+        this.cargarRespaldo();
+      },
+    });
+  }
+
+  /** Respaldo heredado (`GET /shops/:id/services`), solo si el híbrido falló. */
+  private cargarRespaldo(): void {
+    this.serviciosService.cargarServicios().subscribe({
+      complete: () => this.respaldoListo.set(true),
     });
   }
 
