@@ -335,7 +335,7 @@ describe('BarberiaService', () => {
         id: 'rol-barbero',
         nombre: 'BARBERO',
       } as any);
-      vi.mocked(prisma.usuario.findFirst).mockImplementation(
+      vi.mocked(prisma.usuario.findFirst).mockImplementation((
         async ({ where }: any) => {
           if (where.correo) {
             if (lecturasDeCorreo < 2) {
@@ -347,16 +347,16 @@ describe('BarberiaService', () => {
             return ganador;
           }
           return null;
-        },
+        }) as never,
       );
-      vi.mocked(prisma.usuarioRol.findMany).mockImplementation(async () =>
-        ganador ? ([asignacion] as any) : ([] as any),
-      );
+      vi.mocked(prisma.usuarioRol.findMany).mockImplementation((
+        async () => (ganador ? [asignacion] : [])
+      ) as never);
       vi.mocked(prisma.usuarioRol.update).mockResolvedValue({
         estado: 'ACTIVO',
         rol: { nombre: 'BARBERO' },
       } as any);
-      vi.mocked(prisma.usuario.create).mockImplementation(
+      vi.mocked(prisma.usuario.create).mockImplementation((
         async ({ data }: any) => {
           if (ganador) {
             throw { code: 'P2002', meta: { target: ['correo'] } };
@@ -372,7 +372,7 @@ describe('BarberiaService', () => {
             ...ganador,
             usuarioRoles: [{ estado: 'ACTIVO', rol: { nombre: 'BARBERO' } }],
           } as any;
-        },
+        }) as never,
       );
 
       const [primera, segunda] = await Promise.all([
@@ -386,7 +386,7 @@ describe('BarberiaService', () => {
         'usuario-ganador',
         'usuario-ganador',
       ]);
-      expect([primera.reutilizado, segunda.reutilizado].sort((a, b) => a - b)).toEqual([
+      expect([primera.reutilizado, segunda.reutilizado].sort((a, b) => Number(a) - Number(b))).toEqual([
         false,
         true,
       ]);
@@ -2147,7 +2147,7 @@ describe('BarberiaService', () => {
           'barberia-1',
         );
 
-        expect(result.vinculo).toBe('ROL');
+        expect((result as { vinculo?: string }).vinculo).toBe('ROL');
       });
 
       it('un ADMINISTRADOR global la puede seleccionar sin vínculo ni rol', async () => {
@@ -2163,7 +2163,7 @@ describe('BarberiaService', () => {
           ADMINISTRADOR,
         );
 
-        expect(result.vinculo).toBe('ROL');
+        expect((result as { vinculo?: string }).vinculo).toBe('ROL');
       });
 
       it('sigue dando 404 a quien no tiene rol, no es dueño ni es global', async () => {

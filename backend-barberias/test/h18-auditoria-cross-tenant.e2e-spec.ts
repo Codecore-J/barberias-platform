@@ -32,7 +32,7 @@ describe('E1-02 · GET /auditoria no cruza barberias (H18)', () => {
   let barberiaA: string;
   let barberiaB: string;
   let tokenAdminA: string;
-  let tokenAdminB: string;
+  let _tokenAdminB: string;
   let tokenGlobal: string;
 
   async function crearAdmin(correo: string, nombre: string, telefono: string) {
@@ -125,7 +125,7 @@ describe('E1-02 · GET /auditoria no cruza barberias (H18)', () => {
     };
 
     tokenAdminA = await login('admin.a.h18@test.com');
-    tokenAdminB = await login('admin.b.h18@test.com');
+    _tokenAdminB = await login('admin.b.h18@test.com');
     tokenGlobal = await login('global.h18@test.com');
   }, 60000);
 

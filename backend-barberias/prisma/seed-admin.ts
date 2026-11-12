@@ -4,18 +4,36 @@
 
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import { existsSync } from 'node:fs';
+
+// tsx no carga .env por su cuenta (el CLI de Prisma sí): sin esto
+// ADMIN_SEED_PASSWORD del archivo nunca llegaría al proceso.
+if (existsSync('.env')) {
+  try {
+    process.loadEnvFile('.env');
+  } catch {
+    // .env ilegible: se usa el respaldo de desarrollo.
+  }
+}
+
+/**
+ * La contraseña del administrador NO vive en el código: se lee de
+ * `ADMIN_SEED_PASSWORD`. El literal de respaldo es solo para que el script
+ * siga siendo ejecutable en una base de desarrollo recién creada; en
+ * producción la variable es la vía y la contraseña rota sin tocar el archivo.
+ */
+const password = process.env.ADMIN_SEED_PASSWORD || 'qa-segura-42';
 
 const adminData = {
   email: 'admin.cremaq.production@test.com',
   nombre: 'Admin Produccion QA',
   telefono: '8294728320',
-  passwordPlain: 'qa-segura-42',
 };
 const SALT_ROUNDS = 10;
 
-function logSuccess(msg) { console.log('✅ ' + msg); }
-function logInfo(msg)  { console.log('   ' + msg); }
-function logError(msg) { console.log('❌ ' + msg); }
+function logSuccess(msg: string): void { console.log('✅ ' + msg); }
+function logInfo(msg: string): void  { console.log('   ' + msg); }
+function logError(msg: string): void { console.log('❌ ' + msg); }
 
 async function main() {
   const prisma = new PrismaClient();
@@ -57,11 +75,11 @@ async function main() {
         tokenVersion: 1,
       },
     });
-    logSuccess('Usuario administrador procesado: ' + usuario.email);
+    logSuccess('Usuario administrador procesado: ' + usuario.correo);
 
     // PASO 3: Hash de contraseña
     logInfo('Hasheando contraseña...');
-    const passwordHash = await bcrypt.hash(adminData.passwordPlain, SALT_ROUNDS);
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
     await prisma.usuario.update({
       where: { id: usuario.id },
       data: { passwordHash: passwordHash },
@@ -93,7 +111,7 @@ async function main() {
           barberiaId = findSede?.id || '00000000-0000-0000-0000-000000000000';
           logInfo('Sede creada sin responsable_id (fallback)');
         } catch (fallbackError) {
-          logError('Error creating sede: ' + fallbackError.message);
+          logError('Error creating sede: ' + (fallbackError instanceof Error ? fallbackError.message : String(fallbackError)));
           barberiaId = '00000000-0000-0000-0000-000000000000';
         }
       }
@@ -102,11 +120,11 @@ async function main() {
     // Confirmación
     logSuccess('================================================================');
     logInfo('PROCESO COMPLETADO');
-    logInfo('Admin: ' + usuario.email);
+    logInfo('Admin: ' + usuario.correo);
     logInfo('Sede ID: ' + barberiaId);
     logSuccess('================================================================');
   } catch (error) {
-    logError(error); process.exit(1);
+    logError(error instanceof Error ? error.message : String(error)); process.exit(1);
   } finally {
     await prisma.$disconnect();
   }

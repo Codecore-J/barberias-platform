@@ -258,6 +258,7 @@ describe('AuditoriaService & Processor (T8.2)', () => {
           const resultado = await promesa;
 
           expect(resultado.ok).toBe(false);
+          if (resultado.ok) throw new Error('la cola debía fallar');
           expect(resultado.motivo).toContain(
             `la cola no respondió en ${REGISTRO_CRON_TIMEOUT_MS} ms`,
           );

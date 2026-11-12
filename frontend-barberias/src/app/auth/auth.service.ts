@@ -197,6 +197,15 @@ export class AuthService {
     );
   }
 
+  /**
+   * Descarta el error de la última operación. Lo usa el login al abrir la
+   * recuperación: el aviso de «credenciales inválidas» pertenece a ESE intento
+   * y no debe seguir visible detrás de otro formulario.
+   */
+  limpiarError(): void {
+    this.updateState({ error: null });
+  }
+
   logout() {
     this.removeToken();
     this.updateState({

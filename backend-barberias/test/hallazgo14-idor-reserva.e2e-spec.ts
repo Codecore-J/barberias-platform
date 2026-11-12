@@ -15,13 +15,13 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
   let prisma: PrismaService;
 
   let ownerToken: string;
-  let ownerId: string;
+  let _ownerId: string;
   
   let clienteAToken: string;
   let clienteAId: string;
 
   let clienteBToken: string;
-  let clienteBId: string;
+  let _clienteBId: string;
 
   let barberiaId: string;
   let servicioId: string;
@@ -95,7 +95,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
       password: 'Password1!',
     });
     ownerToken = ownerRes.body.accessToken;
-    ownerId = ownerRes.body.usuario.id;
+    _ownerId = ownerRes.body.usuario.id;
 
     // Crear Barberia
     const bRes = await request(app.getHttpServer())
@@ -163,7 +163,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
       password: 'Password1!',
     });
     clienteBToken = cBRes.body.accessToken;
-    clienteBId = cBRes.body.usuario.id;
+    _clienteBId = cBRes.body.usuario.id;
 
     // V2.1 · los tres usuarios del fixture quedan con el teléfono VERIFICADO:
     // `VerificacionGuard` exige el código OTP para crear reservas y este test

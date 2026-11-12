@@ -138,3 +138,103 @@ describe('MiEstadoService · el cliente y su vínculo (H54 · E3-12/3)', () => {
     expect(service.ultimaDesvinculacion()).toBeNull();
   });
 });
+
+describe('MiEstadoService · membresías en lote (Fase 3)', () => {
+  let service: MiEstadoService;
+  let http: HttpTestingController;
+  const LOTE_URL = `${API_URL}/mi-estado/membresias`;
+
+  const estadoDe = (barberiaId: string, contador: number) => ({
+    barberiaId,
+    clienteId: 'c1',
+    estadoVinculacion: 'ACTIVO',
+    contadorNoPresentado: contador,
+    estaRestringido: contador >= 5,
+    motivoRestriccion: null,
+    advertencia: contador >= 3,
+    inasistenciasParaRestriccion: 5 - contador,
+    limiteInasistencias: 5,
+    mensaje: null,
+  });
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    service = TestBed.inject(MiEstadoService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('una sola petición indexa todas las sedes por su id', () => {
+    let recibidos = -1;
+    service.cargarEstados().subscribe((estados) => {
+      recibidos = estados.length;
+    });
+
+    const peticion = http.expectOne(LOTE_URL);
+    expect(peticion.request.method).toBe('GET');
+    peticion.flush([estadoDe('b1', 0), estadoDe('b2', 4)]);
+
+    expect(recibidos).toBe(2);
+    expect(service.estados()['b1'].estadoVinculacion).toBe('ACTIVO');
+    expect(service.estados()['b2'].advertencia).toBe(true);
+    expect(service.isLoading()).toBe(false);
+  });
+
+  it('un fallo del lote no rompe la vista ni ensucia error()', () => {
+    let recibidos = -1;
+    service.cargarEstados().subscribe((estados) => {
+      recibidos = estados.length;
+    });
+
+    http.expectOne(LOTE_URL).flush('boom', { status: 500, statusText: 'Server Error' });
+
+    expect(recibidos).toBe(0);
+    expect(service.error()).toBeNull();
+    expect(service.isLoading()).toBe(false);
+  });
+});
+
+describe('MiEstadoService · diagnóstico del lote (Fase 3)', () => {
+  let service: MiEstadoService;
+  let http: HttpTestingController;
+  const LOTE_URL = `${API_URL}/mi-estado/membresias`;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    service = TestBed.inject(MiEstadoService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('avisa en desarrollo cuando el backend no sirve el endpoint por lotes', () => {
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let recibidos = -1;
+
+    service.cargarEstados().subscribe((estados) => {
+      recibidos = estados.length;
+    });
+
+    http.expectOne(LOTE_URL).flush({ message: 'Cannot GET' }, { status: 404, statusText: 'Not Found' });
+
+    expect(recibidos).toBe(0);
+    expect(aviso).toHaveBeenCalled();
+    expect(String(aviso.mock.calls[0][0])).toContain('/mi-estado/membresias');
+    aviso.mockRestore();
+  });
+
+  it('un 500 no dispara el aviso de endpoint ausente', () => {
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    service.cargarEstados().subscribe();
+    http.expectOne(LOTE_URL).flush('boom', { status: 500, statusText: 'Server Error' });
+
+    expect(aviso).not.toHaveBeenCalled();
+    aviso.mockRestore();
+  });
+});

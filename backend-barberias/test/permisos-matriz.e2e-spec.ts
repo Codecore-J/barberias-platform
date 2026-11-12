@@ -30,7 +30,7 @@ interface Caso {
   verbo: 'get' | 'post' | 'patch' | 'delete';
   ruta: string;
   permitidos: Rol[];
-  cuerpo?: Record<string, unknown>;
+  cuerpo?: Record<string, unknown> | unknown[];
   /** El ADMINISTRADOR se comprueba aparte cuando la ruta altera datos. */
   sinAdministrador?: boolean;
 }

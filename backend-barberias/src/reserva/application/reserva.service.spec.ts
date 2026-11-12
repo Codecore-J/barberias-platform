@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ReservaService } from './reserva.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { DisponibilidadService } from '../../agenda/application/disponibilidad.service.js';
-import { Logger, ConflictException, ForbiddenException, BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { Logger, ConflictException, ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -138,6 +138,7 @@ describe('ReservaService', () => {
       mockPrismaService.participanteReserva.create.mockResolvedValue({ id: 'uuid-part' });
 
       await service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
         fecha: '2026-10-10',
         horaInicio: '09:00',
         horaFin: '09:30',
@@ -206,6 +207,7 @@ describe('ReservaService', () => {
       mockPrismaService.participanteReserva.create.mockResolvedValue({ id: 'uuid-part' });
 
       await service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
         fecha: '2026-10-10',
         horaInicio: '09:00',
         horaFin: '09:40',
@@ -269,6 +271,7 @@ describe('ReservaService', () => {
       });
 
       await service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
         fecha: '2026-10-10',
         horaInicio: '09:00',
         horaFin: '09:30',
@@ -302,6 +305,7 @@ describe('ReservaService', () => {
 
       await expect(
         service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
           fecha: '2026-10-10',
           horaInicio: '09:00',
           horaFin: '09:30',
@@ -324,6 +328,7 @@ describe('ReservaService', () => {
 
       await expect(
         service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
           fecha: '2026-10-10',
           horaInicio: '09:00',
           horaFin: '09:30',
@@ -341,6 +346,7 @@ describe('ReservaService', () => {
 
       await expect(
         service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
           fecha: '2026-10-10',
           horaInicio: '09:00',
           horaFin: '09:30',
@@ -360,6 +366,7 @@ describe('ReservaService', () => {
 
       await expect(
         service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
           fecha: '2026-10-10',
           horaInicio: '09:00',
           horaFin: '09:30',
@@ -378,6 +385,7 @@ describe('ReservaService', () => {
 
       await expect(
         service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
           fecha: '2026-10-10',
           horaInicio: '09:00',
           horaFin: '09:30',
@@ -413,6 +421,7 @@ describe('ReservaService', () => {
 
       await expect(
         service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
           fecha: '2026-10-10',
           horaInicio: '09:00',
           horaFin: '09:30',
@@ -447,6 +456,7 @@ describe('ReservaService', () => {
 
       await expect(
         service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
           fecha: '2026-10-10',
           horaInicio: '09:00',
           horaFin: '09:30',
@@ -492,6 +502,7 @@ describe('ReservaService', () => {
       prepararAltaHibrida();
 
       await service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
         fecha: '2026-10-10',
         horaInicio: '09:00',
         horaFin: '09:40',
@@ -552,6 +563,7 @@ describe('ReservaService', () => {
 
       await expect(
         service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
           fecha: '2026-10-10',
           horaInicio: '09:00',
           horaFin: '09:40',
@@ -569,6 +581,7 @@ describe('ReservaService', () => {
     it('rechaza con 400 CATALOGO_AMBIGUO si llegan los dos catálogos a la vez', async () => {
       await expect(
         service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
           fecha: '2026-10-10',
           horaInicio: '09:00',
           horaFin: '09:40',
@@ -585,6 +598,7 @@ describe('ReservaService', () => {
     it('rechaza con 400 BARBERO_REQUERIDO si se piden servicios propios sin decir de quién son', async () => {
       await expect(
         service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
           fecha: '2026-10-10',
           horaInicio: '09:00',
           horaFin: '09:40',
@@ -599,6 +613,7 @@ describe('ReservaService', () => {
     it('rechaza con 400 SERVICIOS_REQUERIDOS una reserva individual sin servicios', async () => {
       await expect(
         service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
           fecha: '2026-10-10',
           horaInicio: '09:00',
           horaFin: '09:40',
@@ -614,13 +629,13 @@ describe('ReservaService', () => {
       mockPrismaService.servicioBarbero.findMany.mockResolvedValue(serviciosDelBarbero);
 
       const cotizacion = await service.cotizar('uuid-barberia', {
+        tipo: 'INDIVIDUAL',
         fecha: '2026-10-10',
         horaInicio: '09:00',
         horaFin: '09:40',
         serviciosBarberoIds: ['sb1', 'sb2'],
         barberoId: 'uuid-barbero',
         precioTotalEsperado: 1,
-        tipo: 'INDIVIDUAL',
       } as any);
 
       expect(cotizacion.horaFin).toBe('09:40');
@@ -666,6 +681,7 @@ describe('ReservaService', () => {
       ]);
 
       const cotizacion = await service.cotizar('uuid-barberia', {
+        tipo: 'INDIVIDUAL',
         fecha: '2026-10-10',
         horaInicio: '09:00',
         horaFin: '09:40',
@@ -1011,7 +1027,8 @@ describe('ReservaService', () => {
     }
 
     function crearAltaValida() {
-      return service.crearReserva('uuid-cliente', 'uuid-barberia', { ...datosAltaValida } as any);
+      return service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        ...datosAltaValida } as any);
     }
 
     it('VERDE: si el `add` RECHAZA (cuota agotada), la reserva se crea igual y el fallo queda como advertencia', async () => {
@@ -1701,7 +1718,7 @@ describe('ReservaService', () => {
       mockPrismaService.barberia.findUnique.mockResolvedValue({ zonaHoraria: TZ_SEDE });
       const alternativas = [{ fecha: '2026-10-12', horaInicio: '11:00', horaFin: '11:30' }];
       mockDisponibilidadService.buscarAlternativas.mockReset();
-      mockDisponibilidadService.buscarAlternativas.mockResolvedValueOnce(alternativas);
+      mockDisponibilidadService.buscarAlternativas.mockResolvedValueOnce(alternativas as never);
 
       await expect(
         service.reprogramarReserva('uuid-barberia', 'uuid-reserva', dto, usuarioAdmin as any),
@@ -1909,6 +1926,7 @@ describe('ReservaService', () => {
       horaFin: '10:30',
       serviciosIds: ['s1'],
       precioTotalEsperado: 15,
+      tipo: 'INDIVIDUAL',
     };
 
     beforeEach(() => {
@@ -1932,7 +1950,7 @@ describe('ReservaService', () => {
 
     it('VERDE: sin hueco → 409 CONFLICTO_HORARIO con las alternativas del mismo día', async () => {
       mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([]);
-      mockDisponibilidadService.buscarAlternativas.mockResolvedValueOnce(ALTERNATIVAS);
+      mockDisponibilidadService.buscarAlternativas.mockResolvedValueOnce(ALTERNATIVAS as never);
 
       await expect(service.crearReserva('uuid-cliente', 'uuid-barberia', dto)).rejects.toMatchObject({
         response: { statusCode: 409, codigo: 'CONFLICTO_HORARIO', alternativas: ALTERNATIVAS },
@@ -1955,7 +1973,7 @@ describe('ReservaService', () => {
         ...CONFIG,
         maxPersonasTotal: 2,
       });
-      mockDisponibilidadService.buscarAlternativas.mockResolvedValueOnce(ALTERNATIVAS);
+      mockDisponibilidadService.buscarAlternativas.mockResolvedValueOnce(ALTERNATIVAS as never);
 
       await expect(
         service.crearReserva('uuid-cliente', 'uuid-barberia', {
@@ -1988,13 +2006,13 @@ describe('ReservaService', () => {
     it('VERDE: si el calculador no encuentra nada, el error viaja tal cual (nunca un hueco falso)', async () => {
       mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([]);
 
-      const error = await service
+      const error = (await service
         .crearReserva('uuid-cliente', 'uuid-barberia', dto)
-        .catch((e: unknown) => e);
+        .catch((e: unknown) => e)) as ConflictException;
 
       expect(error).toBeInstanceOf(ConflictException);
       expect(error.getResponse()).toMatchObject({ statusCode: 409, codigo: 'CONFLICTO_HORARIO' });
-      expect(error.getResponse().alternativas).toBeUndefined();
+      expect((error.getResponse() as { alternativas?: unknown }).alternativas).toBeUndefined();
     });
 
     it('VERDE: un error que no es de agenda ni de capacidad no consulta alternativas', async () => {
@@ -2017,6 +2035,7 @@ describe('ReservaService', () => {
    */
   describe('E4-03 · fidelización por inasistencias', () => {
     const dtoIndividual = {
+      tipo: 'INDIVIDUAL',
       fecha: '2026-10-12',
       horaInicio: '10:00',
       horaFin: '10:30',
@@ -2368,6 +2387,7 @@ describe('ReservaService', () => {
       mockPrismaService.participanteReserva.create.mockResolvedValue({ id: 'uuid-part' });
 
       await service.crearReserva('uuid-cliente', 'uuid-barberia', {
+        tipo: 'INDIVIDUAL',
         fecha: '2026-10-12',
         horaInicio: '09:00',
         horaFin: '09:30',
