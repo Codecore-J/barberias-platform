@@ -25,6 +25,17 @@
  */
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import { existsSync } from 'node:fs';
+
+// `tsx` no carga `.env` por su cuenta (el CLI de Prisma sí): sin esto las
+// variables de entorno del archivo nunca llegarían al proceso.
+if (existsSync('.env')) {
+  try {
+    process.loadEnvFile('.env');
+  } catch {
+    // `.env` ilegible: se usan solo las variables del entorno real.
+  }
+}
 
 const prisma = new PrismaClient({ log: ['error'] });
 
