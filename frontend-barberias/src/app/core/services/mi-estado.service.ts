@@ -1,6 +1,6 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, isDevMode, signal } from '@angular/core';
 import { mensajeDeError } from '../utils/error-message.js';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, catchError, of, tap, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 import { TenantService } from './tenant.service.js';
@@ -81,6 +81,44 @@ export class MiEstadoService {
     return this.http.get<MiEstado>(this.ruta(barberiaId)).pipe(
       tap((estado) => this.guardar(barberiaId, estado)),
       catchError(() => of(null)),
+    );
+  }
+
+  /**
+   * `GET /mi-estado/membresias` · Fase 3 · la versión en lote.
+   *
+   * Antes la vista pedía `GET /shops/:id/membership` una vez por sede; con el
+   * cliente vinculado a varias sedes eso era un bucle de peticiones contra el
+   * pool de Neon. Ahora es UNA petición y el backend acota por el usuario del
+   * token, así que el resultado no puede mezclar personas.
+   *
+   * Igual que `cargarEstado`, un fallo no ensucia `error()`: sin membresías la
+   * vista simplemente no pinta la tarjeta de fidelización, y un 403 no debe
+   * romper la lista de sedes.
+   */
+  cargarEstados(): Observable<MiEstado[]> {
+    this.isLoading.set(true);
+
+    return this.http.get<MiEstado[]>(`${API_URL}/mi-estado/membresias`).pipe(
+      tap((estados) => {
+        this.isLoading.set(false);
+        this.estados.set(
+          Object.fromEntries(estados.map((estado) => [estado.barberiaId, estado])),
+        );
+      }),
+      catchError((err: unknown) => {
+        this.isLoading.set(false);
+        // Un 404 aquí no es «no hay membresías»: es un backend sin el endpoint
+        // por lotes (despliegue desincronizado o servidor viejo). La vista sigue
+        // funcionando sin fidelización, pero el desarrollador tiene que saberlo.
+        if (isDevMode() && err instanceof HttpErrorResponse && err.status === 404) {
+          console.warn(
+            '[MiEstadoService] GET /mi-estado/membresias respondió 404: el backend no sirve el endpoint por lotes. ' +
+              'Comprueba que la versión desplegada incluye la Fase 3. La vista se muestra sin fidelización.',
+          );
+        }
+        return of([] as MiEstado[]);
+      }),
     );
   }
 

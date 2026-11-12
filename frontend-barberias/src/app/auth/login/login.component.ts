@@ -36,7 +36,8 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
             <p class="text-zinc-400 text-sm">Bienvenido de vuelta. Ingresa a tu cuenta.</p>
           </div>
 
-          <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="space-y-6 transform translate-z-12">
+          @if (!showRecoveryModal()) {
+          <form id="login-form" [formGroup]="loginForm" (ngSubmit)="onSubmit()" novalidate class="space-y-6 transform translate-z-12">
             
             <div class="space-y-2">
               <label for="correo" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Correo Electrónico</label>
@@ -81,6 +82,7 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
             </button>
             
           </form>
+          }
 
           <!--
             Acceso Rápido Demo · SOLO desarrollo.
@@ -129,6 +131,7 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
           icono="pi pi-key"
           [cerrarBloqueado]="isRecoveryLoading()"
           (cerrar)="closeRecoveryModal()">
+          @if (showRecoveryModal()) {
               @if (recoverySuccessMsg()) {
                 <div class="mb-4 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 flex items-center gap-2">
                   <i class="pi pi-check-circle text-base"></i> {{ recoverySuccessMsg() }}
@@ -142,10 +145,10 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
               }
 
               @if (recoveryStep() === 1) {
-                <form [formGroup]="forgotForm" (ngSubmit)="onForgotSubmit()" class="space-y-4">
+                <form id="recovery-form" [formGroup]="forgotForm" (ngSubmit)="onForgotSubmit()" novalidate class="space-y-4">
                   <div class="space-y-1.5">
                     <label for="recoveryEmail" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Correo Electrónico</label>
-                    <input id="recoveryEmail" type="email" formControlName="correo" placeholder="tu@correo.com"
+                    <input id="recoveryEmail" type="email" name="correo" autocomplete="email" formControlName="correo" placeholder="tu@correo.com"
                            class="w-full bg-zinc-900 border border-zinc-700 rounded-xl py-3 px-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors shadow-inner text-sm">
                   </div>
 
@@ -165,16 +168,16 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
                   </div>
                 </form>
               } @else {
-                <form [formGroup]="resetForm" (ngSubmit)="onResetSubmit()" class="space-y-4">
+                <form id="recovery-reset-form" [formGroup]="resetForm" (ngSubmit)="onResetSubmit()" novalidate class="space-y-4">
                   <div class="space-y-1.5">
                     <label for="recoveryToken" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Token de Recuperación</label>
-                    <input id="recoveryToken" type="text" formControlName="token" placeholder="Pega el token aquí"
+                    <input id="recoveryToken" type="text" name="token" autocomplete="one-time-code" formControlName="token" placeholder="Pega el token aquí"
                            class="w-full bg-zinc-900 border border-zinc-700 rounded-xl py-3 px-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors shadow-inner text-sm font-mono">
                   </div>
 
                   <div class="space-y-1.5">
                     <label for="recoveryNewPassword" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Nueva Contraseña (mín. 8 caracteres)</label>
-                    <input id="recoveryNewPassword" type="password" formControlName="newPassword" placeholder="••••••••"
+                    <input id="recoveryNewPassword" type="password" name="newPassword" autocomplete="new-password" formControlName="newPassword" placeholder="••••••••"
                            class="w-full bg-zinc-900 border border-zinc-700 rounded-xl py-3 px-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors shadow-inner text-sm">
                   </div>
 
@@ -194,6 +197,7 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
                   </div>
                 </form>
               }
+          }
         </app-modal-shell>
 
       </div>
@@ -270,24 +274,46 @@ export class LoginComponent {
     this.showPassword.update(v => !v);
   }
 
+  /**
+   * Abre la recuperación con el correo ya escrito (si lo hay) y el resto en
+   * limpio: el modal se monta desde cero y no hereda marcas ni errores del
+   * intento de login anterior.
+   */
   openRecoveryModal() {
     this.recoveryStep.set(1);
+    this.isRecoveryLoading.set(false);
     this.recoverySuccessMsg.set(null);
     this.recoveryErrorMsg.set(null);
     this.forgotForm.reset({ correo: this.loginForm.value.correo || '' });
+    this.forgotForm.markAsUntouched();
+    this.resetForm.reset();
+    this.resetForm.markAsUntouched();
+    this.authService.limpiarError();
     this.showRecoveryModal.set(true);
   }
 
   closeRecoveryModal() {
     this.showRecoveryModal.set(false);
+    this.recoveryStep.set(1);
+    this.isRecoveryLoading.set(false);
     this.recoverySuccessMsg.set(null);
     this.recoveryErrorMsg.set(null);
+    // El modal se desmonta: al volver a abrirlo no puede reaparecer ni el
+    // correo ni el token de la vez anterior.
+    this.forgotForm.reset({ correo: '' });
+    this.forgotForm.markAsUntouched();
+    this.resetForm.reset();
+    this.resetForm.markAsUntouched();
   }
 
   goToStep(step: 1 | 2) {
     this.recoveryStep.set(step);
     this.recoverySuccessMsg.set(null);
     this.recoveryErrorMsg.set(null);
+    // Cada paso estrena su propio formulario: no se reutilizan las marcas del
+    // anterior (un campo tocado en el paso 1 no debe pintarse sucio en el 2).
+    this.forgotForm.markAsUntouched();
+    this.resetForm.markAsUntouched();
   }
 
   onForgotSubmit() {

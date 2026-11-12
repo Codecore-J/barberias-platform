@@ -41,7 +41,7 @@ import {
   type EventoReserva,
   type TipoEventoReserva,
 } from '../../notificaciones/domain/eventos-reserva.js';
-import { CotizacionResponse, BloqueCalculado } from './dto/cotizacion.dto.js';
+import { BloqueCalculado } from './dto/cotizacion.dto.js';
 import {
   calcularBloqueGrupal,
   mensajeDeProblema,

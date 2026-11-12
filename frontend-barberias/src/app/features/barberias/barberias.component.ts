@@ -310,7 +310,7 @@ interface CamposEditables {
           } @else {
             <h3 class="text-xl font-bold text-white">No tienes barberías vinculadas</h3>
             <p class="text-zinc-400 text-sm">
-              Para comenzar a agendar turnos o gestionar una barbería, necesitas vincularte a una utilizando un código de acceso o crear la tuya propia.
+              Para comenzar a agendar turnos o gestionar una barbería, necesitas vincularte a una barbería activa con un código de acceso, o crear la tuya propia.
             </p>
           }
           <div class="flex justify-center gap-4 pt-4">
@@ -666,9 +666,7 @@ export class BarberiasComponent implements OnInit {
       return;
     }
 
-    for (const barberia of this.tenantService.barberiasVinculadas()) {
-      this.miEstado.cargarEstado(barberia.id).subscribe();
-    }
+    this.miEstado.cargarEstados().subscribe();
   }
 
   estadoDe(barberiaId: string): MiEstado | null {

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from '../application/auth.service.js';
 import { RegisterDto } from '../application/dto/register.dto.js';
@@ -8,7 +9,9 @@ import { OtpService } from '../application/otp.service.js';
 
 describe('AuthController', () => {
   let controller: AuthController;
-  let authService: AuthService;
+  // Dobles de `vi.fn()`: afirmar sobre el `Mock` evita referenciar un método
+  // del servicio fuera de su objeto, que perdería `this`.
+  let authService: { register: Mock; login: Mock; getProfile: Mock };
   let otpService: OtpService;
 
   const mockUsuarioResponse: UsuarioResponseDto = {
@@ -30,14 +33,14 @@ describe('AuthController', () => {
       register: vi.fn(),
       login: vi.fn(),
       getProfile: vi.fn(),
-    } as any;
+    };
 
     otpService = {
       enviar: vi.fn(),
       verificar: vi.fn(),
     } as any;
 
-    controller = new AuthController(authService, otpService);
+    controller = new AuthController(authService as unknown as AuthService, otpService);
   });
 
   describe('register', () => {

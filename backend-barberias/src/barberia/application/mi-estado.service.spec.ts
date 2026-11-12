@@ -316,3 +316,59 @@ describe('MiEstadoService (E4-03/2 · H54 · E3-12/3)', () => {
     });
   });
 });
+
+describe('MiEstadoService · membresías en lote (Fase 3)', () => {
+  const cliente: UsuarioAutenticado = {
+    id: 'uuid-cliente',
+    correo: 'cliente@test.com',
+    roles: ['CLIENTE'],
+    rolesDetallados: [{ nombre: 'CLIENTE', barberiaId: null, ambito: 'GLOBAL' }],
+  };
+
+  const mockPrisma = {
+    clienteBarberia: { findMany: vi.fn() },
+  };
+
+  let service: MiEstadoService;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        MiEstadoService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: AuditoriaService, useValue: { registrarEvento: vi.fn() } },
+        TiempoService,
+        { provide: RELOJ, useValue: () => new Date('2026-10-15T02:00:00.000Z') },
+      ],
+    }).compile();
+
+    service = module.get<MiEstadoService>(MiEstadoService);
+  });
+
+  it('resuelve todas las sedes con UN findMany acotado por el usuario del token', async () => {
+    mockPrisma.clienteBarberia.findMany.mockResolvedValue([
+      { barberiaId: 'b1', estadoVinculacion: 'ACTIVO', contadorNoPresentado: 0, estaRestringido: false, motivoRestriccion: null },
+      { barberiaId: 'b2', estadoVinculacion: 'ACTIVO', contadorNoPresentado: 4, estaRestringido: true, motivoRestriccion: 'Inasistencias sin avisar' },
+    ]);
+
+    const estados = await service.obtenerVarias(cliente);
+
+    expect(mockPrisma.clienteBarberia.findMany).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.clienteBarberia.findMany.mock.calls[0][0]).toMatchObject({
+      where: { usuarioId: 'uuid-cliente' },
+    });
+    expect(estados.map((estado) => estado.barberiaId)).toEqual(['b1', 'b2']);
+    expect(estados[0].clienteId).toBe(cliente.id);
+    expect(estados[0].estaRestringido).toBe(false);
+    expect(estados[0].limiteInasistencias).toBe(LIMITE_INASISTENCIAS_POR_DEFECTO);
+    expect(estados[1].estaRestringido).toBe(true);
+    expect(estados[1].motivoRestriccion).toBe('Inasistencias sin avisar');
+  });
+
+  it('una cuenta sin vínculos devuelve lista vacía, no un error', async () => {
+    mockPrisma.clienteBarberia.findMany.mockResolvedValue([]);
+
+    await expect(service.obtenerVarias(cliente)).resolves.toEqual([]);
+  });
+});

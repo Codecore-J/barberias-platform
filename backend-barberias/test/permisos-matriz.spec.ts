@@ -176,6 +176,10 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // así que el guard solo filtra el rol y el acotado por el usuario del token lo
   // exige el servicio. Solo CLIENTE: el staff tiene sus propios listados.
   'GET /mi-estado/barberias': [ROL_CLIENTE],
+
+  // Fase 3: el estado de fidelización de TODAS sus sedes en una sola lectura,
+  // para que el cliente no abra una petición por sede.
+  'GET /mi-estado/membresias': [ROL_CLIENTE],
   // E3-12/2 (2026-10-17): la entrada del cliente por invitación (regla 1.10).
   // Hermana de `desvincular`: vive bajo `mi-estado` —el espacio del vínculo
   // propio— y es del CLIENTE, porque el vínculo que se crea es el suyo. Sin
@@ -659,8 +663,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // 114 rutas con política × 4 roles = 448. I-05 suma los vínculos de rol de
   // una cuenta (GET) y la concesión/retirada del rol global (PATCH): 116 rutas
   // con política × 4 roles = 464 decisiones. H-03 suma la bandeja de
-  // propuestas de horario pendientes: 117 × 4 = 468 decisiones.
-  expect(evaluaciones).toBe(468);
+  // propuestas de horario pendientes: 117 × 4 = 468 decisiones. La Fase 3
+  // suma el lote de membresías del cliente: 118 × 4 = 472 decisiones.
+  expect(evaluaciones).toBe(472);
     expect(
       desviaciones.length === 0
         ? ''

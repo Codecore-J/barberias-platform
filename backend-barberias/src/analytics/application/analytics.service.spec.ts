@@ -118,7 +118,7 @@ describe('AnalyticsService', () => {
     await service.getShopAnalytics('shop-1', '2026-10-01', '2026-10-07');
     await service.getShopAnalytics('shop-1', '2026-10-01', '2026-10-31');
 
-    const claves = cache.set.mock.calls.map(([clave]: [string]) => clave);
+    const claves = cache.set.mock.calls.map(([clave]: [string, unknown]) => clave);
     expect(claves).toEqual([
       'analytics:shop:shop-1:2026-10-01-2026-10-07',
       'analytics:shop:shop-1:2026-10-01-2026-10-31',
@@ -285,7 +285,7 @@ describe('AnalyticsService', () => {
     await service.getShopsOverview({ id: 'u1', roles: [], rolesDetallados: [] }, '2026-10-01', '2026-10-31', false);
     await service.getShopsOverview({ id: 'u2', roles: [], rolesDetallados: [] }, '2026-10-01', '2026-10-31', false);
 
-    const claves = cache.set.mock.calls.map(([clave]: [string]) => clave);
+    const claves = cache.set.mock.calls.map(([clave]: [string, unknown]) => clave);
     expect(claves).toEqual([
       'analytics:overview:u1:2026-10-01-2026-10-31',
       'analytics:overview:u2:2026-10-01-2026-10-31',

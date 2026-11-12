@@ -50,3 +50,6 @@ endpoints.json
 .render-env-local.json
 .env-payload.json
 .respaldo-purga-produccion.json
+
+# Capturas de la validación visual de QA (Fase 3)
+qa-fase3/
