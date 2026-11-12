@@ -571,7 +571,9 @@ export class AppLayoutComponent implements OnInit {
     this.tenantService
       .cargarBarberias({ autoSeleccionar: this.userRole() !== 'ADMINISTRADOR' })
       .subscribe();
-    this.notificationService.cargarNotificaciones().subscribe();
+    // Fase 2b · si el listado sigue vigente se reutiliza: el layout se monta al
+    // entrar y al volver de una ruta sin layout, y no hace falta pedirlo otra vez.
+    this.notificationService.asegurarCargadas().subscribe();
   }
 
   toggleMobileMenu() {
@@ -589,6 +591,9 @@ export class AppLayoutComponent implements OnInit {
     this.notificationsDropdownOpen.update((v) => !v);
     if (this.notificationsDropdownOpen()) {
       this.profileDropdownOpen.set(false);
+      // Fase 2b · al ABRIR se asegura el dato: si el listado caducó, se refresca
+      // aquí; si acaba de cargarse, no hay petición. Cerrar no pide nada.
+      this.notificationService.asegurarCargadas().subscribe();
     }
   }
 

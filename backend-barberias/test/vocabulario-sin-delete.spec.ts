@@ -80,6 +80,8 @@ const VOCABULARIO_FRONTEND_AUTORIZADO: Record<string, string> = {
     'Alias documentado en el propio método: llama a `POST .../bloqueos/:id/liberar`. El bloqueo no se borra, se LIBERA (fija `liberado_at` y conserva el rastro); lo que no cambia es lo que ve la pantalla, y por eso el nombre se conservó.',
   'tenant.service.ts:removeItem':
     '`localStorage.removeItem` no toca datos de dominio: quita la clave de la sede activa del almacenamiento del NAVEGADOR. El vocabulario del diseño (Spec 01 §9) habla de persistencia del dominio, no de la caché local del cliente.',
+  'tenant.service.ts:delete':
+    'Único `.delete(` del archivo es `Map.delete` sobre la caché EN MEMORIA de invitaciones: olvida la de una sede para volver a pedirla cuando la pantalla pasa `forzarRecarga`. No toca datos de dominio ni el backend; el código sigue vivo en la base.',
 };
 
 /** Todas las rutas de archivos que acepta `aceptar`, recorriendo el árbol. */
