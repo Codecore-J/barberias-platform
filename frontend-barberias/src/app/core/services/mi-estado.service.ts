@@ -1,6 +1,6 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, isDevMode, signal } from '@angular/core';
 import { mensajeDeError } from '../utils/error-message.js';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, catchError, of, tap, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 import { TenantService } from './tenant.service.js';
@@ -106,8 +106,17 @@ export class MiEstadoService {
           Object.fromEntries(estados.map((estado) => [estado.barberiaId, estado])),
         );
       }),
-      catchError(() => {
+      catchError((err: unknown) => {
         this.isLoading.set(false);
+        // Un 404 aquí no es «no hay membresías»: es un backend sin el endpoint
+        // por lotes (despliegue desincronizado o servidor viejo). La vista sigue
+        // funcionando sin fidelización, pero el desarrollador tiene que saberlo.
+        if (isDevMode() && err instanceof HttpErrorResponse && err.status === 404) {
+          console.warn(
+            '[MiEstadoService] GET /mi-estado/membresias respondió 404: el backend no sirve el endpoint por lotes. ' +
+              'Comprueba que la versión desplegada incluye la Fase 3. La vista se muestra sin fidelización.',
+          );
+        }
         return of([] as MiEstado[]);
       }),
     );

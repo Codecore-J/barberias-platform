@@ -382,9 +382,16 @@ import { NotificationService } from '../../core/services/notification.service';
                       <a routerLink="/barberias" (click)="profileDropdownOpen.set(false)" class="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 rounded-xl transition-colors">
                         <i class="pi pi-building text-amber-400 text-xs"></i>Gestionar Barberías
                       </a>
-                    } @else if (userRole() === 'CLIENTE') {
+                    } @else if (userRole() === 'CLIENTE' || userRole() === 'SIN_ROL') {
                       <a routerLink="/barberias" (click)="profileDropdownOpen.set(false)" class="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 rounded-xl transition-colors">
                         <i class="pi pi-link text-amber-400 text-xs"></i>Vincularme a una barbería
+                      </a>
+                    } @else if (userRole() === 'BARBERO') {
+                      <a routerLink="/admin/agenda" (click)="profileDropdownOpen.set(false)" class="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 rounded-xl transition-colors">
+                        <i class="pi pi-calendar text-amber-400 text-xs"></i>Mi Agenda
+                      </a>
+                      <a routerLink="/barbero/servicios" (click)="profileDropdownOpen.set(false)" class="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 rounded-xl transition-colors">
+                        <i class="pi pi-briefcase text-amber-400 text-xs"></i>Mis Servicios
                       </a>
                     }
                     <button (click)="onLogout()" class="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-950/30 rounded-xl transition-colors text-left">

@@ -196,3 +196,45 @@ describe('MiEstadoService · membresías en lote (Fase 3)', () => {
     expect(service.isLoading()).toBe(false);
   });
 });
+
+describe('MiEstadoService · diagnóstico del lote (Fase 3)', () => {
+  let service: MiEstadoService;
+  let http: HttpTestingController;
+  const LOTE_URL = `${API_URL}/mi-estado/membresias`;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    service = TestBed.inject(MiEstadoService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('avisa en desarrollo cuando el backend no sirve el endpoint por lotes', () => {
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let recibidos = -1;
+
+    service.cargarEstados().subscribe((estados) => {
+      recibidos = estados.length;
+    });
+
+    http.expectOne(LOTE_URL).flush({ message: 'Cannot GET' }, { status: 404, statusText: 'Not Found' });
+
+    expect(recibidos).toBe(0);
+    expect(aviso).toHaveBeenCalled();
+    expect(String(aviso.mock.calls[0][0])).toContain('/mi-estado/membresias');
+    aviso.mockRestore();
+  });
+
+  it('un 500 no dispara el aviso de endpoint ausente', () => {
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    service.cargarEstados().subscribe();
+    http.expectOne(LOTE_URL).flush('boom', { status: 500, statusText: 'Server Error' });
+
+    expect(aviso).not.toHaveBeenCalled();
+    aviso.mockRestore();
+  });
+});
