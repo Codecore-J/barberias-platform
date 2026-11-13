@@ -431,6 +431,48 @@ describe('ReservaService', () => {
       ).resolves.toMatchObject({ id: 'uuid-reserva' });
     });
 
+    // T-05 · el walk-in lo teclea el staff en el mostrador: `clienteId` es el
+    // OPERADOR de la sede, que no tiene fila en `cliente_barberias`. Antes el
+    // alta le exigía ese vínculo y respondía 403 NO_VINCULADO a un
+    // ADMIN_BARBERIA legítimo, así que el botón de la agenda nunca creaba nada.
+    it('ACEPTA el alta del mostrador (operadorDeSede) sin vínculo de cliente', async () => {
+      mockPrismaService.barberia.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      // Sin vínculo: la consulta no debe ni hacerse.
+      mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null);
+      mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
+        modoReserva: 'MANUAL',
+        nuevasReservasActivas: true,
+        aceptaIndividual: true,
+        margenGrupalMinutos: 10,
+      });
+      mockPrismaService.servicio.findMany.mockResolvedValue([
+        { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 5 },
+      ]);
+      mockDisponibilidadService.calcularDisponibilidad.mockResolvedValue([
+        { inicio: enSede('2026-10-10', 9), fin: enSede('2026-10-10', 9, 40) },
+      ]);
+      mockPrismaService.reserva.create.mockResolvedValue({ id: 'uuid-reserva' });
+      mockPrismaService.participanteReserva.create.mockResolvedValue({ id: 'uuid-part' });
+
+      await expect(
+        service.crearReserva(
+          'uuid-operador',
+          'uuid-barberia',
+          {
+            tipo: 'INDIVIDUAL',
+            fecha: '2026-10-10',
+            horaInicio: '09:00',
+            horaFin: '09:30',
+            serviciosIds: ['s1'],
+            precioTotalEsperado: 15,
+          },
+          { operadorDeSede: true },
+        ),
+      ).resolves.toMatchObject({ id: 'uuid-reserva' });
+
+      expect(mockPrismaService.clienteBarberia.findUnique).not.toHaveBeenCalled();
+    });
+
     it('debe fallar con ConflictException si no hay disponibilidad en la fecha solicitada', async () => {
       mockPrismaService.clienteBarberia.findUnique.mockResolvedValue({ estaRestringido: false });
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({

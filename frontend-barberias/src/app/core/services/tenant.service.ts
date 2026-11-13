@@ -83,6 +83,15 @@ export class TenantService {
   private readonly http = inject(HttpClient);
   private readonly apiUrl = `${API_URL}/shops`;
   /**
+   * T-13 · inventario COMPLETO de la plataforma (activas e inactivas).
+   *
+   * `GET /shops` filtra por `estado: 'ACTIVO'` —incluso para el ADMINISTRADOR—,
+   * así que una sede suspendida desaparecía del hub en cuanto se suspendía y
+   * quedaba sin manera de reactivarla. Este listado es el único que la devuelve.
+   * Solo responde al ADMINISTRADOR global (403 para el resto).
+   */
+  private readonly apiUrlTodasLasSedes = `${API_URL}/shops/all`;
+  /**
    * H72 · las sedes del CLIENTE son las de su VÍNCULO, no las que responsabiliza.
    * `GET /shops` filtra por `responsableId`, así que a un cliente puro le
    * devuelve `[]` aunque tenga vínculos en `cliente_barberias`.
@@ -529,6 +538,54 @@ export class TenantService {
           this.setBarberiaActiva({ ...activa, ...actualizada, id: activa.id });
         }
       }),
+    );
+  }
+
+  /**
+   * T-13 · suspender o reactivar una sede (`PATCH /shops/:shopId/status`).
+   *
+   * El backend ya lo declaraba `@Roles('ADMINISTRADOR')` pero ninguna pantalla
+   * lo consumía, así que la operación sólo existía por API.
+   *
+   * El endpoint responde **200 sin cuerpo**: no hay sede que fusionar, así que
+   * el `estado` se escribe con el valor que se acaba de confirmar. Depender del
+   * cuerpo dejaba la tarjeta intacta —seguía ofreciendo «Suspender sede» sobre
+   * una sede ya suspendida— aunque el backend sí hubiera cambiado el estado.
+   */
+  cambiarEstadoSede(
+    barberiaId: string,
+    estado: 'ACTIVO' | 'INACTIVO',
+  ): Observable<void> {
+    return this.http
+      .patch<void>(`${this.apiUrl}/${barberiaId}/status`, { estado })
+      .pipe(
+        tap(() => {
+          this.invalidarSedes();
+          this.barberiasVinculadas.update((lista) =>
+            lista.map((sede) => (sede.id === barberiaId ? { ...sede, estado } : sede)),
+          );
+
+          const activa = this.barberiaActiva();
+          if (activa?.id === barberiaId) {
+            this.setBarberiaActiva({ ...activa, estado });
+          }
+        }),
+        map(() => undefined),
+      );
+  }
+
+  /**
+   * T-13 · inventario completo de sedes (activas e inactivas).
+   *
+   * El hub lee `/shops`, que excluye las suspendidas —por diseño, para que
+   * nadie entre a una sede que no opera—, así que sin este listado una sede
+   * suspendida desaparecía de la pantalla y ya no había forma de reactivarla.
+   * Un 403 (no es ADMINISTRADOR) se traduce a lista vacía: la sección no se pinta.
+   */
+  listarSedesPlataforma(): Observable<BarberiaResumen[]> {
+    return this.http.get<any>(this.apiUrlTodasLasSedes).pipe(
+      map((res) => this.normalizar(res)),
+      catchError(() => of([])),
     );
   }
 

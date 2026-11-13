@@ -91,7 +91,9 @@ test.describe('/admin/usuarios · gestión de cuentas de la plataforma', () => {
       await dialogo.locator('input[name="formCorreo"]').fill(correo);
       await dialogo.locator('input[name="formTelefono"]').fill(telefono);
       await dialogo.locator('input[name="formPassword"]').fill(password);
-      await dialogo.locator('select[name="formRol"]').selectOption({ label: 'CLIENTE' });
+      // T-12 · los roles se muestran con su etiqueta legible ("Cliente"), no con
+      // el código crudo del backend.
+      await dialogo.locator('select[name="formRol"]').selectOption({ label: 'Cliente' });
 
       await dialogo.getByRole('button', { name: 'Crear usuario' }).click();
 
@@ -101,7 +103,7 @@ test.describe('/admin/usuarios · gestión de cuentas de la plataforma', () => {
       // La lista se reordena por fecha de registro: la cuenta nueva aparece.
       const filaCreada = page.locator('tbody tr').filter({ hasText: correo });
       await expect(filaCreada).toBeVisible();
-      await expect(filaCreada.getByText('CLIENTE', { exact: true })).toBeVisible();
+      await expect(filaCreada.getByText('Cliente', { exact: true })).toBeVisible();
       await expect(filaCreada.getByText('ACTIVO', { exact: true })).toBeVisible();
     });
 

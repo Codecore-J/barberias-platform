@@ -221,7 +221,13 @@ export const routes: Routes = [
         // para enseñarle un 403 en pantalla.
         //
         path: 'admin/categorias',
-        canActivate: [tenantGuard, roleGuard(['ADMIN_BARBERIA'])],
+        canActivate: [
+          tenantGuard,
+          roleGuard(['ADMIN_BARBERIA'], {
+            mensajeAlDenegar:
+              'Las categorías del catálogo las gestiona el administrador de la sede, no la plataforma.',
+          }),
+        ],
         loadComponent: () =>
           import('./features/admin/categorias/admin-categorias.component').then(
             (m) => m.AdminCategoriasComponent,
