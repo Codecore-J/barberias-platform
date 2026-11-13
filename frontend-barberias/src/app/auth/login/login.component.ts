@@ -1,4 +1,4 @@
-import { Component, computed, inject, isDevMode, signal } from '@angular/core';
+import { Component, inject, isDevMode, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService } from '../auth.service';
@@ -179,7 +179,7 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
                       corto se quedaba sin pistas. El aviso aparece en cuanto
                       hay algo escrito pero aún no llega al mínimo.
                     -->
-                    @if (tokenIncompleto()) {
+                    @if (tokenIncompleto) {
                       <p class="text-[11px] text-amber-300 flex items-center gap-1.5" role="alert">
                         <i class="pi pi-info-circle"></i>
                         El token tiene {{ resetForm.get('token')?.value?.length ?? 0 }} caracteres y necesita
@@ -357,11 +357,17 @@ export class LoginComponent {
     });
   }
 
-  /** T-28 · aviso temprano del mínimo del token (el formulario sigue validando). */
-  readonly tokenIncompleto = computed(() => {
+  /**
+   * T-28 · aviso temprano del mínimo del token (el formulario sigue validando).
+   *
+   * Es un getter y NO un `computed()`: el valor sale de un `FormControl`, que no
+   * es una señal, así que el `computed` no tenía de qué invalidarse y se quedaba
+   * cacheado en `false` —el aviso no aparecía nunca—. Verificado en navegador.
+   */
+  get tokenIncompleto(): boolean {
     const valor = (this.resetForm.get('token')?.value ?? '') as string;
     return valor.length > 0 && valor.length < 10;
-  });
+  }
 
   onResetSubmit() {
     if (this.resetForm.invalid) return;
