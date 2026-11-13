@@ -251,7 +251,48 @@ interface CamposEditables {
         </section>
       }
 
-      <!-- Empty State -->
+      <!--
+        T-13 · sedes suspendidas. Van aparte del hub porque GET /shops solo
+        devuelve ACTIVAS: sin esta sección, suspender una sede la hacía
+        desaparecer y no había manera de reactivarla desde la interfaz.
+      -->
+      @if (esSuperadmin() && sedesSuspendidas().length > 0) {
+        <section class="max-w-6xl mx-auto px-4 pb-16" aria-label="Sedes suspendidas">
+          <div class="rounded-2xl border border-white/10 bg-zinc-900/60 p-5 space-y-4">
+            <div class="flex items-start gap-3">
+              <i class="pi pi-lock text-rose-300 mt-0.5"></i>
+              <div>
+                <h3 class="text-sm font-bold text-white">
+                  Sedes suspendidas ({{ sedesSuspendidas().length }})
+                </h3>
+                <p class="text-xs text-zinc-400 mt-1">
+                  No operan para clientes ni personal y por eso no aparecen arriba.
+                  Reactívalas para devolverlas al listado de sedes activas.
+                </p>
+              </div>
+            </div>
+
+            <ul class="divide-y divide-white/5">
+              @for (sede of sedesSuspendidas(); track sede.id) {
+                <li class="flex flex-wrap items-center gap-3 py-3">
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold text-white truncate">{{ sede.nombre }}</p>
+                    <p class="text-xs text-zinc-500 truncate">{{ sede.ubicacion }}</p>
+                  </div>
+                  <span class="px-2.5 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-300 text-[10px] font-bold uppercase tracking-wider">
+                    Suspendida
+                  </span>
+                  <button (click)="alternarEstadoSede(sede)"
+                          class="px-4 py-2 rounded-xl text-xs font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors flex items-center gap-2">
+                    <i class="pi pi-lock-open"></i>
+                    <span>Reactivar sede</span>
+                  </button>
+                </li>
+              }
+            </ul>
+          </div>
+        </section>
+      }
       @if (!tenantService.isLoading() && tenantService.barberiasVinculadas().length === 0) {
         <div class="max-w-xl mx-auto px-4 text-center space-y-6 transform translate-z-12">
           <div class="w-24 h-24 mx-auto rounded-full bg-zinc-800/50 border border-zinc-700/50 flex items-center justify-center text-4xl text-zinc-500">
@@ -573,13 +614,33 @@ export class BarberiasComponent implements OnInit {
   readonly barberiaADesvincular = signal<BarberiaResumen | null>(null);
   readonly mensajeExito = signal('');
 
+  /**
+   * T-13 · sedes suspendidas de la plataforma.
+   *
+   * `GET /shops` excluye las INACTIVAS a propósito (entrar a una sede que no
+   * opera acaba en 403/409), pero eso dejaba la suspensión sin vuelta atrás
+   * desde la pantalla: la tarjeta desaparecía. Esta lista sale de
+   * `GET /shops/all`, el inventario completo, y solo la ve el superadmin.
+   */
+  readonly sedesSuspendidas = signal<BarberiaResumen[]>([]);
+
   ngOnInit() {
     // D05 · el superadmin no hereda sede: entra al hub a elegir cuál audita.
     this.tenantService
       .cargarBarberias({ autoSeleccionar: !this.esSuperadmin() })
       .subscribe(() => {
         this.cargarEstados();
+        this.cargarSedesSuspendidas();
       });
+  }
+
+  /** T-13 · solo el inventario completo distingue una sede suspendida. */
+  private cargarSedesSuspendidas(): void {
+    if (!this.esSuperadmin()) return;
+
+    this.tenantService.listarSedesPlataforma().subscribe((sedes) => {
+      this.sedesSuspendidas.set(sedes.filter((sede) => sede.estado !== 'ACTIVO'));
+    });
   }
 
   /**
@@ -917,8 +978,19 @@ export class BarberiasComponent implements OnInit {
     if (!confirmado) return;
 
     this.tenantService.cambiarEstadoSede(barberia.id, suspender ? 'INACTIVO' : 'ACTIVO').subscribe({
-      next: () =>
-        this.toast.success(suspender ? 'Sede suspendida.' : 'Sede reactivada.', barberia.nombre),
+      next: () => {
+        this.toast.success(
+          suspender ? 'Sede suspendida.' : 'Sede reactivada.',
+          suspender
+            ? `${barberia.nombre} pasa a la lista de sedes suspendidas.`
+            : barberia.nombre,
+        );
+        // La sede cambia de lista: se recargan las activas y las suspendidas.
+        this.tenantService
+          .cargarBarberias({ autoSeleccionar: !this.esSuperadmin(), forzarRecarga: true })
+          .subscribe({ error: () => undefined });
+        this.cargarSedesSuspendidas();
+      },
       error: (err) =>
         this.toast.error(
           mensajeDeError(err, 'No se pudo cambiar el estado de la sede.'),
