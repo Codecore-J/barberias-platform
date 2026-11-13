@@ -99,7 +99,12 @@ export class ReservaController {
     @Body() dto: CreateReservaDto,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.reservaService.crearReserva(user.id, barberiaId, dto);
+    // T-05 · `user.id` es el OPERADOR del mostrador, no el cliente: la ruta ya
+    // está acotada al staff de la sede por `@Roles` y por el guard de vínculo,
+    // así que el alta no puede pedirle además el vínculo de cliente.
+    return this.reservaService.crearReserva(user.id, barberiaId, dto, {
+      operadorDeSede: true,
+    });
   }
 
   /**

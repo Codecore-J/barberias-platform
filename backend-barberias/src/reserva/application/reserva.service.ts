@@ -190,6 +190,18 @@ export interface CrearReservaOpciones {
    * minutos del temporizador de aceptación no tiene sentido.
    */
   confirmarAlCrear?: boolean;
+  /**
+   * T-05 · el alta la ejecuta el STAFF de la sede desde el mostrador, no el
+   * cliente.
+   *
+   * En el walk-in el `usuarioId` es el OPERADOR (queda como creador de la cita y
+   * como `registradoPor` del cobro), pero no es el cliente. Exigirle una fila en
+   * `cliente_barberias` —el vínculo del cliente de verdad— devolvía 403
+   * `NO_VINCULADO` a un ADMIN_BARBERIA legítimo y dejaba el mostrador sin poder
+   * abrir una cita al vuelo. La autorización del operador no se relaja aquí: la
+   * garantizan `RolesGuard` y `VinculoBarberiaGuard` en la ruta.
+   */
+  operadorDeSede?: boolean;
 }
 
 @Injectable()
@@ -703,24 +715,31 @@ export class ReservaService {
       // abiertas de la sede siguen siendo operables por su staff.
       await exigirSedeActiva(tx, barberiaId);
 
-      const vinculo = await tx.clienteBarberia.findUnique({
-        where: {
-          uk_cliente_barberia: {
-            usuarioId: clienteId,
-            barberiaId,
+      // T-05 · el walk-in lo teclea el operador sobre alguien sin cuenta: el
+      // vínculo que se comprueba aquí es el del CLIENTE, así que con
+      // `operadorDeSede` no aplica (una cuenta de staff no tiene fila en
+      // `cliente_barberias`). Tampoco aplica la restricción por inasistencias,
+      // que es del cliente y no del operador.
+      if (!opciones.operadorDeSede) {
+        const vinculo = await tx.clienteBarberia.findUnique({
+          where: {
+            uk_cliente_barberia: {
+              usuarioId: clienteId,
+              barberiaId,
+            },
           },
-        },
-      });
+        });
 
-      if (!vinculo) {
-        throw errorDePermiso('NO_VINCULADO', 'No estás vinculado a esta barbería.');
-      }
+        if (!vinculo) {
+          throw errorDePermiso('NO_VINCULADO', 'No estás vinculado a esta barbería.');
+        }
 
-      if (vinculo.estaRestringido) {
-        throw errorDePermiso(
-          'CLIENTE_RESTRINGIDO',
-          vinculo.motivoRestriccion ?? 'Superaste el límite de inasistencias en esta barbería.',
-        );
+        if (vinculo.estaRestringido) {
+          throw errorDePermiso(
+            'CLIENTE_RESTRINGIDO',
+            vinculo.motivoRestriccion ?? 'Superaste el límite de inasistencias en esta barbería.',
+          );
+        }
       }
 
       const config = await tx.configuracionBarberia.findUnique({

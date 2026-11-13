@@ -58,7 +58,8 @@ describe('CrearWalkInYCobrarService', () => {
       'usuario-1',
       'barberia-1',
       DTO,
-      { tx: TX, confirmarAlCrear: true },
+      // T-05 · el operador no es el cliente: el alta no le exige vínculo.
+      { tx: TX, confirmarAlCrear: true, operadorDeSede: true },
     );
     expect(pagoService.registrarPagoEnPersona).toHaveBeenCalledWith(
       'usuario-1',

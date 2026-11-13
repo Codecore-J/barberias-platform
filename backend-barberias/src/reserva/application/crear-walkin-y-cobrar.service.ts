@@ -68,6 +68,9 @@ export class CrearWalkInYCobrarService {
       const reserva = await this.reservaService.crearReserva(usuarioId, barberiaId, dataReserva, {
         tx,
         confirmarAlCrear: true,
+        // T-05 · mismo criterio que `POST /walk-in`: quien opera el mostrador no
+        // es el cliente y no tiene por qué estar vinculado como tal.
+        operadorDeSede: true,
       });
 
       // 2. Contrato de la máquina de estados (§5.2 fila 11): el STAFF solo puede
