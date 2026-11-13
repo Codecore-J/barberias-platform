@@ -96,6 +96,10 @@ describe('WalkInModalComponent', () => {
   });
 
   it('exige nombre, barbero y servicio para habilitar el alta', () => {
+    // Hora fija: `horaInicio` nace de `horaRedondeada()` (reloj real) y con un
+    // servicio de 45 min, entre las 23:15 y las 23:59 el fin cruzaría la
+    // medianoche y este spec fallaría por la hora a la que se ejecute.
+    componente.horaInicio.set('10:30');
     componente.servicioId.set(SERVICIO.id);
     expect(componente.puedeEnviar()).toBe(false);
 
