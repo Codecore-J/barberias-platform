@@ -10,11 +10,11 @@ Guía de configuración de la Plataforma de Gestión de Barberías. Refleja las 
 
 ## 1. Entornos (D11)
 
-| Entorno | Base de datos | Backend | Frontend | `APP_ENV` |
+| Entorno | Base de datos (Neon) | Backend | Frontend | `APP_ENV` |
 |---|---|---|---|---|
-| `dev` | Rama `dev` de Neon o PostgreSQL local | `localhost:3000` | `localhost:4200` | `dev` |
-| `staging` | Rama principal de Neon | Render | Vercel (preview) | `staging` |
-| `production` | Base dedicada (L-01) | Render | Vercel (dominio oficial) | `production` |
+| `dev` (local) | branch **`staging`** | `localhost:3000` | `localhost:4200` | `dev` |
+| `staging` | branch **`staging`** | `localhost:3000` o el preview de Vercel del PR | Vercel (preview) | `staging` |
+| `production` | branch **`main`** | Render `barberias-api` | Vercel (dominio oficial) | `production` |
 
 Reglas:
 
@@ -22,6 +22,21 @@ Reglas:
 2. Los tests destructivos y los E2E solo corren con `APP_ENV=dev`; `test/setup.e2e.ts` aborta en cualquier otro valor.
 3. `NODE_ENV=production` activa la validación estricta de `JWT_SECRET` (falla el arranque si es débil).
 4. Nunca se reutiliza la base de producción para pruebas ni para staging.
+
+T-31 · **La base de producción ya no se comparte con nada más.** Antes, la rama principal de Neon era a la vez producción, staging y tu `.env` local: cualquier prueba que insertara o borrara filas golpeaba datos reales. Ahora `main` es solo de producción y todo lo demás vive en la branch `staging`. Ojo: el CI **no** toca Neon en ningún caso (levanta su propio PostgreSQL efímero), así que el riesgo real estaba en tu `.env` local y en los E2E lanzados a mano.
+
+`render.yaml` declara **un único servicio** (`barberias-api`), así que no hay backend desplegado aparte para staging: lo que se valida antes del merge es el preview de Vercel contra la branch `staging` de Neon.
+
+### 1.1 Credenciales de base de datos (T-33)
+
+La app **no** se conecta con el usuario owner. En producción usa el rol `barberias_app`, que puede leer y escribir filas pero no ejecutar DDL:
+
+| Credencial | Rol | Quién la usa |
+|---|---|---|
+| `DATABASE_URL` | `barberias_app` | Runtime de la API y los workers. |
+| `DATABASE_URL_MIGRATE` | owner del proyecto | Solo `prisma migrate deploy` al arrancar. |
+
+`render.yaml` compone el arranque como `DATABASE_URL="${DATABASE_URL_MIGRATE:-$DATABASE_URL}" npx prisma migrate deploy && npm run start:prod`: si `DATABASE_URL_MIGRATE` no existe, se comporta como antes (un solo rol). Los `GRANT` de `barberias_app` cubren `SELECT/INSERT/UPDATE/DELETE` y `USAGE` de secuencias; cualquier migración que cree tablas pasa por el rol owner.
 
 ---
 

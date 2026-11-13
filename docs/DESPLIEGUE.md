@@ -127,9 +127,11 @@ Reglas:
 1. **Nunca** `prisma db push`, `prisma migrate reset` ni SQL destructivo contra staging/producción.
 2. `migrate deploy` es forward-only: aplica las migraciones pendientes y no borra datos.
 3. Haz un backup/snapshot antes de una migración con cambios de esquema.
-4. Orden de despliegue: **migrar → arrancar la versión nueva**. `render.yaml` ya lo hace con `preDeployCommand`.
-5. Si una migración falla, no la edites ya aplicada: corrige con una migración nueva.
-6. CI valida que el repo y la base recién migrada coincidan:
+4. Orden de despliegue: **migrar → arrancar la versión nueva**. `render.yaml` lo hace dentro de `startCommand`, no en `preDeployCommand`: el plan Free de Render ignora `preDeployCommand` en silencio.
+5. Las migraciones no usan el rol de la app. `startCommand` ejecuta `DATABASE_URL="${DATABASE_URL_MIGRATE:-$DATABASE_URL}" npx prisma migrate deploy`, así que DDL corre con el owner y el runtime con `barberias_app` (ver `ENTORNOS.md` §1.1). Sin `DATABASE_URL_MIGRATE` todo sigue funcionando con `DATABASE_URL`.
+6. Desde T-32 **el deploy es manual**: un push a `main` no migra ni reinicia nada por sí solo.
+7. Si una migración falla, no la edites ya aplicada: corrige con una migración nueva.
+8. CI valida que el repo y la base recién migrada coincidan:
 
 ```bash
 DATABASE_URL=... npm run check:integridad
@@ -161,11 +163,22 @@ Salida: `frontend-barberias/dist/frontend-barberias/browser`.
 | Runtime | Node |
 | Región | Ohio (`us-east-2`, co-localizada con Neon) |
 | Root | `backend-barberias` |
-| Build | `rm -f ../package.json && npm install --include=dev && npm run build` |
-| Pre-deploy | `npx prisma migrate deploy` |
-| Start | `npm run start:prod` |
+| Build | `npm install --include=dev && npx prisma generate && npm run build` |
+| Pre-deploy | *no se usa*: el plan Free ignora `preDeployCommand` |
+| Start | `prisma migrate resolve … \|\| true; DATABASE_URL="${DATABASE_URL_MIGRATE:-$DATABASE_URL}" npx prisma migrate deploy && npm run start:prod` |
 | Health check | `/api/v1/health/liveness` |
-| Auto-deploy | Sí |
+| Auto-deploy | **No** desde T-32 (`autoDeploy: false` en el blueprint) |
+
+### 6.0 Despliegue manual (T-32)
+
+Con el auto-deploy apagado, publicar a producción es un acto explícito:
+
+1. Merge del PR a `main` con CI verde y QA hecho en el preview.
+2. Render → `barberias-api` → **Manual Deploy → Deploy latest commit**.
+3. Esperar el arranque: las migraciones corren en `startCommand` antes de Nest.
+4. Verificación post-despliegue (§10).
+
+Si el panel y el blueprint se desincronizan, el YAML manda: `autoDeploy` está declarado allí para que no se revierta.
 
 ### 6.1 Variables en el panel
 
@@ -180,6 +193,8 @@ Checklist:
 - [ ] `DATABASE_URL` con SSL si Neon lo exige.
 - [ ] `JWT_SECRET` de ≥ 32 caracteres, generado con CSPRNG.
 - [ ] `REDIS_URL` con TLS (`rediss://`) si Upstash lo requiere.
+- [ ] `DATABASE_URL` apuntando al rol `barberias_app` (sin DDL) desde T-33.
+- [ ] `DATABASE_URL_MIGRATE` con el rol owner, solo para migraciones. Opcional: sin ella se usa `DATABASE_URL`.
 - [ ] `FRONTEND_URL=https://tu-dominio`.
 - [ ] `PORT=3000`.
 - [ ] `DEBUG_PRISMA=false`.
@@ -267,7 +282,8 @@ CMD ["node", "dist/main"]
 2. Build command: `npm run build:frontend` (raíz) o `ng build` (carpeta).
 3. Output: `frontend-barberias/dist/frontend-barberias/browser` (raíz) o `dist/frontend-barberias/browser` (carpeta).
 4. Rewrites SPA ya configurados: cualquier ruta → `index.html`.
-5. Variables de entorno del frontend: **ninguna**. La API se resuelve en código; si cambia, hay que redeployar.
+5. Variables de entorno del frontend: `API_URL` (runtime, ver `ENTORNOS.md`) y opcionalmente `PRIMEUI_LICENSE`. Ninguna se compila dentro del bundle.
+6. **Deploy on Push desactivado (T-32)**: los previews de PR siguen generándose, pero producción se publica a mano con **Promote** del build ya revisado, no recompilando desde `main`.
 
 ---
 
@@ -288,6 +304,8 @@ CMD ["node", "dist/main"]
 11. Tests del frontend (`ng test --watch=false`).
 
 Si el pipeline falla en migraciones, revisa primero que la base de test esté limpia y que `prisma/migrations` no tenga divergencias con `schema.prisma`.
+
+> **El CI no toca Neon.** Los pasos 1 y 7 levantan un PostgreSQL efímero dentro del runner (`postgresql://postgres:password@localhost:5432/barberias_test`), así que una corrida de CI no puede ensuciar ni producción ni la branch `staging`. Por eso no existe un secret `DATABASE_URL_STAGING`: nadie lo leería. Lo que sí apunta a Neon es el `.env` local y cualquier E2E que lances a mano — apunta ese `.env` a la branch `staging`.
 
 ---
 
@@ -342,14 +360,16 @@ Si el pipeline falla en migraciones, revisa primero que la base de test esté li
 ## 12. Resumen del flujo de despliegue
 
 ```text
-git push a main
+PR mergeado a main (CI verde + QA manual en el preview del PR)
    │
-   ├─ CI: lint → build → gitleaks → migrate deploy (test) → integridad → tests → e2e
+   ├─ CI: lint → build → gitleaks → migrate deploy (PostgreSQL efímero) → integridad → tests → e2e
    │
-   ├─ Render: install → prisma generate/build → prisma migrate deploy → start:prod
-   │            └─ API + workers BullMQ en el mismo proceso
+   ├─ Render (MANUAL): Manual Deploy → install → prisma generate/build
+   │            └─ startCommand: migrate deploy (rol owner) → start:prod → API + workers BullMQ
    │
-   └─ Vercel: npm run build:frontend → dist/.../browser → SPA
+   └─ Vercel (MANUAL): Promote del preview verificado → SPA estática
 ```
+
+Nada de esto se dispara solo: T-32 desactivó el auto-deploy en ambos servicios.
 
 Con esto el sistema queda desplegable en cualquier entorno que provea Node 20+, PostgreSQL 15+ y Redis 7.
