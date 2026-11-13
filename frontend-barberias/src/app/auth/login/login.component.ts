@@ -1,4 +1,4 @@
-import { Component, inject, isDevMode, signal } from '@angular/core';
+import { Component, computed, inject, isDevMode, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService } from '../auth.service';
@@ -173,6 +173,21 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
                     <label for="recoveryToken" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Token de Recuperación</label>
                     <input id="recoveryToken" type="text" name="token" autocomplete="one-time-code" formControlName="token" placeholder="Pega el token aquí"
                            class="w-full bg-zinc-900 border border-zinc-700 rounded-xl py-3 px-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors shadow-inner text-sm font-mono">
+                    <!--
+                      T-28 · el validador exige 10 caracteres y el botón se
+                      deshabilita sin decir por qué: el usuario con un token
+                      corto se quedaba sin pistas. El aviso aparece en cuanto
+                      hay algo escrito pero aún no llega al mínimo.
+                    -->
+                    @if (tokenIncompleto()) {
+                      <p class="text-[11px] text-amber-300 flex items-center gap-1.5" role="alert">
+                        <i class="pi pi-info-circle"></i>
+                        El token tiene {{ resetForm.get('token')?.value?.length ?? 0 }} caracteres y necesita
+                        al menos 10.
+                      </p>
+                    } @else {
+                      <p class="text-[11px] text-zinc-500">Pega el token completo que recibiste por correo.</p>
+                    }
                   </div>
 
                   <div class="space-y-1.5">
@@ -341,6 +356,12 @@ export class LoginComponent {
       }
     });
   }
+
+  /** T-28 · aviso temprano del mínimo del token (el formulario sigue validando). */
+  readonly tokenIncompleto = computed(() => {
+    const valor = (this.resetForm.get('token')?.value ?? '') as string;
+    return valor.length > 0 && valor.length < 10;
+  });
 
   onResetSubmit() {
     if (this.resetForm.invalid) return;

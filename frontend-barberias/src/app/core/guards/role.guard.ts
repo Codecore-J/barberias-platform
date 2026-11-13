@@ -2,16 +2,30 @@ import { inject } from '@angular/core';
 import { Router, CanActivateFn } from '@angular/router';
 import { map } from 'rxjs';
 import { AuthService } from '../../auth/auth.service';
+import { ToastService } from '../../shared/ui/toast/toast.service';
 import type { UsuarioResponseDto } from '../../auth/interfaces/auth.interface';
 
 /**
  * Guard de control de acceso basado en roles para el frontend.
  * Previene que usuarios sin los roles adecuados accedan a rutas protegidas.
  */
-export const roleGuard = (allowedRoles: string[]): CanActivateFn => {
+/**
+ * T-29 · la redirección por rol era muda. Para rutas cuyo destino alternativo
+ * no explica nada (categorías, que sólo gestiona ADMIN_BARBERIA), el guard
+ * puede dejar un aviso antes de sacar al usuario de la pantalla.
+ */
+export interface OpcionesRoleGuard {
+  mensajeAlDenegar?: string;
+}
+
+export const roleGuard = (
+  allowedRoles: string[],
+  opciones: OpcionesRoleGuard = {},
+): CanActivateFn => {
   return () => {
     const authService = inject(AuthService);
     const router = inject(Router);
+    const toast = inject(ToastService);
 
     /**
      * Evalúa los roles permitidos contra un usuario ya hidratado.
@@ -37,6 +51,11 @@ export const roleGuard = (allowedRoles: string[]): CanActivateFn => {
 
       if (hasRole) {
         return true;
+      }
+
+      // T-29 · aviso previo a la redirección (sólo si la ruta lo declara).
+      if (opciones.mensajeAlDenegar) {
+        toast.warning(opciones.mensajeAlDenegar, 'Acceso restringido');
       }
 
       // Redirección defensiva si el usuario no tiene permisos para esta ruta.

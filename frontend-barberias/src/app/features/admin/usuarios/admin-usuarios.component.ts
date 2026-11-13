@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
+import { RolLabelPipe } from '../../../shared/pipes/rol-label.pipe';
 import { mensajeDeError } from '../../../core/utils/error-message';
 import { FormsModule } from '@angular/forms';
 import {
@@ -40,7 +41,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
 @Component({
   selector: 'app-admin-usuarios',
   standalone: true,
-  imports: [CommonModule, DatePipe, FormsModule, ModalShellComponent],
+  imports: [CommonModule, DatePipe, FormsModule, ModalShellComponent, RolLabelPipe],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-6xl mx-auto space-y-6 bg-ambient-mesh">
       <!-- Header -->
@@ -182,7 +183,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
         >
           <option ngValue="TODOS">Todos los roles</option>
           @for (rol of ROLES_PLATAFORMA; track rol) {
-            <option [ngValue]="rol">{{ rol }}</option>
+            <option [ngValue]="rol">{{ rol | rolLabel }}</option>
           }
         </select>
 
@@ -279,7 +280,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                               class="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border"
                               [ngClass]="claseRol(rol)"
                             >
-                              {{ rol }}
+                              {{ rol | rolLabel }}
                             </span>
                           }
                         </div>
@@ -445,7 +446,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                     class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500 disabled:opacity-60 transition-colors"
                   >
                     @for (rol of ROLES_PLATAFORMA; track rol) {
-                      <option [ngValue]="rol">{{ rol }}</option>
+                      <option [ngValue]="rol">{{ rol | rolLabel }}</option>
                     }
                   </select>
                 </div>
@@ -667,7 +668,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                               class="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border"
                               [ngClass]="claseRol(rol)"
                             >
-                              {{ rol }}
+                              {{ rol | rolLabel }}
                             </span>
                           }
                         </div>

@@ -32,18 +32,48 @@ export function esUuidSede(valor: unknown): boolean {
   return typeof valor === 'string' && UUID_BARBERIA.test(valor.trim());
 }
 
-export function resolverBarberiaId(request: any): string | null {
-  const valor =
+/** El valor de sede tal cual llegó, sin interpretarlo todavía. */
+function valorCrudoDeSede(request: any): unknown {
+  return (
     request?.params?.shopId ??
     request?.query?.shopId ??
     request?.query?.barberiaId ??
-    null;
+    null
+  );
+}
+
+export function resolverBarberiaId(request: any): string | null {
+  const valor = valorCrudoDeSede(request);
 
   if (typeof valor !== 'string') {
     return null;
   }
   const sede = valor.trim();
   return esUuidSede(sede) ? sede : null;
+}
+
+/**
+ * T-11 · variante para las rutas DONDE «sin sede» es legítimo.
+ *
+ * `resolverBarberiaId` devuelve `null` tanto si falta la sede como si llega
+ * algo que no es un UUID, y en la variante opcional ese `null` se interpretaba
+ * como «consulta global»: `GET /shops/null/payments/history` respondía 200 con
+ * el histórico de todas las sedes, mientras `appointments/day` respondía 400
+ * por el mismo valor. La diferencia entre ausencia y error se marca aquí.
+ */
+export function resolverBarberiaIdOpcionalEstricto(request: any): string | null {
+  const crudo = valorCrudoDeSede(request);
+
+  if (crudo === null || crudo === undefined) return null;
+  if (typeof crudo === 'string' && crudo.trim() === '') return null;
+
+  if (!esUuidSede(crudo)) {
+    throw new BadRequestException(
+      'El identificador de barbería de la ruta no es un UUID válido.',
+    );
+  }
+
+  return String(crudo).trim();
 }
 
 /**
@@ -72,5 +102,5 @@ export const CurrentBarberiaId = createParamDecorator(
  */
 export const CurrentBarberiaIdOpcional = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): string | null =>
-    resolverBarberiaId(ctx.switchToHttp().getRequest()),
+    resolverBarberiaIdOpcionalEstricto(ctx.switchToHttp().getRequest()),
 );

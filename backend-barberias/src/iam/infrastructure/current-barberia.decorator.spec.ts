@@ -126,15 +126,33 @@ describe('CurrentBarberiaId sobre HTTP · validacion UUID (E1-06)', () => {
     expect(res.status).toBe(400);
   });
 
-  it('la variante opcional responde 200 con null en vez de propagar basura', async () => {
+  /**
+   * T-11 · La variante opcional distingue AUSENCIA de ERROR.
+   *
+   * Antes devolvía `null` en los dos casos, así que una ruta como
+   * `GET /shops/null/payments/history` respondía 200 con el histórico global
+   * mientras `appointments/day` respondía 400 por el mismo valor: dos
+   * contratos distintos para el mismo identificador inválido.
+   */
+  it('la variante opcional acepta la ausencia de sede', async () => {
     const sinNada = await request(app.getHttpServer()).get('/prueba-sede-query/opcional');
     expect(sinNada.status).toBe(200);
     expect(sinNada.body).toEqual({ barberiaId: null });
 
-    const conBasura = await request(app.getHttpServer()).get('/prueba-sede-query/opcional?shopId=no-es-uuid');
-    expect(conBasura.status).toBe(200);
-    expect(conBasura.body).toEqual({ barberiaId: null });
+    const vacia = await request(app.getHttpServer()).get('/prueba-sede-query/opcional?shopId=');
+    expect(vacia.status).toBe(200);
+    expect(vacia.body).toEqual({ barberiaId: null });
+  });
 
+  it('la variante opcional rechaza con 400 un shopId que no es UUID', async () => {
+    const conBasura = await request(app.getHttpServer()).get('/prueba-sede-query/opcional?shopId=no-es-uuid');
+    expect(conBasura.status).toBe(400);
+
+    const conNullLiteral = await request(app.getHttpServer()).get('/prueba-sede/null/opcional');
+    expect(conNullLiteral.status).toBe(400);
+  });
+
+  it('la variante opcional deja pasar un UUID legítimo', async () => {
     const conUuid = await request(app.getHttpServer()).get(`/prueba-sede/${SEDE_UUID}/opcional`);
     expect(conUuid.status).toBe(200);
     expect(conUuid.body).toEqual({ barberiaId: SEDE_UUID });

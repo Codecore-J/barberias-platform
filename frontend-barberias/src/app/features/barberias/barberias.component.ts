@@ -8,6 +8,8 @@ import type {
   BarberiaResumen,
 } from '../../core/services/tenant.service';
 import { mensajeDeError } from '../../core/utils/error-message';
+import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
+import { ToastService } from '../../shared/ui/toast/toast.service';
 import { AuthService } from '../../auth/auth.service';
 import { MiEstadoService } from '../../core/services/mi-estado.service';
 import type { MiEstado } from '../../core/services/mi-estado.service';
@@ -173,10 +175,17 @@ interface CamposEditables {
               <!-- Acciones -->
               <div class="flex gap-3">
                 @if (barberia.id === tenantService.barberiaActivaId()) {
-                  <a [routerLink]="rutaEntrar()"
+                  <!--
+                    T-06 · «Entrar» navegaba por routerLink sin fijar la sede. Para
+                    un BARBERO con la sede aún sin activar eso terminaba en el
+                    guard de tenant y lo devolvía a este hub: el botón parecía no
+                    hacer nada. Ahora la acción fija la sede si hace falta y sólo
+                    después abre el panel.
+                  -->
+                  <button (click)="entrar(barberia.id)"
                           class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-zinc-200 bg-zinc-800 border border-zinc-700 hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center justify-center gap-2">
                     <i class="pi pi-arrow-right"></i> Entrar
-                  </a>
+                  </button>
                 } @else if (puedeSeleccionar(barberia)) {
                   <button (click)="seleccionar(barberia.id)"
                           class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-md shadow-amber-500/20 hover:scale-105 transition-transform flex items-center justify-center gap-2">
@@ -211,6 +220,22 @@ interface CamposEditables {
                         class="w-full px-4 py-2.5 rounded-xl text-xs font-semibold text-zinc-300 bg-white/5 border border-white/10 hover:border-amber-500/50 hover:text-amber-300 transition-colors flex items-center justify-center gap-2">
                   <i class="pi pi-pencil"></i>
                   <span>Editar datos de la sede</span>
+                </button>
+              }
+
+              <!--
+                T-13 · suspender/reactivar la sede. El endpoint
+                (PATCH /shops/:shopId/status) ya existía con
+                @Roles('ADMINISTRADOR') pero ninguna pantalla lo consumía.
+              -->
+              @if (esSuperadmin()) {
+                <button (click)="alternarEstadoSede(barberia)"
+                        class="w-full px-4 py-2.5 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-2"
+                        [ngClass]="barberia.estado === 'ACTIVO'
+                          ? 'text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20'
+                          : 'text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20'">
+                  <i [class]="barberia.estado === 'ACTIVO' ? 'pi pi-lock' : 'pi pi-lock-open'"></i>
+                  <span>{{ barberia.estado === 'ACTIVO' ? 'Suspender sede' : 'Reactivar sede' }}</span>
                 </button>
               }
 
@@ -503,6 +528,8 @@ export class BarberiasComponent implements OnInit {
   protected readonly authService = inject(AuthService);
   protected readonly miEstado = inject(MiEstadoService);
   private readonly router = inject(Router);
+  private readonly confirmDialog = inject(ConfirmDialogService);
+  private readonly toast = inject(ToastService);
 
   showVincularModal = signal(false);
 
@@ -840,20 +867,63 @@ export class BarberiasComponent implements OnInit {
     return '/';
   }
 
+  /**
+   * T-06 · «Entrar» con la sede ya activa no debe volver a pedir /select (es
+   * una escritura), pero sí debe navegar. Si la sede no está activa (BARBERO
+   * recién logueado) se fija primero y se navega en el `next` de la selección.
+   */
+  entrar(id: string): void {
+    if (id === this.tenantService.barberiaActivaId()) {
+      this.irAlPanel();
+      return;
+    }
+    this.seleccionar(id);
+  }
+
   seleccionar(id: string) {
     this.tenantService.seleccionarBarberia(id).subscribe({
-      next: () => {
-        const role = this.userRole();
-        if (role === 'ADMINISTRADOR' || role === 'ADMIN_BARBERIA' || role === 'BARBERO') {
-          this.router.navigate(['/admin/agenda']);
-        } else {
-          this.router.navigate(['/']);
-        }
-      },
+      next: () => this.irAlPanel(),
       // Hallazgo 2: si el backend rechaza la selección no se navega y la sede
       // anterior sigue siendo la activa; el mensaje ya queda en
       // `tenantService.error()` y lo muestra el banner de arriba.
       error: () => undefined,
+    });
+  }
+
+  /** Destino según rol efectivo: el staff abre la agenda, el cliente el home. */
+  private irAlPanel(): void {
+    this.router.navigate([this.rutaEntrar()]);
+  }
+
+  /**
+   * T-13 · suspender o reactivar una sede.
+   *
+   * Es una operación de plataforma (solo ADMINISTRADOR) y por eso se confirma
+   * aparte: suspender deja a la sede sin operar para clientes y personal hasta
+   * que se reactive.
+   */
+  async alternarEstadoSede(barberia: BarberiaResumen): Promise<void> {
+    const suspender = barberia.estado === 'ACTIVO';
+
+    const confirmado = await this.confirmDialog.confirm({
+      titulo: suspender ? 'Suspender sede' : 'Reactivar sede',
+      mensaje: suspender
+        ? `«${barberia.nombre}» dejará de operar para sus clientes y su personal. Podrás reactivarla cuando quieras.`
+        : `«${barberia.nombre}» volverá a estar disponible para agendar.`,
+      textoConfirmar: suspender ? 'Suspender' : 'Reactivar',
+      tono: suspender ? 'peligro' : 'primario',
+      icono: suspender ? 'pi pi-lock' : 'pi pi-lock-open',
+    });
+    if (!confirmado) return;
+
+    this.tenantService.cambiarEstadoSede(barberia.id, suspender ? 'INACTIVO' : 'ACTIVO').subscribe({
+      next: () =>
+        this.toast.success(suspender ? 'Sede suspendida.' : 'Sede reactivada.', barberia.nombre),
+      error: (err) =>
+        this.toast.error(
+          mensajeDeError(err, 'No se pudo cambiar el estado de la sede.'),
+          'Operación rechazada',
+        ),
     });
   }
 }

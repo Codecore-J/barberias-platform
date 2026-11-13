@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 import { mensajeDeError } from '../../core/utils/error-message';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import {
   ESTADOS_TERMINALES,
   type EstadoReserva,
@@ -33,6 +34,7 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
     ModalShellComponent,
     CobroModalComponent,
     WalkInModalComponent,
+    RouterLink,
   ],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-[1400px] mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
@@ -172,8 +174,27 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
         </div>
       }
 
+      <!-- T-23 · Sede sin equipo: antes quedaba un hueco en blanco bajo los
+           filtros, sin decir por qué. -->
+      @if (!cargando() && barberos().length === 0) {
+        <div class="glass-panel rounded-3xl border border-white/10 p-10 text-center space-y-3 relative z-10">
+          <div class="w-14 h-14 mx-auto rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+            <i class="pi pi-users text-xl"></i>
+          </div>
+          <h3 class="text-white font-bold text-lg">Esta sede todavía no tiene barberos</h3>
+          <p class="text-sm text-zinc-400 max-w-md mx-auto">
+            La agenda se organiza por barbero. Invita o activa al menos un miembro del personal para
+            empezar a recibir turnos en esta sede.
+          </p>
+          <a routerLink="/admin/personal"
+             class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-lg hover:brightness-110 transition-all">
+            <i class="pi pi-user-plus"></i> Gestionar personal
+          </a>
+        </div>
+      }
+
       <!-- Consola Multi-Columna (Modo Dios) -->
-      @if (!cargando()) {
+      @if (!cargando() && barberos().length > 0) {
         <div class="flex overflow-x-auto gap-6 hide-scrollbar pb-6 relative z-10">
           
           <!-- Columna por cada Barbero -->

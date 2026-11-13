@@ -533,6 +533,37 @@ export class TenantService {
   }
 
   /**
+   * T-13 · suspender o reactivar una sede (`PATCH /shops/:shopId/status`).
+   *
+   * El backend ya lo declaraba `@Roles('ADMINISTRADOR')` pero ninguna pantalla
+   * lo consumía, así que la operación sólo existía por API. Se actualiza la
+   * lista con la respuesta en vez de recargar (el `PATCH` devuelve la sede
+   * completa) y, si era la activa, se sincroniza también esa señal.
+   */
+  cambiarEstadoSede(
+    barberiaId: string,
+    estado: 'ACTIVO' | 'INACTIVO',
+  ): Observable<BarberiaResumen> {
+    return this.http
+      .patch<BarberiaResumen>(`${this.apiUrl}/${barberiaId}/status`, { estado })
+      .pipe(
+        tap((actualizada) => {
+          this.invalidarSedes();
+          this.barberiasVinculadas.update((lista) =>
+            lista.map((sede) =>
+              sede.id === barberiaId ? { ...sede, ...actualizada, id: sede.id } : sede,
+            ),
+          );
+
+          const activa = this.barberiaActiva();
+          if (activa?.id === barberiaId) {
+            this.setBarberiaActiva({ ...activa, ...actualizada, id: activa.id });
+          }
+        }),
+      );
+  }
+
+  /**
    * H74 · la sede activa tiene que estar EN la lista.
    *
    * La regla anterior solo fijaba la activa cuando encontraba una sede, así que
