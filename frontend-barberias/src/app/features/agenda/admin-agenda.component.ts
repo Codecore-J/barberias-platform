@@ -12,11 +12,13 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ReservasService } from '../../core/services/reservas.service';
 import { PersonalService, Personal } from '../../core/services/personal.service';
+import { ServiciosService, type Servicio } from '../../core/services/servicios.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
 import { FichaClienteDrawerComponent } from '../clientes/components/ficha-cliente-drawer/ficha-cliente-drawer.component';
 import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.component';
 import { CobroModalComponent } from './components/cobro-modal/cobro-modal.component';
+import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.component';
 import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
 
 @Component({
@@ -30,6 +32,7 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
     FichaClienteDrawerComponent,
     ModalShellComponent,
     CobroModalComponent,
+    WalkInModalComponent,
   ],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-[1400px] mx-auto space-y-8 bg-ambient-mesh transform-style-3d perspective-1200">
@@ -432,6 +435,19 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
         </app-modal-shell>
       }
 
+      <!-- E3-03 · Modal Walk-In: el disparador existía desde el principio, pero
+           ningún template consumía la señal, así que el botón no abría nada.
+           El alta manual del cliente sin app vive aquí. -->
+      @if (mostrarModalWalkIn()) {
+        <app-walk-in-modal
+          [fecha]="fechaFiltro()"
+          [staff]="staffAsignable()"
+          [servicios]="serviciosDisponibles()"
+          (creado)="onWalkInCreado()"
+          (cerrar)="mostrarModalWalkIn.set(false)"
+        />
+      }
+
       <!-- V3 fase 6 · Modal de Cobro: método de pago + total de la reserva.
            Al cerrar con éxito la tarjeta se recarga la agenda y el turno pasa a
            COMPLETADA en su columna. -->
@@ -459,6 +475,7 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
 export class AdminAgendaComponent {
   protected readonly reservasService = inject(ReservasService);
   protected readonly personalService = inject(PersonalService);
+  protected readonly serviciosService = inject(ServiciosService);
   protected readonly tenantService = inject(TenantService);
   protected readonly authService = inject(AuthService);
   private readonly confirmDialog = inject(ConfirmDialogService);
@@ -500,6 +517,21 @@ export class AdminAgendaComponent {
         ? firstValueFrom(this.personalService.obtenerPersonal(params.barberiaId))
         : Promise.resolve([] as Personal[]),
   });
+
+  /**
+   * Catálogo activo de la sede para el walk-in. Es una lectura aparte del
+   * equipo: el modal necesita nombre, duración y precio de cada servicio, y el
+   * precio NO se teclea a mano.
+   */
+  private readonly catalogoResource = resource({
+    params: () => ({ barberiaId: this.tenantService.barberiaActivaId() }),
+    loader: ({ params }) =>
+      params.barberiaId
+        ? firstValueFrom(this.serviciosService.cargarServicios())
+        : Promise.resolve([] as Servicio[]),
+  });
+
+  readonly serviciosDisponibles = computed<Servicio[]>(() => this.catalogoResource.value() ?? []);
 
   readonly turnos = computed<Turno[]>(() => this.agendaResource.value() ?? []);
 
@@ -831,6 +863,8 @@ export class AdminAgendaComponent {
 
   onWalkInCreado() {
     this.mostrarModalWalkIn.set(false);
+    this.mensajeAccion.set('Turno walk-in creado. Cóbralo desde su tarjeta para que entre en caja.');
+    setTimeout(() => this.mensajeAccion.set(null), 4000);
     this.recargar();
   }
 }
