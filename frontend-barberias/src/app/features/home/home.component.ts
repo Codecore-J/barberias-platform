@@ -6,6 +6,7 @@ import { FormsModule } from '@angular/forms';
 import { TenantService } from '../../core/services/tenant.service';
 import type { BarberiaResumen } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
+import { rolEfectivo, type RolSesion } from '../../core/utils/rol';
 import { ReservasService } from '../../core/services/reservas.service';
 import { PagosService } from '../../core/services/pagos.service';
 import { parsearInvitacion } from '../../core/utils/invitacion.util';
@@ -35,6 +36,32 @@ import { SedeCardComponent } from '../barberias/components/sede-card/sede-card.c
         <section class="relative text-center max-w-4xl mx-auto pt-16 pb-8 space-y-6 transform-style-3d"
                  [style.transform]="'translateZ(' + (scrollY() * 0.2) + 'px)'">
           
+          <!-- ROL: SIN_ROL · estado neutro, nunca disfrazado de CLIENTE. -->
+          @if (userRole() === 'SIN_ROL') {
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-zinc-800/60 border border-zinc-700 text-zinc-300 text-xs font-semibold uppercase tracking-wider backdrop-blur-md">
+              <i class="pi pi-user text-zinc-400"></i>
+              <span>Cuenta sin rol asignado</span>
+            </div>
+
+            <h1 class="text-4xl sm:text-6xl font-display font-extrabold tracking-tight text-white leading-[1.1]">
+              Tu cuenta todavía no tiene
+              <span class="block gold-gradient-text">acceso a una sede</span>
+            </h1>
+
+            <p class="text-lg text-zinc-400 max-w-2xl mx-auto leading-relaxed">
+              Pide a un administrador que te asigne un rol, o únete a una barbería con el
+              código de invitación que te comparta su personal.
+            </p>
+
+            <div class="flex flex-wrap items-center justify-center gap-4 pt-8">
+              <a routerLink="/barberias"
+                 class="px-7 py-4 rounded-xl font-semibold text-sm text-zinc-200 glass-card hover:text-amber-400 hover:border-amber-500/50 transition-all flex items-center gap-2.5">
+                <i class="pi pi-building text-amber-400"></i>
+                <span>Ver sedes disponibles</span>
+              </a>
+            </div>
+          }
+
           <!-- ROL: CLIENTE -->
           @if (userRole() === 'CLIENTE') {
             <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold uppercase tracking-wider backdrop-blur-md shadow-[0_0_20px_rgba(212,175,55,0.2)] hover:scale-110 hover:shadow-[0_0_30px_rgba(212,175,55,0.4)] transition-all duration-500 transform translate-z-12">
@@ -570,9 +597,18 @@ export class HomeComponent {
    * cliente no tiene por qué pedir la agenda completa).
    */
   private readonly metricasResource = resource({
-    params: () => ({ rol: this.userRole(), hoy: new Date().toISOString().split('T')[0] }),
+    params: () => ({
+      rol: this.userRole(),
+      // Dependencia REACTIVA: al cambiar de sede el dashboard vuelve a leer.
+      sede: this.tenantService.barberiaActivaId(),
+      hoy: new Date().toISOString().split('T')[0],
+    }),
     loader: async ({ params }) => {
       if (params.rol !== 'ADMIN_BARBERIA' && params.rol !== 'ADMINISTRADOR') return null;
+      // Sin sede no hay agenda ni cobros que leer. Antes se disparaban
+      // `/shops/null/appointments/day` y `/shops/null/payments/history`, que el
+      // ParseUUIDPipe del backend rechaza con 400.
+      if (!params.sede) return null;
 
       const [agenda, pagos] = await Promise.all([
         firstValueFrom(this.reservasService.obtenerAgendaDiaria(params.hoy)),
@@ -710,14 +746,16 @@ export class HomeComponent {
     return sede.estadoVinculacion !== 'PENDIENTE_APROBACION';
   }
 
-  userRole(): string {
-    const roles = this.authService.authState().user?.roles;
-    if (!roles || roles.length === 0) return 'CLIENTE';
-    if (roles.includes('ADMINISTRADOR')) return 'ADMINISTRADOR';
-    if (roles.includes('ADMIN_BARBERIA')) return 'ADMIN_BARBERIA';
-    if (roles.includes('BARBERO')) return 'BARBERO';
-    return 'CLIENTE';
-  }
+  /**
+   * Rol efectivo de la sesión, derivado del helper único (`rolEfectivo`).
+   *
+   * Antes esta copia local caía a `CLIENTE` cuando la cuenta no tenía roles, así
+   * que el hero del home le pintaba la navegación y los CTA de cliente a una
+   * cuenta sin permisos.
+   */
+  readonly userRole = computed<RolSesion>(() =>
+    rolEfectivo(this.authService.authState().user?.roles),
+  );
 
   @HostListener('window:scroll')
   onScroll() {

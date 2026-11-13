@@ -4,6 +4,7 @@ import { Observable, tap, catchError, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 import { TenantService } from './tenant.service.js';
 import { mensajeDeError } from '../utils/error-message.js';
+import { MENSAJE_SIN_SEDE, haySede } from '../utils/sede.js';
 
 export interface NotaCliente {
   id: string;
@@ -31,9 +32,15 @@ export class ClientesService {
     this.tenant.registrarPurgadorLocal(() => this.limpiarEstadoLocal());
   }
 
-  /** Fase 5: la sede viaja en la ruta, nunca en la cabecera x-barberia-id. */
-  private get apiUrl(): string {
-    return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/clients`;
+  /**
+   * Fase 5: la sede viaja en la ruta, nunca en la cabecera x-barberia-id.
+   *
+   * `null` sin sede: la ficha de cliente es siempre de una sede y `/shops/null`
+   * no existe para el backend.
+   */
+  private get apiUrl(): string | null {
+    const sedeId = this.tenant.barberiaActivaId();
+    return haySede(sedeId) ? `${API_URL}/shops/${sedeId}/clients` : null;
   }
 
   readonly isLoading = signal<boolean>(false);
@@ -48,10 +55,13 @@ export class ClientesService {
    * Obtiene la ficha técnica de un cliente (notas y estadísticas limitadas a la barbería actual)
    */
   obtenerFichaCliente(clienteId: string): Observable<FichaCliente> {
+    const base = this.apiUrl;
+    if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.get<FichaCliente>(`${this.apiUrl}/${clienteId}/profile`).pipe(
+    return this.http.get<FichaCliente>(`${base}/${clienteId}/profile`).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
@@ -65,10 +75,13 @@ export class ClientesService {
    * Guarda una nueva nota en la ficha del cliente
    */
   guardarNota(clienteId: string, contenido: string): Observable<NotaCliente> {
+    const base = this.apiUrl;
+    if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.post<NotaCliente>(`${this.apiUrl}/${clienteId}/notes`, { contenido }).pipe(
+    return this.http.post<NotaCliente>(`${base}/${clienteId}/notes`, { contenido }).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);

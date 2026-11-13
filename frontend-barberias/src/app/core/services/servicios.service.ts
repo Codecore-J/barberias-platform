@@ -1,11 +1,11 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { mensajeDeError } from '../utils/error-message.js';
+import { MENSAJE_SIN_SEDE, haySede } from '../utils/sede.js';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, catchError, of, map, forkJoin } from 'rxjs';
+import { Observable, tap, catchError, of, map, forkJoin, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 import { TenantService } from './tenant.service.js';
 import { AuthService } from '../../auth/auth.service';
-import { ToastService } from '../../shared/ui/toast/toast.service.js';
 
 export interface Servicio {
   id: string;
@@ -24,12 +24,6 @@ export class ServiciosService {
   private readonly http = inject(HttpClient);
   private readonly tenant = inject(TenantService);
   private readonly auth = inject(AuthService);
-
-  /** Flag para saber si estamos operando como admin global sin sede asignada. */
-  private readonly esAdminGlobalSinSede = computed(() => {
-    const user = this.auth.authState().user;
-    return user?.roles?.includes('ADMINISTRADOR') && !this.tenant.tieneBarberiaActiva();
-  });
 
   constructor() {
     this.tenant.registrarPurgadorLocal(() => this.limpiarEstadoLocal());
@@ -62,25 +56,22 @@ export class ServiciosService {
     return false;
   });
 
-  /** 
-   * URL base para servicios: usa la sede activa o cae de vuelta al catálogo global.
-   * Admin global sin sede usará un endpoint alternativo o mostrará aviso.
+  /**
+   * El catálogo es SIEMPRE de una sede.
+   *
+   * Antes, sin sede, esta URL salía como `/shops//services` (doble barra → 404) y
+   * el "modo global" llamaba a `/catalogo/admin/servicios-todos`, una ruta que no
+   * existe en la API. Ahora sin sede no se compone ninguna URL: los getters
+   * devuelven `null` y cada método decide (vacío en lectura, error en escritura).
    */
-  private get serviciosUrl(): string {
+  private get serviciosUrl(): string | null {
     const sedeId = this.tenant.barberiaActivaId();
-    // Si no hay sede y es admin global, usamos un endpoint de catálogo global
-    if (!sedeId && this.esAdminGlobalSinSede()) {
-      return `${API_URL}/catalogo/admin/servicios-todos`;
-    }
-    return `${API_URL}/shops/${sedeId ?? ''}/services`;
+    return haySede(sedeId) ? `${API_URL}/shops/${sedeId}/services` : null;
   }
 
-  private get combosUrl(): string {
+  private get combosUrl(): string | null {
     const sedeId = this.tenant.barberiaActivaId();
-    if (!sedeId && this.esAdminGlobalSinSede()) {
-      return `${API_URL}/catalogo/admin/combos-todos`;
-    }
-    return `${API_URL}/shops/${sedeId ?? ''}/combos`;
+    return haySede(sedeId) ? `${API_URL}/shops/${sedeId}/combos` : null;
   }
 
   /** E2-07 · P-SD-1/P-SD-2: el panel de administración lee el catálogo con
@@ -101,20 +92,21 @@ export class ServiciosService {
    * argumento: solo servicios y solo ACTIVOS, como antes.
    */
   cargarServicios(incluirCombos = false): Observable<Servicio[]> {
+    const serviciosBase = this.serviciosUrl;
+    const combosBase = this.combosUrl;
+    if (!serviciosBase || !combosBase) {
+      this.isLoading.set(false);
+      this.servicios.set([]);
+      this.error.set(MENSAJE_SIN_SEDE);
+      return of([]);
+    }
+
     this.isLoading.set(true);
     this.error.set(null);
 
-    // 🔧 MEJORA: Validación previa para admin global sin sede
-    if (this.esAdminGlobalSinSede()) {
-      this.toastWarning(
-        'No tienes una sede activa seleccionada. El catálogo se mostrará en modo lectura global.',
-        'Sede requerida'
-      );
-      // Cargamos el catálogo global en modo lectura para el admin
-      return this.catalogoGlobal(true);
-    }
-
-    const peticion$ = incluirCombos ? this.peticionCatalogoAdmin() : this.peticionServicios();
+    const peticion$ = incluirCombos
+      ? this.peticionCatalogoAdmin(serviciosBase, combosBase)
+      : this.peticionServicios(serviciosBase);
 
     return peticion$.pipe(
       tap((data: Servicio[]) => {
@@ -124,31 +116,6 @@ export class ServiciosService {
       catchError(_err => {
         this.isLoading.set(false);
         this.error.set('No se pudieron cargar los servicios');
-        return of([]);
-      }),
-    );
-  }
-
-  /** Carga el catálogo global para admin sin sede (modo lectura) */
-  private catalogoGlobal(incluirCombos = false): Observable<Servicio[]> {
-    this.isLoading.set(true);
-
-    const peticion$ = incluirCombos
-      ? this.http.get<any>(`${API_URL}/catalogo/admin/servicios-todos?includeCombos=true`).pipe(
-          map(res => this.normalizar(res).map((s: any) => this.aServicio(s)))
-        )
-      : this.http.get<any>(`${API_URL}/catalogo/admin/servicios-todos`).pipe(
-          map(res => this.normalizar(res).map((s: any) => this.aServicio(s)))
-        );
-
-    return peticion$.pipe(
-      tap((data: Servicio[]) => {
-        this.servicios.set(data);
-        this.isLoading.set(false);
-      }),
-      catchError(_err => {
-        this.isLoading.set(false);
-        this.error.set('No se pudo cargar el catálogo global');
         return of([]);
       }),
     );
@@ -166,22 +133,22 @@ export class ServiciosService {
     };
   }
 
-  private peticionServicios(): Observable<Servicio[]> {
+  private peticionServicios(base: string): Observable<Servicio[]> {
     return this.http
-      .get<any>(this.serviciosUrl)
+      .get<any>(base)
       .pipe(map((res) => this.normalizar(res).map((s: any) => this.aServicio(s))));
   }
 
   /** Servicios + combos en una sola lista, como la pinta el panel de admin. */
-  private peticionCatalogoAdmin(): Observable<Servicio[]> {
-    const combos$ = this.http.get<any>(this.combosUrl).pipe(
+  private peticionCatalogoAdmin(serviciosBase: string, combosBase: string): Observable<Servicio[]> {
+    const combos$ = this.http.get<any>(combosBase).pipe(
       map((res) => this.normalizar(res).map((c: any) => this.aCombo(c))),
       // Un fallo al leer los combos no debe dejar al admin sin catálogo: se
       // degrada a solo servicios en vez de romper toda la pantalla.
       catchError(() => of([] as Servicio[])),
     );
 
-    return forkJoin([this.peticionServicios(), combos$]).pipe(
+    return forkJoin([this.peticionServicios(serviciosBase), combos$]).pipe(
       map(([servicios, combos]) =>
         [...servicios, ...combos].sort((a, b) => a.nombre.localeCompare(b.nombre)),
       ),
@@ -208,12 +175,15 @@ export class ServiciosService {
   }
 
   crearServicio(dto: any): Observable<Servicio> {
+    const base = this.serviciosUrl;
+    if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     this.isLoading.set(true);
     const payload = {
       ...dto,
       duracionEstimada: dto.duracionEstimada ?? dto.duracionMinutos ?? 30,
     };
-    return this.http.post<Servicio>(this.serviciosUrl, payload).pipe(
+    return this.http.post<Servicio>(base, payload).pipe(
       tap(() => {
         this.recargarCatalogo();
       }),
@@ -226,12 +196,15 @@ export class ServiciosService {
   }
 
   actualizarServicio(id: string, dto: any): Observable<Servicio> {
+    const base = this.serviciosUrl;
+    if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     this.isLoading.set(true);
     const payload = {
       ...dto,
       duracionEstimada: dto.duracionEstimada ?? dto.duracionMinutos ?? 30,
     };
-    return this.http.patch<Servicio>(`${this.serviciosUrl}/${id}`, payload).pipe(
+    return this.http.patch<Servicio>(`${base}/${id}`, payload).pipe(
       tap(() => {
         this.recargarCatalogo();
       }),
@@ -249,8 +222,11 @@ export class ServiciosService {
   }
 
   desactivarServicio(id: string): Observable<void> {
+    const base = this.serviciosUrl;
+    if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     this.isLoading.set(true);
-    return this.http.patch<void>(`${this.serviciosUrl}/${id}/deactivate`, {}).pipe(
+    return this.http.patch<void>(`${base}/${id}/deactivate`, {}).pipe(
       tap(() => {
         this.recargarCatalogo();
       }),
@@ -263,8 +239,11 @@ export class ServiciosService {
   }
 
   reactivarServicio(id: string): Observable<Servicio> {
+    const base = this.serviciosUrl;
+    if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     this.isLoading.set(true);
-    return this.http.patch<Servicio>(`${this.serviciosUrl}/${id}/reactivate`, {}).pipe(
+    return this.http.patch<Servicio>(`${base}/${id}/reactivate`, {}).pipe(
       tap(() => {
         this.recargarCatalogo();
       }),
@@ -277,8 +256,11 @@ export class ServiciosService {
   }
 
   desactivarCombo(id: string): Observable<void> {
+    const base = this.combosUrl;
+    if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     this.isLoading.set(true);
-    return this.http.patch<void>(`${this.combosUrl}/${id}/deactivate`, {}).pipe(
+    return this.http.patch<void>(`${base}/${id}/deactivate`, {}).pipe(
       tap(() => {
         this.recargarCatalogo();
       }),
@@ -291,8 +273,11 @@ export class ServiciosService {
   }
 
   reactivarCombo(id: string): Observable<Servicio> {
+    const base = this.combosUrl;
+    if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     this.isLoading.set(true);
-    return this.http.patch<Servicio>(`${this.combosUrl}/${id}/reactivate`, {}).pipe(
+    return this.http.patch<Servicio>(`${base}/${id}/reactivate`, {}).pipe(
       tap(() => {
         this.recargarCatalogo();
       }),
@@ -312,10 +297,4 @@ export class ServiciosService {
     this.cargarServicios(true).subscribe();
   }
 
-  /** Muestra un toast informativo (usando el Injector para evitar problemas de
-   *  inyección circular en constructores de servicio). */
-  private toastWarning(mensaje: string, titulo: string): void {
-    const toast = inject(ToastService);
-    toast.warning(mensaje, titulo);
-  }
 }

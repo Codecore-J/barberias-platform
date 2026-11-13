@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 import { ServiciosService, Servicio } from '../../core/services/servicios.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
+import { rolEfectivo, type RolSesion } from '../../core/utils/rol';
 import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
 
 @Component({
@@ -262,14 +263,15 @@ export class AdminServiciosComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly confirmDialog = inject(ConfirmDialogService);
 
-  userRole(): string {
-    const roles = this.authService.authState().user?.roles;
-    if (!roles || roles.length === 0) return 'CLIENTE';
-    if (roles.includes('ADMINISTRADOR')) return 'ADMINISTRADOR';
-    if (roles.includes('ADMIN_BARBERIA')) return 'ADMIN_BARBERIA';
-    if (roles.includes('BARBERO')) return 'BARBERO';
-    return 'CLIENTE';
-  }
+  /**
+   * Rol efectivo de la sesión, derivado del helper único (`rolEfectivo`).
+   *
+   * Antes esta copia local devolvía `CLIENTE` ante una cuenta sin roles, y con
+   * eso se habilitaba en el catálogo la UI de un rol que no existe.
+   */
+  readonly userRole = computed<RolSesion>(() =>
+    rolEfectivo(this.authService.authState().user?.roles),
+  );
 
   /** 
    * D16 (Especificación §2/§3.1): el catálogo lo opera el personal de la sede,

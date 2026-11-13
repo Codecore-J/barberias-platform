@@ -1,7 +1,8 @@
-import { Component, Input } from '@angular/core';
+import { Component, Input, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { BarberiaResumen } from '../../../../core/services/tenant.service';
 import type { MiEstado } from '../../../../core/services/mi-estado.service';
+import { qrDeInvitacion, urlDeInvitacion } from '../../../../core/utils/invitacion.util';
 
 /**
  * H72 · la tarjeta de una sede, extraída para que la pinten las DOS pantallas
@@ -119,6 +120,58 @@ import type { MiEstado } from '../../../../core/services/mi-estado.service';
           </div>
         }
 
+        <!--
+          La invitación es de ESTA sede.
+
+          Vive dentro de la tarjeta, y no en un bloque global sobre la rejilla,
+          porque antes el hub pintaba el código de la sede activa —o el de la
+          PRIMERA de la lista cuando no había ninguna— encima de todas: parecía
+          un QR de plataforma y se compartía el código de otra sede. El código y
+          el enlace ya vienen en el propio objeto de la sede (GET /shops los
+          entrega a quien administra), así que la tarjeta no pide nada extra.
+        -->
+        @if (verInvitacion && barberia.codigoAcceso && urlInvitacion) {
+          <div class="rounded-2xl border border-amber-500/25 bg-zinc-900/60 p-3.5 space-y-2.5 transform translate-z-12">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">
+                Código de acceso
+              </span>
+              <button
+                (click)="copiar(barberia.codigoAcceso, 'codigo')"
+                class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-amber-500 text-zinc-950 hover:bg-amber-400 transition-colors flex items-center gap-1"
+              >
+                <i class="pi pi-copy text-[9px]"></i>
+                {{ copiado() === 'codigo' ? 'Copiado' : 'Copiar' }}
+              </button>
+            </div>
+
+            <code
+              class="block w-full px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-amber-400 font-mono text-base tracking-wider text-center"
+            >{{ barberia.codigoAcceso }}</code>
+
+            <div class="flex items-center gap-3">
+              <img
+                [src]="qrInvitacion ?? ''"
+                alt="Código QR para unirse a {{ barberia.nombre }}"
+                class="w-16 h-16 rounded-lg bg-white p-1 shrink-0"
+              >
+              <div class="min-w-0 flex-1 space-y-1">
+                <span class="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">
+                  Enlace de invitación
+                </span>
+                <code class="block text-[10px] text-zinc-300 break-all">{{ urlInvitacion }}</code>
+                <button
+                  (click)="copiar(urlInvitacion, 'enlace')"
+                  class="text-[10px] font-semibold text-zinc-400 hover:text-amber-300 transition-colors flex items-center gap-1"
+                >
+                  <i class="pi pi-copy text-[9px]"></i>
+                  {{ copiado() === 'enlace' ? 'Copiado' : 'Copiar enlace' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        }
+
         <!-- Acciones: las pone cada pantalla (seleccionar, entrar, desvincularse…) -->
         <div class="pt-4 space-y-3 transform translate-z-12">
           <ng-content></ng-content>
@@ -132,6 +185,16 @@ export class SedeCardComponent {
   /** Estado de mi-estado (H54) si el padre lo consultó; si no, `null`. */
   @Input() estado: MiEstado | null = null;
   @Input() esActiva = false;
+  /**
+   * Muestra la puerta de entrada de ESTA sede (código + enlace + QR).
+   *
+   * Lo activa el hub de sedes para el staff que puede verla; el dashboard del
+   * cliente la deja en `false`, porque la invitación se comparte, no se consume.
+   */
+  @Input() verInvitacion = false;
+
+  /** Cuál de los dos botones acaba de copiar (`''` = ninguno). */
+  readonly copiado = signal<'' | 'codigo' | 'enlace'>('');
 
   /** Sin vínculo de cliente que anunciar, el bloque no se pinta (staff). */
   get mostrarVinculo(): boolean {
@@ -148,5 +211,30 @@ export class SedeCardComponent {
 
   get estaRestringido(): boolean {
     return !!this.estado?.estaRestringido;
+  }
+
+  /**
+   * El enlace completo se compone con el origen REAL del navegador: el backend
+   * no conoce el dominio desde el que se sirve la app, y un QR impreso debe
+   * apuntar al host donde la sede opera.
+   */
+  get urlInvitacion(): string | null {
+    const enlace = this.barberia.enlaceUnico;
+    return enlace ? urlDeInvitacion(enlace, window.location.origin) : null;
+  }
+
+  /** El QR se dibuja en el navegador y viaja como `data:`; no se delega a nadie. */
+  get qrInvitacion(): string | null {
+    const url = this.urlInvitacion;
+    return url ? qrDeInvitacion(url) : null;
+  }
+
+  copiar(valor: string | null, cual: 'codigo' | 'enlace'): void {
+    if (!valor) return;
+
+    void navigator.clipboard.writeText(valor).then(() => {
+      this.copiado.set(cual);
+      setTimeout(() => this.copiado.set(''), 2000);
+    });
   }
 }

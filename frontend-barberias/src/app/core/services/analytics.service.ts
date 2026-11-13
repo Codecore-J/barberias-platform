@@ -1,7 +1,8 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, throwError } from 'rxjs';
 import { API_URL } from '../constants/api.constants';
+import { MENSAJE_SIN_SEDE, haySede } from '../utils/sede';
 import { TenantService } from './tenant.service';
 
 export interface ResumenCitas {
@@ -69,8 +70,17 @@ export class AnalyticsService {
     private tenantService: TenantService,
   ) {}
 
+  /**
+   * Analíticas de la SEDE activa.
+   *
+   * El panel ya comprobaba la sede antes de llamar, pero el servicio no: una
+   * llamada desde cualquier otra pantalla componía `/shops/null/analytics` y el
+   * `ParseUUIDPipe` respondía 400. Aquí se falla con mensaje de negocio.
+   */
   getAnalytics(desde?: string, hasta?: string): Observable<ShopAnalyticsResponse> {
     const shopId = this.tenantService.barberiaActivaId();
+    if (!haySede(shopId)) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     let params = new HttpParams();
     if (desde) {
       params = params.set('desde', desde);
@@ -84,6 +94,8 @@ export class AnalyticsService {
   /** Paso 13 · descarga el CSV del panel como blob (no JSON). */
   exportAnalytics(desde?: string, hasta?: string): Observable<Blob> {
     const shopId = this.tenantService.barberiaActivaId();
+    if (!haySede(shopId)) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     let params = new HttpParams();
     if (desde) {
       params = params.set('desde', desde);
@@ -97,6 +109,12 @@ export class AnalyticsService {
     });
   }
 
+  /**
+   * Consolidado multisede (`GET /shops/overview`).
+   *
+   * NO necesita sede activa: es la única lectura realmente global del panel, y
+   * por eso el backend la resuelve por alcance del rol.
+   */
   getShopsOverview(desde?: string, hasta?: string): Observable<ShopsOverviewResponse> {
     let params = new HttpParams();
     if (desde) {
