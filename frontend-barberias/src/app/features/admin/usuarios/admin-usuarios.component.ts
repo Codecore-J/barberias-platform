@@ -213,7 +213,13 @@ type FiltroRol = 'TODOS' | RolPlataforma;
           </div>
 
           <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse text-xs">
+            <!--
+              El ancho mínimo es lo que hace funcionar al overflow-x-auto de
+              arriba: con w-full a secas y siete columnas whitespace-nowrap, el
+              navegador comprime las celdas en vez de desplazar y los datos se
+              cortan. Con ancho mínimo, el contenedor desplaza.
+            -->
+            <table class="w-full min-w-[1080px] text-left border-collapse text-xs">
               <thead>
                 <tr class="border-b border-white/5 bg-zinc-900/60">
                   <th class="p-4 font-bold text-amber-400 uppercase tracking-widest whitespace-nowrap">

@@ -1,7 +1,8 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { mensajeDeError } from '../utils/error-message.js';
+import { MENSAJE_SIN_SEDE, haySede } from '../utils/sede.js';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, catchError, of } from 'rxjs';
+import { Observable, tap, catchError, of, throwError } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { API_URL } from '../constants/api.constants';
 import { TenantService } from './tenant.service';
@@ -43,9 +44,16 @@ export class PagosService {
     this.tenant.registrarPurgadorLocal(() => this.limpiarEstadoLocal());
   }
 
-  /** Fase 5: la sede vive en la ruta (`/shops/:shopId/payments`). */
-  private get pagosUrl(): string {
-    return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/payments`;
+  /**
+   * Fase 5: la sede vive en la ruta (`/shops/:shopId/payments`).
+   *
+   * Devuelve `null` sin sede activa: el llamador decide si eso es una lista
+   * vacía (lectura) o un error accionable (escritura), en vez de que aquí se
+   * componga `/shops/null/payments`.
+   */
+  private get pagosUrl(): string | null {
+    const sedeId = this.tenant.barberiaActivaId();
+    return haySede(sedeId) ? `${API_URL}/shops/${sedeId}/payments` : null;
   }
 
   readonly isLoading = signal<boolean>(false);
@@ -67,11 +75,19 @@ export class PagosService {
    * viaja en la RUTA (`/shops/:shopId/payments/history`), no en una cabecera.
    */
   obtenerHistorial(page = 1, pageSize = 50): Observable<PagoHistorial[]> {
+    const base = this.pagosUrl;
+    if (!base) {
+      this.isLoading.set(false);
+      this.error.set(MENSAJE_SIN_SEDE);
+      this.pagos.set([]);
+      return of([]);
+    }
+
     this.isLoading.set(true);
     this.error.set(null);
 
     return this.http
-      .get<any>(`${this.pagosUrl}/history?page=${page}&pageSize=${pageSize}`)
+      .get<any>(`${base}/history?page=${page}&pageSize=${pageSize}`)
       .pipe(
         map(res => res.data || []),
         tap((data) => {
@@ -92,9 +108,14 @@ export class PagosService {
    * El motivo es obligatorio (422 `MOTIVO_REQUERIDO`) y queda en la auditoría: una
    * operación que deshace un ingreso tiene que poder explicarse después. Solo la
    * sede puede anular; el backend responde 403 si quien lo intenta es un barbero.
+   *
+   * Sin sede activa no se simula nada: se falla antes de tocar la red.
    */
   anularPago(pagoId: string, motivo: string): Observable<any> {
-    return this.http.post<any>(`${this.pagosUrl}/${pagoId}/void`, { motivo });
+    const base = this.pagosUrl;
+    if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
+    return this.http.post<any>(`${base}/${pagoId}/void`, { motivo });
   }
 
   /**
@@ -113,4 +134,3 @@ export class PagosService {
     return this.http.post<any>(`${this.apiUrl}/auditoria/purgar?dias=${dias}`, {});
   }
 }
-

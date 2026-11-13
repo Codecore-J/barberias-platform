@@ -3,6 +3,7 @@ import { mensajeDeError as mensajeDelBackend } from '../utils/error-message.js';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, firstValueFrom, of, tap } from 'rxjs';
 import { API_URL } from '../constants/api.constants';
+import { MENSAJE_SIN_SEDE } from '../utils/sede';
 import { TenantService } from './tenant.service';
 
 export interface TotalesCaja {
@@ -66,7 +67,7 @@ export class CajaService {
   cargarHoy(): Observable<CajaDelDia | null> {
     const shopId = this.tenant.barberiaActivaId();
     if (!shopId) {
-      this.error.set('No hay una sede activa.');
+      this.error.set(MENSAJE_SIN_SEDE);
       return of(null);
     }
 
@@ -96,7 +97,7 @@ export class CajaService {
   cerrarCaja(): Observable<CajaDelDia | null> {
     const shopId = this.tenant.barberiaActivaId();
     if (!shopId) {
-      this.error.set('No hay una sede activa.');
+      this.error.set(MENSAJE_SIN_SEDE);
       return of(null);
     }
 

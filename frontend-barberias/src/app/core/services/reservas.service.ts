@@ -5,6 +5,7 @@ import { API_URL } from '../constants/api.constants.js';
 import { TenantService } from './tenant.service.js';
 import type { ReservaCliente, Turno } from '../models/turno.model.js';
 import { mensajeDeError } from '../utils/error-message.js';
+import { MENSAJE_SIN_SEDE, haySede } from '../utils/sede.js';
 
 export interface DisponibilidadSlot {
   inicio: string;
@@ -52,8 +53,9 @@ export class ReservasService {
    * Fase 5 (Punto 5.3): reservas y agenda se anidan bajo la sede en la ruta
    * (`/shops/:shopId/appointments`), en vez de resolverla por cabecera.
    */
-  private get appointmentsUrl(): string {
-    return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/appointments`;
+  private get appointmentsUrl(): string | null {
+    const sedeId = this.tenant.barberiaActivaId();
+    return haySede(sedeId) ? `${API_URL}/shops/${sedeId}/appointments` : null;
   }
 
   readonly isLoading = signal<boolean>(false);
@@ -68,10 +70,17 @@ export class ReservasService {
    * Obtiene los slots de disponibilidad para un día específico
    */
   obtenerDisponibilidad(fecha: string, duracionTotalMinutos: number, barberoId?: string): Observable<DisponibilidadSlot[]> {
+    const base = this.appointmentsUrl;
+    if (!base) {
+      this.isLoading.set(false);
+      this.error.set(MENSAJE_SIN_SEDE);
+      return of([]);
+    }
+
     this.isLoading.set(true);
     this.error.set(null);
     
-    let url = `${this.appointmentsUrl}/schedule/availability?fecha=${fecha}&duracionMinutos=${duracionTotalMinutos}`;
+    let url = `${base}/schedule/availability?fecha=${fecha}&duracionMinutos=${duracionTotalMinutos}`;
     if (barberoId) {
       url += `&barberoId=${barberoId}`;
     }
@@ -90,6 +99,9 @@ export class ReservasService {
    * Crea una nueva reserva
    */
   crearReserva(dto: CrearReservaDto): Observable<any> {
+    const base = this.appointmentsUrl;
+    if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     this.isLoading.set(true);
     this.error.set(null);
 
@@ -97,7 +109,7 @@ export class ReservasService {
     // del cliente siempre crea reservas INDIVIDUAL.
     const payload: CrearReservaDto = { ...dto, tipo: dto.tipo ?? 'INDIVIDUAL' };
 
-    return this.http.post(`${this.appointmentsUrl}`, payload).pipe(
+    return this.http.post(`${base}`, payload).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
@@ -113,6 +125,9 @@ export class ReservasService {
    * lo usan el BARBERO / ADMIN de la sede, así que no comparten decorador.
    */
   crearReservaWalkIn(dto: CrearReservaDto): Observable<any> {
+    const base = this.appointmentsUrl;
+    if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     this.isLoading.set(true);
     this.error.set(null);
 
@@ -120,7 +135,7 @@ export class ReservasService {
     // El turno walk-in lo teclea el staff sobre un solo cliente: INDIVIDUAL.
     const payload: CrearReservaDto = { ...dto, tipo: dto.tipo ?? 'INDIVIDUAL' };
 
-    return this.http.post(`${this.appointmentsUrl}/walk-in`, payload).pipe(
+    return this.http.post(`${base}/walk-in`, payload).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
@@ -134,10 +149,17 @@ export class ReservasService {
    * Obtiene las reservas del cliente actual
    */
   obtenerMisReservas(): Observable<ReservaCliente[]> {
+    const base = this.appointmentsUrl;
+    if (!base) {
+      this.isLoading.set(false);
+      this.error.set(MENSAJE_SIN_SEDE);
+      return of([]);
+    }
+
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.get<ReservaCliente[]>(`${this.appointmentsUrl}/mine`).pipe(
+    return this.http.get<ReservaCliente[]>(`${base}/mine`).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
@@ -155,10 +177,17 @@ export class ReservasService {
    * así la agenda no necesita castear la respuesta para pintarla.
    */
   obtenerAgendaDiaria(fecha: string): Observable<Turno[]> {
+    const base = this.appointmentsUrl;
+    if (!base) {
+      this.isLoading.set(false);
+      this.error.set(MENSAJE_SIN_SEDE);
+      return of([]);
+    }
+
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.get<Turno[]>(`${this.appointmentsUrl}/day?fecha=${fecha}`).pipe(
+    return this.http.get<Turno[]>(`${base}/day?fecha=${fecha}`).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
@@ -173,10 +202,13 @@ export class ReservasService {
    * Solo la sede y el ADMINISTRADOR global; el backend responde 403 al barbero.
    */
   aceptarReserva(reservaId: string): Observable<any> {
+    const base = this.appointmentsUrl;
+    if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.post(`${this.appointmentsUrl}/${reservaId}/accept`, {}).pipe(
+    return this.http.post(`${base}/${reservaId}/accept`, {}).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
@@ -191,10 +223,13 @@ export class ReservasService {
    * La sede cancela por teléfono o mostrador; el cliente solo las suyas.
    */
   cancelarReserva(reservaId: string): Observable<any> {
+    const base = this.appointmentsUrl;
+    if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.post(`${this.appointmentsUrl}/${reservaId}/cancel`, {}).pipe(
+    return this.http.post(`${base}/${reservaId}/cancel`, {}).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
@@ -213,10 +248,13 @@ export class ReservasService {
    * y la máquina solo la admite desde `CONFIRMADA`.
    */
   marcarInasistencia(reservaId: string): Observable<any> {
+    const base = this.appointmentsUrl;
+    if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.post(`${this.appointmentsUrl}/${reservaId}/no-show`, {}).pipe(
+    return this.http.post(`${base}/${reservaId}/no-show`, {}).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
@@ -257,13 +295,16 @@ export class ReservasService {
   }
 
   registrarCobro(reservaId: string, metodoPago: string, monto?: number): Observable<any> {
+    const sedeId = this.tenant.barberiaActivaId();
+    if (!haySede(sedeId)) return throwError(() => new Error(MENSAJE_SIN_SEDE));
+
     this.isLoading.set(true);
     this.error.set(null);
 
     const body: any = { reservaId, metodoPago };
     if (monto) body.monto = monto;
 
-    return this.http.post(`${API_URL}/shops/${this.tenant.barberiaActivaId()}/payments`, body).pipe(
+    return this.http.post(`${API_URL}/shops/${sedeId}/payments`, body).pipe(
       tap(() => this.isLoading.set(false)),
       catchError(err => {
         this.isLoading.set(false);
