@@ -143,6 +143,9 @@ export class CajaService {
     if (cierre) {
       return {
         fecha,
+        // T-22 · la fecha del arqueo es una etiqueta LOCAL de la sede: sin la
+        // zona, un admin en otro huso no puede saber qué día está cerrando.
+        zonaHoraria: barberia.zonaHoraria,
         estado: cierre.estado,
         totales: {
           efectivo: Number(cierre.totalEfectivo),
@@ -169,6 +172,7 @@ export class CajaService {
 
     return {
       fecha,
+      zonaHoraria: barberia.zonaHoraria,
       estado: 'ABIERTO',
       totales: this.sumar(pagos),
       cierre: null,

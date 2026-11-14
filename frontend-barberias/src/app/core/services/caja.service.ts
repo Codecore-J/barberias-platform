@@ -29,6 +29,12 @@ export interface CierreCaja {
 
 export interface CajaDelDia {
   fecha: string;
+  /**
+   * T-22 · zona IANA de la SEDE (`barberias.zona_horaria`). `fecha` es una
+   * etiqueta local, así que se muestra junto a ella: un administrador en otro
+   * huso necesita saber a qué día corresponde el arqueo antes de cerrarlo.
+   */
+  zonaHoraria?: string | null;
   estado: 'ABIERTO' | 'CERRADO';
   totales: TotalesCaja;
   cierre: CierreCaja | null;
