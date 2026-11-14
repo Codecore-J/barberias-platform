@@ -10,11 +10,6 @@
   --color-surface: #18181c;
 }
 
-#p-license-host {
-  display: none !important;
-}
-
-
 /* 3D Perspective & Spatial Tokens */
 .perspective-1000 {
   perspective: 1000px;

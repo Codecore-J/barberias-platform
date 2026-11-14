@@ -33,14 +33,22 @@ services:
     # OJO: este servicio NO ejecuta el seed en el deploy. `npm run seed` debe
     # lanzarse a mano cuando cambien roles/permisos; `POST /auth/register` aborta
     # con 500 si falta el rol CLIENTE y `npm run admin:create` exige ADMINISTRADOR.
-    startCommand: npx prisma migrate resolve --rolled-back 20261103220350_add_barberias_telefono_check || true; npx prisma migrate deploy && npm run start:prod
+    # T-33 · mínimo privilegio: el runtime usa `barberias_app` (sin DDL) y las
+    # migraciones necesitan el rol owner. `DATABASE_URL_MIGRATE` es opcional: si
+    # el panel todavía no la define, el `:-` deja el comportamiento anterior
+    # (`DATABASE_URL`), así que este cambio no puede tumbar un despliegue sano.
+    # Va en `startCommand` y no en `preDeployCommand` por lo explicado arriba.
+    startCommand: npx prisma migrate resolve --rolled-back 20261103220350_add_barberias_telefono_check || true; DATABASE_URL="${DATABASE_URL_MIGRATE:-$DATABASE_URL}" npx prisma migrate deploy && npm run start:prod
     # H64: sonda de VIDA, no de preparación. `/health` comprueba Base de Datos Y
     # Redis, así que con la cola caída devolvía 503 y Render podía reiniciar en
     # bucle una instancia que estaba sirviendo con normalidad. La preparación
     # (con Redis incluido) sigue disponible en /api/v1/health para alertas y
     # balanceadores: no se usa como `healthCheckPath`.
     healthCheckPath: /api/v1/health/liveness
-    autoDeploy: true
+    # T-32 · sin auto-deploy: un push a `main` ya no despliega solo. Se publica
+    # con Manual Deploy → Deploy latest commit, después del QA en el preview.
+    # Vive aquí y no solo en el panel porque el blueprint lo revertiría.
+    autoDeploy: false
     envVars:
       # APP_ENV es obligatorio: `main.ts` aborta el arranque si falta o no es
       # dev/staging/production.
