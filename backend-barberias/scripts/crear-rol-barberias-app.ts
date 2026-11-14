@@ -72,6 +72,29 @@ function destino(url: string): Destino {
   };
 }
 
+/**
+ * Cadena de conexión del rol restringido, derivada de la del owner: mismo host,
+ * misma base y mismos parámetros, pero con `barberias_app` y su contraseña.
+ *
+ * La verificación TIENE que hacerse con esta URL. Hacerla con la del owner mide
+ * los permisos del owner —un `DROP TABLE` que solo falla por dependencias— y da
+ * por buena una restricción que nunca se probó.
+ */
+function urlDelRol(urlOwner: string, password: string): string {
+  const u = new URL(urlOwner);
+  u.username = ROL;
+  u.password = password;
+  return u.toString();
+}
+
+/** Un error de permisos de PostgreSQL, no un fallo de negocio ni de red. */
+function esErrorDePermisos(mensaje: string): boolean {
+  return (
+    /permission denied|must be owner|insufficient privilege|42501/i.test(mensaje) ||
+    /no es duenio|no tiene permisos/i.test(mensaje)
+  );
+}
+
 const objetivo = destino(urlOwner);
 const esPooler = objetivo.host.includes('-pooler');
 
@@ -113,6 +136,7 @@ async function main(): Promise<void> {
   }
 
   const prisma = new PrismaClient({ datasourceUrl: urlOwner });
+  const prismaApp = new PrismaClient({ datasourceUrl: urlDelRol(urlOwner, password) });
 
   try {
     const [{ current_user: quien, current_database: base }] = await prisma.$queryRaw<
@@ -152,28 +176,51 @@ async function main(): Promise<void> {
     console.log(`  SELECT en usuarios      : ${priv.puede_select} (debe ser true)`);
     console.log(`  DELETE en usuarios      : ${priv.puede_delete} (debe ser true)`);
 
-    // El DROP se intenta de verdad, pero la transacción siempre revierte.
+    // El DROP se intenta de verdad CON LAS CREDENCIALES DEL ROL NUEVO, y la
+    // transacción siempre revierte. Solo cuenta como bloqueado si el error es
+    // de permisos: un fallo por dependencias (HINT ... CASCADE) significa que
+    // la sentencia pasó la comprobación de propiedad.
     let bloqueado = false;
     let detalle = '';
     try {
-      await prisma.$transaction(async (tx) => {
+      await prismaApp.$transaction(async (tx) => {
         await tx.$executeRawUnsafe('DROP TABLE "usuarios"');
         throw new Error('INESPERADO');
       });
     } catch (error) {
       const mensaje = error instanceof Error ? error.message : String(error);
       if (mensaje.includes('INESPERADO')) {
-        throw new Error('¡El DROP TABLE se ejecutó! Revisa los permisos antes de seguir.');
+        throw new Error('¡El DROP TABLE se ejecutó con el rol de la app! Revisa los permisos.');
       }
-      bloqueado = true;
-      detalle = mensaje.split('\n').filter(Boolean).slice(-1)[0] ?? mensaje;
+      bloqueado = esErrorDePermisos(mensaje);
+      const linea = mensaje
+        .split('\n')
+        .map((l) => l.trim())
+        .find((l) => esErrorDePermisos(l));
+      detalle = linea ?? mensaje.split('\n').filter(Boolean).slice(-1)[0] ?? mensaje;
     }
 
-    console.log('\nPrueba destructiva (DROP TABLE usuarios, revertida):');
-    console.log(`  bloqueado por PostgreSQL: ${bloqueado}`);
-    if (detalle) console.log(`  mensaje: ${detalle}`);
+    // Control explícito: el mismo DROP con la conexión del owner SÍ debe llegar
+    // al motor (aunque lo frene una dependencia). Si también fallara por
+    // permisos, la prueba anterior no probaría nada.
+    let ownerLlega = true;
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe('SAVEPOINT sonda_owner');
+        await tx.$executeRawUnsafe('DROP TABLE "usuarios"');
+        await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT sonda_owner');
+      });
+    } catch (error) {
+      const mensaje = error instanceof Error ? error.message : '';
+      ownerLlega = !esErrorDePermisos(mensaje);
+    }
 
-    const ok = bloqueado && !priv.puede_crear && priv.puede_select;
+    console.log('\nPrueba destructiva (DROP TABLE usuarios ejecutado como ' + ROL + ', revertido):');
+    console.log(`  bloqueado por permisos: ${bloqueado}`);
+    if (detalle) console.log(`  mensaje: ${detalle}`);
+    console.log(`  control: el owner no recibe error de permisos: ${ownerLlega}`);
+
+    const ok = bloqueado && ownerLlega && !priv.puede_crear && priv.puede_select;
     console.log(
       `\n${ok ? '✅' : '❌'} ${
         ok
@@ -192,6 +239,7 @@ async function main(): Promise<void> {
     if (!ok) process.exit(2);
   } finally {
     await prisma.$disconnect();
+    await prismaApp.$disconnect();
   }
 }
 
