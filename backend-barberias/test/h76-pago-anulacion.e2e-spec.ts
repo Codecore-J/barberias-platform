@@ -536,4 +536,21 @@ describe('H76 · ciclo HTTP completo de la anulación de un cobro', () => {
       expect(res.status, `shopId=${valor} → ${JSON.stringify(res.body)}`).toBe(400);
     }
   });
+
+  /**
+   * Un `:id` de pago malformado es un error de petición, no un fallo del
+   * servidor: la columna `pagos.id` es `@db.Uuid`, así que sin `ParseUUIDPipe`
+   * el valor llegaba a Prisma y respondía 500 donde el resto de la API responde
+   * 400 ante un identificador inválido.
+   */
+  it('400: anular un pago con un :id que no es UUID no llega a Prisma', async () => {
+    for (const valor of ['no-es-uuid', 'null', '123']) {
+      const res = await request(app.getHttpServer())
+        .post(`${api}/shops/${sedeA}/payments/${valor}/void`)
+        .set(header(tokenAdmin, sedeA))
+        .send({ motivo: 'Identificador inválido' });
+
+      expect(res.status, `id=${valor} → ${JSON.stringify(res.body)}`).toBe(400);
+    }
+  });
 });

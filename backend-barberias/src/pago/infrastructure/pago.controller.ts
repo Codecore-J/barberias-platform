@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Query,
 } from '@nestjs/common';
 import { PagoService } from '../application/pago.service.js';
@@ -79,7 +80,10 @@ export class PagoController {
   @Post(':id/void')
   @HttpCode(HttpStatus.OK)
   anularPago(
-    @Param('id') id: string,
+    // El `:id` es el UUID del pago: sin el pipe, un valor como «no-es-uuid»
+    // llegaba hasta Prisma —la columna es `@db.Uuid`— y moría en un 500, cuando
+    // el resto de la API responde 400 ante un identificador malformado.
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentBarberiaIdOpcional() barberiaId: string | null,
     @Body() dto: AnularPagoDto,
     @CurrentUser() user: UsuarioAutenticado,
