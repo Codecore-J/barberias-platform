@@ -94,6 +94,28 @@ export class AuthService {
           },
         });
 
+        //
+        // T-20 · el historial de la cuenta mostraba «Sin eventos» en cuentas
+        // recién creadas: el alta administrativa sí dejaba rastro
+        // (`USUARIO_CREADO`) pero el registro público no escribía nada, y la
+        // consulta de auditoría solo puede leer lo que existe. El actor de este
+        // evento es el propio usuario, que se está dando de alta.
+        //
+        await tx.auditoria.create({
+          data: {
+            usuarioId: nuevoUsuario.id,
+            accion: 'USUARIO_CREADO',
+            entidad: 'usuarios',
+            entidadId: nuevoUsuario.id,
+            contexto: {
+              origen: 'REGISTRO_PUBLICO',
+              correo: nuevoUsuario.correo,
+              nombreCompleto: nuevoUsuario.nombreCompleto,
+              rol: 'CLIENTE',
+            },
+          },
+        });
+
         return nuevoUsuario;
       });
 
