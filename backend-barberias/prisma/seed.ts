@@ -13,6 +13,7 @@
  * Nunca un campo simple tipo `usuario.tipo = \"admin\"`.
  */
 import { PrismaClient } from '@prisma/client';
+import { sembrarDemo } from './seed-demo.js';
 
 /** Categorías oficiales de la sede: ellas vinculan los servicios que publica el barbero. */
 const CATEGORIAS_OFICIALES = [
@@ -173,6 +174,13 @@ async function main() {
   await asignarPermisos(rolAdmin.id, permisosAdmin);
 
   console.log('✅ Permisos asignados a roles correctamente.');
+
+  // T-25 · `npx prisma db seed` deja además el entorno de demo operativo. Quien
+  // decide si escribe es la propia función (E0-07: solo con APP_ENV=dev); en
+  // cualquier otro entorno se omite con un aviso y este seed sigue valiendo para
+  // roles y permisos.
+  await sembrarDemo(prisma);
+
   console.log('🎉 Seed completado exitosamente.');
 }
 
