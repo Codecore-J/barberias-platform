@@ -155,6 +155,18 @@ export class BarberiaController {
     return this.barberiaService.findPersonal(id, user);
   }
 
+  /**
+   * POST /shops/:shopId/staff · invitar (o reutilizar) personal de la sede.
+   *
+   * Fase 1 — reglas de administrador:
+   * - 409 `SEDE_YA_TIENE_ADMIN` si se invita como `ADMIN_BARBERIA` a una sede
+   *   que ya tiene uno ACTIVO; el cuerpo trae `adminActual`.
+   * - 409 `ADMIN_NO_SE_DEGRADA` si la cuenta ya administra esta sede y se la
+   *   invita como `BARBERO` sin `conservarRolAdministrador: true` (antes se
+   *   sobrescribía su rol en silencio). Con el flag se AÑADE el vínculo de
+   *   barbero y el de administrador se conserva: la cuenta dual del dueño que
+   *   corta pelo.
+   */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Post(':shopId/staff')
   @HttpCode(HttpStatus.CREATED)
@@ -166,6 +178,13 @@ export class BarberiaController {
     return this.barberiaService.invitarPersonal(id, dto, user);
   }
 
+  /**
+   * PATCH /shops/:shopId/staff/:userId · rol y estado del vínculo.
+   *
+   * Promover a `ADMIN_BARBERIA` es asignar el rol: responde 409
+   * `SEDE_YA_TIENE_ADMIN` (con `adminActual`) si la sede ya tiene otro dueño
+   * ACTIVO. La regla es la misma del alta de plataforma y de la invitación.
+   */
   @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
   @Patch(':shopId/staff/:userId')
   @HttpCode(HttpStatus.OK)

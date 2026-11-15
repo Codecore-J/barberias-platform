@@ -3,6 +3,7 @@ import { UsuariosPlataformaService } from './usuarios-plataforma.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import type { UsuarioAutenticado } from '../domain/jwt.interface.js';
+import type { CrearUsuarioPlataformaDto } from './dto/crear-usuario-plataforma.dto.js';
 
 /**
  * E4-03/5 · D09/D24 · suspensión y reactivación de la CUENTA global.
@@ -617,6 +618,133 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
         rolNombre: 'CLIENTE',
         barberiaId: null,
       });
+    });
+  });
+
+  /**
+   * Fase 1 · un solo `ADMIN_BARBERIA` ACTIVO por sede.
+   *
+   * La comprobación vive DENTRO de la transacción del alta: si se hace fuera,
+   * dos administradores de plataforma creando dueños a la vez en la misma sede
+   * pasan los dos. El 409 devuelve `adminActual` para que la interfaz pueda
+   * ofrecer «reemplazar» en lugar de dejar al operador adivinando el correo.
+   */
+  describe('crearUsuario · un solo ADMIN_BARBERIA activo por sede', () => {
+    const dtoAdmin: CrearUsuarioPlataformaDto = {
+      nombreCompleto: 'Segundo Dueño',
+      correo: 'segundo.dueno@test.com',
+      telefono: '8095550202',
+      password: 'Password123',
+      rolNombre: 'ADMIN_BARBERIA',
+      barberiaId: 'sede-1',
+    };
+
+    const adminActual = {
+      id: 'usuario-admin-actual',
+      correo: 'dueno.actual@test.com',
+      nombreCompleto: 'Dueño Actual',
+    };
+
+    beforeEach(() => {
+      // Alta limpia: no hay colisión de correo/teléfono/cédula…
+      mockPrisma.usuario.findFirst.mockResolvedValue(null);
+      // …el rol es de sede…
+      mockPrisma.rol.findUnique.mockResolvedValue(adminSede);
+      // …y la sede existe.
+      mockPrisma.barberia.findUnique.mockResolvedValue({ id: 'sede-1' });
+    });
+
+    it('ROJO: la sede ya tiene un administrador activo → 409 SEDE_YA_TIENE_ADMIN con adminActual', async () => {
+      mockPrisma.usuarioRol.findFirst.mockResolvedValue({ usuario: adminActual });
+
+      let capturado: any;
+      try {
+        await service.crearUsuario(dtoAdmin, global);
+      } catch (error: any) {
+        capturado = error;
+      }
+
+      expect(capturado?.getStatus()).toBe(409);
+      expect(capturado?.getResponse()).toEqual({
+        statusCode: 409,
+        codigo: 'SEDE_YA_TIENE_ADMIN',
+        mensaje: 'La sede ya tiene un administrador activo.',
+        adminActual,
+      });
+      // El alta se corta ANTES de escribir la cuenta: no queda un huérfano.
+      expect(mockPrisma.usuario.create).not.toHaveBeenCalled();
+      expect(mockPrisma.usuarioRol.create).not.toHaveBeenCalled();
+      expect(mockAuditoria.registrarEvento).not.toHaveBeenCalled();
+    });
+
+    it('la comprobación busca SOLO vínculos ACTIVOS de ADMIN_BARBERIA en esa sede', async () => {
+      mockPrisma.usuarioRol.findFirst.mockResolvedValue({ usuario: adminActual });
+
+      await expect(service.crearUsuario(dtoAdmin, global)).rejects.toMatchObject({
+        response: { codigo: 'SEDE_YA_TIENE_ADMIN' },
+      });
+
+      expect(mockPrisma.usuarioRol.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            barberiaId: 'sede-1',
+            estado: 'ACTIVO',
+            rol: { nombre: 'ADMIN_BARBERIA' },
+          }),
+        }),
+      );
+    });
+
+    it('VERDE: la sede libre acepta al administrador y lo deja auditado', async () => {
+      mockPrisma.usuarioRol.findFirst.mockResolvedValue(null);
+      mockPrisma.usuario.create.mockResolvedValue({
+        id: 'usuario-nuevo',
+        nombreCompleto: dtoAdmin.nombreCompleto,
+        correo: dtoAdmin.correo,
+        telefono: dtoAdmin.telefono,
+        estadoCuenta: 'ACTIVO',
+        creadoAt: new Date('2026-11-15T12:00:00.000Z'),
+      });
+      mockPrisma.usuarioRol.create.mockResolvedValue({ id: 'vinculo-nuevo' });
+
+      const creado = await service.crearUsuario(dtoAdmin, global);
+
+      expect(creado).toMatchObject({
+        id: 'usuario-nuevo',
+        correo: 'segundo.dueno@test.com',
+        roles: ['ADMIN_BARBERIA'],
+      });
+      expect(mockPrisma.usuarioRol.create).toHaveBeenCalledWith({
+        data: {
+          usuarioId: 'usuario-nuevo',
+          rolId: adminSede.id,
+          barberiaId: 'sede-1',
+        },
+      });
+      expect(mockAuditoria.registrarEvento).toHaveBeenCalledWith(
+        expect.objectContaining({ accion: 'USUARIO_CREADO' }),
+        mockPrisma,
+      );
+    });
+
+    it('un rol de sede que NO es administrador no consulta la cardinalidad de la sede', async () => {
+      mockPrisma.rol.findUnique.mockResolvedValue(rolBarbero);
+      mockPrisma.usuario.create.mockResolvedValue({
+        id: 'usuario-barbero',
+        nombreCompleto: 'Barbero Nuevo',
+        correo: 'barbero.nuevo@test.com',
+        telefono: '8095550203',
+        estadoCuenta: 'ACTIVO',
+        creadoAt: new Date('2026-11-15T12:00:00.000Z'),
+      });
+      mockPrisma.usuarioRol.create.mockResolvedValue({ id: 'vinculo-barbero' });
+
+      await service.crearUsuario(
+        { ...dtoAdmin, rolNombre: 'BARBERO', correo: 'barbero.nuevo@test.com' },
+        global,
+      );
+
+      expect(mockPrisma.usuarioRol.findFirst).not.toHaveBeenCalled();
     });
   });
 });

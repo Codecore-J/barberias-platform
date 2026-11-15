@@ -2391,4 +2391,163 @@ describe('BarberiaService', () => {
       expect(prisma.clienteBarberia.create).not.toHaveBeenCalled();
     });
   });
+
+  /**
+   * Fase 1 · el dueño que corta pelo.
+   *
+   * Invitar como BARBERO a quien ya administra la sede era un `update` del
+   * `rolId`: la cuenta seguía existiendo pero dejaba de ser administradora, sin
+   * aviso y respondiendo 201. Ahora es un 409 explícito salvo que la petición
+   * pida conservar el rol; en ese caso se AÑADE el vínculo de barbero.
+   */
+  describe('invitarPersonal · administrador único y cuenta dual (Fase 1)', () => {
+    const dtoBarbero = {
+      nombreCompleto: 'Nombre enviado',
+      correo: 'cuenta.existente@example.com',
+      telefono: '8095550101',
+      password: 'Temporal123',
+      rolNombre: 'BARBERO',
+    } as any;
+
+    const usuarioExistente = {
+      id: 'usuario-existente',
+      nombreCompleto: 'Dueño de la sede',
+      correo: 'cuenta.existente@example.com',
+      telefono: '8095550199',
+      estadoCuenta: 'ACTIVO',
+    };
+
+    const otroAdmin = {
+      id: 'usuario-otro-admin',
+      correo: 'dueno.actual@example.com',
+      nombreCompleto: 'Dueño Actual',
+    };
+
+    beforeEach(() => {
+      vi.mocked(prisma.barberia.findUnique).mockResolvedValue({
+        id: BARBERIA_A,
+      } as any);
+      vi.mocked(prisma.usuario.findFirst).mockResolvedValue(
+        usuarioExistente as any,
+      );
+      vi.mocked(prisma.rol.findUnique).mockResolvedValue({
+        id: 'rol-barbero',
+        nombre: 'BARBERO',
+      } as any);
+    });
+
+    it('ROJO: invitar como BARBERO a quien administra la sede sin el flag → 409 ADMIN_NO_SE_DEGRADA', async () => {
+      vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([
+        { id: 'rel-admin', estado: 'ACTIVO', rol: { nombre: 'ADMIN_BARBERIA' } },
+      ] as any);
+
+      let capturado: any;
+      try {
+        await service.invitarPersonal(BARBERIA_A, dtoBarbero, ADMIN_A);
+      } catch (error) {
+        capturado = error;
+      }
+
+      expect(capturado?.getStatus()).toBe(409);
+      expect(capturado?.getResponse()).toMatchObject({
+        statusCode: 409,
+        codigo: 'ADMIN_NO_SE_DEGRADA',
+        mensaje: expect.stringContaining('BARBERO'),
+      });
+      // El rol de administrador se queda intacto: ni update ni create.
+      expect(prisma.usuarioRol.update).not.toHaveBeenCalled();
+      expect(prisma.usuarioRol.create).not.toHaveBeenCalled();
+      expect(auditoria.registrarEvento).not.toHaveBeenCalled();
+    });
+
+    it('VERDE: con `conservarRolAdministrador` se AÑADE el vínculo BARBERO y el de administrador sigue vivo', async () => {
+      vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([
+        { id: 'rel-admin', estado: 'ACTIVO', rol: { nombre: 'ADMIN_BARBERIA' } },
+      ] as any);
+      vi.mocked(prisma.usuarioRol.create).mockResolvedValue({
+        estado: 'ACTIVO',
+        rol: { nombre: 'BARBERO' },
+      } as any);
+
+      const resultado = await service.invitarPersonal(
+        BARBERIA_A,
+        { ...dtoBarbero, conservarRolAdministrador: true },
+        ADMIN_A,
+      );
+
+      expect(prisma.usuarioRol.update).not.toHaveBeenCalled();
+      expect(prisma.usuarioRol.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            usuarioId: usuarioExistente.id,
+            barberiaId: BARBERIA_A,
+            rolId: 'rol-barbero',
+            estado: 'ACTIVO',
+          },
+        }),
+      );
+      expect([...resultado.roles].sort()).toEqual(['ADMIN_BARBERIA', 'BARBERO']);
+      expect(resultado.reutilizado).toBe(true);
+    });
+
+    it('ROJO: un segundo ADMIN_BARBERIA en la sede ocupada → 409 SEDE_YA_TIENE_ADMIN con adminActual', async () => {
+      vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([] as any);
+      vi.mocked(prisma.usuarioRol.findFirst).mockResolvedValue({
+        id: 'rel-otro-admin',
+        usuario: otroAdmin,
+      } as any);
+      vi.mocked(prisma.rol.findUnique).mockResolvedValue({
+        id: 'rol-admin-sede',
+        nombre: 'ADMIN_BARBERIA',
+      } as any);
+
+      let capturado: any;
+      try {
+        await service.invitarPersonal(
+          BARBERIA_A,
+          { ...dtoBarbero, rolNombre: 'ADMIN_BARBERIA' },
+          ADMIN_A,
+        );
+      } catch (error) {
+        capturado = error;
+      }
+
+      expect(capturado?.getStatus()).toBe(409);
+      expect(capturado?.getResponse()).toEqual({
+        statusCode: 409,
+        codigo: 'SEDE_YA_TIENE_ADMIN',
+        mensaje: 'La sede ya tiene un administrador activo.',
+        adminActual: otroAdmin,
+      });
+      expect(prisma.usuarioRol.create).not.toHaveBeenCalled();
+      expect(prisma.usuarioRol.update).not.toHaveBeenCalled();
+    });
+
+    it('VERDE: re-invitar una cuenta dual (admin + barbero) como BARBERO no choca con «varias asignaciones»', async () => {
+      vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([
+        { id: 'rel-admin', estado: 'ACTIVO', rol: { nombre: 'ADMIN_BARBERIA' } },
+        { id: 'rel-barbero', estado: 'INACTIVO', rol: { nombre: 'BARBERO' } },
+      ] as any);
+      vi.mocked(prisma.usuarioRol.update).mockResolvedValue({
+        estado: 'ACTIVO',
+        rol: { nombre: 'BARBERO' },
+      } as any);
+
+      const resultado = await service.invitarPersonal(
+        BARBERIA_A,
+        { ...dtoBarbero, conservarRolAdministrador: true },
+        ADMIN_A,
+      );
+
+      expect(prisma.usuarioRol.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'rel-barbero' },
+          // El rol no cambia: solo se reactiva el vínculo de barbero.
+          data: { estado: 'ACTIVO' },
+        }),
+      );
+      expect(prisma.usuarioRol.create).not.toHaveBeenCalled();
+      expect([...resultado.roles].sort()).toEqual(['ADMIN_BARBERIA', 'BARBERO']);
+    });
+  });
 });
