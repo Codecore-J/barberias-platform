@@ -371,7 +371,11 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // el paso del ADMINISTRADOR global por jerarquía, igual que en el catálogo de
   // E1-05— y el BARBERO solo las lee para publicar dentro.
   'POST /shops/:shopId/categorias/': [ROL_ADMIN_BARBERIA],
-  'GET /shops/:shopId/categorias/': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
+  // T-17 · el ADMINISTRADOR global audita la taxonomía en SOLO LECTURA. Se
+  // declara en la política para que la ruta se lea sin depender de la regla
+  // transversal; en escritura sigue sin aparecer, y el 403 lo pone
+  // `OperadorBarberiaGuard` (que no tiene jerarquías).
+  'GET /shops/:shopId/categorias/': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_ADMINISTRADOR],
   'PATCH /shops/:shopId/categorias/:id': [ROL_ADMIN_BARBERIA],
 
   // V3 · el catálogo anidado que consume el frontend del cliente. Se declaran los

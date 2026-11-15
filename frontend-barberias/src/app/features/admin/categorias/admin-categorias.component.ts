@@ -16,8 +16,9 @@ import { ToastService } from '../../../shared/ui/toast/toast.service.js';
  *
  * La taxonomía es de la SEDE: aquí se crean, renombran, describen y desactivan
  * las categorías dentro de las cuales cada barbero publica sus servicios. El
- * ADMINISTRADOR global entra en modo lectura —el backend le responde 403 en
- * cualquier escritura— así que la pantalla no le muestra los botones.
+ * ADMINISTRADOR global entra en modo lectura desde T-17 —el backend le responde
+ * 200 al listar y 403 en cualquier escritura— así que la pantalla no le muestra
+ * los botones y le avisa con un banner sutil de que está mirando, no editando.
  *
  * Nada se borra: desactivar una categoría la retira del catálogo del cliente y
  * conserva los servicios que cuelgan de ella para cuando se reactive (§9).
@@ -54,6 +55,21 @@ import { ToastService } from '../../../shared/ui/toast/toast.service.js';
           </button>
         }
       </div>
+
+      <!-- T-17 · el administrador de plataforma audita, no edita -->
+      @if (soloLectura()) {
+        <div
+          data-testid="banner-solo-lectura"
+          class="text-xs text-sky-200/90 bg-sky-500/10 border border-sky-500/30 rounded-2xl px-4 py-3 flex items-start gap-2"
+          role="status"
+        >
+          <i class="pi pi-eye mt-0.5"></i>
+          <span>
+            Modo de solo lectura (Administrador Global): la taxonomía del catálogo la gestiona el
+            administrador de la sede.
+          </span>
+        </div>
+      }
 
       <!-- Error de negocio o de red -->
       @if (catalogoService.errorCategorias()) {
@@ -293,6 +309,14 @@ export class AdminCategoriasComponent implements OnInit {
     const roles = this.authService.authState().user?.roles ?? [];
     return roles.includes('ADMIN_BARBERIA');
   });
+
+  /**
+   * T-17 · el complemento: quien llega sin el rol de sede es el ADMINISTRADOR
+   * global (la ruta no admite otros roles). Se usa para el aviso de solo lectura;
+   * los botones se ocultan con `puedeGestionar`, que es la misma condición que
+   * evalúa el backend al mutar.
+   */
+  readonly soloLectura = computed(() => !this.puedeGestionar());
 
   readonly form = this.fb.group({
     nombre: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(100)]],

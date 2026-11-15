@@ -27,9 +27,18 @@ import { OperadorBarberiaGuard } from './operador-barberia.guard.js';
  * declarados y al `barberiaId` del parámetro; `OperadorBarberiaGuard` cierra el
  * paso transversal del ADMINISTRADOR por la misma razón que en el catálogo (D16).
  *
- * La LECTURA la comparten el ADMIN_BARBERIA y el BARBERO: el barbero necesita ver
- * las categorías para publicar sus servicios. El CLIENTE no la necesita: recibe
- * el catálogo ya anidado en `GET /shops/:shopId/servicios`.
+ * La LECTURA la comparten el ADMIN_BARBERIA, el BARBERO y —desde T-17— el
+ * ADMINISTRADOR global, que necesita auditar la taxonomía de una sede sin poder
+ * cambiarla. El rol se declara explícito aunque `RolesGuard` ya lo deje pasar por
+ * jerarquía (E1-04): así la política de la ruta se lee sin tener que recordar la
+ * regla transversal, y la matriz de permisos la refleja. El CLIENTE no la
+ * necesita: recibe el catálogo ya anidado en `GET /shops/:shopId/servicios`.
+ *
+ * T-17 · el ADMINISTRADOR es de SOLO LECTURA aquí. `@Roles('ADMIN_BARBERIA')` en
+ * escritura no basta por sí solo —la jerarquía del guard también lo dejaría
+ * pasar—, pero `OperadorBarberiaGuard` sí lo corta: exige un rol de operación
+ * (BARBERO/ADMIN_BARBERIA) sin jerarquías y responde 403. La combinación de los
+ * dos es la que mantiene la taxonomía en manos de la sede.
  */
 @Controller('shops/:shopId/categorias')
 export class CategoriasController {
@@ -47,7 +56,7 @@ export class CategoriasController {
   }
 
   @Get()
-  @Roles('ADMIN_BARBERIA', 'BARBERO')
+  @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR')
   @UseGuards(VinculoBarberiaGuard)
   listar(@CurrentBarberiaId() barberiaId: string) {
     return this.categoriasService.listar(barberiaId);
