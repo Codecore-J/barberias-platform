@@ -1,11 +1,14 @@
-import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { mensajeDeError } from '../../../core/utils/error-message';
+import { rolEfectivo } from '../../../core/utils/rol';
+import { haySede } from '../../../core/utils/sede';
 import { finalize } from 'rxjs/operators';
 import { AnalyticsService, ShopAnalyticsResponse, ShopsOverviewResponse } from '../../../core/services/analytics.service';
 import { TenantService } from '../../../core/services/tenant.service';
+import { AuthService } from '../../../auth/auth.service';
 
 @Component({
   selector: 'app-analytics-dashboard',
@@ -31,9 +34,53 @@ export class AnalyticsDashboardComponent implements OnInit {
   /** Filtro rápido activo, solo para resaltar el botón correspondiente. */
   filtroActivo: '7' | '30' | 'mes' | 'custom' = '30';
 
+  /**
+   * T-16 · ALCANCE de la pantalla, que no es lo mismo que la sede activa.
+   *
+   * `sede`: el cuerpo pide `GET /shops/:shopId/analytics`, que el backend acota
+   * a esa barbería (y el overview, si aparece, solo suma las sedes que el actor
+   * administra). `consolidado`: no hay sede y el actor es el ADMINISTRADOR
+   * global, así que no existe una barbería única que anunciar; la pantalla vive
+   * del overview de plataforma.
+   *
+   * Antes el encabezado decía «Rendimiento de la Sede» siempre y, sin sede, el
+   * cuerpo intentaba pedir analíticas de sede para acabar mostrando un error
+   * encima de un consolidado perfectamente válido.
+   */
+  readonly alcance = computed<'sede' | 'consolidado'>(() =>
+    !haySede(this.tenantService.barberiaActivaId()) && this.rolActual() === 'ADMINISTRADOR'
+      ? 'consolidado'
+      : 'sede',
+  );
+
+  /** Nombre de la sede activa (nunca hardcodeado: viene del estado de sesión). */
+  get nombreSede(): string {
+    return this.tenantService.nombreBarberiaActiva();
+  }
+
+  /** Cuántas sedes suma el consolidado; `0` mientras no llega la respuesta. */
+  get totalSedes(): number {
+    return this.overview?.sedes.length ?? 0;
+  }
+
+  /**
+   * El bloque multisede solo aporta cuando hay algo que comparar: en la vista
+   * consolidada basta con una sede (es el único detalle disponible), y en la
+   * vista de sede con una sola sede repetiría las métricas de arriba.
+   */
+  get mostrarOverview(): boolean {
+    const sedes = this.overview?.sedes.length ?? 0;
+    return this.alcance() === 'consolidado' ? sedes > 0 : sedes > 1;
+  }
+
+  private readonly rolActual = computed(() =>
+    rolEfectivo(this.authService.authState().user?.roles),
+  );
+
   constructor(
     private analyticsService: AnalyticsService,
     private tenantService: TenantService,
+    private authService: AuthService,
     private router: Router,
   ) {}
 
@@ -84,7 +131,12 @@ export class AnalyticsDashboardComponent implements OnInit {
     if (!shopId) {
       this.loading = false;
       this.data = null;
-      this.error = 'No hay una sede activa seleccionada. Elige una barbería para ver sus analíticas.';
+      // T-16 · en la vista consolidada la ausencia de sede NO es un error: no
+      // hay una sede que pedir. Solo el alcance de sede explica cómo resolverlo.
+      this.error =
+        this.alcance() === 'consolidado'
+          ? null
+          : 'No hay una sede activa seleccionada. Elige una barbería para ver sus analíticas.';
       this.cdr.markForCheck();
       return;
     }
@@ -143,6 +195,16 @@ export class AnalyticsDashboardComponent implements OnInit {
   /** Paso 13 · pide el CSV y lo entrega como descarga del navegador. */
   exportarCsv(): void {
     if (this.exportando) return;
+
+    // T-16 · el CSV es el reporte de UNA sede (`GET /shops/:id/analytics/export`).
+    // En la vista consolidada no hay sede que exportar: se dice en vez de fallar
+    // con un mensaje de "sin sede" que no explica nada.
+    if (this.alcance() === 'consolidado') {
+      this.error =
+        'El CSV es el reporte de una sede. Selecciona una sede para exportar su reporte.';
+      this.cdr.markForCheck();
+      return;
+    }
 
     this.exportando = true;
     this.error = null;
