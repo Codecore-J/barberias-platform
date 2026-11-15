@@ -517,4 +517,40 @@ describe('H76 · ciclo HTTP completo de la anulación de un cobro', () => {
     expect(pago.estadoPago).toBe('ANULADO');
     expect(pago.motivoAnulacion).toBe('Primera corrección');
   });
+
+  /**
+   * T-11 · un identificador de sede INVÁLIDO no es «sin sede».
+   *
+   * En la ruta real: `GET /shops/null/payments/history` respondía 200 con el
+   * histórico de TODAS las sedes, mientras `appointments/day` respondía 400 por
+   * el mismo valor. El caso se comprueba contra el controlador de pagos y no
+   * solo contra la ruta de sonda del decorador, para que un cambio futuro en el
+   * `@CurrentBarberiaIdOpcional` de `PagoController` no pase inadvertido.
+   */
+  it('400: un shopId que no es UUID no se interpreta como consulta global', async () => {
+    for (const valor of ['null', 'no-es-uuid', '123']) {
+      const res = await request(app.getHttpServer())
+        .get(`${api}/shops/${valor}/payments/history`)
+        .set(header(tokenAdmin, sedeA));
+
+      expect(res.status, `shopId=${valor} → ${JSON.stringify(res.body)}`).toBe(400);
+    }
+  });
+
+  /**
+   * Un `:id` de pago malformado es un error de petición, no un fallo del
+   * servidor: la columna `pagos.id` es `@db.Uuid`, así que sin `ParseUUIDPipe`
+   * el valor llegaba a Prisma y respondía 500 donde el resto de la API responde
+   * 400 ante un identificador inválido.
+   */
+  it('400: anular un pago con un :id que no es UUID no llega a Prisma', async () => {
+    for (const valor of ['no-es-uuid', 'null', '123']) {
+      const res = await request(app.getHttpServer())
+        .post(`${api}/shops/${sedeA}/payments/${valor}/void`)
+        .set(header(tokenAdmin, sedeA))
+        .send({ motivo: 'Identificador inválido' });
+
+      expect(res.status, `id=${valor} → ${JSON.stringify(res.body)}`).toBe(400);
+    }
+  });
 });
