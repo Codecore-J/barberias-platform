@@ -2,6 +2,8 @@ import { inject } from '@angular/core';
 import { Router, CanActivateFn } from '@angular/router';
 import { catchError, map, of } from 'rxjs';
 import { TenantService } from '../services/tenant.service';
+import { AuthService } from '../../auth/auth.service';
+import { rolEfectivo } from '../utils/rol';
 
 /**
  * Exige un contexto de sede para entrar a las pantallas de operación.
@@ -47,4 +49,28 @@ export const tenantGuard: CanActivateFn = (route) => {
   }
 
   return validarContextoActual();
+};
+
+/**
+ * T-16 · `tenantGuard` para las pantallas que tienen una vista CONSOLIDADA.
+ *
+ * `tenantGuard` exige sede y manda a `/barberias` cuando no la hay. Eso es lo
+ * correcto para la operación (agenda, caja, servicios), pero dejaba inalcanzable
+ * la vista consolidada de analíticas: el ADMINISTRADOR global sin sede era
+ * redirigido antes de verla. Aquí se conserva la validación de sede cuando hay
+ * una activa y solo se permite pasar sin sede al ADMINISTRADOR global, que es
+ * quien tiene una lectura de plataforma que hacer.
+ */
+export const tenantGuardPermiteConsolidado: CanActivateFn = (route, state) => {
+  const tenantService = inject(TenantService);
+  const authService = inject(AuthService);
+
+  const esAdministradorGlobal =
+    rolEfectivo(authService.authState().user?.roles) === 'ADMINISTRADOR';
+
+  if (esAdministradorGlobal && !tenantService.barberiaActivaId()) {
+    return true;
+  }
+
+  return tenantGuard(route, state);
 };

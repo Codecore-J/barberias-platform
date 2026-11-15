@@ -1,7 +1,7 @@
 import { Routes } from '@angular/router';
 
 import { authGuard } from './core/guards/auth.guard';
-import { tenantGuard } from './core/guards/tenant.guard';
+import { tenantGuard, tenantGuardPermiteConsolidado } from './core/guards/tenant.guard';
 import { roleGuard } from './core/guards/role.guard';
 
 export const routes: Routes = [
@@ -142,7 +142,9 @@ export const routes: Routes = [
       },
       {
         path: 'admin/analiticas',
-        canActivate: [tenantGuard, roleGuard(['ADMIN'])],
+        // T-16 · esta pantalla tiene una vista consolidada: el ADMINISTRADOR
+        // global sin sede entra a ella en vez de ser enviado al hub de sedes.
+        canActivate: [tenantGuardPermiteConsolidado, roleGuard(['ADMIN'])],
         loadComponent: () =>
           import('./features/admin/analytics/analytics-dashboard.component').then(
             (m) => m.AnalyticsDashboardComponent,
