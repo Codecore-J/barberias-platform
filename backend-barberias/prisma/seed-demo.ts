@@ -23,17 +23,20 @@
  * sembrada.
  *
  * ── Seguridad ───────────────────────────────────────────────────────────────
- * Guard E0-07: solo corre con `APP_ENV=dev`. Las cuentas nacen con el teléfono
+ * Guard E0-07: solo escribe con `APP_ENV=dev`; en cualquier otro entorno se
+ * omite con un aviso y código de salida 0. Las cuentas nacen con el teléfono
  * verificado (si no, `authGuard` las manda a /auth/verify y el entorno demo no
  * se puede usar) y la contraseña es la de los botones demo del login, que ya
  * viaja en el bundle del cliente: `DEMO_USERS_PASSWORD` permite cambiarla sin
  * tocar código. Nada de esto puede ejecutarse contra producción.
  *
- * Ejecutar: `npm run prisma:seed:demo` (lee `.env` si hace falta).
+ * Ejecutar: `npm run prisma:seed:demo`, o `npx prisma db seed` —que encadena el
+ * seed estructural y este— (lee `.env` si hace falta).
  */
 import { Prisma, PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { existsSync } from 'node:fs';
+import { basename } from 'node:path';
 
 // Sin `APP_ENV` en el proceso, el guard de abajo abortaría en un `.env` que sí lo
 // declara. Prisma carga `DATABASE_URL` por su cuenta; esto cubre el resto.
@@ -43,11 +46,6 @@ if (!process.env.APP_ENV && existsSync('.env')) {
   } catch {
     // `.env` ilegible: el guard da el mensaje definitivo.
   }
-}
-
-if (process.env.APP_ENV !== 'dev') {
-  console.error('ABORTADO (E0-07): el seed de demo solo puede ejecutarse con APP_ENV=dev.');
-  process.exit(1);
 }
 
 /** La misma que rellenan los botones «ACCESO RÁPIDO DEMO» del login. */
@@ -169,13 +167,47 @@ async function asignarRol(
   await tx.usuarioRol.create({ data: { usuarioId, rolId, barberiaId } });
 }
 
-async function main() {
+/** Lo que la demo deja sembrado, para que el llamador pueda informarlo. */
+export interface ResumenDemo {
+  barberia: string;
+  barberiaId: string;
+  barberos: string[];
+  cliente: string;
+  categorias: number;
+  servicios: number;
+  citas: number;
+  cobros: number;
+}
+
+/**
+ * Siembra la demo completa.
+ *
+ * Se exporta porque `npx prisma db seed` (→ `prisma/seed.ts`) la llama en el
+ * MISMO proceso: el runner de Prisma no interpreta `&&`, así que encadenar dos
+ * scripts en `prisma.seed` ejecutaba solo el primero y pasaba el resto como
+ * argumentos. Un único comando con dos funciones es lo único que funciona igual
+ * en Windows, Linux y CI.
+ *
+ * Guard E0-07 dentro de la función, no en el módulo: importada desde `seed.ts`,
+ * un `process.exit` a nivel de módulo abortaría también el seed estructural.
+ * Fuera de `APP_ENV=dev` devuelve `null` sin escribir nada.
+ */
+export async function sembrarDemo(
+  cliente: PrismaClient = prisma,
+): Promise<ResumenDemo | null> {
+  if (process.env.APP_ENV !== 'dev') {
+    console.warn(
+      '⏭️  Seed de demo OMITIDO (E0-07): requiere APP_ENV=dev. No se ha escrito nada.',
+    );
+    return null;
+  }
+
   console.log('🌱 Seed de DEMO (T-25): catálogo, personal, agenda de hoy y caja...');
 
   const passwordHash = await bcrypt.hash(PASSWORD, 10);
   const hoy = fechaDeHoy();
 
-  const resumen = await prisma.$transaction(
+  const resumen: ResumenDemo = await cliente.$transaction(
     async (tx) => {
       // ── 0. Catálogos base ──────────────────────────────────────────────────
       // Los roles y permisos son del seed estructural (`npm run seed`). Aquí no
@@ -521,13 +553,24 @@ async function main() {
   console.log(`✅ Caja: ${resumen.cobros} cobro PAGADA en EFECTIVO.`);
   console.log(`✅ Cliente demo: ${resumen.cliente}`);
   console.log('🎉 Entorno de demo listo. Login: admin@demo.com / barbero@demo.com / cliente@demo.com');
+
+  return resumen;
 }
 
-main()
-  .catch((error) => {
-    console.error('❌ Error durante el seed de demo:', error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+/**
+ * CLI propio (`npm run prisma:seed:demo`).
+ *
+ * La comparación por nombre de archivo evita que importar este módulo desde
+ * `seed.ts` dispare una segunda siembra: solo ejecuta cuando tsx arrancó ESTE
+ * archivo.
+ */
+if (basename(process.argv[1] ?? '') === 'seed-demo.ts') {
+  sembrarDemo()
+    .catch((error) => {
+      console.error('❌ Error durante el seed de demo:', error);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}
