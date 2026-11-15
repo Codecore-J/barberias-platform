@@ -1,21 +1,29 @@
-import { Component, HostListener, signal, inject, computed, resource } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
-import { CommonModule, CurrencyPipe } from '@angular/common';
+import { Component, HostListener, signal, inject, computed } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { TenantService } from '../../core/services/tenant.service';
 import type { BarberiaResumen } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
 import { rolEfectivo, type RolSesion } from '../../core/utils/rol';
-import { ReservasService } from '../../core/services/reservas.service';
-import { PagosService } from '../../core/services/pagos.service';
+import { haySede } from '../../core/utils/sede';
 import { parsearInvitacion } from '../../core/utils/invitacion.util';
 import { SedeCardComponent } from '../barberias/components/sede-card/sede-card.component';
+import { DashboardPlataformaComponent } from './dashboard-plataforma/dashboard-plataforma.component';
+import { DashboardSedeComponent } from './dashboard-sede/dashboard-sede.component';
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule, CurrencyPipe, SedeCardComponent],
+  imports: [
+    CommonModule,
+    RouterLink,
+    FormsModule,
+    SedeCardComponent,
+    // T-15 · el bloque de métricas se parte en dos dashboards excluyentes.
+    DashboardPlataformaComponent,
+    DashboardSedeComponent,
+  ],
   template: `
     <div class="relative min-h-[150vh] perspective-1200 overflow-hidden bg-ambient-mesh">
       
@@ -384,64 +392,21 @@ import { SedeCardComponent } from '../barberias/components/sede-card/sede-card.c
           </section>
         }
 
-        <!-- DASHBOARD ADMIN: MÉTRICAS FINANCIERAS -->
-        @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'ADMINISTRADOR') {
-          <section class="max-w-6xl mx-auto pt-4 pb-8 transform-style-3d"
-                   [style.transform]="'translateZ(' + (scrollY() > 150 ? 40 : 0) + 'px)'">
-            <h2 class="text-2xl font-display font-bold text-white mb-6 transform translate-z-12 flex items-center gap-3">
-              <i class="pi pi-chart-line text-amber-400"></i> Métricas del Día
-            </h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-              
-              <!-- Tarjeta: Ingresos del Día -->
-              <div class="glass-card rounded-3xl p-6 border border-emerald-500/30 shadow-[0_15px_40px_rgba(16,185,129,0.15)] hover:-translate-y-2 transition-transform duration-500 transform translate-z-8 relative overflow-hidden group">
-                <div class="absolute -right-10 -top-10 w-32 h-32 bg-emerald-500/20 rounded-full blur-2xl group-hover:bg-emerald-500/30 transition-colors"></div>
-                <div class="relative z-10 flex flex-col gap-2">
-                  <div class="flex justify-between items-start">
-                    <span class="text-sm font-bold text-zinc-400 uppercase tracking-wider">Ingresos Hoy</span>
-                    <i class="pi pi-dollar text-emerald-400 bg-emerald-500/10 p-2 rounded-xl"></i>
-                  </div>
-                  <span class="text-4xl font-display font-bold text-white drop-shadow-md">
-                    {{ ingresosHoy() | currency:'USD':'symbol':'1.0-0' }}
-                  </span>
-                  <span class="text-xs text-emerald-400 font-medium">Facturado hoy</span>
-                </div>
-              </div>
-
-              <!-- Tarjeta: Turnos -->
-              <div class="glass-card rounded-3xl p-6 border border-amber-500/30 shadow-[0_15px_40px_rgba(212,175,55,0.15)] hover:-translate-y-2 transition-transform duration-500 transform translate-z-8 relative overflow-hidden group">
-                <div class="absolute -right-10 -top-10 w-32 h-32 bg-amber-500/20 rounded-full blur-2xl group-hover:bg-amber-500/30 transition-colors"></div>
-                <div class="relative z-10 flex flex-col gap-2">
-                  <div class="flex justify-between items-start">
-                    <span class="text-sm font-bold text-zinc-400 uppercase tracking-wider">Turnos Completados</span>
-                    <i class="pi pi-calendar-check text-amber-400 bg-amber-500/10 p-2 rounded-xl"></i>
-                  </div>
-                  <span class="text-4xl font-display font-bold text-white drop-shadow-md">
-                    {{ completadosHoy() }}
-                  </span>
-                  <span class="text-xs text-zinc-400 font-medium">
-                    <span class="text-red-400">{{ canceladosHoy() }}</span> cancelados/ausentes
-                  </span>
-                </div>
-              </div>
-
-              <!-- Tarjeta: Barbero Top -->
-              <div class="glass-card rounded-3xl p-6 border border-blue-500/30 shadow-[0_15px_40px_rgba(59,130,246,0.15)] hover:-translate-y-2 transition-transform duration-500 transform translate-z-8 relative overflow-hidden group">
-                <div class="absolute -right-10 -top-10 w-32 h-32 bg-blue-500/20 rounded-full blur-2xl group-hover:bg-blue-500/30 transition-colors"></div>
-                <div class="relative z-10 flex flex-col gap-2">
-                  <div class="flex justify-between items-start">
-                    <span class="text-sm font-bold text-zinc-400 uppercase tracking-wider">Productividad Top</span>
-                    <i class="pi pi-star text-blue-400 bg-blue-500/10 p-2 rounded-xl"></i>
-                  </div>
-                  <span class="text-3xl font-display font-bold text-white drop-shadow-md truncate">
-                    {{ barberoProductivo() }}
-                  </span>
-                  <span class="text-xs text-blue-400 font-medium">Líder en turnos hoy</span>
-                </div>
-              </div>
-              
-            </div>
-          </section>
+        <!--
+          T-15 · DASHBOARD SEGÚN ALCANCE.
+          El ADMINISTRADOR sin sede ve las métricas de toda la red; cualquier rol
+          de sede (o el ADMINISTRADOR que YA eligió una) ve las de su sede, y un
+          ADMIN_BARBERIA sin sede ve el estado vacío que lleva a elegir una.
+        -->
+        @if (userRole() === 'ADMINISTRADOR' || userRole() === 'ADMIN_BARBERIA') {
+          <div class="transform-style-3d"
+               [style.transform]="'translateZ(' + (scrollY() > 150 ? 40 : 0) + 'px)'">
+            @if (vistaActual() === 'plataforma') {
+              <app-dashboard-plataforma />
+            } @else {
+              <app-dashboard-sede />
+            }
+          </div>
         }
 
         <!-- CARDS CON PROFUNDIDAD ESPACIAL 3D ADAPTADAS AL ROL -->
@@ -579,8 +544,6 @@ import { SedeCardComponent } from '../barberias/components/sede-card/sede-card.c
 export class HomeComponent {
   protected readonly tenantService = inject(TenantService);
   protected readonly authService = inject(AuthService);
-  protected readonly reservasService = inject(ReservasService);
-  protected readonly pagosService = inject(PagosService);
 
   // Señales reactivas para el motor 3D
   scrollY = signal<number>(0);
@@ -588,84 +551,25 @@ export class HomeComponent {
   mouseY = signal<number>(0);
 
   /**
-   * Fase 4 · las métricas del panel de administración se LEEN con un `resource`
-   * en vez de con dos `.subscribe()` que escribían cuatro señales a mano.
+   * T-15 · QUÉ dashboard se pinta.
    *
-   * Cada métrica pasa a ser un `computed`: la agenda y el historial de cobros se
-   * piden en paralelo, y si cualquiera falla el panel deja de mostrar cifras
-   * viejas como si fueran del día. Solo consulta cuando el rol es de sede (un
-   * cliente no tiene por qué pedir la agenda completa).
+   * El home ya no intenta servir a la vez al ADMIN_BARBERIA y al ADMINISTRADOR
+   * global con la misma agenda: las métricas de sede viven en
+   * `DashboardSedeComponent` y las de red en `DashboardPlataformaComponent`,
+   * cada una con su contrato.
+   *
+   * La regla es la del ticket, con una precisión: `plataforma` es solo el
+   * ADMINISTRADOR SIN sede. Si eligió sede, ve la de la sede —es lo que pidió al
+   * elegirla—, y un ADMIN_BARBERIA nunca ve la agregación global porque no le
+   * corresponde (y el backend le respondería 403). Sin sede, el dashboard de
+   * sede muestra el estado vacío que lleva a «Ver mis sedes».
    */
-  private readonly metricasResource = resource({
-    params: () => ({
-      rol: this.userRole(),
-      // Dependencia REACTIVA: al cambiar de sede el dashboard vuelve a leer.
-      sede: this.tenantService.barberiaActivaId(),
-      hoy: new Date().toISOString().split('T')[0],
-    }),
-    loader: async ({ params }) => {
-      if (params.rol !== 'ADMIN_BARBERIA' && params.rol !== 'ADMINISTRADOR') return null;
-      // Sin sede no hay agenda ni cobros que leer. Antes se disparaban
-      // `/shops/null/appointments/day` y `/shops/null/payments/history`, que el
-      // ParseUUIDPipe del backend rechaza con 400.
-      if (!params.sede) return null;
+  readonly vistaActual = computed<'plataforma' | 'sede'>(() => {
+    const rol = this.userRole();
+    const tieneSede = haySede(this.tenantService.barberiaActivaId());
 
-      const [agenda, pagos] = await Promise.all([
-        firstValueFrom(this.reservasService.obtenerAgendaDiaria(params.hoy)),
-        firstValueFrom(this.pagosService.obtenerHistorial()),
-      ]);
-      return { hoy: params.hoy, agenda, pagos };
-    },
-  });
-
-  private readonly metricas = computed(() => this.metricasResource.value() ?? null);
-
-  readonly completadosHoy = computed(
-    () => (this.metricas()?.agenda ?? []).filter((t) => t.estado === 'COMPLETADA').length,
-  );
-
-  readonly canceladosHoy = computed(
-    () =>
-      (this.metricas()?.agenda ?? []).filter(
-        (t) => t.estado === 'CANCELADA' || t.estado === 'NO_ASISTIO',
-      ).length,
-  );
-
-  /**
-   * H68 · ingresos del DÍA desde la tabla de pagos: un pago ANULADO no es ingreso
-   * (§7.4) y la fecha del cobro es `registradoAt`, no la de la cita.
-   */
-  readonly ingresosHoy = computed(() => {
-    const datos = this.metricas();
-    if (!datos) return 0;
-
-    return datos.pagos
-      .filter((p) => p.estadoPago !== 'ANULADO' && (p.registradoAt ?? '').startsWith(datos.hoy))
-      .reduce((acc, p) => acc + Number(p.monto || 0), 0);
-  });
-
-  /**
-   * Barbero con más citas COMPLETADAS. El campo es `barbero.nombre`: el backend
-   * (`obtenerAgendaDiaria`) devuelve `{ id, nombre }`, no `nombreCompleto`, así
-   * que antes esta tarjeta caía siempre en «Sin Asignar».
-   */
-  readonly barberoProductivo = computed(() => {
-    const conteo = new Map<string, number>();
-    for (const turno of this.metricas()?.agenda ?? []) {
-      if (turno.estado !== 'COMPLETADA') continue;
-      const nombre = turno.barbero?.nombre ?? 'Sin Asignar';
-      conteo.set(nombre, (conteo.get(nombre) ?? 0) + 1);
-    }
-
-    let mejor = 'N/A';
-    let maximo = 0;
-    for (const [nombre, citas] of conteo) {
-      if (citas > maximo) {
-        maximo = citas;
-        mejor = nombre;
-      }
-    }
-    return mejor;
+    if (rol === 'ADMINISTRADOR' && !tieneSede) return 'plataforma';
+    return 'sede';
   });
 
   // ── E3-12/2 · la puerta de entrada del cliente (regla 1.10) ──────────────

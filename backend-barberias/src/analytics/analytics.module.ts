@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AnalyticsService } from './application/analytics.service.js';
 import { AnalyticsCacheListener } from './application/analytics-cache.listener.js';
 import { AnalyticsController } from './infrastructure/analytics.controller.js';
+import { PlataformaAnalyticsController } from './infrastructure/plataforma-analytics.controller.js';
 import { SharedModule } from '../shared/shared.module.js';
 
 /**
@@ -13,7 +14,9 @@ import { SharedModule } from '../shared/shared.module.js';
  */
 @Module({
   imports: [SharedModule],
-  controllers: [AnalyticsController],
+  // T-15 · el controlador de plataforma no cuelga de `/shops/:shopId` y no usa
+  // `VinculoBarberiaGuard`: no hay sede que acotar, solo rol.
+  controllers: [AnalyticsController, PlataformaAnalyticsController],
   // El listener purga las claves de la sede cuando `reserva.*` cambia alguna
   // cifra del panel. `CACHE_STORE` llega del `AppCacheModule` global.
   providers: [AnalyticsService, AnalyticsCacheListener],

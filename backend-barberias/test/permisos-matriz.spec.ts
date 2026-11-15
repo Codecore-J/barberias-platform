@@ -128,6 +128,9 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // Paso 13: descarga CSV del mismo panel. Es el mismo balance financiero, así
   // que la política es idéntica y el guard vuelve a acotar la sede del parámetro.
   'GET /shops/:shopId/analytics/export': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // T-15 · métricas consolidadas de la PLATAFORMA: solo el ADMINISTRADOR
+  // global. Un ADMIN_BARBERIA no ve la facturación de otras sedes (D05).
+  'GET /analytics/plataforma/hoy': [ROL_ADMINISTRADOR],
   // Paso 12: resumen consolidado multisede / franquicia. E4-04: la ruta vive en
   // `BarberiaController` (antes que `:shopId`), así que ya no lleva la barra
   // final que arrastraba el controlador propio con `@Controller('shops/overview')`.
@@ -670,8 +673,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // con política × 4 roles = 464 decisiones. H-03 suma la bandeja de
   // propuestas de horario pendientes: 117 × 4 = 468 decisiones. La Fase 3
   // suma el lote de membresías del cliente: 118 × 4 = 472 decisiones. T-21
-  // suma el reenvío del OTP y la corrección del contacto: 120 × 4 = 480.
-  expect(evaluaciones).toBe(480);
+  // suma el reenvío del OTP y la corrección del contacto: 120 × 4 = 480. T-15
+  // suma las métricas de plataforma: 121 × 4 = 484.
+  expect(evaluaciones).toBe(484);
     expect(
       desviaciones.length === 0
         ? ''

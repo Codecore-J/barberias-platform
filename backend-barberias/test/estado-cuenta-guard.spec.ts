@@ -44,12 +44,47 @@ function archivosFuente(directorio: string): string[] {
   return encontrados;
 }
 
+/**
+ * Contextos de objeto ABIERTOS al inicio de cada línea (`hayaca` de llaves).
+ *
+ * La etiqueta es el texto que precede a la `{`: para `where: {` es `where:`.
+ * Sirve para distinguir `where: { estadoCuenta: 'ACTIVO' }` —un FILTRO de
+ * lectura, p. ej. «cuántas cuentas activas hay»— de `data: { estadoCuenta: ... }`,
+ * que sí escribe. Sin esta distinción el guard prohibiría contar cuentas.
+ */
+function contextosAbiertosPorLinea(lineas: string[]): string[][] {
+  const pila: string[] = [];
+  const alInicio: string[][] = [];
+  let cola = '';
+
+  for (const linea of lineas) {
+    alInicio.push([...pila]);
+
+    for (const caracter of linea) {
+      if (caracter === '{') {
+        pila.push(cola.trim());
+        cola = '';
+      } else if (caracter === '}') {
+        pila.pop();
+        cola = '';
+      } else if (caracter === ',' || caracter === ';') {
+        cola = '';
+      } else {
+        cola += caracter;
+      }
+    }
+  }
+
+  return alInicio;
+}
+
 /** Líneas que ESCRIBEN `estadoCuenta` (no las que lo leen ni lo comparan). */
 function escriturasDeEstadoCuenta(): { archivo: string; linea: number; texto: string }[] {
   const escrituras: { archivo: string; linea: number; texto: string }[] = [];
 
   for (const archivo of archivosFuente(RAIZ_SRC)) {
     const lineas = readFileSync(archivo, 'utf8').split(/\r?\n/);
+    const contextos = contextosAbiertosPorLinea(lineas);
 
     lineas.forEach((texto, indice) => {
       const recortada = texto.trim();
@@ -66,6 +101,14 @@ function escriturasDeEstadoCuenta(): { archivo: string; linea: number; texto: st
       const propiedad = /\bestadoCuenta\s*:\s*(\S+)/.exec(sinComentario);
 
       if (!asignacion && !propiedad) return;
+
+      // `where: { estadoCuenta: 'ACTIVO' }` filtra, no escribe. Se mira el
+      // contexto abierto al inicio de la línea y también el de la misma línea
+      // (`where: { estadoCuenta: ... }` cabe en una sola).
+      const enFiltroWhere =
+        contextos[indice].includes('where:') ||
+        /where\s*:\s*\{[^{}]*$/.test(sinComentario.slice(0, propiedad?.index ?? 0));
+      if (enFiltroWhere) return;
 
       if (propiedad && !asignacion) {
         const valor = propiedad[1].replace(/[,;]$/, '');

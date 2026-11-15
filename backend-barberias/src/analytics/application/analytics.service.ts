@@ -5,6 +5,7 @@ import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { ROL_ADMIN_BARBERIA } from '../../iam/domain/roles.js';
 import { TTL_CACHE_ANALITICAS_MS } from '../../shared/cache/app-cache.module.js';
 import type { AnaliticasSede, OverviewSedes } from '../domain/analytics.types.js';
+import type { MetricasPlataformaHoyDto } from '../dto/metricas-plataforma-hoy.dto.js';
 import { claveAnaliticasOverview, claveAnaliticasSede } from '../domain/cache-keys.js';
 import { construirCsvAnaliticas } from '../domain/analytics-csv.js';
 
@@ -189,6 +190,57 @@ export class AnalyticsService {
   async getShopAnalyticsCsv(barberiaId: string, desde?: string, hasta?: string): Promise<string> {
     const data = await this.getShopAnalytics(barberiaId, desde, hasta);
     return construirCsvAnaliticas(barberiaId, data);
+  }
+
+  /**
+   * T-15 · métricas del día para el home del ADMINISTRADOR global.
+   *
+   * No recibe `barberiaId` a propósito: es una lectura de plataforma y su
+   * alcance lo decide el rol en el controlador. Tampoco pasa por el caché de
+   * analíticas: son cinco contadores con índice (`fecha_cita`, `registrado_at`,
+   * `estado`), y un caché de un minuto en una pantalla de inicio solo añade un
+   * estado del que fiarse para mostrar cifras de caja viejas.
+   *
+   * `fecha_cita` es una etiqueta de calendario (DATE) y `registrado_at` un
+   * instante (TIMESTAMPTZ): el día se parte en local, que es la zona en la que
+   * el operador llama «hoy», y el rango es semiabierto `[inicio, mañana)` para
+   * que un pago con hora 23:59:59.999 no se quede fuera por un milisegundo.
+   */
+  async metricasPlataformaHoy(): Promise<MetricasPlataformaHoyDto> {
+    const inicio = new Date();
+    inicio.setHours(0, 0, 0, 0);
+    const manana = this.addDays(inicio, 1);
+
+    const [sedesActivas, citasHoy, recaudado, cajasAbiertas, usuariosActivos] = await Promise.all([
+      this.prisma.barberia.count({ where: { estado: 'ACTIVO' } }),
+      this.prisma.reserva.count({ where: { fechaCita: { gte: inicio, lt: manana } } }),
+      this.prisma.pago.aggregate({
+        _sum: { monto: true },
+        // §7.4: un cobro ANULADO no es ingreso, y la fecha del dinero es la del
+        // cobro, no la de la cita.
+        where: {
+          estadoPago: { not: 'ANULADO' },
+          registradoAt: { gte: inicio, lt: manana },
+        },
+      }),
+      this.prisma.cierreCaja.count({ where: { estado: 'ABIERTO' } }),
+      this.prisma.usuario.count({ where: { estadoCuenta: 'ACTIVO' } }),
+    ]);
+
+    const etiqueta = [
+      inicio.getFullYear(),
+      String(inicio.getMonth() + 1).padStart(2, '0'),
+      String(inicio.getDate()).padStart(2, '0'),
+    ].join('-');
+
+    return {
+      fecha: etiqueta,
+      sedesActivas,
+      citasHoy,
+      recaudadoHoy: Number(Number(recaudado._sum.monto ?? 0).toFixed(2)),
+      cajasAbiertas,
+      usuariosActivos,
+    };
   }
 
   private parseDate(s: string): Date {

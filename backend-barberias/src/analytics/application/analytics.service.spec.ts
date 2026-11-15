@@ -25,16 +25,103 @@ describe('AnalyticsService', () => {
     prisma = {
       reserva: {
         findMany: vi.fn(),
+        count: vi.fn(),
       },
       listaEspera: {
         count: vi.fn(),
       },
       pago: {
         findMany: vi.fn(),
+        // T-15 · el home de plataforma agrega el día con `aggregate`.
+        aggregate: vi.fn(),
       },
+      barberia: { count: vi.fn() },
+      cierreCaja: { count: vi.fn() },
+      usuario: { count: vi.fn() },
     };
     cache = crearCacheMock();
     service = new AnalyticsService(prisma, cache as any);
+  });
+
+  /**
+   * T-15 · métricas del día de la PLATAFORMA.
+   *
+   * Lo que se fija: que el día se acota en local con rango semiabierto, que un
+   * cobro ANULADO no suma, y que «sin datos» devuelve `0` y no `null` — la
+   * pantalla tiene que poder distinguir «cero real» de «no cargó».
+   */
+  describe('metricasPlataformaHoy', () => {
+    beforeEach(() => {
+      prisma.barberia.count.mockResolvedValue(3);
+      prisma.reserva.count.mockResolvedValue(12);
+      prisma.pago.aggregate.mockResolvedValue({ _sum: { monto: 1250.5 } });
+      prisma.cierreCaja.count.mockResolvedValue(1);
+      prisma.usuario.count.mockResolvedValue(48);
+    });
+
+    it('devuelve los cinco contadores del día', async () => {
+      const resultado = await service.metricasPlataformaHoy();
+
+      expect(resultado).toMatchObject({
+        sedesActivas: 3,
+        citasHoy: 12,
+        recaudadoHoy: 1250.5,
+        cajasAbiertas: 1,
+        usuariosActivos: 48,
+      });
+      expect(resultado.fecha).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it('acota el día en local con rango semiabierto [hoy, mañana)', async () => {
+      const resultado = await service.metricasPlataformaHoy();
+
+      const inicio = new Date();
+      inicio.setHours(0, 0, 0, 0);
+      const manana = new Date(inicio);
+      manana.setDate(manana.getDate() + 1);
+
+      expect(prisma.reserva.count).toHaveBeenCalledWith({
+        where: { fechaCita: { gte: inicio, lt: manana } },
+      });
+      const etiqueta = [
+        inicio.getFullYear(),
+        String(inicio.getMonth() + 1).padStart(2, '0'),
+        String(inicio.getDate()).padStart(2, '0'),
+      ].join('-');
+      expect(resultado.fecha).toBe(etiqueta);
+    });
+
+    it('no cuenta los cobros anulados y fecha el ingreso por registrado_at', async () => {
+      await service.metricasPlataformaHoy();
+
+      const args = prisma.pago.aggregate.mock.calls[0][0];
+      expect(args.where.estadoPago).toEqual({ not: 'ANULADO' });
+      expect(args.where.registradoAt.gte).toBeInstanceOf(Date);
+      expect(args.where.registradoAt.lt).toBeInstanceOf(Date);
+      expect(args._sum).toEqual({ monto: true });
+    });
+
+    it('sin datos devuelve 0, nunca null', async () => {
+      prisma.barberia.count.mockResolvedValue(0);
+      prisma.reserva.count.mockResolvedValue(0);
+      prisma.pago.aggregate.mockResolvedValue({ _sum: { monto: null } });
+      prisma.cierreCaja.count.mockResolvedValue(0);
+      prisma.usuario.count.mockResolvedValue(0);
+
+      const resultado = await service.metricasPlataformaHoy();
+
+      expect(resultado.recaudadoHoy).toBe(0);
+      expect(resultado.citasHoy).toBe(0);
+      for (const valor of [
+        resultado.sedesActivas,
+        resultado.citasHoy,
+        resultado.recaudadoHoy,
+        resultado.cajasAbiertas,
+        resultado.usuariosActivos,
+      ]) {
+        expect(typeof valor).toBe('number');
+      }
+    });
   });
 
   it('valida que desde <= hasta', async () => {
