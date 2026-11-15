@@ -63,6 +63,10 @@ import { ToastService } from '../../../shared/ui/toast/toast.service';
               Acumulado de cobros vivos por método
               @if (cajaService.caja()?.fecha) {
                 · {{ cajaService.caja()!.fecha }}
+                <!-- T-22 · la fecha es local de la SEDE: se dice en qué zona. -->
+                @if (cajaService.caja()!.zonaHoraria) {
+                  <span class="text-zinc-500">({{ cajaService.caja()!.zonaHoraria }})</span>
+                }
               }
             </p>
           </div>

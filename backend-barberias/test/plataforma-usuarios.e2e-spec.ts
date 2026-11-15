@@ -379,4 +379,33 @@ describe('Plataforma · usuarios (E2E)', () => {
       expect(evento.entidadId).toBe(usuarioCreadoId);
     }
   }, 60_000);
+
+  /**
+   * T-20 · una cuenta que se dio de alta por el registro público también tiene
+   * historial. Antes, `POST /auth/register` no escribía ningún evento y el modal
+   * de auditoría mostraba «Sin eventos» en cuentas recién creadas.
+   */
+  it('7 · una cuenta registrada por el público trae su alta en la auditoría', async () => {
+    const correo = `p20.publico.${Date.now()}@plataforma-test.com`;
+    const alta = await request(app.getHttpServer())
+      .post(`${api}/auth/register`)
+      .send({
+        nombreCompleto: 'T-20 Registro Público',
+        correo,
+        telefono: '8095559001',
+        password: 'Password1!',
+      });
+    expect([200, 201], JSON.stringify(alta.body)).toContain(alta.status);
+    const nuevoId = alta.body.usuario?.id as string;
+    expect(nuevoId).toBeTruthy();
+
+    const res = await request(app.getHttpServer())
+      .get(`${api}/plataforma/usuarios/${nuevoId}/auditoria`)
+      .set(auth());
+
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThanOrEqual(1);
+    expect(res.body[0]).toMatchObject({ accion: 'USUARIO_CREADO', entidadId: nuevoId });
+    expect(res.body[0].contexto).toMatchObject({ origen: 'REGISTRO_PUBLICO', correo });
+  }, 60_000);
 });

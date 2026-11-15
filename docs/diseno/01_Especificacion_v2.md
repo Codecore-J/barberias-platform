@@ -141,6 +141,19 @@ Las transiciones se validan en una máquina de estados pura (`ReservaStateMachin
 - Si el job no llega (Redis reiniciado, proceso caído), `ExpiracionReservaService` reconcilia al arrancar: expira las vencidas y reencola las vigentes que se quedaron sin job.
 - La transición es idempotente: `UPDATE … WHERE estado IN (...) AND expira_at <= ahora`; si otra operación ganó, no se audita ni se notifica.
 
+### 5.4.1 Rutas de alta y cotización (E3-03 · D44)
+
+E3-03 partió el alias `POST /reservas`, que compartían el wizard del cliente y el mostrador con cuatro roles, en rutas con política propia:
+
+| Ruta | Roles | Qué es |
+|---|---|---|
+| `POST /reservas` | `CLIENTE` (+ teléfono verificado) | El wizard del cliente. Exige vínculo `ACTIVO` con la sede: sin él responde 403 `NO_VINCULADO`. |
+| `POST /reservas/walk-in` | `BARBERO`, `ADMIN_BARBERIA`, `ADMINISTRADOR` | Alta manual desde la agenda. El caminante no tiene cuenta (`nombreInvitado`) y **siempre** lleva barbero. Quien crea es el operador del mostrador, así que no se le exige vínculo de cliente. |
+| `POST /shops/:shopId/appointments/walk-in-pago` | `ADMIN_BARBERIA`, `ADMINISTRADOR` | Cita al vuelo **y** cobro en una sola transacción SERIALIZABLE: si el cobro falla no queda una cita sin pagar. |
+| `POST /reservas/cotizar` | los cuatro roles | Cotización **sin persistir** (D44): bloque, hora de fin, margen, precio y desglose. El wizard y el modal Walk-In la usan para previsualizar; al crear, el backend recalcula el precio. |
+
+Convención de errores: identificadores malformados → **400**; permisos y vínculo → **403** (`NO_VINCULADO`, `CLIENTE_RESTRINGIDO`); reglas de negocio → **422** con su `codigo` (`RESERVAS_PAUSADAS`, `FUERA_DE_HORIZONTE`, `LIMITE_PENDIENTES`, `GRUPAL_NO_DISPONIBLE`); conflicto de hueco → **409**.
+
 ### 5.5 Cancelación
 
 - **Cliente:** una solicitud `PENDIENTE` se puede retirar en cualquier momento; una `CONFIRMADA` solo si faltan **30 minutos o más** para el inicio (`VENTANA_CANCELACION_CLIENTE_MIN`). Fuera de la ventana se rechaza con 422 `FUERA_DE_VENTANA`.

@@ -1,4 +1,4 @@
-import { Component, inject, isDevMode, signal } from '@angular/core';
+import { Component, DestroyRef, inject, isDevMode, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService } from '../auth.service';
@@ -7,6 +7,15 @@ import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
 import { mensajeDeError } from '../../core/utils/error-message';
 
 import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.component';
+
+/**
+ * T-26 · a partir de aquí la espera deja de parecer un cuelgue.
+ *
+ * El backend vive en Render Free: tras un rato sin tráfico el servicio se
+ * duerme y la primera petición tarda ~40 s en despertarlo. Ocho segundos es el
+ * punto donde el usuario ya cree que el botón no responde.
+ */
+const UMBRAL_AVISO_ESPERA_MS = 8000;
 
 @Component({
   selector: 'app-login',
@@ -80,6 +89,23 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
                 Iniciar Sesión <i class="pi pi-arrow-right"></i>
               }
             </button>
+
+            <!--
+              T-26 · cold start de Render Free: el botón ya se bloquea y dice
+              «Ingresando…», pero a los pocos segundos eso parece un cuelgue. Se
+              explica qué está pasando para que nadie recargue ni pulse de nuevo.
+            -->
+            @if (esperaProlongada()) {
+              <p class="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/25 rounded-xl p-3 flex items-start gap-2"
+                 role="status" aria-live="polite">
+                <i class="pi pi-clock mt-0.5"></i>
+                <span>
+                  El servidor está despertando (la primera carga tras un rato inactivo puede
+                  tardar hasta un minuto). No cierres esta página: el inicio de sesión sigue
+                  en curso.
+                </span>
+              </p>
+            }
             
           </form>
           }
@@ -267,6 +293,32 @@ export class LoginComponent {
   recoverySuccessMsg = signal<string | null>(null);
   recoveryErrorMsg = signal<string | null>(null);
 
+  /** T-26 · `true` cuando el login ya lleva demasiado tiempo esperando. */
+  readonly esperaProlongada = signal(false);
+
+  private readonly destroyRef = inject(DestroyRef);
+  private avisoDeEspera?: ReturnType<typeof setTimeout>;
+
+  constructor() {
+    // El temporizador no puede sobrevivir al componente: si se navega fuera con
+    // la petición en vuelo, el aviso no debe pintarse sobre otra pantalla.
+    this.destroyRef.onDestroy(() => this.limpiarAvisoDeEspera());
+  }
+
+  private programarAvisoDeEspera(): void {
+    this.limpiarAvisoDeEspera();
+    this.avisoDeEspera = setTimeout(
+      () => this.esperaProlongada.set(true),
+      UMBRAL_AVISO_ESPERA_MS,
+    );
+  }
+
+  private limpiarAvisoDeEspera(): void {
+    if (this.avisoDeEspera) clearTimeout(this.avisoDeEspera);
+    this.avisoDeEspera = undefined;
+    this.esperaProlongada.set(false);
+  }
+
   loginForm = this.fb.group({
     correo: ['', [Validators.required, Validators.email]],
     password: ['', [Validators.required]],
@@ -393,12 +445,13 @@ export class LoginComponent {
   }
 
   onSubmit() {
-    if (this.loginForm.valid) {
-      this.authService.login(this.loginForm.value as any, this.returnUrl).subscribe({
-        next: () => {},
-        error: () => {}
-      });
-    }
+    if (!this.loginForm.valid) return;
+
+    this.programarAvisoDeEspera();
+    this.authService.login(this.loginForm.value as any, this.returnUrl).subscribe({
+      next: () => this.limpiarAvisoDeEspera(),
+      error: () => this.limpiarAvisoDeEspera(),
+    });
   }
 }
 

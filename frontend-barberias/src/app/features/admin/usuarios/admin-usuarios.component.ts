@@ -207,7 +207,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
         <div class="glass-panel rounded-3xl overflow-hidden border border-white/10 shadow-xl">
           <div class="flex items-center justify-between px-5 py-4 border-b border-white/5">
             <p class="text-xs text-zinc-400">
-              Mostrando <span class="font-bold text-white">{{ usuariosFiltrados().length }}</span> de
+              Mostrando <span class="font-bold text-white">{{ usuariosPagina().length }}</span> de
               <span class="font-bold text-white">{{ totalUsuarios() }}</span>
               {{ totalUsuarios() === 1 ? 'cuenta' : 'cuentas' }}
             </p>
@@ -247,7 +247,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                 </tr>
               </thead>
               <tbody class="divide-y divide-white/5">
-                @for (usuario of usuariosFiltrados(); track usuario.id) {
+                @for (usuario of usuariosPagina(); track usuario.id) {
                   <tr class="hover:bg-white/5 transition-colors group">
                     <td class="p-4">
                       <div class="font-bold text-white">{{ usuario.nombreCompleto }}</div>
@@ -321,6 +321,36 @@ type FiltroRol = 'TODOS' | RolPlataforma;
               </tbody>
             </table>
           </div>
+
+          <!--
+            T-24 · la bandeja trae TODAS las cuentas de la plataforma. En vez de
+            pintarlas todas (a 500 el DOM se arrastra), se pagina en cliente y
+            las tarjetas de KPI siguen midiendo el total real, no la página.
+          -->
+          @if (totalPaginas() > 1) {
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-4 border-t border-white/5">
+              <p class="text-xs text-zinc-400">
+                Página <span class="font-bold text-white">{{ paginaActual() }}</span> de
+                <span class="font-bold text-white">{{ totalPaginas() }}</span>
+              </p>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  (click)="irAPagina(paginaActual() - 1)"
+                  [disabled]="paginaActual() === 1"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
+                  <i class="pi pi-chevron-left text-[10px]"></i> Anterior
+                </button>
+                <button
+                  type="button"
+                  (click)="irAPagina(paginaActual() + 1)"
+                  [disabled]="paginaActual() === totalPaginas()"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
+                  Siguiente <i class="pi pi-chevron-right text-[10px]"></i>
+                </button>
+              </div>
+            </div>
+          }
 
           @if (totalUsuarios() === 0) {
             <div class="text-center py-20">
@@ -892,6 +922,29 @@ export class AdminUsuariosComponent implements OnInit {
       );
     });
   });
+
+  // ── Paginación (T-24) ──────────────────────────────────────────────────────
+  /**
+   * Cuentas por página. La respuesta del backend es un array completo (ese es
+   * el contrato de `GET /plataforma/usuarios`), así que la paginación se hace
+   * aquí: lo que colapsaba era el DOM, no la petición, y los KPI deben seguir
+   * midiendo el total de la plataforma y no la página visible.
+   */
+  readonly TAMANO_PAGINA = 25;
+  readonly pagina = signal(1);
+  readonly totalPaginas = computed(() =>
+    Math.max(1, Math.ceil(this.usuariosFiltrados().length / this.TAMANO_PAGINA)),
+  );
+  /** Se recorta al rango vigente: cambiar de filtro no deja una página vacía. */
+  readonly paginaActual = computed(() => Math.min(this.pagina(), this.totalPaginas()));
+  readonly usuariosPagina = computed(() => {
+    const desde = (this.paginaActual() - 1) * this.TAMANO_PAGINA;
+    return this.usuariosFiltrados().slice(desde, desde + this.TAMANO_PAGINA);
+  });
+
+  irAPagina(pagina: number): void {
+    this.pagina.set(Math.min(Math.max(1, pagina), this.totalPaginas()));
+  }
 
   // ── Cambio de estado ───────────────────────────────────────────────────────
   readonly isModalOpen = signal(false);

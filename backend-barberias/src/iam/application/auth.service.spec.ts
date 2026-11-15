@@ -85,6 +85,21 @@ describe('AuthService', () => {
         expect.objectContaining({ sub: 'new-user-id', correo: 'juan@example.com', roles: ['CLIENTE'] }),
       );
       expect(mockPrisma.$transaction).toHaveBeenCalled();
+
+      //
+      // T-20 · el alta deja rastro en el historial de la cuenta. Sin esto, el modal
+      // de auditoría de la bandeja mostraba «Sin eventos» en una cuenta recién
+      // creada, porque el registro público no escribía nada.
+      //
+      expect(mockPrisma.auditoria.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          usuarioId: 'new-user-id',
+          accion: 'USUARIO_CREADO',
+          entidad: 'usuarios',
+          entidadId: 'new-user-id',
+          contexto: expect.objectContaining({ origen: 'REGISTRO_PUBLICO' }),
+        }),
+      });
     });
 
     it('debe lanzar ConflictException si la cédula ya existe', async () => {
