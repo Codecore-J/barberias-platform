@@ -2,8 +2,9 @@ import { TestBed } from '@angular/core/testing';
 import { computed, signal, WritableSignal } from '@angular/core';
 import { ActivatedRouteSnapshot, Router } from '@angular/router';
 import { firstValueFrom, of, throwError } from 'rxjs';
-import { tenantGuard } from './tenant.guard';
+import { tenantGuard, tenantGuardPermiteConsolidado } from './tenant.guard';
 import { TenantService } from '../services/tenant.service';
+import { AuthService } from '../../auth/auth.service';
 
 /**
  * T-30 · el guard que exigía contexto de sede no tenía spec propio: era el
@@ -125,5 +126,69 @@ describe('tenantGuard', () => {
 
     const resultado = await firstValueFrom(ejecutar(ruta(SEDE_B.id)) as any);
     expect(resultado).toEqual({ tree: ['/barberias'] });
+  });
+});
+
+/**
+ * T-16 · la vista consolidada de analíticas necesitaba su propia puerta.
+ *
+ * `tenantGuard` manda a `/barberias` sin sede, así que el ADMINISTRADOR global
+ * era redirigido antes de ver el consolidado que el ticket pedía. El guard nuevo
+ * solo relaja esa condición para él; cualquier otro rol sigue igual de estricto.
+ */
+describe('tenantGuardPermiteConsolidado (T-16)', () => {
+  const SEDE_A = { id: 'aaaaaaaa-1111-4111-8111-111111111111', nombre: 'Sede A' } as any;
+
+  let barberiaActiva: WritableSignal<any>;
+
+  const ruta = () =>
+    ({
+      pathFromRoot: [{ paramMap: { get: () => null } }],
+    }) as unknown as ActivatedRouteSnapshot;
+
+  const configurar = (roles: string[]) => {
+    barberiaActiva = signal<any>(null);
+
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: TenantService,
+          useValue: {
+            barberiaActiva,
+            barberiasVinculadas: signal<any[]>([SEDE_A]),
+            barberiaActivaId: computed(() => barberiaActiva()?.id ?? null),
+            setBarberiaActiva: (sede: any) => barberiaActiva.set(sede),
+            cambiarSedeActiva: () => of(null),
+          },
+        },
+        { provide: Router, useValue: { createUrlTree: (commands: any[]) => ({ tree: commands }) } },
+        { provide: AuthService, useValue: { authState: signal({ user: { roles } }) } },
+      ],
+    });
+  };
+
+  const ejecutar = () =>
+    TestBed.runInInjectionContext(() => tenantGuardPermiteConsolidado(ruta(), {} as any));
+
+  it('ADMINISTRADOR sin sede entra a la vista consolidada', () => {
+    configurar(['ADMINISTRADOR']);
+    expect(ejecutar()).toBe(true);
+  });
+
+  it('ADMIN_BARBERIA sin sede sigue volviendo al hub de sedes', () => {
+    configurar(['ADMIN_BARBERIA']);
+    expect(ejecutar()).toEqual({ tree: ['/barberias'] });
+  });
+
+  it('un rol sin alcance de plataforma tampoco entra sin sede', () => {
+    configurar(['CLIENTE']);
+    expect(ejecutar()).toEqual({ tree: ['/barberias'] });
+  });
+
+  it('con sede activa vigente se comporta como tenantGuard y deja pasar', () => {
+    configurar(['ADMINISTRADOR']);
+    barberiaActiva.set(SEDE_A);
+    expect(ejecutar()).toBe(true);
   });
 });
