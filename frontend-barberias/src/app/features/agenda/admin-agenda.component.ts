@@ -21,6 +21,7 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
 import { CobroModalComponent } from './components/cobro-modal/cobro-modal.component';
 import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.component';
 import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
+import { rolEfectivo } from '../../core/utils/rol';
 
 @Component({
   selector: 'app-admin-agenda',
@@ -177,20 +178,38 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
       <!-- T-23 · Sede sin equipo: antes quedaba un hueco en blanco bajo los
            filtros, sin decir por qué. -->
       @if (!cargando() && barberos().length === 0) {
-        <div class="glass-panel rounded-3xl border border-white/10 p-10 text-center space-y-3 relative z-10">
-          <div class="w-14 h-14 mx-auto rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-            <i class="pi pi-users text-xl"></i>
+        <!--
+          T-18 · para un BARBERO la agenda es SU columna. Si no aparece, el
+          problema es su ficha en la sede y no que «no haya barberos»: decirlo
+          así evita que se quede mirando un mensaje que no le corresponde.
+        -->
+        @if (esSoloBarbero()) {
+          <div class="glass-panel rounded-3xl border border-white/10 p-10 text-center space-y-3 relative z-10">
+            <div class="w-14 h-14 mx-auto rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+              <i class="pi pi-user text-xl"></i>
+            </div>
+            <h3 class="text-white font-bold text-lg">Tu ficha de barbero no aparece en esta sede</h3>
+            <p class="text-sm text-zinc-400 max-w-md mx-auto">
+              Solo puedes ver tu propia columna de la agenda. Pide al responsable de la sede que
+              revise que tu vínculo como BARBERO esté activo.
+            </p>
           </div>
-          <h3 class="text-white font-bold text-lg">Esta sede todavía no tiene barberos</h3>
-          <p class="text-sm text-zinc-400 max-w-md mx-auto">
-            La agenda se organiza por barbero. Invita o activa al menos un miembro del personal para
-            empezar a recibir turnos en esta sede.
-          </p>
-          <a routerLink="/admin/personal"
-             class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-lg hover:brightness-110 transition-all">
-            <i class="pi pi-user-plus"></i> Gestionar personal
-          </a>
-        </div>
+        } @else {
+          <div class="glass-panel rounded-3xl border border-white/10 p-10 text-center space-y-3 relative z-10">
+            <div class="w-14 h-14 mx-auto rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+              <i class="pi pi-users text-xl"></i>
+            </div>
+            <h3 class="text-white font-bold text-lg">Esta sede todavía no tiene barberos</h3>
+            <p class="text-sm text-zinc-400 max-w-md mx-auto">
+              La agenda se organiza por barbero. Invita o activa al menos un miembro del personal para
+              empezar a recibir turnos en esta sede.
+            </p>
+            <a routerLink="/admin/personal"
+               class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-lg hover:brightness-110 transition-all">
+              <i class="pi pi-user-plus"></i> Gestionar personal
+            </a>
+          </div>
+        }
       }
 
       <!-- Consola Multi-Columna (Modo Dios) -->
@@ -569,10 +588,28 @@ export class AdminAgendaComponent {
     ),
   );
 
-  /** Columnas de la agenda: los barberos de la sede (o todo el equipo si no hay). */
+  /** T-18 · ¿la sesión es de un barbero raso (no de la sede)? */
+  protected readonly esSoloBarbero = computed(
+    () => rolEfectivo(this.authService.authState().user?.roles) === 'BARBERO',
+  );
+
+  /**
+   * Columnas de la agenda: los barberos de la sede (o todo el equipo si no hay).
+   *
+   * T-18 · D16: el BARBERO trabaja SU columna, no la de sus compañeros. El
+   * backend ya acota la consulta a sus turnos; aquí se recorta también la
+   * cabecera para no enseñar nombres ajenos ni columnas vacías. Un rol de sede
+   * (ADMIN_BARBERIA / ADMINISTRADOR) sigue viendo todas.
+   */
   readonly barberos = computed<Personal[]>(() => {
     const equipo = this.equipoResource.value() ?? [];
     const soloBarberos = equipo.filter((p) => p.roles.includes('BARBERO'));
+
+    if (this.esSoloBarbero()) {
+      const propioId = this.authService.authState().user?.id;
+      return soloBarberos.filter((p) => p.id === propioId);
+    }
+
     return soloBarberos.length > 0 ? soloBarberos : equipo;
   });
 
