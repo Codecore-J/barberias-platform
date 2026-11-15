@@ -1,22 +1,44 @@
 <div class="analytics-container space-y-8 pb-12">
   <!-- Encabezado -->
   <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <!--
+      T-16 · el encabezado declara el ALCANCE, no solo el tema. Una sede y toda
+      la plataforma no pueden anunciarse con el mismo texto.
+    -->
     <div>
       <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold uppercase tracking-wider mb-1">
         <i class="pi pi-chart-bar text-xs"></i>
-        <span>Rendimiento de la Sede</span>
+        <span data-testid="alcance-badge">{{ alcance() === 'consolidado' ? 'Vista global' : 'Rendimiento de la sede' }}</span>
       </div>
-      <h1 class="text-3xl font-display font-bold text-white">Analíticas y <span class="text-amber-400">Retención</span></h1>
-      <p class="text-sm text-zinc-400">
-        Ingresos, ocupación y comportamiento de los clientes en {{ tenantService.nombreBarberiaActiva() || 'la sede activa' }}.
+      <h1 class="text-3xl font-display font-bold text-white" data-testid="alcance-titulo">
+        Analíticas <span class="text-zinc-600">·</span>
+        <span class="text-amber-400">{{ alcance() === 'consolidado' ? 'Todas las sedes' : (nombreSede || 'la sede activa') }}</span>
+      </h1>
+      <p class="text-sm text-zinc-400" data-testid="alcance-subtitulo">
+        @if (alcance() === 'consolidado') {
+          Rendimiento consolidado de la plataforma en el periodo seleccionado.
+        } @else {
+          Rendimiento de esta sede en el periodo seleccionado.
+        }
       </p>
+
+      @if (alcance() === 'consolidado') {
+        <span
+          data-testid="badge-consolidado"
+          class="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-300 text-xs font-semibold"
+        >
+          <i class="pi pi-globe text-[10px]"></i>
+          Vista global · {{ totalSedes }} {{ totalSedes === 1 ? 'sede' : 'sedes' }}
+        </span>
+      }
     </div>
 
     <button
       type="button"
       data-testid="export-csv"
       (click)="exportarCsv()"
-      [disabled]="exportando || loading"
+      [disabled]="exportando || loading || alcance() === 'consolidado'"
+      [title]="alcance() === 'consolidado' ? 'El CSV es el reporte de una sede: elige una sede para exportarlo' : 'Descarga el reporte de la sede activa'"
       class="px-5 py-2.5 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_4px_16px_rgba(212,175,55,0.25)] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
     >
       <i class="pi" [ngClass]="exportando ? 'pi-spin pi-spinner' : 'pi-download'"></i>
@@ -128,8 +150,8 @@
     </div>
   }
 
-  <!-- Sin datos -->
-  @if (!loading && !error && !data) {
+  <!-- Sin datos (solo del alcance de sede: el consolidado vive del overview) -->
+  @if (!loading && !error && !data && alcance() === 'sede') {
     <div class="glass-panel rounded-3xl border border-white/5 py-20 text-center space-y-3">
       <div class="w-16 h-16 mx-auto rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
         <i class="pi pi-chart-bar text-2xl"></i>
@@ -141,13 +163,21 @@
     </div>
   }
 
-  <!-- Resumen multisede -->
+  <!-- Resumen multisede / consolidado -->
   @if (overview; as ov) {
-    @if (ov.sedes && ov.sedes.length > 1) {
+    @if (mostrarOverview) {
       <section class="space-y-4">
         <div>
-          <h2 class="text-xl font-display font-bold text-white">Resumen Multisede</h2>
-          <p class="text-xs text-zinc-500">Comparativa consolidada de todas las sedes que administras.</p>
+          <h2 class="text-xl font-display font-bold text-white">
+            {{ alcance() === 'consolidado' ? 'Resumen consolidado' : 'Resumen Multisede' }}
+          </h2>
+          <p class="text-xs text-zinc-500">
+            @if (alcance() === 'consolidado') {
+              Consolidado de todas las sedes de la plataforma: {{ ov.sedes.length }} en total.
+            } @else {
+              Comparativa de las sedes que administras. Los datos de cada fila son de esa sede.
+            }
+          </p>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -229,8 +259,10 @@
     @if (data; as d) {
     <section class="space-y-4">
       <div>
-        <h2 class="text-xl font-display font-bold text-white">Métricas de la sede</h2>
-        <p class="text-xs text-zinc-500">Indicadores del periodo seleccionado.</p>
+        <h2 class="text-xl font-display font-bold text-white">
+          Métricas de {{ nombreSede || 'la sede activa' }}
+        </h2>
+        <p class="text-xs text-zinc-500">Indicadores de esta sede en el periodo seleccionado.</p>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
