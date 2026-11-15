@@ -26,6 +26,24 @@ export interface VerifyOtpResponseDto {
   tipo: TipoOtp;
 }
 
+/**
+ * T-21 · corrección del contacto de una cuenta que aún no verificó ese canal.
+ * Un campo o los dos: el teléfono mal tecleado es el caso real, el correo mal
+ * tecleado el otro.
+ */
+export interface UpdateContactDto {
+  telefono?: string;
+  correo?: string;
+}
+
+export interface UpdateContactResponseDto {
+  mensaje: string;
+  telefono: string;
+  correo: string;
+  /** Canales cuyo código anterior quedó anulado: son los que hay que reenviar. */
+  canalesInvalidados: TipoOtp[];
+}
+
 // E3-contrato: `password` es OBLIGATORIO, igual que en el backend
 // (RegisterDto: @IsString @MinLength(8) @Matches letra+número;
 // LoginDto: @IsNotEmpty). Marcarlo opcional daba una falsa seguridad de tipos.

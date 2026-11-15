@@ -9,6 +9,8 @@ import {
   RegisterDto,
   SendOtpResponseDto,
   TipoOtp,
+  UpdateContactDto,
+  UpdateContactResponseDto,
   UsuarioResponseDto,
   VerifyOtpResponseDto
 } from './interfaces/auth.interface';
@@ -286,6 +288,47 @@ export class AuthService {
           this.updateState({
             user: usuario ? { ...usuario, ...bandera } : usuario,
           });
+          this.sesionCargada$ = null;
+        }),
+      );
+  }
+
+  /**
+   * T-21 · Reenvío del código de una cuenta pendiente.
+   *
+   * Endpoint propio (`/otp/resend`) en vez de reutilizar `send-otp` para que el
+   * límite de tasa y la auditoría del reenvío puedan divergir del envío inicial
+   * sin cambiar el contrato del flujo de alta. La invalidación del código
+   * anterior es del backend: aquí no hay nada que hacer antes de llamar.
+   */
+  resendOtp(tipo: TipoOtp): Observable<SendOtpResponseDto> {
+    return this.http.post<SendOtpResponseDto>(`${this.apiUrl}/otp/resend`, { tipo });
+  }
+
+  /**
+   * T-21 · Corrige el contacto antes de verificar.
+   *
+   * La respuesta trae el contacto resultante, así que el estado local se
+   * actualiza con lo que el backend ACABA de guardar y no con lo que el usuario
+   * tecleó: si otro proceso normalizara el valor, la UI seguiría mostrando la
+   * verdad. `sesionCargada$` se invalida para que un guard no vuelva a leer el
+   * perfil anterior desde la caché de la sesión.
+   */
+  updateContact(datos: UpdateContactDto): Observable<UpdateContactResponseDto> {
+    return this.http
+      .patch<UpdateContactResponseDto>(`${this.apiUrl}/otp/update-contact`, datos)
+      .pipe(
+        tap((respuesta) => {
+          const usuario = this.authState().user;
+          if (usuario) {
+            this.updateState({
+              user: {
+                ...usuario,
+                telefono: respuesta.telefono,
+                correo: respuesta.correo,
+              },
+            });
+          }
           this.sesionCargada$ = null;
         }),
       );

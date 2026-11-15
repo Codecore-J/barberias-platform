@@ -1471,6 +1471,19 @@ export class ReservaService {
       throw new ForbiddenException('No tienes acceso a la agenda de esta barbería.');
     }
 
+    //
+    // T-18 · D16: el BARBERO lee SU agenda, no la de la sede. El rol de sede
+    // (`ADMIN_BARBERIA`, `ADMINISTRADOR`) sigue viendo todas las columnas; un
+    // barbero raso solo sus turnos. El id sale del TOKEN: aceptar un
+    // `?barberoId=` de la query permitiría leer la agenda de un compañero con
+    // solo cambiar la URL, que es justo lo que la UI no debe poder hacer.
+    //
+    const esSoloBarbero =
+      rolesEnBarberia.some((rol) => rol.nombre === ROL_BARBERO) &&
+      !rolesEnBarberia.some(
+        (rol) => rol.nombre === ROL_ADMIN_BARBERIA || rol.nombre === ROL_ADMINISTRADOR,
+      );
+
     // E2-04: sin `fecha`, el día por defecto es HOY en la zona de la SEDE; antes
     // lo resolvía el controller con `new Date().toISOString()`, que es el día del
     // servidor (UTC en Render).
@@ -1484,6 +1497,8 @@ export class ReservaService {
     const reservas = await this.prisma.reserva.findMany({
       where: {
         barberiaId,
+        // T-18 · el filtro por barbero no se negocia: lo impone el rol.
+        ...(esSoloBarbero ? { barberoId: user.id } : {}),
         fechaCita: {
           gte: startOfDay,
           lte: endOfDay,
