@@ -12,7 +12,9 @@ describe('AuthController', () => {
   // Dobles de `vi.fn()`: afirmar sobre el `Mock` evita referenciar un método
   // del servicio fuera de su objeto, que perdería `this`.
   let authService: { register: Mock; login: Mock; getProfile: Mock };
-  let otpService: OtpService;
+  // Igual que `authService`: un registro de dobles, no una instancia real.
+  // Tipado así, `expect(otpService.enviar)` no es un método suelto sin `this`.
+  let otpService: { enviar: Mock; verificar: Mock; actualizarContacto: Mock };
 
   const mockUsuarioResponse: UsuarioResponseDto = {
     id: 'user-uuid-1',
@@ -38,9 +40,13 @@ describe('AuthController', () => {
     otpService = {
       enviar: vi.fn(),
       verificar: vi.fn(),
-    } as any;
+      actualizarContacto: vi.fn(),
+    };
 
-    controller = new AuthController(authService as unknown as AuthService, otpService);
+    controller = new AuthController(
+      authService as unknown as AuthService,
+      otpService as unknown as OtpService,
+    );
   });
 
   describe('register', () => {
@@ -103,6 +109,54 @@ describe('AuthController', () => {
 
       expect(authService.getProfile).toHaveBeenCalledWith('user-uuid-1');
       expect(result).toEqual(mockUsuarioResponse);
+    });
+  });
+
+  /**
+   * T-21 · Los dos endpoints de la cuenta pendiente. Lo que se fija aquí es el
+   * límite de confianza: el usuario sale SIEMPRE del token y el cuerpo solo
+   * aporta el canal o el contacto nuevo. Si el controlador aceptara un id del
+   * cuerpo, el endpoint sería un cambiador de teléfonos ajeno.
+   */
+  describe('reenvío y corrección del contacto (T-21)', () => {
+    const mockUser = {
+      id: 'user-uuid-1',
+      correo: 'carlos@example.com',
+      roles: ['CLIENTE'],
+    };
+
+    it('resendOtp delega el canal en OtpService con el usuario del token', async () => {
+      const respuesta = {
+        mensaje: 'Código enviado a tu teléfono.',
+        expiraEn: new Date().toISOString(),
+      };
+      vi.spyOn(otpService, 'enviar').mockResolvedValue(respuesta);
+
+      const result = await controller.resendOtp(mockUser, {
+        tipo: 'TELEFONO' as never,
+      });
+
+      expect(otpService.enviar).toHaveBeenCalledWith('user-uuid-1', 'TELEFONO');
+      expect(result).toEqual(respuesta);
+    });
+
+    it('updateContact delega en OtpService con el contacto nuevo y el usuario del token', async () => {
+      const respuesta = {
+        mensaje: 'Contacto actualizado.',
+        telefono: '80955501777',
+        correo: 'carlos@example.com',
+        canalesInvalidados: ['TELEFONO' as never],
+      };
+      vi.spyOn(otpService, 'actualizarContacto').mockResolvedValue(respuesta);
+
+      const result = await controller.updateContact(mockUser, {
+        telefono: '80955501777',
+      });
+
+      expect(otpService.actualizarContacto).toHaveBeenCalledWith('user-uuid-1', {
+        telefono: '80955501777',
+      });
+      expect(result).toEqual(respuesta);
     });
   });
 });

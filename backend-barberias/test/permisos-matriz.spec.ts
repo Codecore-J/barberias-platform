@@ -74,6 +74,11 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // rutas de RESERVA, no aquí.
   'POST /auth/send-otp': TODOS,
   'POST /auth/verify-otp': TODOS,
+  // T-21 · salida de la cuenta pendiente: también `@Autenticado` sin lista de
+  // roles. El límite no es el rol sino el estado de verificación del canal (403
+  // si ya está verificado), y el `usuarioId` sale del token.
+  'POST /auth/otp/resend': TODOS,
+  'PATCH /auth/otp/update-contact': TODOS,
   'GET /health,api/v1/health': TODOS,
   // H64 (2026-10-14): sonda de VIDA separada de la de preparación. Es `@Public`
   // como la otra (la consulta la infraestructura, sin token) y no comprueba nada
@@ -664,8 +669,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // una cuenta (GET) y la concesión/retirada del rol global (PATCH): 116 rutas
   // con política × 4 roles = 464 decisiones. H-03 suma la bandeja de
   // propuestas de horario pendientes: 117 × 4 = 468 decisiones. La Fase 3
-  // suma el lote de membresías del cliente: 118 × 4 = 472 decisiones.
-  expect(evaluaciones).toBe(472);
+  // suma el lote de membresías del cliente: 118 × 4 = 472 decisiones. T-21
+  // suma el reenvío del OTP y la corrección del contacto: 120 × 4 = 480.
+  expect(evaluaciones).toBe(480);
     expect(
       desviaciones.length === 0
         ? ''

@@ -1,6 +1,8 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import type { Observable } from 'rxjs';
+import type { SendOtpResponseDto } from '../interfaces/auth.interface';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../auth.service';
 import { PARAM_RETURN_URL, returnUrlSeguro } from '../../core/utils/return-url.util';
@@ -15,6 +17,13 @@ import { mensajeDeError } from '../../core/utils/error-message';
  * temporizador de 60 s porque cada envío es un mensaje de WhatsApp real que
  * alguien paga y que además consume el presupuesto de rate limit del backend
  * (3 por minuto por IP).
+ *
+ * T-21 · la pantalla también es la salida de la «cuenta zombie»: si el número
+ * se tecleó mal, ningún código llegará nunca y reenviar solo gastaría mensajes
+ * hacia un destino ajeno. Por eso hay un formulario en línea que corrige el
+ * teléfono (`PATCH /auth/otp/update-contact`) y, al guardarlo, pide de
+ * inmediato un código nuevo al número corregido, sin esperar al temporizador
+ * (el backend invalidó el anterior en la misma operación).
  *
  * Si la sesión no existe se manda al login, y si el teléfono ya estaba
  * verificado se sale sin esperar: la pantalla es una barrera de paso, no un
@@ -99,6 +108,47 @@ import { mensajeDeError } from '../../core/utils/error-message';
 
           </form>
 
+          <!-- T-21 · corrección del número: sale de la cuenta zombie sin salir de la pantalla -->
+          <div class="mt-5 border-t border-zinc-800/80 pt-4">
+            @if (!mostrandoCambio()) {
+              <button type="button" (click)="abrirCambio()"
+                      class="w-full text-xs text-zinc-400 hover:text-amber-300 transition-colors underline-offset-4 hover:underline">
+                ¿Te equivocaste de número?
+                <span class="font-bold text-amber-400">Cambiar número de teléfono</span>
+              </button>
+            } @else {
+              <form id="cambio-contacto-form" [formGroup]="contactoForm" (ngSubmit)="guardarContacto()" class="space-y-3">
+                <div class="space-y-2">
+                  <label for="nuevoTelefono" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">
+                    Nuevo número de teléfono
+                  </label>
+                  <input id="nuevoTelefono" name="nuevoTelefono" inputmode="numeric" autocomplete="tel-national"
+                         maxlength="10" formControlName="telefono" placeholder="8095550100"
+                         (input)="soloDigitosTelefono($event)"
+                         class="w-full text-center tracking-[0.3em] text-lg font-bold bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 px-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
+                  @if (contactoForm.get('telefono')?.invalid && contactoForm.get('telefono')?.touched) {
+                    <p class="text-[11px] text-red-400 pl-1">Escribe los 10 dígitos, sin guiones ni espacios.</p>
+                  }
+                </div>
+
+                <div class="flex gap-2">
+                  <button type="submit" [disabled]="contactoForm.invalid || cambiando()"
+                          class="flex-1 py-3 rounded-xl font-bold text-xs text-zinc-950 gold-gradient-bg disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2">
+                    @if (cambiando()) {
+                      <i class="pi pi-spin pi-spinner"></i> Actualizando...
+                    } @else {
+                      Guardar y enviar código
+                    }
+                  </button>
+                  <button type="button" (click)="cancelarCambio()" [disabled]="cambiando()"
+                          class="px-4 py-3 rounded-xl font-bold text-xs text-zinc-300 bg-zinc-800/80 hover:bg-zinc-700/80 disabled:opacity-50 transition-colors">
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            }
+          </div>
+
           <p class="mt-6 text-center text-[11px] text-zinc-600">
             No recibes el mensaje? Revisa que el número de tu perfil esté bien escrito o vuelve a intentarlo en unos segundos.
           </p>
@@ -139,6 +189,9 @@ export class VerifyOtpComponent implements OnInit, OnDestroy {
   readonly error = signal<string | null>(null);
   readonly aviso = signal<string | null>(null);
   readonly segundosRestantes = signal(0);
+  /** T-21 · el formulario de corrección del número está desplegado. */
+  readonly mostrandoCambio = signal(false);
+  readonly cambiando = signal(false);
 
   /** El reenvío solo se habilita cuando no hay nada en vuelo y el temporizador llegó a cero. */
   readonly puedeReenviar = computed(
@@ -150,6 +203,11 @@ export class VerifyOtpComponent implements OnInit, OnDestroy {
   /** Un solo campo de 6 dígitos con validación, en vez de seis inputs: mismo contrato y un solo focus. */
   codigoForm = this.fb.group({
     codigo: ['', [Validators.required, Validators.pattern(/^\d{6}$/)]],
+  });
+
+  /** T-21 · mismo formato que el alta (10 dígitos, sin guiones ni espacios). */
+  contactoForm = this.fb.group({
+    telefono: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
   });
 
   ngOnInit(): void {
@@ -167,7 +225,7 @@ export class VerifyOtpComponent implements OnInit, OnDestroy {
         this.entrar();
         return;
       }
-      this.enviar();
+      this.solicitarCodigo(() => this.authService.sendOtp('TELEFONO'));
     });
   }
 
@@ -185,23 +243,109 @@ export class VerifyOtpComponent implements OnInit, OnDestroy {
     this.codigoForm.get('codigo')?.setValue(limpio, { emitEvent: false });
   }
 
+  /**
+   * Botón «Reenviar código»: usa el endpoint de reenvío (T-21), que invalida el
+   * código vivo y emite uno nuevo. Sigue atado al temporizador de 60 s.
+   */
   enviar(): void {
     if (!this.puedeReenviar()) {
       return;
     }
 
+    this.solicitarCodigo(() => this.authService.resendOtp('TELEFONO'));
+  }
+
+  /**
+   * Un solo camino para pedir un código, sea el inicial o un reenvío: así el
+   * temporizador, el aviso y el estado de carga se comportan igual en todos los
+   * casos y no hay dos implementaciones que se desincronicen.
+   */
+  private solicitarCodigo(
+    peticion: () => Observable<SendOtpResponseDto>,
+    /** Prefijo opcional: el cambio de número tiene que seguir a la vista. */
+    prefijo?: string,
+  ): void {
     this.enviando.set(true);
     this.error.set(null);
 
-    this.authService.sendOtp('TELEFONO').subscribe({
+    peticion().subscribe({
       next: (respuesta) => {
         this.enviando.set(false);
-        this.aviso.set(respuesta.mensaje);
+        this.aviso.set(prefijo ? `${prefijo} ${respuesta.mensaje}` : respuesta.mensaje);
         this.iniciarTemporizador(60);
       },
       error: (e) => {
         this.enviando.set(false);
         this.error.set(mensajeDeError(e, 'No se pudo enviar el código. Inténtalo de nuevo.'));
+      },
+    });
+  }
+
+  /** T-21 · abre el formulario con el número actual ya cargado, para editarlo. */
+  abrirCambio(): void {
+    const actual = this.authService.authState().user?.telefono ?? '';
+    this.contactoForm.reset({ telefono: /^\d{10}$/.test(actual) ? actual : '' });
+    this.error.set(null);
+    this.mostrandoCambio.set(true);
+  }
+
+  cancelarCambio(): void {
+    if (this.cambiando()) {
+      return;
+    }
+    this.mostrandoCambio.set(false);
+    this.contactoForm.reset({ telefono: '' });
+    this.error.set(null);
+  }
+
+  /** El input acepta solo dígitos y se corta en 10, igual que el DTO del alta. */
+  soloDigitosTelefono(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const limpio = input.value.replace(/\D/g, '').slice(0, 10);
+    if (input.value !== limpio) {
+      input.value = limpio;
+    }
+    this.contactoForm.get('telefono')?.setValue(limpio, { emitEvent: false });
+  }
+
+  /**
+   * T-21 · guarda el número corregido y pide el código al nuevo destino en la
+   * misma acción.
+   *
+   * El estado de la cuenta NO cambia con esto: sigue pendiente hasta que el
+   * código se valide. Lo que cambia es a dónde viaja. Y el reenvío se dispara
+   * forzado —sin esperar los 60 s— porque el código que estaba en el aire se
+   * invalidó en el backend: dejar el temporizador activo solo dejaría al
+   * usuario mirando una pantalla sin código válido durante un minuto.
+   */
+  guardarContacto(): void {
+    if (this.contactoForm.invalid || this.cambiando()) {
+      this.contactoForm.markAllAsTouched();
+      return;
+    }
+
+    const telefono = this.contactoForm.get('telefono')?.value ?? '';
+    this.cambiando.set(true);
+    this.error.set(null);
+    this.aviso.set(null);
+
+    this.authService.updateContact({ telefono }).subscribe({
+      next: (respuesta) => {
+        this.cambiando.set(false);
+        this.mostrandoCambio.set(false);
+        this.contactoForm.reset({ telefono: '' });
+        // El código que había escrito era para el destino anterior: se limpia.
+        this.codigoForm.reset({ codigo: '' });
+        this.solicitarCodigo(
+          () => this.authService.resendOtp('TELEFONO'),
+          `Número actualizado a ${respuesta.telefono}.`,
+        );
+      },
+      error: (e) => {
+        this.cambiando.set(false);
+        this.error.set(
+          mensajeDeError(e, 'No se pudo actualizar el número. Inténtalo de nuevo.'),
+        );
       },
     });
   }

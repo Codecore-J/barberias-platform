@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TipoOtp } from '@prisma/client';
-import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { OtpService } from './otp.service.js';
 
 /**
@@ -34,6 +34,7 @@ describe('OtpService', () => {
     telefono: TELEFONO,
     correoVerificado: false,
     telefonoVerificado: false,
+    estadoCuenta: 'ACTIVO',
   };
 
   beforeEach(() => {
@@ -43,7 +44,9 @@ describe('OtpService', () => {
         create: vi.fn().mockResolvedValue({}),
         findFirst: vi.fn().mockResolvedValue({ id: 'otp-1' }),
       },
-      usuario: { update: vi.fn().mockResolvedValue({}) },
+      usuario: {
+        update: vi.fn().mockResolvedValue({ telefono: TELEFONO, correo: CORREO }),
+      },
     };
 
     prisma = {
@@ -172,6 +175,144 @@ describe('OtpService', () => {
 
       await expect(service.verificar(USUARIO_ID, datos)).rejects.toBeInstanceOf(BadRequestException);
       expect(tx.usuario.update).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * T-21 · Cuenta «zombie»: el alta se hizo con un número equivocado y ningún
+   * código puede llegar. Aquí se fija el contrato de la corrección: qué se
+   * puede cambiar, qué se invalida y cómo se deniega. El detalle de los códigos
+   * de error (D40) se comprueba para que la UI pueda distinguirlos.
+   */
+  describe('actualizarContacto', () => {
+    const TELEFONO_NUEVO = '80955501777';
+    const CORREO_NUEVO = 'corregido@test.com';
+
+    it('cambia el teléfono pendiente e invalida los códigos del número anterior', async () => {
+      tx.usuario.update.mockResolvedValue({
+        telefono: TELEFONO_NUEVO,
+        correo: CORREO,
+      });
+
+      const resultado = await service.actualizarContacto(USUARIO_ID, {
+        telefono: TELEFONO_NUEVO,
+      });
+
+      // El código que salió al número viejo deja de valer en el mismo instante.
+      expect(tx.otpConfirmacion.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            usuarioId: USUARIO_ID,
+            tipo: { in: [TipoOtp.TELEFONO] },
+            usado: false,
+          },
+          data: expect.objectContaining({ usado: true }),
+        }),
+      );
+      expect(tx.usuario.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: USUARIO_ID },
+          data: { telefono: TELEFONO_NUEVO },
+        }),
+      );
+      expect(resultado).toEqual({
+        mensaje: 'Contacto actualizado.',
+        telefono: TELEFONO_NUEVO,
+        correo: CORREO,
+        canalesInvalidados: [TipoOtp.TELEFONO],
+      });
+    });
+
+    it('el correo se corrige por su propio canal', async () => {
+      tx.usuario.update.mockResolvedValue({
+        telefono: TELEFONO,
+        correo: CORREO_NUEVO,
+      });
+
+      const resultado = await service.actualizarContacto(USUARIO_ID, {
+        correo: CORREO_NUEVO,
+      });
+
+      expect(tx.otpConfirmacion.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ tipo: { in: [TipoOtp.CORREO] } }),
+        }),
+      );
+      expect(tx.usuario.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { correo: CORREO_NUEVO } }),
+      );
+      expect(resultado.canalesInvalidados).toEqual([TipoOtp.CORREO]);
+    });
+
+    it('si el canal ya está verificado responde 403 y no toca nada', async () => {
+      prisma.usuario.findUnique.mockResolvedValue({
+        ...usuarioBase,
+        telefonoVerificado: true,
+      });
+
+      await expect(
+        service.actualizarContacto(USUARIO_ID, { telefono: TELEFONO_NUEVO }),
+      ).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof ForbiddenException &&
+          (error.getResponse() as { codigo: string }).codigo === 'CONTACTO_YA_VERIFICADO',
+      );
+
+      expect(tx.usuario.update).not.toHaveBeenCalled();
+      expect(tx.otpConfirmacion.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('una cuenta suspendida no puede cambiar el contacto (403 CUENTA_NO_ACTIVA)', async () => {
+      prisma.usuario.findUnique.mockResolvedValue({
+        ...usuarioBase,
+        estadoCuenta: 'SUSPENDIDO',
+      });
+
+      await expect(
+        service.actualizarContacto(USUARIO_ID, { telefono: TELEFONO_NUEVO }),
+      ).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof ForbiddenException &&
+          (error.getResponse() as { codigo: string }).codigo === 'CUENTA_NO_ACTIVA',
+      );
+      expect(tx.usuario.update).not.toHaveBeenCalled();
+    });
+
+    it('un destino que ya pertenece a otra cuenta es 409 CONTACTO_EN_USO, no un 500', async () => {
+      tx.usuario.update.mockRejectedValue(
+        Object.assign(new Error('Unique constraint'), {
+          code: 'P2002',
+          meta: { target: ['telefono'] },
+        }),
+      );
+
+      await expect(
+        service.actualizarContacto(USUARIO_ID, { telefono: TELEFONO_NUEVO }),
+      ).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof ConflictException &&
+          (error.getResponse() as { codigo: string }).codigo === 'CONTACTO_EN_USO',
+      );
+    });
+
+    it('sin teléfono ni correo responde 400 CONTACTO_REQUERIDO', async () => {
+      await expect(service.actualizarContacto(USUARIO_ID, {})).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof BadRequestException &&
+          (error.getResponse() as { codigo: string }).codigo === 'CONTACTO_REQUERIDO',
+      );
+      expect(prisma.usuario.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('repetir el contacto que ya tiene no escribe ni invalida nada', async () => {
+      const resultado = await service.actualizarContacto(USUARIO_ID, {
+        telefono: TELEFONO,
+      });
+
+      expect(tx.usuario.update).not.toHaveBeenCalled();
+      expect(tx.otpConfirmacion.updateMany).not.toHaveBeenCalled();
+      expect(resultado.canalesInvalidados).toEqual([]);
+      expect(resultado.mensaje).toBe('El contacto indicado ya es el de tu cuenta.');
     });
   });
 });

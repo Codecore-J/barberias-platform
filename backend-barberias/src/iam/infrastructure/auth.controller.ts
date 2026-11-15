@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  Patch,
   Post,
 } from '@nestjs/common';
 import { AuthService } from '../application/auth.service.js';
@@ -15,6 +16,8 @@ import { ResetPasswordDto } from '../application/dto/reset-password.dto.js';
 import { SendOtpDto } from '../application/dto/send-otp.dto.js';
 import { VerifyOtpDto } from '../application/dto/verify-otp.dto.js';
 import { OtpService } from '../application/otp.service.js';
+import type { ContactoActualizado } from '../application/otp.service.js';
+import { UpdateContactDto } from '../application/dto/update-contact.dto.js';
 import { UsuarioResponseDto } from '../application/dto/usuario-response.dto.js';
 import { Public } from './public.decorator.js';
 import { CurrentUser } from './current-user.decorator.js';
@@ -122,6 +125,61 @@ export class AuthController {
     @Body() dto: VerifyOtpDto,
   ): Promise<{ verificado: boolean; tipo: string }> {
     return this.otpService.verificar(user.id, dto);
+  }
+
+  /**
+   * T-21 · Reenvío del código de verificación de una cuenta pendiente
+   * («zombie»): la persona no recibió el mensaje, o lo recibió en un destino
+   * que ya no puede usar.
+   *
+   * Es `send-otp` con nombre propio: el usuario sale del JWT, el canal del
+   * cuerpo y el servicio invalida los códigos vivos antes de emitir el nuevo,
+   * así que el anterior deja de valer en el mismo instante.
+   *
+   * Rate Limit (SEC-02): 3 por minuto por IP, igual que `send-otp`. Cada envío
+   * es un WhatsApp real que alguien paga; el techo es el mismo aunque el botón
+   * del frontend se llame «Reenviar».
+   */
+  @Autenticado()
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Post('otp/resend')
+  @HttpCode(HttpStatus.OK)
+  async resendOtp(
+    @CurrentUser() user: UsuarioAutenticado,
+    @Body() dto: SendOtpDto,
+  ): Promise<{ mensaje: string; expiraEn: string }> {
+    return this.otpService.enviar(user.id, dto.tipo);
+  }
+
+  /**
+   * T-21 · Corrección del teléfono o del correo ANTES de verificar.
+   *
+   * Resuelve la cuenta que nació con un número mal tecleado: sin este endpoint
+   * el código va a un destino que nadie controla y la cuenta queda inutilizable
+   * para siempre, porque la verificación exige el código que nunca llegó.
+   *
+   * Solo procede con el canal SIN verificar (si ya lo está, 403) y solo para la
+   * propia cuenta: el `usuarioId` sale del token y el cuerpo no puede nombrar a
+   * otro usuario. La respuesta trae el contacto resultante para que el cliente
+   * lo pinte sin volver a pedir el perfil, y `canalesInvalidados` para que sepa
+   * a qué canal hay que reenviar.
+   *
+   * Rate Limit (SEC-02): 10 por minuto por IP. No envía mensajes, pero sí toca
+   * la identidad de la cuenta; el techo acota la fuerza bruta contra el UNIQUE
+   * de teléfono y correo. Diez y no cinco porque aquí cada reintento es gratis
+   * para el negocio y una persona corrigiendo un número mal tecleado puede
+   * fallar el formato varias veces seguidas; el recurso caro (el WhatsApp) tiene
+   * su propio techo de 3 en el reenvío.
+   */
+  @Autenticado()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Patch('otp/update-contact')
+  @HttpCode(HttpStatus.OK)
+  async updateContact(
+    @CurrentUser() user: UsuarioAutenticado,
+    @Body() dto: UpdateContactDto,
+  ): Promise<ContactoActualizado> {
+    return this.otpService.actualizarContacto(user.id, dto);
   }
 
   /**
