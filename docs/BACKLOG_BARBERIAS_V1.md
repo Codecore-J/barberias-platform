@@ -890,3 +890,37 @@ hecho.
 
 ---
 
+
+## TAREAS DE HARDENING (numeración T)
+
+> Las tareas de esta sección llegan con la numeración `T-xx` con la que se
+> reportan los hallazgos de las revisiones; se registran aquí para que tengan el
+> mismo protocolo de cierre que las épicas (rojo → verde, evidencia adjunta).
+
+### T-37 · Hardening: `verificarAcceso` en analíticas acepta un rol sin sede
+`P2 · S · Depende: T-16 · Rama: fix/t37-verificar-acceso-analiticas`
+**Contexto:** `verificarAcceso` (`backend-barberias/src/analytics/infrastructure/analytics.controller.ts:75-78`) considera autorizado a un `ADMIN_BARBERIA` con `barberiaId` nulo para **cualquier** `shopId`:
+
+```ts
+(rol.barberiaId === shopId || !rol.barberiaId)
+```
+
+Hoy no es explotable porque `VinculoBarberiaGuard` exige un vínculo activo con la sede de la ruta, pero la condición es más laxa de lo que el propio comentario del método pretende («evita que el ADMIN_BARBERIA de otra sede descargue el balance ajeno») y deja la defensa en manos de un único guard. Detectado al auditar el alcance de analíticas (cierre T-16, sección 1).
+
+**Hacer:**
+1. Cambiar la condición por la estricta: un rol `ADMIN_BARBERIA` autoriza solo si `rol.barberiaId === shopId`. El `ADMINISTRADOR` global sigue pasando por la rama que ya lo contempla (`user.roles.includes(ROL_ADMINISTRADOR)`).
+2. Cobertura: unitaria del controlador con un `rolesDetallados` que traiga `ADMIN_BARBERIA` y `barberiaId: null` → 403; con `barberiaId === shopId` → pasa; e2e de un `ADMIN_BARBERIA` de la sede A pidiendo `/shops/{B}/analytics` y `/shops/{B}/analytics/export` → 403.
+3. Verificar antes del cambio que ningún usuario legítimo del sistema tiene un rol `ADMIN_BARBERIA` con `barberia_id` nulo (consulta sobre `usuario_roles`); si existiera alguno, sanearlo en la misma entrega y dejarlo anotado.
+
+**No hacer:** tocar el contrato de las rutas ni relajar `VinculoBarberiaGuard`; dar acceso global a un `ADMIN_BARBERIA` «por compatibilidad».
+
+**Aceptación:**
+- [ ] Un `ADMIN_BARBERIA` sin sede en el token recibe 403 en analíticas y en el export de cualquier sede.
+- [ ] Un `ADMIN_BARBERIA` de la sede A sigue leyendo analíticas y CSV de A (200).
+- [ ] El `ADMINISTRADOR` global sigue leyendo la analítica de cualquier sede (200).
+- [ ] La consulta de auditoría sobre `usuario_roles` quedó documentada en el cierre.
+- [ ] Rojo → verde.
+
+**Evidencia:** salida de los tests.
+
+---
