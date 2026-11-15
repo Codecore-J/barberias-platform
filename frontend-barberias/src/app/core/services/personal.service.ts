@@ -24,6 +24,14 @@ export interface InvitarPersonalRequest {
   telefono: string;
   password: string;
   rolNombre: RolPersonal;
+  /**
+   * Fase 1/2 · cuenta dual (dueño que corta pelo).
+   *
+   * Invitar como `BARBERO` a una cuenta que ya administra la sede responde
+   * `409 ADMIN_NO_SE_DEGRADA` salvo que este flag llegue en `true`; con él el
+   * backend AÑADE el vínculo de barbero y conserva el de administrador.
+   */
+  conservarRolAdministrador?: boolean;
 }
 
 export interface ActualizarPersonalRequest {
@@ -57,23 +65,20 @@ export class PersonalService {
     const sedeId = this.tenant.barberiaActivaId();
     if (!haySede(sedeId)) return throwError(() => new Error(MENSAJE_SIN_SEDE));
 
-    return this.http.post<Personal>(`${API_URL}/shops/${sedeId}/staff`, dto).pipe(
-      catchError(() =>
-        throwError(() => new Error(mensajeDeError({}, 'No se pudo crear el miembro'))),
-      ),
-    );
+    // El error HTTP se propaga TAL CUAL: el contrato D40 viaja en el cuerpo
+    // (`codigo`, `mensaje`, `adminActual`) y la pantalla necesita leer el código
+    // para marcar la casilla de conservación o bloquear la invitación. Envolverlo
+    // en un `Error` genérico —como se hacía aquí— destruía esa información.
+    return this.http.post<Personal>(`${API_URL}/shops/${sedeId}/staff`, dto);
   }
 
   actualizarMiembro(usuarioId: string, dto: ActualizarPersonalRequest): Observable<Personal> {
     const sedeId = this.tenant.barberiaActivaId();
     if (!haySede(sedeId)) return throwError(() => new Error(MENSAJE_SIN_SEDE));
 
-    return this.http
-      .patch<Personal>(`${API_URL}/shops/${sedeId}/staff/${usuarioId}`, dto)
-      .pipe(
-        catchError(() =>
-          throwError(() => new Error(mensajeDeError({}, 'No se pudieron guardar los cambios'))),
-        ),
-      );
+    // Mismo criterio que en la invitación: `PATCH` puede responder 409
+    // `SEDE_YA_TIENE_ADMIN` al promover a administrador, y ese código se pierde
+    // si el servicio lo convierte en un `Error` sin cuerpo.
+    return this.http.patch<Personal>(`${API_URL}/shops/${sedeId}/staff/${usuarioId}`, dto);
   }
 }

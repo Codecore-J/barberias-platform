@@ -60,6 +60,11 @@ const PATRONES_TECNICOS: readonly RegExp[] = [
  * dicen qué pasó y qué puede hacer el usuario, sin jerga ni rutas.
  */
 export const MENSAJES_POR_CODIGO: Readonly<Record<string, MensajeParaUsuario | undefined>> = {
+  ADMIN_NO_SE_DEGRADA: {
+    titulo: 'Rol de dueño en riesgo',
+    mensaje:
+      'Esa cuenta administra la sede. Marca «Conservar rol de administrador de la sede» para añadir el rol de barbero sin quitarle el de dueño.',
+  },
   ADMIN_PROPIO_ROL: {
     titulo: 'Acción no permitida',
     mensaje: 'No puedes cambiar tu propio rol de administrador. Pídeselo a otro administrador.',
@@ -236,6 +241,10 @@ export const MENSAJES_POR_CODIGO: Readonly<Record<string, MensajeParaUsuario | u
     titulo: 'Sede inactiva',
     mensaje: 'Esa barbería está inactiva y no admite esta operación.',
   },
+  SEDE_YA_TIENE_ADMIN: {
+    titulo: 'Sede con administrador',
+    mensaje: 'Esa sede ya tiene un administrador activo. No se puede asignar un segundo dueño.',
+  },
   SERVICIOS_REQUERIDOS: {
     titulo: 'Faltan servicios',
     mensaje: 'Añade al menos un servicio para continuar.',
@@ -351,6 +360,40 @@ function cuerpoDe(error: unknown): Record<string, unknown> | null {
 function codigoDe(cuerpo: Record<string, unknown> | null): string | null {
   const codigo = cuerpo?.['codigo'] ?? cuerpo?.['code'];
   return typeof codigo === 'string' && codigo.trim() ? codigo.trim() : null;
+}
+
+/**
+ * `codigo` del contrato D40 de la respuesta, o `null`.
+ *
+ * Lo usan las pantallas que, además de pintar el mensaje, tienen que REACCIONAR
+ * al código (marcar una casilla, bloquear un envío). Sin esto acabarían
+ * leyendo `error.error.codigo` a mano en cada componente.
+ */
+export function codigoDeError(error: unknown): string | null {
+  return codigoDe(cuerpoDe(error));
+}
+
+/** Datos del administrador que ya ocupa una sede (`adminActual` de D40). */
+export interface AdminActualSede {
+  readonly id: string;
+  readonly correo: string;
+  readonly nombreCompleto: string;
+}
+
+/**
+ * `adminActual` del 409 `SEDE_YA_TIENE_ADMIN`, validado campo a campo: un cuerpo
+ * a medias no debe romper la pantalla que lo pinta.
+ */
+export function adminActualDe(error: unknown): AdminActualSede | null {
+  const crudo = cuerpoDe(error)?.['adminActual'];
+  if (typeof crudo !== 'object' || crudo === null) return null;
+
+  const { id, correo, nombreCompleto } = crudo as Record<string, unknown>;
+  if (typeof id !== 'string' || typeof correo !== 'string' || typeof nombreCompleto !== 'string') {
+    return null;
+  }
+
+  return { id, correo, nombreCompleto };
 }
 
 /** Mensaje del cuerpo que sí se puede pintar, incluido el array de validación. */

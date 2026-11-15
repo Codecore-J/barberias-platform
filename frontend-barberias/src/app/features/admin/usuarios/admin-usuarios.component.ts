@@ -2,6 +2,11 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { RolLabelPipe } from '../../../shared/pipes/rol-label.pipe';
 import { mensajeDeError } from '../../../core/utils/error-message';
+import {
+  adminActualDe,
+  codigoDeError,
+  type AdminActualSede,
+} from '../../../core/utils/errores';
 import { FormsModule } from '@angular/forms';
 import {
   BarberiaOpcion,
@@ -25,6 +30,13 @@ const PASSWORD_MINIMO = 8;
 
 type FiltroEstado = 'TODOS' | 'ACTIVO' | 'SUSPENDIDO';
 type FiltroRol = 'TODOS' | RolPlataforma;
+
+/** Fase 2 · una sede con TODOS los roles que la cuenta tiene en ella. */
+interface TarjetaSede {
+  barberiaId: string;
+  barberiaNombre: string | null;
+  vinculos: RolDeUsuario[];
+}
 
 /**
  * Gestión de usuarios de la PLATAFORMA.
@@ -470,7 +482,8 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                   <label for="usuario-rol" class="block text-xs font-semibold text-zinc-400 mb-1.5">Rol</label>
                   <select
                     id="usuario-rol"
-                    [(ngModel)]="formRol"
+                    [ngModel]="formRol()"
+                    (ngModelChange)="alCambiarRol($event)"
                     name="formRol"
                     [disabled]="creando()"
                     class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500 disabled:opacity-60 transition-colors"
@@ -488,7 +501,8 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                     </label>
                     <select
                       id="usuario-barberia"
-                      [(ngModel)]="formBarberiaId"
+                      [ngModel]="formBarberiaId()"
+                      (ngModelChange)="alCambiarSede($event)"
                       name="formBarberiaId"
                       [disabled]="creando() || cargandoBarberias()"
                       class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500 disabled:opacity-60 transition-colors"
@@ -502,6 +516,24 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                     </select>
                     @if (errorBarberias()) {
                       <p class="text-[11px] text-rose-400 mt-1.5">{{ errorBarberias() }}</p>
+                    }
+
+                    @if (mensajeConflictoSede(); as mensajeConflicto) {
+                      <div
+                        id="usuario-sede-conflicto"
+                        role="alert"
+                        aria-live="polite"
+                        data-testid="conflicto-admin-sede"
+                        class="mt-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-[11px] flex items-start gap-2"
+                      >
+                        <i class="pi pi-exclamation-triangle mt-0.5"></i>
+                        <span>
+                          {{ mensajeConflicto }}
+                          <span class="block mt-1 text-amber-300/80">
+                            Elige otra sede o regulariza el administrador actual antes de crear esta cuenta.
+                          </span>
+                        </span>
+                      </div>
                     }
                   </div>
                 }
@@ -531,7 +563,7 @@ type FiltroRol = 'TODOS' | RolPlataforma;
               </button>
               <button
                 (click)="confirmarCreacion()"
-                [disabled]="!formularioValido() || creando()"
+                [disabled]="!formularioValido() || creando() || !!conflictoAdminSede()"
                 class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-zinc-950 gold-gradient-bg hover:brightness-110 disabled:opacity-40 transition-all flex items-center justify-center gap-2"
               >
                 <i class="pi" [ngClass]="creando() ? 'pi-spin pi-spinner' : 'pi-user-plus'"></i>
@@ -807,49 +839,89 @@ type FiltroRol = 'TODOS' | RolPlataforma;
                 asignan desde Mi Personal, en la sede correspondiente.
               </p>
             } @else {
-              @for (vinculo of rolesDeSede(); track vinculo.id) {
-                <div class="rounded-2xl border border-zinc-700/60 bg-zinc-800/40 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div class="min-w-0">
+              <!--
+                Fase 2 · UNA tarjeta por sede. Antes se pintaba una por vínculo, así
+                que la cuenta dual (ADMIN_BARBERIA + BARBERO en la misma sede)
+                mostraba dos tarjetas idénticas «Sede A E401» y parecía que había
+                dos sedes. Los roles van como chips y cada vínculo conserva su
+                fila de acciones (cambiar rol, revocar/reactivar).
+              -->
+              @for (tarjeta of tarjetasDeSede(); track tarjeta.barberiaId) {
+                <div
+                  class="rounded-2xl border border-zinc-700/60 bg-zinc-800/40 p-3 space-y-3"
+                  data-testid="tarjeta-sede"
+                >
+                  <div class="flex items-start justify-between gap-3">
                     <p class="text-sm font-semibold text-white truncate">
-                      {{ vinculo.barberiaNombre ?? 'Sede' }}
+                      {{ tarjeta.barberiaNombre ?? 'Sede' }}
                     </p>
-                    <p class="text-[11px] text-zinc-400">
-                      {{ vinculo.rolNombre }}
+                    @if (tarjeta.vinculos.length > 1) {
                       <span
-                        class="ml-1 font-semibold"
-                        [class.text-emerald-400]="vinculo.estado === 'ACTIVO'"
-                        [class.text-rose-400]="vinculo.estado !== 'ACTIVO'"
-                      >· {{ vinculo.estado }}</span>
-                    </p>
-                  </div>
-
-                  <div class="flex items-center gap-2 shrink-0">
-                    <select
-                      [value]="vinculo.rolNombre"
-                      (change)="cambiarRolSede(vinculo, $any($event.target).value)"
-                      [disabled]="procesandoRol()"
-                      aria-label="Rol en la sede"
-                      class="bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
-                    >
-                      <option value="BARBERO">BARBERO</option>
-                      <option value="ADMIN_BARBERIA">ADMIN_BARBERIA</option>
-                    </select>
-                    @if (vinculo.estado === 'ACTIVO') {
-                      <button
-                        (click)="revocarAccesoSede(vinculo)"
-                        [disabled]="procesandoRol()"
-                        class="px-3 py-2 rounded-xl text-xs font-semibold text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 disabled:opacity-40 transition-colors whitespace-nowrap">
-                        Revocar
-                      </button>
-                    } @else {
-                      <button
-                        (click)="reactivarAccesoSede(vinculo)"
-                        [disabled]="procesandoRol()"
-                        class="px-3 py-2 rounded-xl text-xs font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-40 transition-colors whitespace-nowrap">
-                        Reactivar
-                      </button>
+                        class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-200 bg-amber-500/10 border border-amber-500/30"
+                        data-testid="cuenta-dual"
+                      >
+                        Cuenta dual · {{ tarjeta.vinculos.length }} roles
+                      </span>
                     }
                   </div>
+
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    @for (vinculo of tarjeta.vinculos; track vinculo.id + ':chip') {
+                      <span
+                        class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border"
+                        [ngClass]="
+                          vinculo.estado === 'ACTIVO'
+                            ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
+                            : 'text-zinc-400 bg-white/5 border-white/10'
+                        "
+                      >
+                        {{ vinculo.rolNombre | rolLabel }}
+                      </span>
+                    }
+                  </div>
+
+                  @for (vinculo of tarjeta.vinculos; track vinculo.id) {
+                    <div
+                      class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-zinc-700/40 pt-2"
+                    >
+                      <p class="text-[11px] text-zinc-400">
+                        {{ vinculo.rolNombre | rolLabel }}
+                        <span
+                          class="ml-1 font-semibold"
+                          [class.text-emerald-400]="vinculo.estado === 'ACTIVO'"
+                          [class.text-rose-400]="vinculo.estado !== 'ACTIVO'"
+                        >· {{ vinculo.estado }}</span>
+                      </p>
+
+                      <div class="flex items-center gap-2 shrink-0">
+                        <select
+                          [value]="vinculo.rolNombre"
+                          (change)="cambiarRolSede(vinculo, $any($event.target).value)"
+                          [disabled]="procesandoRol()"
+                          aria-label="Rol en la sede"
+                          class="bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
+                        >
+                          <option value="BARBERO">BARBERO</option>
+                          <option value="ADMIN_BARBERIA">ADMIN_BARBERIA</option>
+                        </select>
+                        @if (vinculo.estado === 'ACTIVO') {
+                          <button
+                            (click)="revocarAccesoSede(vinculo)"
+                            [disabled]="procesandoRol()"
+                            class="px-3 py-2 rounded-xl text-xs font-semibold text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 disabled:opacity-40 transition-colors whitespace-nowrap">
+                            Revocar
+                          </button>
+                        } @else {
+                          <button
+                            (click)="reactivarAccesoSede(vinculo)"
+                            [disabled]="procesandoRol()"
+                            class="px-3 py-2 rounded-xl text-xs font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-40 transition-colors whitespace-nowrap">
+                            Reactivar
+                          </button>
+                        }
+                      </div>
+                    </div>
+                  }
                 </div>
               }
             }
@@ -969,6 +1041,15 @@ export class AdminUsuariosComponent implements OnInit {
   readonly formBarberiaId = signal('');
   readonly creando = signal(false);
   readonly errorCreacion = signal<string | null>(null);
+  /**
+   * Fase 2 · 409 `SEDE_YA_TIENE_ADMIN`.
+   *
+   * Guarda el administrador que ya ocupa la sede elegida. Con esto la pantalla
+   * no solo pinta el mensaje: bloquea el submit y dice QUIÉN es el dueño actual
+   * (el backend lo manda en `adminActual`). Se limpia al cambiar de sede o de
+   * rol, porque el conflicto pertenece a esa combinación concreta.
+   */
+  readonly conflictoAdminSede = signal<AdminActualSede | null>(null);
   readonly barberias = signal<BarberiaOpcion[]>([]);
   readonly cargandoBarberias = signal(false);
   readonly errorBarberias = signal<string | null>(null);
@@ -981,6 +1062,13 @@ export class AdminUsuariosComponent implements OnInit {
   soloDigitos(valor: string, maximo: number): string {
     return (valor ?? '').replace(/\D/g, '').slice(0, maximo);
   }
+
+  /** Mensaje exacto del conflicto, con el correo y el nombre del dueño actual. */
+  readonly mensajeConflictoSede = computed(() => {
+    const admin = this.conflictoAdminSede();
+    if (!admin) return null;
+    return `Esta sede ya cuenta con el administrador ${admin.correo} (${admin.nombreCompleto}). No se puede asignar un segundo dueño.`;
+  });
 
   /** ADMIN_BARBERIA y BARBERO son de ámbito BARBERIA: exigen sede (D05). */
   readonly rolRequiereSede = computed(
@@ -1093,6 +1181,7 @@ export class AdminUsuariosComponent implements OnInit {
     this.formBarberiaId.set('');
     this.errorCreacion.set(null);
     this.errorBarberias.set(null);
+    this.conflictoAdminSede.set(null);
     this.creacionAbierta.set(true);
 
     // Las sedes solo se piden al abrir el modal y se reutilizan mientras viva la
@@ -1106,10 +1195,25 @@ export class AdminUsuariosComponent implements OnInit {
     if (this.creando()) return;
     this.creacionAbierta.set(false);
     this.errorCreacion.set(null);
+    this.conflictoAdminSede.set(null);
+  }
+
+  /** Elegir otra sede invalida el conflicto que se hubiera pintado. */
+  alCambiarSede(barberiaId: string): void {
+    this.formBarberiaId.set(barberiaId);
+    this.conflictoAdminSede.set(null);
+  }
+
+  /** Y cambiar de rol también: el 409 habla de un ADMIN_BARBERIA en una sede. */
+  alCambiarRol(rol: RolPlataforma): void {
+    this.formRol.set(rol);
+    this.conflictoAdminSede.set(null);
   }
 
   confirmarCreacion(): void {
-    if (!this.formularioValido() || this.creando()) {
+    // Con un dueño ya identificado el envío está bloqueado: repetirlo solo
+    // generaría el mismo 409.
+    if (!this.formularioValido() || this.creando() || this.conflictoAdminSede()) {
       return;
     }
 
@@ -1144,6 +1248,11 @@ export class AdminUsuariosComponent implements OnInit {
         this.creando.set(false);
         // 409 de duplicado y 422 de ámbito llegan con el `mensaje` de D40.
         this.errorCreacion.set(mensajeDeError(err, 'No se pudo crear la cuenta'));
+
+        // Fase 2 · la sede ya tenía dueño: se identifica y se bloquea el envío.
+        if (codigoDeError(err) === 'SEDE_YA_TIENE_ADMIN') {
+          this.conflictoAdminSede.set(adminActualDe(err));
+        }
       },
     });
   }
@@ -1205,6 +1314,34 @@ export class AdminUsuariosComponent implements OnInit {
 
   /** Los roles de sede son los que se pueden editar aquí; los globales, no. */
   readonly rolesDeSede = computed(() => this.roles().filter((r) => !!r.barberiaId));
+
+  /**
+   * Fase 2 · agrupación por SEDE para el modal de roles.
+   *
+   * `GET /plataforma/usuarios/:id/roles` devuelve un vínculo por fila de
+   * `usuario_roles`. Una cuenta dual tiene dos filas en la MISMA sede, y pintar
+   * una tarjeta por fila mostraba dos «Sede A E401» idénticas: parecía que la
+   * cuenta estaba en dos sedes. Aquí se junta todo lo de la misma sede en una
+   * tarjeta con un chip por rol.
+   */
+  readonly tarjetasDeSede = computed<TarjetaSede[]>(() => {
+    const porSede = new Map<string, TarjetaSede>();
+
+    for (const vinculo of this.rolesDeSede()) {
+      const clave = vinculo.barberiaId ?? '';
+      const tarjeta = porSede.get(clave) ?? {
+        barberiaId: clave,
+        barberiaNombre: vinculo.barberiaNombre,
+        vinculos: [],
+      };
+
+      tarjeta.barberiaNombre = tarjeta.barberiaNombre ?? vinculo.barberiaNombre;
+      tarjeta.vinculos.push(vinculo);
+      porSede.set(clave, tarjeta);
+    }
+
+    return [...porSede.values()];
+  });
 
   /** ¿La cuenta tiene el rol GLOBAL de administrador activo? */
   readonly esAdministradorPlataforma = computed(() =>

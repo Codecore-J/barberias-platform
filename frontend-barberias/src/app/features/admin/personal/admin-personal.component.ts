@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { mensajeDeError } from '../../../core/utils/error-message';
+import { adminActualDe, codigoDeError } from '../../../core/utils/errores';
 import {
   ActualizarPersonalRequest,
   InvitarPersonalRequest,
@@ -318,6 +319,7 @@ import { AuthService } from '../../../auth/auth.service';
                 autocomplete="email"
                 required
                 aria-required="true"
+                (input)="alCambiarCorreoInvitacion()"
                 [attr.aria-invalid]="campoInvalido(formularioInvitacion, 'correo')"
                 [attr.aria-describedby]="
                   campoInvalido(formularioInvitacion, 'correo')
@@ -376,6 +378,7 @@ import { AuthService } from '../../../auth/auth.service';
                   formControlName="rolNombre"
                   required
                   aria-required="true"
+                  (change)="alCambiarRolInvitacion()"
                   class="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500/60"
                 >
                   <option value="BARBERO">Barbero</option>
@@ -383,6 +386,43 @@ import { AuthService } from '../../../auth/auth.service';
                 </select>
               </div>
             </div>
+
+            <!--
+              Fase 2 · cuenta dual (dueño que corta pelo). Solo aplica al invitar
+              como barbero: con el flag el backend AÑADE el vínculo sin retirar el
+              rol de administrador de la sede.
+            -->
+            @if (invitaComoBarbero) {
+              <div class="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20">
+                <label
+                  for="personal-invitar-conservar-admin"
+                  class="flex items-start gap-3 cursor-pointer"
+                >
+                  <input
+                    id="personal-invitar-conservar-admin"
+                    type="checkbox"
+                    formControlName="conservarRolAdministrador"
+                    aria-describedby="personal-invitar-conservar-admin-ayuda"
+                    class="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-zinc-950 accent-amber-500"
+                  />
+                  <span class="text-xs text-zinc-200">
+                    Conservar rol de administrador de la sede
+                  </span>
+                </label>
+                <p
+                  id="personal-invitar-conservar-admin-ayuda"
+                  class="mt-1.5 ml-7 text-[11px] text-zinc-500"
+                >
+                  @if (avisoCuentaAdmin(); as aviso) {
+                    {{ aviso }} Márcala para añadir el rol de barbero sin quitarle el de dueño.
+                  } @else {
+                    Márcala si esta persona ya administra la sede: se añadirá el rol de barbero y
+                    conservará el de administrador. Sin marcarla, la invitación se rechaza para no
+                    retirarle el rol de dueño por accidente.
+                  }
+                </p>
+              </div>
+            }
             <div>
               <label
                 for="personal-invitar-password"
@@ -566,6 +606,14 @@ export class AdminPersonalComponent implements OnInit {
       ],
     ],
     rolNombre: ['BARBERO' as 'BARBERO' | 'ADMIN_BARBERIA', Validators.required],
+    /**
+     * Fase 2 · dueño que corta pelo.
+     *
+     * Sin marcar, invitar como BARBERO a una cuenta que ya administra la sede
+     * devuelve `409 ADMIN_NO_SE_DEGRADA`; marcada, el backend AÑADE el vínculo de
+     * barbero y conserva el de administrador.
+     */
+    conservarRolAdministrador: [false],
   });
   readonly formularioEdicion = this.fb.group({
     estado: ['ACTIVO' as 'ACTIVO' | 'INACTIVO', Validators.required],
@@ -576,6 +624,42 @@ export class AdminPersonalComponent implements OnInit {
   guardandoPersonal = signal(false);
   errorPersonal = signal<string | null>(null);
   miembroSeleccionado = signal<Personal | null>(null);
+  /** Aviso de que el correo escrito ya administra esta sede. */
+  avisoCuentaAdmin = signal<string | null>(null);
+
+  /** La casilla de conservación solo tiene sentido al invitar como barbero. */
+  get invitaComoBarbero(): boolean {
+    return this.formularioInvitacion.get('rolNombre')?.value !== 'ADMIN_BARBERIA';
+  }
+
+  /**
+   * Si el correo pertenece a alguien que ya administra la sede, la casilla queda
+   * marcada por defecto: es el caso del dueño que también corta pelo, y evita que
+   * su primer intento termine en `409 ADMIN_NO_SE_DEGRADA`.
+   */
+  alCambiarCorreoInvitacion(): void {
+    const correo = (this.formularioInvitacion.get('correo')?.value ?? '').trim().toLowerCase();
+    const admin = correo
+      ? this.personal().find(
+          (miembro) =>
+            miembro.correo.toLowerCase() === correo && miembro.roles.includes('ADMIN_BARBERIA'),
+        )
+      : undefined;
+
+    this.avisoCuentaAdmin.set(
+      admin ? `${admin.nombreCompleto} ya administra esta sede.` : null,
+    );
+    if (admin) {
+      this.formularioInvitacion.get('conservarRolAdministrador')?.setValue(true);
+    }
+  }
+
+  /** Cambiar a administrador deja la casilla sin sentido: se apaga. */
+  alCambiarRolInvitacion(): void {
+    if (!this.invitaComoBarbero) {
+      this.formularioInvitacion.get('conservarRolAdministrador')?.setValue(false);
+    }
+  }
 
   // Estado del Modal
   modalAbierto = signal(false);
@@ -693,7 +777,9 @@ export class AdminPersonalComponent implements OnInit {
       telefono: '',
       password: '',
       rolNombre: 'BARBERO',
+      conservarRolAdministrador: false,
     });
+    this.avisoCuentaAdmin.set(null);
     this.formularioPersonalAbierto.set(true);
   }
 
@@ -742,9 +828,18 @@ export class AdminPersonalComponent implements OnInit {
       this.toast.warning('No hay sede activa seleccionada. El personal se asignará globalmente.', 'Sede requerida');
       // Continuamos igual - el servicio manejará el caso global
     }
-    const dto = this.formularioInvitacion.getRawValue() as InvitarPersonalRequest;
-    dto.nombreCompleto = dto.nombreCompleto.trim();
-    dto.correo = dto.correo.trim();
+    const { conservarRolAdministrador, ...resto } =
+      this.formularioInvitacion.getRawValue() as InvitarPersonalRequest;
+    const dto: InvitarPersonalRequest = {
+      ...resto,
+      nombreCompleto: resto.nombreCompleto.trim(),
+      correo: resto.correo.trim(),
+      // Se envía explícito solo para BARBERO: al invitar como administrador el
+      // backend no lo mira, y el DTO lo declara opcional.
+      ...(resto.rolNombre === 'BARBERO'
+        ? { conservarRolAdministrador: conservarRolAdministrador === true }
+        : {}),
+    };
     this.guardandoPersonal.set(true);
     this.errorPersonal.set(null);
     this.personalService.invitarMiembro(dto).subscribe({
@@ -757,8 +852,42 @@ export class AdminPersonalComponent implements OnInit {
           'Miembro creado',
         );
       },
-      error: (err) => this.manejarErrorPersonal(err, 'No se pudo crear el miembro.'),
+      error: (err) => this.manejarErrorInvitacion(err),
     });
+  }
+
+  /**
+   * Fase 2 · errores propios de la invitación.
+   *
+   * `ADMIN_NO_SE_DEGRADA` no es un fallo del usuario, es una confirmación que
+   * falta: se marca la casilla y se explica qué hacer, en vez de dejar el
+   * formulario en un 409 del que no se sale. `SEDE_YA_TIENE_ADMIN` sí bloquea
+   * (la sede no admite un segundo dueño) y se nombra al dueño actual.
+   */
+  private manejarErrorInvitacion(err: unknown): void {
+    this.guardandoPersonal.set(false);
+    const codigo = codigoDeError(err);
+
+    if (codigo === 'ADMIN_NO_SE_DEGRADA') {
+      this.formularioInvitacion.get('conservarRolAdministrador')?.setValue(true);
+      const mensaje =
+        'Esta cuenta ya administra la sede. Marca «Conservar rol de administrador de la sede» y vuelve a enviar para añadir el rol de barbero sin quitarle el de dueño.';
+      this.errorPersonal.set(mensaje);
+      this.toast.warning(mensaje, 'Rol de dueño en riesgo');
+      return;
+    }
+
+    if (codigo === 'SEDE_YA_TIENE_ADMIN') {
+      const admin = adminActualDe(err);
+      const mensaje = admin
+        ? `Esta sede ya cuenta con el administrador ${admin.correo} (${admin.nombreCompleto}). No se puede asignar un segundo dueño.`
+        : mensajeDeError(err, 'La sede ya tiene un administrador activo.');
+      this.errorPersonal.set(mensaje);
+      this.toast.error(mensaje, 'Sede con administrador');
+      return;
+    }
+
+    this.manejarErrorPersonal(err, 'No se pudo crear el miembro.');
   }
 
   guardarEdicionPersonal(): void {

@@ -8,6 +8,11 @@
  *     `.qa.` o cuentas cuyo teléfono incumple el formato de 10 dígitos. Nació
  *     para poder ejecutar `ALTER TABLE "usuarios" VALIDATE CONSTRAINT
  *     chk_usuario_telefono_10_digitos`.
+ *     Fase 2 · aquí también cae el residuo que dejó la auditoría de roles en
+ *     producción, `qa.auditoria.sede@plataforma-test.com`: el prefijo `qa.` ya
+ *     lo selecciona, así que no hace falta nombrarlo. Los vínculos de
+ *     `usuario_roles` se resuelven por CASCADE, pero se informan y se borran
+ *     explícitamente igual que el resto.
  *  2. TAREA 6 · Sedes heredadas de E2E: las que conservan el teléfono genérico
  *     `0000000000`. Ese valor SÍ pasa el CHECK de 10 dígitos, así que el
  *     constraint no las detecta: son sedes fantasma que aparentan ser válidas.
