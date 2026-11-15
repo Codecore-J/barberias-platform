@@ -61,6 +61,23 @@ export interface ShopsOverviewResponse {
   sedes: SedeOverview[];
 }
 
+/**
+ * T-15 · métricas del día de TODA la plataforma.
+ *
+ * Es el contrato del home del ADMINISTRADOR sin sede activa: cinco contadores ya
+ * agregados por el backend, sin recorrer sedes ni pedir la agenda de cada una.
+ * Todos son números: un `0` aquí es un cero real, no un fallo disfrazado.
+ */
+export interface MetricasPlataformaHoy {
+  /** Etiqueta local `YYYY-MM-DD` del día medido. */
+  fecha: string;
+  sedesActivas: number;
+  citasHoy: number;
+  recaudadoHoy: number;
+  cajasAbiertas: number;
+  usuariosActivos: number;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -115,6 +132,17 @@ export class AnalyticsService {
    * NO necesita sede activa: es la única lectura realmente global del panel, y
    * por eso el backend la resuelve por alcance del rol.
    */
+  /**
+   * T-15 · `GET /analytics/plataforma/hoy`.
+   *
+   * Sin sede a propósito: es la lectura global del home del ADMINISTRADOR. El
+   * backend la acota por rol, así que un ADMIN_BARBERIA recibiría 403 y la
+   * tarjeta debe mostrar el error, no ceros.
+   */
+  getMetricasPlataformaHoy(): Observable<MetricasPlataformaHoy> {
+    return this.http.get<MetricasPlataformaHoy>(`${API_URL}/analytics/plataforma/hoy`);
+  }
+
   getShopsOverview(desde?: string, hasta?: string): Observable<ShopsOverviewResponse> {
     let params = new HttpParams();
     if (desde) {
