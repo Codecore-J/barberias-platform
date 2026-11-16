@@ -178,7 +178,9 @@ describe('E4-01 · reserva grupal', () => {
     }
 
     for (const [correo, sede] of [
-      ['admin.e401@test.com', null],
+      // F1 · el responsable de las sedes es ADMIN_BARBERIA de una sede real: un
+      // rol de ámbito BARBERIA con `barberia_id = null` lo rechaza el trigger.
+      ['admin.e401@test.com', 'A'],
       ['gA.e401@test.com', 'A'],
       ['gB.e401@test.com', 'B'],
       ['gC.e401@test.com', 'C'],
@@ -186,6 +188,8 @@ describe('E4-01 · reserva grupal', () => {
     ] as [string, string | null][]) {
       const usuario = await prisma.usuario.findUniqueOrThrow({ where: { correo }, select: { id: true } });
       for (const nombreRol of ['CLIENTE', 'ADMIN_BARBERIA', 'BARBERO'] as const) {
+        const sedeDelVinculo = nombreRol === 'CLIENTE' || !sede ? null : barberia[sede];
+        if (nombreRol !== 'CLIENTE' && sedeDelVinculo === null) continue;
         // Modelo tipado en vez de SQL crudo: `$executeRaw` envía los parámetros
         // como `text` y Postgres rechaza la fila en la columna `uuid` (42804).
         // `skipDuplicates` equivale al `ON CONFLICT DO NOTHING` que había.
@@ -194,7 +198,7 @@ describe('E4-01 · reserva grupal', () => {
             {
               usuarioId: usuario.id,
               rolId: rol[nombreRol],
-              barberiaId: nombreRol === 'CLIENTE' || !sede ? null : barberia[sede],
+              barberiaId: sedeDelVinculo,
             },
           ],
           skipDuplicates: true,
