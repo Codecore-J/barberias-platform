@@ -70,7 +70,14 @@ describe('SolicitudCambioService (E3-13)', () => {
       barberia: { findUnique: vi.fn(), update: vi.fn() },
       usuario: { findUnique: vi.fn(), updateMany: vi.fn() },
       rol: { findUnique: vi.fn() },
-      usuarioRol: { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() },
+      usuarioRol: {
+        findMany: vi.fn(),
+        deleteMany: vi.fn(),
+        createMany: vi.fn(),
+        // Fase 4: la aprobación activa el vínculo si existe (INACTIVO) o lo crea.
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        create: vi.fn(),
+      },
       solicitudCambioBarberia: {
         findUnique: vi.fn(),
         findFirst: vi.fn(),
@@ -228,15 +235,22 @@ describe('SolicitudCambioService (E3-13)', () => {
           usuarioId: { not: NUEVO_RESPONSABLE },
         },
       });
-      expect(prisma.usuarioRol.createMany).toHaveBeenCalledWith({
-        data: [
-          {
-            usuarioId: NUEVO_RESPONSABLE,
-            rolId: ROL_ADMIN_BARBERIA_ID,
-            barberiaId: BARBERIA_A,
-          },
-        ],
-        skipDuplicates: true,
+      expect(prisma.usuarioRol.updateMany).toHaveBeenCalledWith({
+        where: {
+          usuarioId: NUEVO_RESPONSABLE,
+          rolId: ROL_ADMIN_BARBERIA_ID,
+          barberiaId: BARBERIA_A,
+        },
+        data: { estado: 'ACTIVO' },
+      });
+      // El mock devuelve count 0, así que además hay que crear el vínculo.
+      expect(prisma.usuarioRol.create).toHaveBeenCalledWith({
+        data: {
+          usuarioId: NUEVO_RESPONSABLE,
+          rolId: ROL_ADMIN_BARBERIA_ID,
+          barberiaId: BARBERIA_A,
+          estado: 'ACTIVO',
+        },
       });
       // 3. I-01: al responsable saliente se le sube `tokenVersion`, así que sus
       //    tokens vigentes mueren en la petición siguiente (401 en JwtStrategy).

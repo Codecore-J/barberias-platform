@@ -380,4 +380,107 @@ describe('Fase 3 · administrador único por sede y cuenta dual (E2E)', () => {
     });
     expect(vinculo.rol.nombre).toBe('BARBERO');
   }, 90_000);
+
+  /**
+   * Fase 4 · la regla también vive en PostgreSQL.
+   *
+   * Estos casos escriben con Prisma directamente, sin pasar por
+   * `asegurarSedeSinAdmin`, para comprobar que el trigger
+   * `trg_admin_barberia_unico_por_sede` es la última línea de defensa (seeds,
+   * scripts, consolas SQL y rutas futuras).
+   */
+  describe('la base de datos también impide el segundo dueño (trigger)', () => {
+    let rolAdminSedeId = '';
+    let vinculoDuenoId = '';
+
+    beforeAll(async () => {
+      const rol = await prisma.rol.findUniqueOrThrow({
+        where: { nombre: 'ADMIN_BARBERIA' },
+        select: { id: true },
+      });
+      rolAdminSedeId = rol.id;
+
+      const vinculo = await prisma.usuarioRol.findFirstOrThrow({
+        where: { usuarioId: duenoId, barberiaId: sedeId, rolId: rol.id },
+        select: { id: true },
+      });
+      vinculoDuenoId = vinculo.id;
+    }, 60_000);
+
+    it('9 · un INSERT directo (saltándose el servicio) de un segundo dueño activo es rechazado', async () => {
+      let error: unknown;
+      try {
+        await prisma.usuarioRol.create({
+          data: {
+            usuarioId: barberoId,
+            rolId: rolAdminSedeId,
+            barberiaId: sedeId,
+            estado: 'ACTIVO',
+          },
+        });
+      } catch (capturado) {
+        error = capturado;
+      }
+
+      // El trigger usa SQLSTATE 23505 para que Prisma lo trate como conflicto de
+      // unicidad (P2002 → 409 en `PrismaExceptionFilter`), y Prisma reemplaza el
+      // mensaje del RAISE por el suyo: se comprueba el código, no el texto.
+      expect(error).toBeDefined();
+      expect((error as { code?: string }).code).toBe('P2002');
+      expect((error as Error).message).toMatch(/unique constraint|administrador/i);
+
+      const adminsActivos = await prisma.usuarioRol.count({
+        where: { barberiaId: sedeId, estado: 'ACTIVO', rolId: rolAdminSedeId },
+      });
+      expect(adminsActivos).toBe(1);
+    }, 60_000);
+
+    it('10 · desactivar al dueño actual permite nombrar otro, y reactivar el anterior se rechaza', async () => {
+      await prisma.usuarioRol.update({
+        where: { id: vinculoDuenoId },
+        data: { estado: 'INACTIVO' },
+      });
+
+      const nuevoDueno = await prisma.usuarioRol.create({
+        data: {
+          usuarioId: barberoId,
+          rolId: rolAdminSedeId,
+          barberiaId: sedeId,
+          estado: 'ACTIVO',
+        },
+      });
+      expect(nuevoDueno.estado).toBe('ACTIVO');
+
+      let error: unknown;
+      try {
+        await prisma.usuarioRol.update({
+          where: { id: vinculoDuenoId },
+          data: { estado: 'ACTIVO' },
+        });
+      } catch (capturado) {
+        error = capturado;
+      }
+      expect(error).toBeDefined();
+
+      const adminsActivos = await prisma.usuarioRol.count({
+        where: { barberiaId: sedeId, estado: 'ACTIVO', rolId: rolAdminSedeId },
+      });
+      expect(adminsActivos).toBe(1);
+
+      // Se deja la sede como estaba para no alterar el resto de la suite.
+      await prisma.usuarioRol.delete({ where: { id: nuevoDueno.id } });
+      await prisma.usuarioRol.update({
+        where: { id: vinculoDuenoId },
+        data: { estado: 'ACTIVO' },
+      });
+    }, 60_000);
+
+    it('11 · actualizar el mismo vínculo no se bloquea a sí mismo', async () => {
+      const actualizado = await prisma.usuarioRol.update({
+        where: { id: vinculoDuenoId },
+        data: { estado: 'ACTIVO' },
+      });
+      expect(actualizado.estado).toBe('ACTIVO');
+    }, 60_000);
+  });
 });

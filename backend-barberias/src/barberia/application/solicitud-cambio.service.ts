@@ -383,16 +383,31 @@ export class SolicitudCambioService {
             });
           }
 
-          await tx.usuarioRol.createMany({
-            data: [
-              {
+          // Fase 4 · el vínculo del nuevo responsable puede existir en estado
+          // INACTIVO (el trigger `trg_admin_barberia_unico_por_sede` impide dos
+          // dueños ACTIVOS a la vez, así que la solicitud no puede dejar al
+          // candidato ya activo). Hay que ACTIVARLO, no dar por hecho que falta:
+          // con `createMany(skipDuplicates)` el rol se quedaba inactivo y el
+          // nuevo responsable no podía administrar su propia sede.
+          const reactivados = await tx.usuarioRol.updateMany({
+            where: {
+              usuarioId: nuevo.id,
+              rolId: rolAdminBarberia.id,
+              barberiaId: barberia.id,
+            },
+            data: { estado: 'ACTIVO' },
+          });
+
+          if (reactivados.count === 0) {
+            await tx.usuarioRol.create({
+              data: {
                 usuarioId: nuevo.id,
                 rolId: rolAdminBarberia.id,
                 barberiaId: barberia.id,
+                estado: 'ACTIVO',
               },
-            ],
-            skipDuplicates: true,
-          });
+            });
+          }
         }
 
         await tx.barberia.update({
