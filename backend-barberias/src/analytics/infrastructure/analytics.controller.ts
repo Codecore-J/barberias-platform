@@ -72,11 +72,13 @@ export class AnalyticsController {
     const esGlobal = user?.roles?.includes(ROL_ADMINISTRADOR) ?? false;
     if (esGlobal) return;
 
+    // F1 / T-37 · el `barberiaId` nulo NO es comodín. Antes, `|| !rol.barberiaId`
+    // hacía que una fila ADMIN_BARBERIA sin sede —el caso corrupto que E1-04
+    // describe— abriera las analíticas de CUALQUIER sede. Un rol de ámbito
+    // BARBERIA sin sede no concede alcance: la comparación es estricta.
     const esAdminDeEsta =
       user?.rolesDetallados?.some(
-        (rol: any) =>
-          rol.nombre === ROL_ADMIN_BARBERIA &&
-          (rol.barberiaId === shopId || !rol.barberiaId),
+        (rol: any) => rol.nombre === ROL_ADMIN_BARBERIA && rol.barberiaId === shopId,
       ) ?? false;
 
     if (!esAdminDeEsta) {
