@@ -133,6 +133,22 @@ export class PrismaExceptionFilter implements ExceptionFilter {
 
       // P2002: Unique constraint failed
       case 'P2002': {
+        // F6 · el trigger `uk_admin_barberia_unico_por_sede` también emite 23505.
+        // Sin esta rama el cliente recibía `UNIQUE_CONSTRAINT_VIOLATION`, un
+        // código que la UI no interpreta; aquí se respeta el contrato del dominio.
+        if (`${errorMsg} ${JSON.stringify(error.meta ?? {})}`.includes('admin_barberia_unico')) {
+          this.logger.warn(
+            `[P2002] El trigger de administrador único rechazó la asignación: ${error.message}`,
+          );
+          return response.status(HttpStatus.CONFLICT).json({
+            statusCode: HttpStatus.CONFLICT,
+            error: 'Conflict',
+            codigo: 'SEDE_YA_TIENE_ADMIN',
+            mensaje: 'La sede ya tiene un administrador activo.',
+            message: 'La sede ya tiene un administrador activo.',
+          });
+        }
+
         const target = (error.meta?.target as string[] | undefined)?.join(', ') ?? 'datos duplicados';
         return response.status(HttpStatus.CONFLICT).json({
           statusCode: HttpStatus.CONFLICT,

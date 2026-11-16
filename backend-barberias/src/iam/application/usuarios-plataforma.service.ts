@@ -10,7 +10,7 @@ import { withSerializableTransaction } from '../../shared/concurrency/serializab
 import { errorDeConflicto, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { AMBITO_BARBERIA, ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA } from '../domain/roles.js';
-import { asegurarSedeSinAdmin } from '../domain/administrador-sede.js';
+import { asegurarSedeSinAdmin, esConflictoAdminUnico } from '../domain/administrador-sede.js';
 import type { UsuarioAutenticado } from '../domain/jwt.interface.js';
 import type { CambiarEstadoCuentaDto } from './dto/cambiar-estado-cuenta.dto.js';
 import type {
@@ -550,6 +550,12 @@ export class UsuariosPlataformaService {
         roles: [rol.nombre],
       };
     } catch (error: any) {
+      // F6 · el trigger de administrador único puede ganar la carrera: se traduce
+      // al mismo 409 con `adminActual` que la regla de dominio.
+      if (barberiaId && esConflictoAdminUnico(error)) {
+        await asegurarSedeSinAdmin(this.prisma, barberiaId);
+      }
+
       if (error?.code === 'P2002') {
         const { codigo, mensaje } = codigoDeDuplicado(error?.meta?.target);
         throw errorDeConflicto(codigo, mensaje);
