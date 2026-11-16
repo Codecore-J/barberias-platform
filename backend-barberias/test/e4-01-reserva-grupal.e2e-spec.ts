@@ -193,15 +193,21 @@ describe('E4-01 · reserva grupal', () => {
         // Modelo tipado en vez de SQL crudo: `$executeRaw` envía los parámetros
         // como `text` y Postgres rechaza la fila en la columna `uuid` (42804).
         // `skipDuplicates` equivale al `ON CONFLICT DO NOTHING` que había.
-        await prisma.usuarioRol.createMany({
-          data: [
-            {
-              usuarioId: usuario.id,
-              rolId: rol[nombreRol],
-              barberiaId: sedeDelVinculo,
-            },
-          ],
-          skipDuplicates: true,
+        // `skipDuplicates` no cubre los índices únicos PARCIALES de
+        // `usuario_roles` (el registro previo ya dejó su fila de CLIENTE), así
+        // que el vínculo se comprueba antes de insertarlo.
+        const yaExiste = await prisma.usuarioRol.findFirst({
+          where: { usuarioId: usuario.id, rolId: rol[nombreRol], barberiaId: sedeDelVinculo },
+          select: { id: true },
+        });
+        if (yaExiste) continue;
+
+        await prisma.usuarioRol.create({
+          data: {
+            usuarioId: usuario.id,
+            rolId: rol[nombreRol],
+            barberiaId: sedeDelVinculo,
+          },
         });
       }
       if (sede) {
