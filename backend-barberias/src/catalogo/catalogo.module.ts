@@ -8,8 +8,11 @@ import { CategoriasController } from './infrastructure/categorias.controller.js'
 import { CategoriasService } from './application/categorias.service.js';
 import { ServiciosBarberoController } from './infrastructure/servicios-barbero.controller.js';
 import { ServiciosBarberoService } from './application/servicios-barbero.service.js';
+// T-17 · la lectura de categorías del ADMINISTRADOR global se audita.
+import { AuditoriaModule } from '../auditoria/infrastructure/auditoria.module.js';
 
 @Module({
+  imports: [AuditoriaModule],
   controllers: [
     ServiciosController,
     CombosController,
