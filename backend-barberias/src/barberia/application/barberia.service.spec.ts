@@ -2523,6 +2523,39 @@ describe('BarberiaService', () => {
       expect(prisma.usuarioRol.update).not.toHaveBeenCalled();
     });
 
+    it('ROJO: invitar una cuenta NUEVA como ADMIN_BARBERIA a una sede ocupada → 409 (hallazgo E2E)', async () => {
+      // Regresión de la Fase 3: la comprobación solo corría al reutilizar una
+      // cuenta existente, así que un correo desconocido creaba el segundo dueño.
+      vi.mocked(prisma.usuario.findFirst).mockResolvedValue(null);
+      vi.mocked(prisma.usuarioRol.findFirst).mockResolvedValue({
+        id: 'rel-otro-admin',
+        usuario: otroAdmin,
+      } as any);
+      vi.mocked(prisma.rol.findUnique).mockResolvedValue({
+        id: 'rol-admin-sede',
+        nombre: 'ADMIN_BARBERIA',
+      } as any);
+
+      let capturado: any;
+      try {
+        await service.invitarPersonal(
+          BARBERIA_A,
+          { ...dtoBarbero, rolNombre: 'ADMIN_BARBERIA' },
+          ADMIN_A,
+        );
+      } catch (error) {
+        capturado = error;
+      }
+
+      expect(capturado?.getStatus()).toBe(409);
+      expect(capturado?.getResponse()).toMatchObject({
+        codigo: 'SEDE_YA_TIENE_ADMIN',
+        adminActual: otroAdmin,
+      });
+      expect(prisma.usuario.create).not.toHaveBeenCalled();
+      expect(prisma.usuarioRol.create).not.toHaveBeenCalled();
+    });
+
     it('VERDE: re-invitar una cuenta dual (admin + barbero) como BARBERO no choca con «varias asignaciones»', async () => {
       vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([
         { id: 'rel-admin', estado: 'ACTIVO', rol: { nombre: 'ADMIN_BARBERIA' } },

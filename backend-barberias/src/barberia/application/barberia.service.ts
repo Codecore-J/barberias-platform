@@ -610,6 +610,15 @@ export class BarberiaService {
           throw new InternalServerErrorException(
             `El rol ${dto.rolNombre} no existe en el catálogo.`,
           );
+
+        // Fase 3 · la comprobación también cubre la cuenta NUEVA. Antes solo se
+        // hacía al reutilizar una cuenta existente, así que invitar a un correo
+        // desconocido como ADMIN_BARBERIA creaba el segundo dueño sin resistencia
+        // (hallazgo de la suite E2E).
+        if (rol.nombre === ROL_ADMIN_BARBERIA) {
+          await asegurarSedeSinAdmin(tx, barberiaId);
+        }
+
         const telefonoExistente = await tx.usuario.findFirst({
           where: { telefono },
           select: { id: true },

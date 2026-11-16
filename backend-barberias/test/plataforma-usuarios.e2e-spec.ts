@@ -200,6 +200,17 @@ describe('Plataforma · usuarios (E2E)', () => {
   }, 180_000);
 
   afterAll(async () => {
+    // La suite suspende su propia cuenta (caso 5) y dejaba la sede huérfana hasta
+    // la corrida siguiente; `regularizar-administradores-sede.ts` la reportaba
+    // entre medias. Se limpia también al terminar (mejor esfuerzo: el fallo de
+    // la limpieza no debe ocultar el resultado de las pruebas).
+    if (prisma) {
+      try {
+        await limpiarCorridasAnteriores(prisma);
+      } catch (error) {
+        console.warn(`No se pudo limpiar la base al terminar: ${(error as Error).message}`);
+      }
+    }
     // Si el `beforeAll` falló antes de arrancar (por ejemplo, sin base de
     // datos), no hay nada que cerrar: el fallo original es el que debe verse.
     if (app) await app.close();
@@ -387,12 +398,15 @@ describe('Plataforma · usuarios (E2E)', () => {
    */
   it('7 · una cuenta registrada por el público trae su alta en la auditoría', async () => {
     const correo = `p20.publico.${Date.now()}@plataforma-test.com`;
+    // Teléfono único por corrida: la 2.ª ejecución chocaba con el 409 de
+    // `TELEFONO_YA_REGISTRADO` de la 1.ª (la cuenta pública no se limpia, porque
+    // vive fuera del dominio de fixtures de esta suite).
     const alta = await request(app.getHttpServer())
       .post(`${api}/auth/register`)
       .send({
         nombreCompleto: 'T-20 Registro Público',
         correo,
-        telefono: '8095559001',
+        telefono: `81${digitos}9`,
         password: 'Password1!',
       });
     expect([200, 201], JSON.stringify(alta.body)).toContain(alta.status);

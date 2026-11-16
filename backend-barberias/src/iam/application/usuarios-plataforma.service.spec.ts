@@ -739,8 +739,17 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
       });
       mockPrisma.usuarioRol.create.mockResolvedValue({ id: 'vinculo-barbero' });
 
+      // Literal explícito en vez de esparcir `dtoAdmin`: esparcir una instancia
+      // pierde el prototipo del DTO (regla `no-misused-spread`).
       await service.crearUsuario(
-        { ...dtoAdmin, rolNombre: 'BARBERO', correo: 'barbero.nuevo@test.com' },
+        {
+          nombreCompleto: dtoAdmin.nombreCompleto,
+          correo: 'barbero.nuevo@test.com',
+          telefono: dtoAdmin.telefono,
+          password: dtoAdmin.password,
+          rolNombre: 'BARBERO',
+          barberiaId: dtoAdmin.barberiaId,
+        },
         global,
       );
 
