@@ -373,6 +373,9 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /shops/:shopId/categorias/': [ROL_ADMIN_BARBERIA],
   'GET /shops/:shopId/categorias/': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
   'PATCH /shops/:shopId/categorias/:id': [ROL_ADMIN_BARBERIA],
+  // T-17 · detalle de categoría: misma política de lectura que el listado
+  // (el ADMINISTRADOR global entra por la jerarquía de E1-04, en solo lectura).
+  'GET /shops/:shopId/categorias/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
 
   // V3 · el catálogo anidado que consume el frontend del cliente. Se declaran los
   // cuatro roles porque es la vitrina (como GET /shops/:shopId/services): la
@@ -674,8 +677,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // propuestas de horario pendientes: 117 × 4 = 468 decisiones. La Fase 3
   // suma el lote de membresías del cliente: 118 × 4 = 472 decisiones. T-21
   // suma el reenvío del OTP y la corrección del contacto: 120 × 4 = 480. T-15
-  // suma las métricas de plataforma: 121 × 4 = 484.
-  expect(evaluaciones).toBe(484);
+  // suma las métricas de plataforma: 122 × 4 = 488 (T-17 añade
+  // `GET /shops/:shopId/categorias/:id`, el detalle de categoría).
+  expect(evaluaciones).toBe(488);
     expect(
       desviaciones.length === 0
         ? ''

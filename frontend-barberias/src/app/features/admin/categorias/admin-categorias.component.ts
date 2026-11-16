@@ -52,8 +52,28 @@ import { ToastService } from '../../../shared/ui/toast/toast.service.js';
           >
             <i class="pi pi-plus"></i> Nueva Categoría
           </button>
+        } @else {
+          <span
+            id="categorias-solo-lectura"
+            class="px-3 py-1.5 rounded-full text-[11px] font-bold bg-sky-500/10 border border-sky-500/30 text-sky-300 flex items-center gap-1.5"
+          >
+            <i class="pi pi-eye"></i> Solo lectura
+          </span>
         }
       </div>
+
+      <!-- T-17 · sin sede activa no hay nada que listar: se orienta en vez de
+           redirigir en silencio. -->
+      @if (!tieneSede()) {
+        <div
+          id="categorias-sin-sede"
+          class="text-sm text-amber-200 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-2"
+          role="status"
+        >
+          <i class="pi pi-info-circle mt-0.5"></i>
+          <span class="flex-1">Selecciona una sede para ver sus categorías.</span>
+        </div>
+      }
 
       <!-- Error de negocio o de red -->
       @if (catalogoService.errorCategorias()) {
@@ -294,13 +314,16 @@ export class AdminCategoriasComponent implements OnInit {
     return roles.includes('ADMIN_BARBERIA');
   });
 
+  /** T-17 · sin sede activa la pantalla orienta en vez de listar el vacío. */
+  readonly tieneSede = computed(() => this.tenantService.tieneBarberiaActiva());
+
   readonly form = this.fb.group({
     nombre: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(100)]],
     descripcion: ['', [Validators.maxLength(500)]],
   });
 
   ngOnInit(): void {
-    this.recargar();
+    if (this.tieneSede()) this.recargar();
   }
 
   recargar(): void {

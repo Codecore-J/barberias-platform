@@ -216,18 +216,19 @@ export const routes: Routes = [
       {
         //
         // V3 · catálogo híbrido: las CATEGORÍAS son de la sede y las define su
-        // ADMIN_BARBERIA. La ruta se limita a ese rol porque el backend también:
-        // `CategoriasController` declara `@Roles('ADMIN_BARBERIA')` en escritura
-        // y `('ADMIN_BARBERIA', 'BARBERO')` en lectura. Dejar entrar al
-        // ADMINISTRADOR global (la jerarquía del guard lo permitía) solo servía
-        // para enseñarle un 403 en pantalla.
+        // ADMIN_BARBERIA.
+        //
+        // T-17 · el ADMINISTRADOR global SÍ entra, en modo solo lectura: el
+        // backend le permite `GET` (lista y detalle) y le responde 403 en
+        // escritura (`OperadorBarberiaGuard`, D16). Antes se le dejaba fuera y
+        // solo veía un aviso de acceso restringido.
         //
         path: 'admin/categorias',
         canActivate: [
           tenantGuard,
-          roleGuard(['ADMIN_BARBERIA'], {
+          roleGuard(['ADMIN_BARBERIA', 'ADMINISTRADOR'], {
             mensajeAlDenegar:
-              'Las categorías del catálogo las gestiona el administrador de la sede, no la plataforma.',
+              'Las categorías del catálogo las gestiona el administrador de la sede.',
           }),
         ],
         loadComponent: () =>

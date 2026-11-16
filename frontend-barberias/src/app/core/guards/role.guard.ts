@@ -60,9 +60,14 @@ export const roleGuard = (
 
       // Redirección defensiva si el usuario no tiene permisos para esta ruta.
       // H24: un BARBERO sin el rol requerido vuelve a SU agenda (/admin/agenda);
-      // cualquier otro caso sin el rol va al Home que actuará como dashboard.
+      // T-17 · un ADMIN_BARBERIA sin acceso a la ruta vuelve al catálogo de su
+      // sede (/admin/servicios), que sí puede abrir: mandarlo al Home lo dejaba
+      // en una pantalla vacía sin saber por qué.
       if (userRoles.includes('BARBERO')) {
         return router.createUrlTree(['/admin/agenda']);
+      }
+      if (userRoles.includes('ADMIN_BARBERIA')) {
+        return router.createUrlTree(['/admin/servicios']);
       }
       return router.createUrlTree(['/']);
     };
