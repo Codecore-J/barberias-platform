@@ -37,6 +37,14 @@ describe('AnalyticsController', () => {
     await expect(controller.getAnalytics('shop-1', {} as any, user as any)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  // T-37 / F1 · un vínculo ADMIN_BARBERIA sin sede NO es comodín. Antes,
+  // `verificarAcceso` aceptaba `!rol.barberiaId`, así que una fila corrupta
+  // abría las analíticas de CUALQUIER sede.
+  it('rechaza a ADMIN_BARBERIA con barberiaId nulo (no es comodín)', async () => {
+    const user = { roles: [ROL_ADMIN_BARBERIA], rolesDetallados: [{ nombre: ROL_ADMIN_BARBERIA, barberiaId: null }] };
+    await expect(controller.getAnalytics('shop-1', {} as any, user as any)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('permite a ADMINISTRADOR global', async () => {
     const user = { roles: [ROL_ADMINISTRADOR], rolesDetallados: [] };
     const result = await controller.getAnalytics('shop-1', { desde: '2026-10-01', hasta: '2026-10-31' } as any, user as any);

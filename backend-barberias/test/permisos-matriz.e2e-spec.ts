@@ -202,7 +202,9 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
     }
 
     // ── Barbería B: destino del cambio de estado que solo puede hacer el ADMINISTRADOR ─
-    const duenioB = await crearUsuario(duenios[0], roles['ADMIN_BARBERIA'].id, null);
+    // F1 · el rol de sede se inserta DESPUÉS de crear la sede: un vínculo
+    // ADMIN_BARBERIA con `barberia_id = null` lo rechaza el trigger (23514).
+    const duenioB = await crearUsuario(duenios[0], null, null);
     barberia.b = (
       await prisma.barberia.create({
         data: {
@@ -217,11 +219,19 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
       })
     ).id;
 
+    await prisma.usuarioRol.create({
+      data: {
+        usuarioId: duenioB,
+        rolId: roles['ADMIN_BARBERIA'].id,
+        barberiaId: barberia.b,
+      },
+    });
+
     // ── Barbería A: el tenant de los cuatro usuarios ──────────────────────
     // Su responsable es el propio ADMIN_BARBERIA del test: `PATCH /barberias/:id`
     // solo deja editar a quien figura como responsable, y aqui lo que se quiere
     // medir es el decorador, no esa comprobación del servicio.
-    const adminBarberiaId = await crearUsuario(correos.ADMIN_BARBERIA, roles['ADMIN_BARBERIA'].id, null);
+    const adminBarberiaId = await crearUsuario(correos.ADMIN_BARBERIA, null, null);
     barberia.a = (
       await prisma.barberia.create({
         data: {
@@ -236,9 +246,12 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
       })
     ).id;
 
-    await prisma.usuarioRol.updateMany({
-      where: { usuarioId: adminBarberiaId },
-      data: { barberiaId: barberia.a },
+    await prisma.usuarioRol.create({
+      data: {
+        usuarioId: adminBarberiaId,
+        rolId: roles['ADMIN_BARBERIA'].id,
+        barberiaId: barberia.a,
+      },
     });
 
     // ── Un usuario por rol ────────────────────────────────────────────────
@@ -279,7 +292,7 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
   // `telefono` es único en el esquema: cada usuario del test recibe el suyo.
   let secuenciaTelefono = 0;
 
-  async function crearUsuario(correo: string, rolId: string, barberiaId: string | null) {
+  async function crearUsuario(correo: string, rolId: string | null, barberiaId: string | null) {
     secuenciaTelefono += 1;
     const usuario = await prisma.usuario.create({
       data: {
@@ -289,7 +302,7 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
         telefono: `6${String(secuenciaTelefono).padStart(9, '0')}`,
         passwordHash: '$2b$10$HashFalsoMatrizPermisosNoSeUsaParaLogin',
         estadoCuenta: 'ACTIVO',
-        usuarioRoles: { create: [{ rolId, barberiaId }] },
+        usuarioRoles: rolId ? { create: [{ rolId, barberiaId }] } : undefined,
       },
       select: { id: true },
     });

@@ -178,7 +178,9 @@ describe('E4-01 · reserva grupal', () => {
     }
 
     for (const [correo, sede] of [
-      ['admin.e401@test.com', null],
+      // F1 · el responsable de las sedes es ADMIN_BARBERIA de una sede real: un
+      // rol de ámbito BARBERIA con `barberia_id = null` lo rechaza el trigger.
+      ['admin.e401@test.com', 'A'],
       ['gA.e401@test.com', 'A'],
       ['gB.e401@test.com', 'B'],
       ['gC.e401@test.com', 'C'],
@@ -186,19 +188,33 @@ describe('E4-01 · reserva grupal', () => {
     ] as [string, string | null][]) {
       const usuario = await prisma.usuario.findUniqueOrThrow({ where: { correo }, select: { id: true } });
       for (const nombreRol of ['CLIENTE', 'ADMIN_BARBERIA', 'BARBERO'] as const) {
+        const sedeDelVinculo = nombreRol === 'CLIENTE' || !sede ? null : barberia[sede];
+        if (nombreRol !== 'CLIENTE' && sedeDelVinculo === null) continue;
         // Modelo tipado en vez de SQL crudo: `$executeRaw` envía los parámetros
         // como `text` y Postgres rechaza la fila en la columna `uuid` (42804).
         // `skipDuplicates` equivale al `ON CONFLICT DO NOTHING` que había.
-        await prisma.usuarioRol.createMany({
-          data: [
-            {
+        // `skipDuplicates` no cubre los índices únicos PARCIALES de
+        // `usuario_roles` (el registro previo ya dejó su fila de CLIENTE), así
+        // que el vínculo se comprueba antes de insertarlo.
+        const yaExiste = await prisma.usuarioRol.findFirst({
+          where: { usuarioId: usuario.id, rolId: rol[nombreRol], barberiaId: sedeDelVinculo },
+          select: { id: true },
+        });
+        if (yaExiste) continue;
+
+        try {
+          await prisma.usuarioRol.create({
+            data: {
               usuarioId: usuario.id,
               rolId: rol[nombreRol],
-              barberiaId: nombreRol === 'CLIENTE' || !sede ? null : barberia[sede],
+              barberiaId: sedeDelVinculo,
             },
-          ],
-          skipDuplicates: true,
-        });
+          });
+        } catch (error: any) {
+          // Idempotencia del fixture: si una corrida anterior dejó el vínculo,
+          // P2002 es exactamente lo que queremos. Cualquier otro error sube.
+          if (error?.code !== 'P2002') throw error;
+        }
       }
       if (sede) {
         await prisma.clienteBarberia.create({
