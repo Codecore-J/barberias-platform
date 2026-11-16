@@ -2523,6 +2523,30 @@ describe('BarberiaService', () => {
       expect(prisma.usuarioRol.update).not.toHaveBeenCalled();
     });
 
+    // F4 · el dueño de la sede solo cuenta si SU CUENTA está activa: suspender a
+    // un dueño no puede dejar la sede sin nadie que pueda recibirla.
+    it('F4: la comprobación de sede ocupada filtra por cuenta ACTIVA', async () => {
+      vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([] as any);
+      vi.mocked(prisma.usuarioRol.findFirst).mockResolvedValue(null);
+      vi.mocked(prisma.rol.findUnique).mockResolvedValue({
+        id: 'rol-admin-sede',
+        nombre: 'ADMIN_BARBERIA',
+      } as any);
+
+      await service
+        .invitarPersonal(BARBERIA_A, { ...dtoBarbero, rolNombre: 'ADMIN_BARBERIA' }, ADMIN_A)
+        .catch(() => undefined);
+
+      const consulta = vi
+        .mocked(prisma.usuarioRol.findFirst)
+        .mock.calls.map(([arg]: any[]) => arg)
+        .find((arg: any) => arg?.where?.rol?.nombre === 'ADMIN_BARBERIA');
+
+      expect(consulta).toMatchObject({
+        where: { estado: 'ACTIVO', usuario: { estadoCuenta: 'ACTIVO' } },
+      });
+    });
+
     it('ROJO: invitar una cuenta NUEVA como ADMIN_BARBERIA a una sede ocupada → 409 (hallazgo E2E)', async () => {
       // Regresión de la Fase 3: la comprobación solo corría al reutilizar una
       // cuenta existente, así que un correo desconocido creaba el segundo dueño.

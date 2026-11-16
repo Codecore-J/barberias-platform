@@ -58,6 +58,11 @@ export async function asegurarSedeSinAdmin(
       barberiaId,
       estado: 'ACTIVO',
       rol: { nombre: ROL_ADMIN_BARBERIA },
+      // F4 · la cuenta tiene que estar ACTIVA: un dueño suspendido no puede
+      // entrar y, por tanto, no debe bloquear la sede. Antes el vínculo ACTIVO
+      // de una cuenta suspendida devolvía 409 y dejaba la sede sin nadie que
+      // pudiera nombrar un reemplazo (fallar cerrado hasta el absurdo).
+      usuario: { estadoCuenta: 'ACTIVO' },
       ...(excluirUsuarioId ? { usuarioId: { not: excluirUsuarioId } } : {}),
     },
     select: {
