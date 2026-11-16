@@ -40,6 +40,7 @@ import {
 import {
   CODIGO_ADMIN_NO_SE_DEGRADA,
   asegurarSedeSinAdmin,
+  esConflictoAdminUnico,
 } from '../../iam/domain/administrador-sede.js';
 import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
 // E3-12: el estado de la 6.ª vinculación y su límite viven en el dominio de la
@@ -680,6 +681,14 @@ export class BarberiaService {
         };
       });
     } catch (error: any) {
+      // F6 · si el rechazo viene del trigger de administrador único, se responde
+      // el MISMO contrato que la regla de dominio: 409 `SEDE_YA_TIENE_ADMIN` con
+      // `adminActual`. La transacción ya está abortada, así que la consulta se
+      // hace con el cliente normal (ve al ganador ya confirmado).
+      if (dto.rolNombre === ROL_ADMIN_BARBERIA && esConflictoAdminUnico(error)) {
+        await asegurarSedeSinAdmin(this.prisma, barberiaId);
+      }
+
       if (error?.code === 'P2002') {
         const colision = clasificarColisionPersonal(error);
         if (colision === 'telefono') {

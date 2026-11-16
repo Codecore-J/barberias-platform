@@ -2523,6 +2523,47 @@ describe('BarberiaService', () => {
       expect(prisma.usuarioRol.update).not.toHaveBeenCalled();
     });
 
+    // F6 · cuando el rechazo viene del trigger (P2002) y no de la regla de
+    // dominio, el cliente debe recibir EL MISMO contrato: 409 codificado.
+    it('F6: un P2002 del trigger se traduce a 409 SEDE_YA_TIENE_ADMIN con adminActual', async () => {
+      vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([] as any);
+      vi.mocked(prisma.rol.findUnique).mockResolvedValue({
+        id: 'rol-admin-sede',
+        nombre: 'ADMIN_BARBERIA',
+      } as any);
+
+      // La transacción se rechaza antes de ejecutar su callback, así que la única
+      // lectura que corre es la que hace `asegurarSedeSinAdmin` fuera de ella: el
+      // ganador de la carrera ya está confirmado y es quien responde el 409.
+      vi.mocked(prisma.usuarioRol.findFirst).mockResolvedValue({
+        id: 'rel-ganador',
+        usuario: otroAdmin,
+      } as any);
+
+      const errorTrigger = Object.assign(new Error('Unique constraint failed'), {
+        code: 'P2002',
+        meta: { target: 'uk_admin_barberia_unico_por_sede' },
+      });
+      vi.mocked(prisma.$transaction).mockRejectedValueOnce(errorTrigger);
+
+      let capturado: any;
+      try {
+        await service.invitarPersonal(
+          BARBERIA_A,
+          { ...dtoBarbero, rolNombre: 'ADMIN_BARBERIA' },
+          ADMIN_A,
+        );
+      } catch (error) {
+        capturado = error;
+      }
+
+      expect(capturado?.getStatus()).toBe(409);
+      expect(capturado?.getResponse()).toMatchObject({
+        codigo: 'SEDE_YA_TIENE_ADMIN',
+        adminActual: otroAdmin,
+      });
+    });
+
     // F4 · el dueño de la sede solo cuenta si SU CUENTA está activa: suspender a
     // un dueño no puede dejar la sede sin nadie que pueda recibirla.
     it('F4: la comprobación de sede ocupada filtra por cuenta ACTIVA', async () => {

@@ -23,6 +23,17 @@ import { ROL_ADMIN_BARBERIA } from './roles.js';
  * consulta ve al ganador y responde 409 en lugar de duplicar.
  */
 
+/**
+ * F6 · nombre del índice/constraint que emite el trigger de PostgreSQL.
+ *
+ * El trigger lanza `ERRCODE 23505` con `CONSTRAINT = 'uk_admin_barberia_unico_por_sede'`,
+ * así que Prisma lo entrega como `P2002`. Sin traducirlo, el cliente recibiría
+ * `409 UNIQUE_CONSTRAINT_VIOLATION` **sin `adminActual`**, un contrato distinto
+ * al del camino normal (`409 SEDE_YA_TIENE_ADMIN` con contexto) que la interfaz
+ * no sabe interpretar.
+ */
+export const CONSTRAINT_ADMIN_UNICO = 'uk_admin_barberia_unico_por_sede';
+
 export const CODIGO_SEDE_YA_TIENE_ADMIN = 'SEDE_YA_TIENE_ADMIN';
 export const CODIGO_ADMIN_NO_SE_DEGRADA = 'ADMIN_NO_SE_DEGRADA';
 
@@ -48,6 +59,20 @@ interface ClienteDeAdministradores {
  * dueño actual y ofrecer reemplazarlo, en vez de obligar al operador a buscar el
  * correo a mano en la bandeja.
  */
+/**
+ * ¿El error viene del trigger de administrador único?
+ *
+ * Prisma no siempre rellena `meta.target` cuando el 23505 lo levanta un trigger
+ * (llega como «Unique constraint failed on the (not available)»), así que se
+ * revisan el `meta` serializado y el mensaje.
+ */
+export function esConflictoAdminUnico(error: unknown): boolean {
+  const e = error as { code?: string; meta?: unknown; message?: string };
+  if (e?.code !== 'P2002') return false;
+  const pista = `${JSON.stringify(e.meta ?? {})} ${e.message ?? ''}`;
+  return pista.includes(CONSTRAINT_ADMIN_UNICO) || pista.includes('admin_barberia_unico');
+}
+
 export async function asegurarSedeSinAdmin(
   prisma: ClienteDeAdministradores,
   barberiaId: string,
