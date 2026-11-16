@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsIn,
   IsNotEmpty,
@@ -45,6 +46,19 @@ export class InvitarPersonalDto {
 
   @IsIn([...ROLES_PERSONAL_SEDE])
   rolNombre!: RolPersonalSede;
+
+  /**
+   * Fase 1 · cuenta dual (dueño que corta pelo).
+   *
+   * Invitar como `BARBERO` a una cuenta que ya administra la sede retiraba su
+   * rol de administrador sin avisar (`update` del `rolId`). Sin este flag la
+   * operación responde 409 `ADMIN_NO_SE_DEGRADA`; con `true` se AÑADE el vínculo
+   * de barbero y el de administrador se conserva —el modelo lo permite porque la
+   * unicidad de `usuario_roles` es `(usuario, rol, sede)`, no `(usuario, sede)`—.
+   */
+  @IsOptional()
+  @IsBoolean()
+  conservarRolAdministrador?: boolean;
 }
 
 /**

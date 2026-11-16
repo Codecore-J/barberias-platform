@@ -8,6 +8,11 @@
  *     `.qa.` o cuentas cuyo teléfono incumple el formato de 10 dígitos. Nació
  *     para poder ejecutar `ALTER TABLE "usuarios" VALIDATE CONSTRAINT
  *     chk_usuario_telefono_10_digitos`.
+ *     Fase 2 · aquí también cae el residuo que dejó la auditoría de roles en
+ *     producción, `qa.auditoria.sede@plataforma-test.com`: el prefijo `qa.` ya
+ *     lo selecciona, así que no hace falta nombrarlo. Los vínculos de
+ *     `usuario_roles` se resuelven por CASCADE, pero se informan y se borran
+ *     explícitamente igual que el resto.
  *  2. TAREA 6 · Sedes heredadas de E2E: las que conservan el teléfono genérico
  *     `0000000000`. Ese valor SÍ pasa el CHECK de 10 dígitos, así que el
  *     constraint no las detecta: son sedes fantasma que aparentan ser válidas.
@@ -85,12 +90,62 @@ const CORREOS_PRUEBA = [
  * barrería también a clientes reales con el número mal capturado, que necesitan
  * que alguien corrija el dato, no que se borre la cuenta.
  */
-const PATRONES_CORREO_PRUEBA = ['@t.com', '@demo.com'];
-const PREFIJOS_CORREO_PRUEBA = ['demo'];
+const PATRONES_CORREO_PRUEBA = [
+  '@t.com',
+  '@demo.com',
+  '@plataforma-test.com',
+  // Dominio de fixtures de las suites E2E (`*.e2e.test`): en Neon quedaban dos
+  // cuentas suspendidas con su sede, que la regularización reportaba como
+  // «administrador activo con cuenta suspendida».
+  '.e2e.test',
+];
+const PREFIJOS_CORREO_PRUEBA = ['demo', 'qa.'];
 
+/**
+ * Única fuente de verdad de la selección: la etapa 1 construye su `OR` con
+ * estas mismas listas. Antes tenía el `OR` escrito a mano y las constantes solo
+ * alimentaban la red de seguridad, así que un patrón nuevo no seleccionaba nada.
+ */
+const whereCuentasDePrueba = () => ({
+  OR: [
+    ...PATRONES_CORREO_PRUEBA.map((dominio) => ({ correo: { endsWith: dominio } })),
+    ...PREFIJOS_CORREO_PRUEBA.map((prefijo) => ({ correo: { startsWith: prefijo } })),
+    { correo: { contains: '.qa.' } },
+    { correo: { in: CORREOS_PRUEBA } },
+    { telefono: { in: TELEFONOS_INVALIDOS } },
+  ],
+});
+
+/**
+ * Fase 3 · el docstring prometía cubrir `qa.` / `.qa.`, pero las constantes solo
+ * tenían `demo`: `qa.auditoria.sede@plataforma-test.com` salía por «no encaja en
+ * los patrones» y la purga en Neon no la borraba. Ahora el patrón y la promesa
+ * coinciden.
+ */
 const esCorreoDePrueba = (correo: string): boolean =>
   PATRONES_CORREO_PRUEBA.some((d) => correo.endsWith(d)) ||
-  PREFIJOS_CORREO_PRUEBA.some((p) => correo.startsWith(p));
+  PREFIJOS_CORREO_PRUEBA.some((p) => correo.startsWith(p)) ||
+  correo.includes('.qa.');
+
+/**
+ * Vínculos de ámbito SEDE que se quedaron sin sede.
+ *
+ * `usuario_roles.barberia_id` es ON DELETE SET NULL, así que borrar una sede
+ * (purga anterior, `DELETE` de una corrida E2E) dejaba filas de ADMIN_BARBERIA o
+ * BARBERO con `barberia_id = NULL`. No conceden nada —D05 exige ámbito de sede—
+ * pero ensucian la auditoría de dueños: `regularizar-administradores-sede.ts`
+ * las reporta como «Vínculo ADMIN_BARBERIA sin sede».
+ *
+ * Se acota a los dominios de prueba para no tocar cuentas reales: ahí el dato
+ * sí necesita una decisión de negocio, no un borrado.
+ */
+const PATRONES_CORREO_HUERFANO = ['@test.com', '@plataforma-test.com', '@demo.com', '@t.com'];
+
+const whereVinculosHuerfanos = () => ({
+  barberiaId: null,
+  rol: { ambito: 'BARBERIA' },
+  usuario: { OR: PATRONES_CORREO_HUERFANO.map((dominio) => ({ correo: { endsWith: dominio } })) },
+});
 
 const APLICAR = process.argv.includes('--aplicar');
 
@@ -115,17 +170,7 @@ async function main(): Promise<void> {
 
   // ── Etapa 1 · cuentas de prueba ────────────────────────────────────────────
   const usuariosPrueba = await prisma.usuario.findMany({
-    where: {
-      OR: [
-        { correo: { startsWith: 'qa.' } },
-        { correo: { contains: '.qa.' } },
-        { correo: { in: CORREOS_PRUEBA } },
-        { telefono: { in: TELEFONOS_INVALIDOS } },
-        { correo: { endsWith: '@t.com' } },
-        { correo: { endsWith: '@demo.com' } },
-        { correo: { startsWith: 'demo' } },
-      ],
-    },
+    where: whereCuentasDePrueba(),
     select: { id: true, correo: true, telefono: true },
   });
 
@@ -249,6 +294,14 @@ async function main(): Promise<void> {
       `${dependencias.propuestas} propuestas (estas tres últimas deben ser 0).`,
   );
 
+  const huerfanos = await prisma.usuarioRol.count({ where: whereVinculosHuerfanos() });
+  if (huerfanos > 0) {
+    console.log(
+      `Vínculos de ámbito sede sin sede (cuentas de prueba): ${huerfanos} ` +
+        '(se eliminan: no conceden ningún permiso).',
+    );
+  }
+
   if (!APLICAR) {
     // Se descuentan las cuentas que la purga eliminaría: el número que importa es
     // cuántos violadores sobreviven, no cuántos hay ahora.
@@ -279,8 +332,48 @@ async function main(): Promise<void> {
         `  · hijos de las sedes eliminados: ${reservas.count} reservas, ${pagos.count} pagos, ` +
           `${antecedentes.count} antecedentes, ${reportes.count} reportes`,
       );
+      // `servicios_barbero.categoria_id` es RESTRICT en el esquema: el catálogo
+      // híbrido (barbero × categoría de la sede) bloqueaba el borrado de la sede
+      // con `servicios_barbero_categoria_id_fkey`. Es catálogo de prueba, no
+      // historial: se borra antes que las categorías y sin tocar otras sedes.
+      const categorias = await tx.categoriaServicio.findMany({
+        where: { barberiaId: { in: idsSedes } },
+        select: { id: true },
+      });
+      const catalogoBarbero = await tx.servicioBarbero.deleteMany({
+        where: {
+          OR: [
+            ...(categorias.length > 0
+              ? [{ categoriaId: { in: categorias.map((categoria) => categoria.id) } }]
+              : []),
+            ...(ids.length > 0 ? [{ barberoId: { in: ids } }] : []),
+          ],
+        },
+      });
+      if (catalogoBarbero.count > 0) {
+        console.log(`  · servicios de barbero eliminados: ${catalogoBarbero.count}`);
+      }
+
+      // `usuario_roles.barberia_id` es ON DELETE SET NULL: sin este paso cada
+      // sede purgada dejaba atrás vínculos de ADMIN_BARBERIA / BARBERO sin sede
+      // («Vínculo ADMIN_BARBERIA sin sede» en `regularizar-administradores-sede.ts`).
+      const vinculosSede = await tx.usuarioRol.deleteMany({
+        where: { barberiaId: { in: idsSedes } },
+      });
+      if (vinculosSede.count > 0) {
+        console.log(`  · vínculos de las sedes eliminados: ${vinculosSede.count}`);
+      }
+
       const sedes = await tx.barberia.deleteMany({ where: { id: { in: idsSedes } } });
       console.log(`  · sedes eliminadas: ${sedes.count}`);
+    }
+
+    // Independiente de las cuentas: limpia vínculos de sede ya borrada.
+    const borradosHuerfanos = await tx.usuarioRol.deleteMany({
+      where: whereVinculosHuerfanos(),
+    });
+    if (borradosHuerfanos.count > 0) {
+      console.log(`  · vínculos sin sede eliminados: ${borradosHuerfanos.count}`);
     }
 
     if (ids.length > 0) {

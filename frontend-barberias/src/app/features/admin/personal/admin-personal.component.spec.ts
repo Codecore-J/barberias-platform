@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { AdminPersonalComponent } from './admin-personal.component';
 import { PersonalService, Personal } from '../../../core/services/personal.service';
 import { TenantService } from '../../../core/services/tenant.service';
@@ -38,6 +38,7 @@ describe('AdminPersonalComponent', () => {
   }));
   const success = vi.fn();
   const error = vi.fn();
+  const warning = vi.fn();
 
   beforeEach(async () => {
     obtenerPersonal.mockClear();
@@ -45,6 +46,7 @@ describe('AdminPersonalComponent', () => {
     actualizarMiembro.mockClear();
     success.mockClear();
     error.mockClear();
+    warning.mockClear();
 
     await TestBed.configureTestingModule({
       imports: [AdminPersonalComponent],
@@ -64,7 +66,7 @@ describe('AdminPersonalComponent', () => {
           provide: AuthService,
           useValue: { authState: signal({ user: { roles: ['ADMINISTRADOR'] }, isAuthenticated: true }) },
         },
-        { provide: ToastService, useValue: { success, error, warning: vi.fn(), info: vi.fn() } },
+        { provide: ToastService, useValue: { success, error, warning, info: vi.fn() } },
         { provide: HorariosService, useValue: { agregarExcepcionBarbero: vi.fn(() => of({})) } },
         { provide: ConfirmDialogService, useValue: { confirm: vi.fn() } },
       ],
@@ -122,16 +124,20 @@ describe('AdminPersonalComponent', () => {
       telefono: '8095551234',
       password: 'password123',
       rolNombre: 'BARBERO',
+      conservarRolAdministrador: false,
     });
 
     component.guardarInvitacion();
 
+    // Fase 2 · el flag viaja EXPLÍCITO (false) para que el backend no tenga que
+    // interpretar su ausencia.
     expect(invitarMiembro).toHaveBeenCalledWith({
       nombreCompleto: 'Ana Gómez',
       correo: 'ana@example.com',
       telefono: '8095551234',
       password: 'password123',
       rolNombre: 'BARBERO',
+      conservarRolAdministrador: false,
     });
     expect(component.personal().some((item) => item.id === 'user-2')).toBe(true);
     expect(component.formularioPersonalAbierto()).toBe(false);
@@ -183,5 +189,125 @@ describe('AdminPersonalComponent', () => {
       'Se guardaron los cambios de Juan Pérez.',
       'Personal actualizado',
     );
+  });
+
+  // ── Fase 2 · cuenta dual (dueño que corta pelo) ─────────────────────────────
+
+  const miembroAdmin: Personal = {
+    id: 'user-admin',
+    nombreCompleto: 'Dueño de la Sede',
+    correo: 'dueno@example.com',
+    telefono: '8095559999',
+    estado: 'ACTIVO',
+    estadoSede: 'ACTIVO',
+    roles: ['ADMIN_BARBERIA'],
+  };
+
+  function invitacionValida(extra: Partial<Record<string, unknown>> = {}): void {
+    component.formularioInvitacion.setValue({
+      nombreCompleto: 'Dueño de la Sede',
+      correo: 'dueno@example.com',
+      telefono: '8095559999',
+      password: 'password123',
+      rolNombre: 'BARBERO',
+      conservarRolAdministrador: false,
+      ...extra,
+    });
+  }
+
+  it('marca la casilla por defecto cuando el correo ya administra la sede', () => {
+    component.personal.set([miembro, miembroAdmin]);
+    component.invitarMiembro();
+
+    component.formularioInvitacion.patchValue({ correo: 'dueno@example.com' });
+    component.alCambiarCorreoInvitacion();
+
+    expect(component.formularioInvitacion.get('conservarRolAdministrador')?.value).toBe(true);
+    expect(component.avisoCuentaAdmin()).toContain('Dueño de la Sede');
+  });
+
+  it('no marca la casilla si el correo no pertenece a un administrador', () => {
+    component.personal.set([miembro]);
+    component.invitarMiembro();
+
+    component.formularioInvitacion.patchValue({ correo: 'juan@example.com' });
+    component.alCambiarCorreoInvitacion();
+
+    expect(component.formularioInvitacion.get('conservarRolAdministrador')?.value).toBe(false);
+    expect(component.avisoCuentaAdmin()).toBeNull();
+  });
+
+  it('envía conservarRolAdministrador: true cuando la casilla está marcada', () => {
+    component.invitarMiembro();
+    invitacionValida({ conservarRolAdministrador: true });
+
+    component.guardarInvitacion();
+
+    expect(invitarMiembro).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rolNombre: 'BARBERO',
+        conservarRolAdministrador: true,
+      }),
+    );
+  });
+
+  it('no envía el flag al invitar como administrador de sede', () => {
+    component.invitarMiembro();
+    invitacionValida({ rolNombre: 'ADMIN_BARBERIA' });
+
+    component.guardarInvitacion();
+
+    const enviado = invitarMiembro.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(enviado).not.toHaveProperty('conservarRolAdministrador');
+  });
+
+  it('ROJO: el 409 ADMIN_NO_SE_DEGRADA marca la casilla y explica cómo continuar', () => {
+    invitarMiembro.mockReturnValueOnce(
+      throwError(() => ({
+        status: 409,
+        error: {
+          statusCode: 409,
+          codigo: 'ADMIN_NO_SE_DEGRADA',
+          mensaje: 'Esta cuenta administra la sede.',
+        },
+      })),
+    );
+    component.invitarMiembro();
+    invitacionValida();
+
+    component.guardarInvitacion();
+
+    expect(component.formularioInvitacion.get('conservarRolAdministrador')?.value).toBe(true);
+    expect(component.errorPersonal()).toContain('Conservar rol de administrador de la sede');
+    expect(component.guardandoPersonal()).toBe(false);
+    // El modal sigue abierto para que el usuario corrija y reenvíe.
+    expect(component.formularioPersonalAbierto()).toBe(true);
+    expect(warning).toHaveBeenCalled();
+  });
+
+  it('el 409 SEDE_YA_TIENE_ADMIN nombra al dueño actual y no cierra el modal', () => {
+    invitarMiembro.mockReturnValueOnce(
+      throwError(() => ({
+        status: 409,
+        error: {
+          statusCode: 409,
+          codigo: 'SEDE_YA_TIENE_ADMIN',
+          mensaje: 'La sede ya tiene un administrador activo.',
+          adminActual: {
+            id: 'admin-1',
+            correo: 'dueno.actual@test.com',
+            nombreCompleto: 'Dueño Actual',
+          },
+        },
+      })),
+    );
+    component.invitarMiembro();
+    invitacionValida({ rolNombre: 'ADMIN_BARBERIA' });
+
+    component.guardarInvitacion();
+
+    expect(component.errorPersonal()).toContain('dueno.actual@test.com');
+    expect(component.errorPersonal()).toContain('Dueño Actual');
+    expect(component.formularioPersonalAbierto()).toBe(true);
   });
 });

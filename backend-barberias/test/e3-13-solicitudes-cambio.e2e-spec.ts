@@ -157,7 +157,16 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
       data: [
         { usuarioId: adminAId, rolId: rolAdminBarberia.id, barberiaId: barberiaA },
         { usuarioId: adminBId, rolId: rolAdminBarberia.id, barberiaId: barberiaB },
-        { usuarioId: nuevoResponsableId, rolId: rolAdminBarberia.id, barberiaId: barberiaB },
+        // Fase 4 · el candidato a responsable no puede quedar ACTIVO junto al
+        // actual: el trigger `trg_admin_barberia_unico_por_sede` lo impide (una
+        // sola cuenta ADMIN_BARBERIA activa por sede). La aprobación de la
+        // solicitud lo activa; aquí se siembra en espera.
+        {
+          usuarioId: nuevoResponsableId,
+          rolId: rolAdminBarberia.id,
+          barberiaId: barberiaB,
+          estado: 'INACTIVO',
+        },
         { usuarioId: nuevoResponsableId, rolId: rolCliente.id, barberiaId: null },
         { usuarioId: adminGlobalId, rolId: rolAdministrador.id, barberiaId: null },
         { usuarioId: clienteId, rolId: rolCliente.id, barberiaId: null },

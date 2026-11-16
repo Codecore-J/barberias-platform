@@ -9,7 +9,8 @@ import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
 import { errorDeConflicto, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
-import { AMBITO_BARBERIA, ROL_ADMINISTRADOR } from '../domain/roles.js';
+import { AMBITO_BARBERIA, ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA } from '../domain/roles.js';
+import { asegurarSedeSinAdmin } from '../domain/administrador-sede.js';
 import type { UsuarioAutenticado } from '../domain/jwt.interface.js';
 import type { CambiarEstadoCuentaDto } from './dto/cambiar-estado-cuenta.dto.js';
 import type {
@@ -410,6 +411,10 @@ export class UsuariosPlataformaService {
    *     un rol `GLOBAL` no admite sede (422 `BARBERIA_NO_APLICA`), porque un
    *     `barberia_id` en una fila de rol global rompe el alcance del `RolesGuard`.
    *  4. La barbería referenciada tiene que existir (404).
+   *  5. Un solo `ADMIN_BARBERIA` ACTIVO por sede → 409 `SEDE_YA_TIENE_ADMIN` con
+   *     `adminActual: { id, correo, nombreCompleto }` (Fase 1). Se comprueba
+   *     DENTRO de la transacción y con aislamiento SERIALIZABLE: dos altas
+   *     simultáneas de dueño en la misma sede no pueden pasar las dos.
    *
    * Usuario, `usuario_roles` y evento de auditoría van en UNA transacción: una
    * cuenta sin rol o sin rastro no existe (D28).
@@ -479,7 +484,14 @@ export class UsuariosPlataformaService {
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
     try {
-      const creado = await this.prisma.$transaction(async (tx) => {
+      const creado = await withSerializableTransaction(this.prisma, async (tx) => {
+        // Fase 1 · regla de cardinalidad. Va primero: si la sede ya tiene dueño
+        // no tiene sentido hashear la contraseña ni abrir el alta, y así la
+        // cuenta no llega a existir cuando se rechaza (nada de huérfanos).
+        if (rol.nombre === ROL_ADMIN_BARBERIA) {
+          await asegurarSedeSinAdmin(tx, barberiaId as string);
+        }
+
         const usuario = await tx.usuario.create({
           data: {
             nombreCompleto: dto.nombreCompleto.trim(),

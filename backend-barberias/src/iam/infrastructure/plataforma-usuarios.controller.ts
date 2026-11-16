@@ -81,8 +81,10 @@ export class PlataformaUsuariosController {
    * sensibles (`passwordHash` no se selecciona nunca).
    *
    * Errores: 409 `CORREO_YA_REGISTRADO` / `CEDULA_YA_REGISTRADA` /
-   * `TELEFONO_YA_REGISTRADO`, 422 `BARBERIA_REQUERIDA` / `BARBERIA_NO_APLICA`,
-   * 404 si la barbería no existe.
+   * `TELEFONO_YA_REGISTRADO`, 409 `SEDE_YA_TIENE_ADMIN` (el rol
+   * `ADMIN_BARBERIA` solo admite un vínculo ACTIVO por sede; el cuerpo incluye
+   * `adminActual: { id, correo, nombreCompleto }`), 422 `BARBERIA_REQUERIDA` /
+   * `BARBERIA_NO_APLICA`, 404 si la barbería no existe.
    */
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)

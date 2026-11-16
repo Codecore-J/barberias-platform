@@ -167,6 +167,40 @@ async function asignarRol(
   await tx.usuarioRol.create({ data: { usuarioId, rolId, barberiaId } });
 }
 
+/**
+ * Fase 2 · la demo respeta «un solo ADMIN_BARBERIA ACTIVO por sede».
+ *
+ * El upsert de la sede la reutiliza si ya existe (misma `codigo_acceso`), y en
+ * una base de desarrollo esa sede puede tener otro dueño de una prueba manual.
+ * Asignarle el rol al admin de la demo dejaría dos administradores —lo que el
+ * backend ahora rechaza—. Aquí se DESACTIVA el vínculo de los otros (no se
+ * borra: desactivar es reversible y conserva la historia de la cuenta) para que
+ * la demo termine con exactamente un dueño. Idempotente: si no hay otros, no
+ * escribe nada.
+ */
+async function retirarAdminsPrevios(
+  tx: Tx,
+  barberiaId: string,
+  adminId: string,
+): Promise<number> {
+  const otros = await tx.usuarioRol.findMany({
+    where: {
+      barberiaId,
+      estado: 'ACTIVO',
+      rol: { nombre: 'ADMIN_BARBERIA' },
+      usuarioId: { not: adminId },
+    },
+    select: { id: true },
+  });
+  if (otros.length === 0) return 0;
+
+  await tx.usuarioRol.updateMany({
+    where: { id: { in: otros.map((fila) => fila.id) } },
+    data: { estado: 'INACTIVO' },
+  });
+  return otros.length;
+}
+
 /** Lo que la demo deja sembrado, para que el llamador pueda informarlo. */
 export interface ResumenDemo {
   barberia: string;
@@ -277,6 +311,14 @@ export async function sembrarDemo(
       // enseña desde la consola de la sede: sin ADMIN_BARBERIA la agenda, la
       // caja y el catálogo responden 403 y el entorno no está «listo».
       await asignarRol(tx, admin.id, rol('ADMINISTRADOR'), null);
+      // Fase 2 · antes de nombrar al dueño de la demo, retirar cualquier otro
+      // ADMIN_BARBERIA activo que la sede arrastre de pruebas anteriores.
+      const adminsRetirados = await retirarAdminsPrevios(tx, barberia.id, admin.id);
+      if (adminsRetirados > 0) {
+        console.log(
+          `   · ${adminsRetirados} administrador(es) previo(s) de la sede demo pasaron a INACTIVO.`,
+        );
+      }
       await asignarRol(tx, admin.id, rol('ADMIN_BARBERIA'), barberia.id);
 
       await asignarRol(tx, barbero1.id, rol('CLIENTE'), null);

@@ -15,7 +15,7 @@ import type { BarberiaResponseDto } from './dto/barberia-response.dto.js';
 import type { VincularBarberiaDto } from './dto/vincular-barberia.dto.js';
 import { plainToInstance } from 'class-transformer';
 import * as bcrypt from 'bcrypt';
-import { reglaDeNegocio } from '../../shared/errors/d40.errors.js';
+import { errorDeConflicto, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { BarberiaResponseDto as BarberiaResponse } from './dto/barberia-response.dto.js';
 import type { BarberiaLecturaDto } from './dto/barberia-lectura.dto.js';
 import { BarberiaLecturaDto as BarberiaLectura } from './dto/barberia-lectura.dto.js';
@@ -31,11 +31,16 @@ import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import {
   ROL_ADMINISTRADOR,
   ROL_ADMIN_BARBERIA,
+  ROL_BARBERO,
   alcanceCumple,
   esAdministradorGlobal,
   esAdministradorGlobalPorId,
   validarAsignacionRol,
 } from '../../iam/domain/roles.js';
+import {
+  CODIGO_ADMIN_NO_SE_DEGRADA,
+  asegurarSedeSinAdmin,
+} from '../../iam/domain/administrador-sede.js';
 import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
 // E3-12: el estado de la 6.ª vinculación y su límite viven en el dominio de la
 // vinculación, compartidos con el flujo que las resuelve (VinculacionService).
@@ -445,7 +450,12 @@ export class BarberiaService {
     const correo = dto.correo.trim().toLowerCase();
     const telefono = dto.telefono.trim();
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      // Fase 1 · SERIALIZABLE: la invitación comprueba primero cuántos dueños
+      // tiene la sede y luego escribe. Con el aislamiento por defecto, dos
+      // invitaciones simultáneas leen «cero» y crean dos administradores; la
+      // transacción serializable aborta a la perdedora y el reintento ve al
+      // ganador (409 en vez de duplicado).
+      return await withSerializableTransaction(this.prisma, async (tx) => {
         const barberia = await tx.barberia.findUnique({
           where: { id: barberiaId },
           select: { id: true },
@@ -480,22 +490,77 @@ export class BarberiaService {
           }
           const relaciones = await tx.usuarioRol.findMany({
             where: { usuarioId: usuarioExistente.id, barberiaId },
-            select: { id: true },
+            // Fase 1: el nombre del rol hace falta para distinguir la cuenta
+            // dual (ADMIN_BARBERIA + BARBERO en la misma sede) de un vínculo
+            // simple y para no degradar al administrador sin pedirlo.
+            select: {
+              id: true,
+              estado: true,
+              rol: { select: { nombre: true } },
+            },
           });
-          if (relaciones.length > 1) {
+
+          const nombresDeRoles = relaciones
+            .map((fila) => fila.rol?.nombre)
+            .filter((nombre): nombre is string => !!nombre);
+          const administraLaSede = nombresDeRoles.includes(ROL_ADMIN_BARBERIA);
+          // Un `usuario_roles` con dos filas en la MISMA sede solo es legítimo
+          // si son el administrador y el barbero del dueño que corta pelo.
+          const esCuentaDual =
+            relaciones.length === 2 &&
+            administraLaSede &&
+            nombresDeRoles.includes(ROL_BARBERO);
+
+          if (relaciones.length > 1 && !esCuentaDual) {
             throw new ConflictException(
               'La cuenta ya tiene varias asignaciones de personal en esta sede; regularízalas antes de volver a invitarla.',
             );
           }
 
+          // Fase 1 · 1.1: nombrar un segundo administrador se rechaza igual que
+          // en el alta de plataforma, venga por la puerta que venga.
+          if (rol.nombre === ROL_ADMIN_BARBERIA) {
+            await asegurarSedeSinAdmin(tx, barberiaId, usuarioExistente.id);
+          }
+
+          // Fase 1 · 1.2: invitar como BARBERO a quien administra la sede
+          // reemplazaba su `rolId` —dejaba de ser dueño respondiendo 201—. Sin
+          // el flag explícito es un conflicto; con él se añade el vínculo.
+          if (
+            rol.nombre === ROL_BARBERO &&
+            administraLaSede &&
+            dto.conservarRolAdministrador !== true
+          ) {
+            throw errorDeConflicto(
+              CODIGO_ADMIN_NO_SE_DEGRADA,
+              'Esta cuenta administra la sede: invitarla como BARBERO le quitaría el rol de administrador. Envía conservarRolAdministrador=true para añadir el rol de barbero sin retirar el de administrador.',
+            );
+          }
+
+          const vinculoDelRol = relaciones.find(
+            (fila) => fila.rol?.nombre === rol.nombre,
+          );
+
           let relacion;
-          if (relaciones.length === 1) {
+          let rolesResultantes: string[];
+          if (vinculoDelRol) {
+            // Ya tenía ese rol en la sede: solo se reactiva el vínculo.
+            relacion = await tx.usuarioRol.update({
+              where: { id: vinculoDelRol.id },
+              data: { estado: 'ACTIVO' },
+              select: { estado: true, rol: { select: { nombre: true } } },
+            });
+            rolesResultantes = nombresDeRoles;
+          } else if (relaciones.length === 1 && administraLaSede === false) {
+            // Comportamiento histórico: un único vínculo y cambia de rol.
             relacion = await tx.usuarioRol.update({
               where: { id: relaciones[0].id },
               data: { rolId: rol.id, estado: 'ACTIVO' },
               select: { estado: true, rol: { select: { nombre: true } } },
             });
+            rolesResultantes = [rol.nombre];
           } else {
+            // Sin vínculo previo o cuenta dual que gana el rol que le faltaba.
             relacion = await tx.usuarioRol.create({
               data: {
                 usuarioId: usuarioExistente.id,
@@ -505,6 +570,7 @@ export class BarberiaService {
               },
               select: { estado: true, rol: { select: { nombre: true } } },
             });
+            rolesResultantes = [...nombresDeRoles, rol.nombre];
           }
           await this.auditoria.registrarEvento(
             {
@@ -529,7 +595,9 @@ export class BarberiaService {
             telefono: usuarioExistente.telefono,
             estado: usuarioExistente.estadoCuenta,
             estadoSede: relacion.estado,
-            roles: [relacion.rol.nombre],
+            // Los roles que la cuenta tiene en ESTA sede: en la cuenta dual son
+            // dos y la interfaz necesita verlos para pintar el vínculo real.
+            roles: rolesResultantes,
             reutilizado: true,
           };
         }
@@ -542,6 +610,15 @@ export class BarberiaService {
           throw new InternalServerErrorException(
             `El rol ${dto.rolNombre} no existe en el catálogo.`,
           );
+
+        // Fase 3 · la comprobación también cubre la cuenta NUEVA. Antes solo se
+        // hacía al reutilizar una cuenta existente, así que invitar a un correo
+        // desconocido como ADMIN_BARBERIA creaba el segundo dueño sin resistencia
+        // (hallazgo de la suite E2E).
+        if (rol.nombre === ROL_ADMIN_BARBERIA) {
+          await asegurarSedeSinAdmin(tx, barberiaId);
+        }
+
         const telefonoExistente = await tx.usuario.findFirst({
           where: { telefono },
           select: { id: true },
@@ -693,6 +770,12 @@ export class BarberiaService {
 
     try {
       const actualizado = await this.prisma.$transaction(async (tx) => {
+        // Fase 1 · promover a ADMIN_BARBERIA también es «asignar» el rol: la
+        // sede no puede quedar con dos dueños por esta tercera puerta.
+        if (rol?.nombre === ROL_ADMIN_BARBERIA) {
+          await asegurarSedeSinAdmin(tx, barberiaId, usuarioId);
+        }
+
         await tx.usuarioRol.update({
           where: { id: relaciones[0].id },
           // Solo se escribe lo que llegó: `rolId` sin `rolNombre` borraría el

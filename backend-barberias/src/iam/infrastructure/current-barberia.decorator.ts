@@ -73,7 +73,9 @@ export function resolverBarberiaIdOpcionalEstricto(request: any): string | null 
     );
   }
 
-  return String(crudo).trim();
+  // `esUuidSede` ya garantizó que es una cadena: se estrecha el tipo en vez de
+  // envolverlo en `String()`, que sobre un objeto daría «[object Object]».
+  return (crudo as string).trim();
 }
 
 /**
