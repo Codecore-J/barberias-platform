@@ -90,12 +90,42 @@ const CORREOS_PRUEBA = [
  * barrería también a clientes reales con el número mal capturado, que necesitan
  * que alguien corrija el dato, no que se borre la cuenta.
  */
-const PATRONES_CORREO_PRUEBA = ['@t.com', '@demo.com'];
-const PREFIJOS_CORREO_PRUEBA = ['demo'];
+const PATRONES_CORREO_PRUEBA = [
+  '@t.com',
+  '@demo.com',
+  '@plataforma-test.com',
+  // Dominio de fixtures de las suites E2E (`*.e2e.test`): en Neon quedaban dos
+  // cuentas suspendidas con su sede, que la regularización reportaba como
+  // «administrador activo con cuenta suspendida».
+  '.e2e.test',
+];
+const PREFIJOS_CORREO_PRUEBA = ['demo', 'qa.'];
 
+/**
+ * Única fuente de verdad de la selección: la etapa 1 construye su `OR` con
+ * estas mismas listas. Antes tenía el `OR` escrito a mano y las constantes solo
+ * alimentaban la red de seguridad, así que un patrón nuevo no seleccionaba nada.
+ */
+const whereCuentasDePrueba = () => ({
+  OR: [
+    ...PATRONES_CORREO_PRUEBA.map((dominio) => ({ correo: { endsWith: dominio } })),
+    ...PREFIJOS_CORREO_PRUEBA.map((prefijo) => ({ correo: { startsWith: prefijo } })),
+    { correo: { contains: '.qa.' } },
+    { correo: { in: CORREOS_PRUEBA } },
+    { telefono: { in: TELEFONOS_INVALIDOS } },
+  ],
+});
+
+/**
+ * Fase 3 · el docstring prometía cubrir `qa.` / `.qa.`, pero las constantes solo
+ * tenían `demo`: `qa.auditoria.sede@plataforma-test.com` salía por «no encaja en
+ * los patrones» y la purga en Neon no la borraba. Ahora el patrón y la promesa
+ * coinciden.
+ */
 const esCorreoDePrueba = (correo: string): boolean =>
   PATRONES_CORREO_PRUEBA.some((d) => correo.endsWith(d)) ||
-  PREFIJOS_CORREO_PRUEBA.some((p) => correo.startsWith(p));
+  PREFIJOS_CORREO_PRUEBA.some((p) => correo.startsWith(p)) ||
+  correo.includes('.qa.');
 
 /**
  * Vínculos de ámbito SEDE que se quedaron sin sede.
@@ -140,17 +170,7 @@ async function main(): Promise<void> {
 
   // ── Etapa 1 · cuentas de prueba ────────────────────────────────────────────
   const usuariosPrueba = await prisma.usuario.findMany({
-    where: {
-      OR: [
-        { correo: { startsWith: 'qa.' } },
-        { correo: { contains: '.qa.' } },
-        { correo: { in: CORREOS_PRUEBA } },
-        { telefono: { in: TELEFONOS_INVALIDOS } },
-        { correo: { endsWith: '@t.com' } },
-        { correo: { endsWith: '@demo.com' } },
-        { correo: { startsWith: 'demo' } },
-      ],
-    },
+    where: whereCuentasDePrueba(),
     select: { id: true, correo: true, telefono: true },
   });
 
