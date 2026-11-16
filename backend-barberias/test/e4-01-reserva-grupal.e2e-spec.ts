@@ -202,13 +202,19 @@ describe('E4-01 · reserva grupal', () => {
         });
         if (yaExiste) continue;
 
-        await prisma.usuarioRol.create({
-          data: {
-            usuarioId: usuario.id,
-            rolId: rol[nombreRol],
-            barberiaId: sedeDelVinculo,
-          },
-        });
+        try {
+          await prisma.usuarioRol.create({
+            data: {
+              usuarioId: usuario.id,
+              rolId: rol[nombreRol],
+              barberiaId: sedeDelVinculo,
+            },
+          });
+        } catch (error: any) {
+          // Idempotencia del fixture: si una corrida anterior dejó el vínculo,
+          // P2002 es exactamente lo que queremos. Cualquier otro error sube.
+          if (error?.code !== 'P2002') throw error;
+        }
       }
       if (sede) {
         await prisma.clienteBarberia.create({
