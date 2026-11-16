@@ -220,6 +220,11 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
     ] as [string, string[]][]) {
       const usuarioIdVal = (await prisma.usuario.findUniqueOrThrow({ where: { correo: mail } })).id;
       for (const s of ['CLIENTE', 'ADMIN_BARBERIA', 'BARBERO'] as const) {
+        const sedeDelVinculo = s === 'CLIENTE' || !sedes.includes(s) ? null : barberia[s];
+        // F1 · un rol de ámbito BARBERIA sin sede es un vínculo corrupto: el
+        // trigger lo rechaza (23514). Este fixture es un CLIENTE sin vínculo, así
+        // que no debe recibir roles de sede que antes se colaban con `null`.
+        if (s !== 'CLIENTE' && sedeDelVinculo === null) continue;
         // Se usa el modelo tipado, no SQL crudo: `$executeRaw` manda los
         // parámetros como `text` y Postgres rechaza la fila en una columna
         // `uuid` (42804). Con Prisma el tipo de cada columna es conocido.
@@ -230,7 +235,7 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
             {
               usuarioId: usuarioIdVal,
               rolId: rol[s],
-              barberiaId: s === 'CLIENTE' || !sedes.includes(s) ? null : barberia[s],
+              barberiaId: sedeDelVinculo,
             },
           ],
           skipDuplicates: true,
