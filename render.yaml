@@ -38,7 +38,15 @@ services:
     # el panel todavía no la define, el `:-` deja el comportamiento anterior
     # (`DATABASE_URL`), así que este cambio no puede tumbar un despliegue sano.
     # Va en `startCommand` y no en `preDeployCommand` por lo explicado arriba.
-    startCommand: npx prisma migrate resolve --rolled-back 20261103220350_add_barberias_telefono_check || true; DATABASE_URL="${DATABASE_URL_MIGRATE:-$DATABASE_URL}" npx prisma migrate deploy && npm run start:prod
+    #
+    # El `migrate resolve` también usa la URL de migración (directa, sin pooler).
+    # Antes iba con `DATABASE_URL`: el pooler (pgbouncer en modo transacción) dejaba
+    # el advisory lock de Prisma pegado en el backend del servidor al desconectarse
+    # el cliente, y el `migrate deploy` posterior —que sí entra por la URL directa—
+    # moría con P1002 «Timed out trying to acquire a postgres advisory lock».
+    # Con la URL directa el lock se libera con la sesión y el arranque completo
+    # (resolve → deploy → Nest) es reproducible.
+    startCommand: DATABASE_URL="${DATABASE_URL_MIGRATE:-$DATABASE_URL}" npx prisma migrate resolve --rolled-back 20261103220350_add_barberias_telefono_check || true; DATABASE_URL="${DATABASE_URL_MIGRATE:-$DATABASE_URL}" npx prisma migrate deploy && npm run start:prod
     # H64: sonda de VIDA, no de preparación. `/health` comprueba Base de Datos Y
     # Redis, así que con la cola caída devolvía 503 y Render podía reiniciar en
     # bucle una instancia que estaba sirviendo con normalidad. La preparación
