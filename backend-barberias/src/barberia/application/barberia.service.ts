@@ -1030,8 +1030,16 @@ export class BarberiaService {
 
     // H-01 · OR sin duplicados: una sola consulta trae las sedes donde es
     // responsable Y las que tiene asignadas por rol de staff en usuario_roles.
+    //
+    // MAPA-3 · misma regla de visibilidad que las dos ramas de arriba: una sede
+    // suspendida no se ofrece en el hub porque `VinculoBarberiaGuard` la rechaza
+    // con 403 en todas sus pantallas, así que la tarjeta era un callejón sin
+    // salida («mi barbería desapareció / no me deja entrar»). El inventario
+    // completo sigue disponible para la administración de plataforma en
+    // `GET /shops/all`.
     const barberias = await this.prisma.barberia.findMany({
       where: {
+        estado: 'ACTIVO',
         OR: [
           { responsableId },
           {
