@@ -3,6 +3,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { ROL_ADMIN_BARBERIA } from '../../iam/domain/roles.js';
+import { TiempoService, ZONA_POR_DEFECTO } from '../../shared/time/tiempo.service.js';
 import { TTL_CACHE_ANALITICAS_MS } from '../../shared/cache/app-cache.module.js';
 import type { AnaliticasSede, OverviewSedes } from '../domain/analytics.types.js';
 import type { MetricasPlataformaHoyDto } from '../dto/metricas-plataforma-hoy.dto.js';
@@ -16,6 +17,7 @@ export class AnalyticsService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
+    private readonly tiempo: TiempoService,
   ) {}
 
   /**
@@ -202,39 +204,51 @@ export class AnalyticsService {
    * estado del que fiarse para mostrar cifras de caja viejas.
    *
    * `fecha_cita` es una etiqueta de calendario (DATE) y `registrado_at` un
-   * instante (TIMESTAMPTZ): el día se parte en local, que es la zona en la que
-   * el operador llama «hoy», y el rango es semiabierto `[inicio, mañana)` para
-   * que un pago con hora 23:59:59.999 no se quede fuera por un milisegundo.
+   * instante (TIMESTAMPTZ): el día se parte en la zona de la SEDE, que es la
+   * zona en la que el operador llama «hoy», y el rango es semiabierto
+   * `[inicio, mañana)` para que un pago con hora 23:59:59.999 no se quede fuera
+   * por un milisegundo.
+   *
+   * T-42 · «hoy» sale de `TiempoService` con la zona de la sede, no del reloj
+   * del proceso: Render corre en UTC y con `setHours(0,0,0,0)` la ventana se
+   * desplazaba hasta 4 h respecto del día real, así que «Citas hoy» contaba el
+   * día equivocado en cuanto el proceso no estaba en UTC-4. La etiqueta de
+   * calendario se compara con medianoches UTC del día etiquetado (que es como
+   * Prisma escribe y devuelve un DATE); el dinero se acota con instantes
+   * reales de la sede.
    */
   async metricasPlataformaHoy(): Promise<MetricasPlataformaHoyDto> {
-    const inicio = new Date();
-    inicio.setHours(0, 0, 0, 0);
-    const manana = this.addDays(inicio, 1);
+    const zona = ZONA_POR_DEFECTO;
+    const hoy = this.tiempo.fechaLocal(this.tiempo.ahora(), zona);
+    const manana = this.tiempo.sumarDias(hoy, 1);
+    const inicio = this.tiempo.aInstante(hoy, '00:00', zona);
+    const fin = this.tiempo.aInstante(manana, '00:00', zona);
 
     const [sedesActivas, citasHoy, recaudado, cajasAbiertas, usuariosActivos] = await Promise.all([
       this.prisma.barberia.count({ where: { estado: 'ACTIVO' } }),
-      this.prisma.reserva.count({ where: { fechaCita: { gte: inicio, lt: manana } } }),
+      this.prisma.reserva.count({
+        where: {
+          fechaCita: {
+            gte: this.tiempo.fechaDeCalendario(hoy),
+            lt: this.tiempo.fechaDeCalendario(manana),
+          },
+        },
+      }),
       this.prisma.pago.aggregate({
         _sum: { monto: true },
         // §7.4: un cobro ANULADO no es ingreso, y la fecha del dinero es la del
         // cobro, no la de la cita.
         where: {
           estadoPago: { not: 'ANULADO' },
-          registradoAt: { gte: inicio, lt: manana },
+          registradoAt: { gte: inicio, lt: fin },
         },
       }),
       this.prisma.cierreCaja.count({ where: { estado: 'ABIERTO' } }),
       this.prisma.usuario.count({ where: { estadoCuenta: 'ACTIVO' } }),
     ]);
 
-    const etiqueta = [
-      inicio.getFullYear(),
-      String(inicio.getMonth() + 1).padStart(2, '0'),
-      String(inicio.getDate()).padStart(2, '0'),
-    ].join('-');
-
     return {
-      fecha: etiqueta,
+      fecha: hoy,
       sedesActivas,
       citasHoy,
       recaudadoHoy: Number(Number(recaudado._sum.monto ?? 0).toFixed(2)),
