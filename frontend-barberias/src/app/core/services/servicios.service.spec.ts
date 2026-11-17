@@ -155,6 +155,66 @@ describe('ServiciosService · catálogo de administración (E2-07)', () => {
     http.expectOne(COMBOS_URL).flush([]);
   });
 
+  /**
+   * BUG-ALTA-SERVICIOS · el panel tiene UN formulario para servicios y combos,
+   * pero en la API son dos recursos con DTO distinto y
+   * `forbidNonWhitelisted` activo. `descripcion`, `esCombo` y
+   * `serviciosComboIds` no existen en `CreateServicioDto`, así que el POST
+   * devolvía 400 y el alta no se guardaba nunca: el formulario se rellenaba
+   * entero para nada.
+   */
+  it('BUG-ALTA-SERVICIOS: un servicio se envía solo con los campos de su contrato', () => {
+    service
+      .crearServicio({
+        nombre: 'Corte clásico',
+        descripcion: 'Tijera y máquina',
+        precio: 15,
+        duracionMinutos: 30,
+        esCombo: false,
+        serviciosComboIds: [],
+      })
+      .subscribe();
+
+    const peticion = http.expectOne(SERVICIOS_URL);
+    expect(peticion.request.method).toBe('POST');
+    expect(peticion.request.body).toEqual({
+      nombre: 'Corte clásico',
+      precio: 15,
+      duracionEstimada: 30,
+    });
+
+    peticion.flush(servicioCrudo);
+    http.expectOne(SERVICIOS_URL).flush([servicioCrudo]);
+    http.expectOne(COMBOS_URL).flush([]);
+  });
+
+  it('BUG-ALTA-SERVICIOS: un combo va a /combos con el DTO del combo', () => {
+    service
+      .crearServicio({
+        nombre: 'Combo Dúo',
+        descripcion: 'Dos cortes',
+        precio: 25,
+        duracionMinutos: 60,
+        esCombo: true,
+        serviciosComboIds: ['s1'],
+      })
+      .subscribe();
+
+    const peticion = http.expectOne(COMBOS_URL);
+    expect(peticion.request.method).toBe('POST');
+    expect(peticion.request.body).toEqual({
+      nombre: 'Combo Dúo',
+      descripcion: 'Dos cortes',
+      precioEspecial: 25,
+      duracionPropia: 60,
+      items: [{ servicioId: 's1' }],
+    });
+
+    peticion.flush(comboCrudo);
+    http.expectOne(SERVICIOS_URL).flush([]);
+    http.expectOne(COMBOS_URL).flush([]);
+  });
+
   it('reactivar un combo también pide el catálogo completo', () => {
     service.reactivarCombo('c1').subscribe();
 
