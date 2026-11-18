@@ -10,6 +10,7 @@ import request from 'supertest';
 import { AppModule } from './../src/app.module.js';
 import { PrismaExceptionFilter } from './../src/shared/filters/prisma-exception.filter.js';
 import { PrismaService } from './../src/shared/prisma/prisma.service.js';
+import { TiempoService, ZONA_POR_DEFECTO } from './../src/shared/time/tiempo.service.js';
 
 /**
  * T-15 · `GET /analytics/plataforma/hoy` (integración real: HTTP + PostgreSQL).
@@ -41,6 +42,14 @@ describe('T-15 · métricas de plataforma (e2e)', () => {
   let tokenSede = '';
   let tokenBarbero = '';
   let barberiaId = '';
+
+  // T-42 · el endpoint cuenta el día de la SEDE, no el del proceso. El fixture
+  // usa la misma etiqueta para no depender de la hora a la que corra el CI: a
+  // las 00:30 UTC la sede sigue en el día anterior y `setHours(0,0,0,0)`
+  // anclaba las citas al día equivocado, o sea que la prueba fallaba por el
+  // reloj y no por el contador.
+  const tiempo = new TiempoService();
+  const hoySede = tiempo.fechaLocal(tiempo.ahora(), ZONA_POR_DEFECTO);
 
   async function crearUsuario(correo: string, nombre: string, telefono: string) {
     const passwordHash = await bcrypt.hash(PASSWORD, 10);
@@ -129,8 +138,8 @@ describe('T-15 · métricas de plataforma (e2e)', () => {
     });
 
     // Una cita de HOY con cobro válido y otro ANULADO: el segundo no puede sumar.
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
+    // `fechaCita` es un DATE: la etiqueta del día de la sede, no un instante.
+    const hoy = tiempo.fechaDeCalendario(hoySede);
     const reserva = await prisma.reserva.create({
       data: {
         barberiaId: barberia.id,
@@ -191,16 +200,20 @@ describe('T-15 · métricas de plataforma (e2e)', () => {
   });
 
   it('ADMINISTRADOR recibe 200 con las métricas reales del día', async () => {
-    const inicio = new Date();
-    inicio.setHours(0, 0, 0, 0);
-    const manana = new Date(inicio);
-    manana.setDate(manana.getDate() + 1);
+    // Mismo día y mismos instantes que usa el servicio: el día local de la sede
+    // (`[00:00 local, 00:00 del día siguiente)`), no el día UTC del runner.
+    const inicio = tiempo.aInstante(hoySede, '00:00', ZONA_POR_DEFECTO);
+    const manana = tiempo.aInstante(tiempo.sumarDias(hoySede, 1), '00:00', ZONA_POR_DEFECTO);
+    const hoyCalendario = tiempo.fechaDeCalendario(hoySede);
+    const mananaCalendario = tiempo.fechaDeCalendario(tiempo.sumarDias(hoySede, 1));
 
     // La expectativa se calcula con la MISMA base: si divergiera, es que el
     // endpoint cuenta otra cosa (p. ej. sumando los cobros anulados).
     const [sedesActivas, citasHoy, pagos, cajasAbiertas, usuariosActivos] = await Promise.all([
       prisma.barberia.count({ where: { estado: 'ACTIVO' } }),
-      prisma.reserva.count({ where: { fechaCita: { gte: inicio, lt: manana } } }),
+      prisma.reserva.count({
+        where: { fechaCita: { gte: hoyCalendario, lt: mananaCalendario } },
+      }),
       prisma.pago.aggregate({
         _sum: { monto: true },
         where: { estadoPago: { not: 'ANULADO' }, registradoAt: { gte: inicio, lt: manana } },
@@ -221,9 +234,7 @@ describe('T-15 · métricas de plataforma (e2e)', () => {
       usuariosActivos,
     });
     expect(res.body.recaudadoHoy).toBeCloseTo(Number(pagos._sum.monto ?? 0), 2);
-    expect(res.body.fecha).toBe(
-      [inicio.getFullYear(), String(inicio.getMonth() + 1).padStart(2, '0'), String(inicio.getDate()).padStart(2, '0')].join('-'),
-    );
+    expect(res.body.fecha).toBe(hoySede);
 
     // La cita sembrada cuenta: el endpoint no filtra por sede.
     expect(citasHoy).toBeGreaterThanOrEqual(1);
