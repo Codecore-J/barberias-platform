@@ -174,15 +174,55 @@ export class ServiciosService {
     };
   }
 
+  /**
+   * BUG-ALTA-SERVICIOS · el panel tiene UN formulario para servicios y combos,
+   * pero en la API son dos recursos con DTO distinto y `forbidNonWhitelisted`
+   * activo. `descripcion`, `esCombo` y `serviciosComboIds` no existen en
+   * `CreateServicioDto`, así que reenviar el formulario tal cual devolvía 400 y
+   * el alta nunca se guardaba.
+   *
+   * El cuerpo se compone aquí, campo por campo, con el contrato de cada
+   * recurso: `POST /services` (CreateServicioDto) o `POST /combos`
+   * (CreateComboDto). El panel no necesita saber cuál es cuál.
+   */
+  private cuerpoServicio(dto: any): Record<string, unknown> {
+    const cuerpo: Record<string, unknown> = {
+      nombre: dto?.nombre,
+      precio: Number(dto?.precio),
+      duracionEstimada: Number(dto?.duracionEstimada ?? dto?.duracionMinutos ?? 30),
+    };
+    if (dto?.margenOperativo !== undefined && dto?.margenOperativo !== null) {
+      cuerpo['margenOperativo'] = Number(dto.margenOperativo);
+    }
+    if (dto?.destacado !== undefined) cuerpo['destacado'] = !!dto.destacado;
+    return cuerpo;
+  }
+
+  /** Cuerpo de `POST/PATCH /combos`: mismas cifras, otro nombre de columna. */
+  private cuerpoCombo(dto: any): Record<string, unknown> {
+    const cuerpo: Record<string, unknown> = {
+      nombre: dto?.nombre,
+      precioEspecial: Number(dto?.precio),
+      duracionPropia: Number(dto?.duracionMinutos ?? dto?.duracionEstimada ?? 30),
+    };
+    if (dto?.descripcion) cuerpo['descripcion'] = dto.descripcion;
+    if (dto?.margenOperativo !== undefined && dto?.margenOperativo !== null) {
+      cuerpo['margenPropio'] = Number(dto.margenOperativo);
+    }
+    if (dto?.destacado !== undefined) cuerpo['destacado'] = !!dto.destacado;
+    const ids: unknown[] = Array.isArray(dto?.serviciosComboIds) ? dto.serviciosComboIds : [];
+    // Sin ítems el combo nace vacío; el backend valida ciclos y pertenencia.
+    if (ids.length > 0) cuerpo['items'] = ids.map((servicioId) => ({ servicioId }));
+    return cuerpo;
+  }
+
   crearServicio(dto: any): Observable<Servicio> {
-    const base = this.serviciosUrl;
+    const esCombo = !!dto?.esCombo;
+    const base = esCombo ? this.combosUrl : this.serviciosUrl;
     if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
 
     this.isLoading.set(true);
-    const payload = {
-      ...dto,
-      duracionEstimada: dto.duracionEstimada ?? dto.duracionMinutos ?? 30,
-    };
+    const payload = esCombo ? this.cuerpoCombo(dto) : this.cuerpoServicio(dto);
     return this.http.post<Servicio>(base, payload).pipe(
       tap(() => {
         this.recargarCatalogo();
@@ -196,14 +236,14 @@ export class ServiciosService {
   }
 
   actualizarServicio(id: string, dto: any): Observable<Servicio> {
-    const base = this.serviciosUrl;
+    // Mismo reparto que en el alta: un combo se edita en `/combos/:id`, no en
+    // `/services/:id` (allí el `PATCH` respondería 404 por id ajeno).
+    const esCombo = !!dto?.esCombo;
+    const base = esCombo ? this.combosUrl : this.serviciosUrl;
     if (!base) return throwError(() => new Error(MENSAJE_SIN_SEDE));
 
     this.isLoading.set(true);
-    const payload = {
-      ...dto,
-      duracionEstimada: dto.duracionEstimada ?? dto.duracionMinutos ?? 30,
-    };
+    const payload = esCombo ? this.cuerpoCombo(dto) : this.cuerpoServicio(dto);
     return this.http.patch<Servicio>(`${base}/${id}`, payload).pipe(
       tap(() => {
         this.recargarCatalogo();
