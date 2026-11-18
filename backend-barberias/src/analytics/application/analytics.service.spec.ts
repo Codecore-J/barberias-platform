@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service.js';
+import { TiempoService } from '../../shared/time/tiempo.service.js';
 
 /** Caché en memoria con la misma forma que usa el servicio. */
 const crearCacheMock = () => {
@@ -40,7 +41,7 @@ describe('AnalyticsService', () => {
       usuario: { count: vi.fn() },
     };
     cache = crearCacheMock();
-    service = new AnalyticsService(prisma, cache as any);
+    service = new AnalyticsService(prisma, cache as any, new TiempoService());
   });
 
   /**
@@ -72,23 +73,63 @@ describe('AnalyticsService', () => {
       expect(resultado.fecha).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
 
-    it('acota el día en local con rango semiabierto [hoy, mañana)', async () => {
+    /**
+     * T-42 · el día se decide en la zona de la SEDE, no en la del proceso.
+     *
+     * 02:30 UTC del 17 es 22:30 del 16 en `America/Santo_Domingo`: para el
+     * operador «hoy» sigue siendo el 16, y una cita etiquetada 16 tiene que
+     * contar. Con el reloj del proceso en UTC —o en Europe/Madrid— la ventana
+     * se iba al 17 y «Citas hoy» devolvía 0 con citas reales en el día.
+     */
+    it('acota el día en la zona de la sede con rango semiabierto [hoy, mañana)', async () => {
+      service = new AnalyticsService(
+        prisma,
+        cache as any,
+        new TiempoService(() => new Date('2026-11-17T02:30:00.000Z')),
+      );
+
       const resultado = await service.metricasPlataformaHoy();
 
-      const inicio = new Date();
-      inicio.setHours(0, 0, 0, 0);
-      const manana = new Date(inicio);
-      manana.setDate(manana.getDate() + 1);
-
+      expect(resultado.fecha).toBe('2026-11-16');
       expect(prisma.reserva.count).toHaveBeenCalledWith({
-        where: { fechaCita: { gte: inicio, lt: manana } },
+        where: {
+          fechaCita: {
+            gte: new Date('2026-11-16T00:00:00.000Z'),
+            lt: new Date('2026-11-17T00:00:00.000Z'),
+          },
+        },
       });
-      const etiqueta = [
-        inicio.getFullYear(),
-        String(inicio.getMonth() + 1).padStart(2, '0'),
-        String(inicio.getDate()).padStart(2, '0'),
-      ].join('-');
-      expect(resultado.fecha).toBe(etiqueta);
+    });
+
+    it('fecha el dinero en instantes de la sede, no en medianoches del proceso', async () => {
+      service = new AnalyticsService(
+        prisma,
+        cache as any,
+        new TiempoService(() => new Date('2026-11-17T02:30:00.000Z')),
+      );
+
+      await service.metricasPlataformaHoy();
+
+      // Santo Domingo es UTC-4 todo el año: el 16 local empieza a las 04:00 UTC.
+      const args = prisma.pago.aggregate.mock.calls[0][0];
+      expect(args.where.registradoAt.gte.toISOString()).toBe('2026-11-16T04:00:00.000Z');
+      expect(args.where.registradoAt.lt.toISOString()).toBe('2026-11-17T04:00:00.000Z');
+    });
+
+    it('un cobro de las 23:30 locales sigue siendo «hoy»', async () => {
+      // 03:30 UTC del 18 = 23:30 del 17 local: el día no se adelanta al 18.
+      service = new AnalyticsService(
+        prisma,
+        cache as any,
+        new TiempoService(() => new Date('2026-11-18T03:30:00.000Z')),
+      );
+
+      const resultado = await service.metricasPlataformaHoy();
+      const args = prisma.pago.aggregate.mock.calls[0][0];
+
+      expect(resultado.fecha).toBe('2026-11-17');
+      expect(args.where.registradoAt.gte.toISOString()).toBe('2026-11-17T04:00:00.000Z');
+      expect(args.where.registradoAt.lt.toISOString()).toBe('2026-11-18T04:00:00.000Z');
     });
 
     it('no cuenta los cobros anulados y fecha el ingreso por registrado_at', async () => {
