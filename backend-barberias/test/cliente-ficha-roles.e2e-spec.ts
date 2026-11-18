@@ -41,6 +41,7 @@ describe('Cliente · ficha y notas: qué rol entra de verdad', () => {
   let barberiaA: string;
   let barberiaB: string;
   let clienteId: string;
+  let barberoAId: string;
   let tokenAdminA: string;
   let tokenBarberoA: string;
   let tokenAjeno: string;
@@ -84,6 +85,8 @@ describe('Cliente · ficha y notas: qué rol entra de verdad', () => {
     prisma = app.get(PrismaService);
 
     // Idempotente. Barberías antes que usuarios: `responsable_id` es FK.
+    // Las reservas van primero: la cita del barbero se crea en uno de los casos.
+    await prisma.reserva.deleteMany({ where: { barberia: { nombre: { contains: 'ROLES-E2E' } } } });
     await prisma.usuarioRol.deleteMany({ where: { usuario: { correo: { in: correos } } } });
     await prisma.antecedente.deleteMany({ where: { usuario: { correo: { in: correos } } } });
     await prisma.barberia.deleteMany({ where: { nombre: { contains: 'ROLES-E2E' } } });
@@ -108,6 +111,7 @@ describe('Cliente · ficha y notas: qué rol entra de verdad', () => {
 
     const adminA = await crearUsuario('admin.a.roles@test.com', 'Admin A', '9994100001');
     const barberoA = await crearUsuario('barbero.a.roles@test.com', 'Barbero A', '9994100002');
+    barberoAId = barberoA.id;
     const ajeno = await crearUsuario('ajeno.roles@test.com', 'Ajeno', '9994100003');
     const cliente = await crearUsuario('cliente.roles@test.com', 'Cliente', '9994100004');
 
@@ -161,6 +165,7 @@ describe('Cliente · ficha y notas: qué rol entra de verdad', () => {
   }, 60000);
 
   afterAll(async () => {
+    await prisma.reserva.deleteMany({ where: { barberia: { nombre: { contains: 'ROLES-E2E' } } } });
     await prisma.usuarioRol.deleteMany({ where: { usuario: { correo: { in: correos } } } });
     await prisma.antecedente.deleteMany({ where: { usuario: { correo: { in: correos } } } });
     await prisma.barberia.deleteMany({ where: { nombre: { contains: 'ROLES-E2E' } } });
@@ -193,18 +198,52 @@ describe('Cliente · ficha y notas: qué rol entra de verdad', () => {
     expect(nota?.barberiaOrigenId).toBe(barberiaA);
   });
 
-  it('el BARBERO sigue entrando: no es una regresión del cambio de rol', async () => {
+  it('el BARBERO sin cita con ese cliente NO entra: 403 en ficha y en notas (MAPA-1)', async () => {
+    // D16: el barbero tiene vista limitada. Antes del arreglo esta petición
+    // devolvía 200 con el nombre, el teléfono y las notas de un cliente ajeno
+    // con solo cambiar el id de la URL.
     const ficha = await request(app.getHttpServer())
       .get(`${api}/shops/${barberiaA}/clients/${clienteId}/profile`)
       .set('Authorization', `Bearer ${tokenBarberoA}`)
       .set('x-barberia-id', barberiaA);
-    expect(ficha.status).toBe(200);
+    expect(ficha.status).toBe(403);
 
     const nota = await request(app.getHttpServer())
       .post(`${api}/shops/${barberiaA}/clients/${clienteId}/notes`)
       .set('Authorization', `Bearer ${tokenBarberoA}`)
       .set('x-barberia-id', barberiaA)
       .send({ contenido: 'Nota del barbero' });
+    expect(nota.status).toBe(403);
+  });
+
+  it('el BARBERO con una cita en su agenda sí lee la ficha y anota (MAPA-1)', async () => {
+    await prisma.reserva.create({
+      data: {
+        barberiaId: barberiaA,
+        clienteId,
+        barberoId: barberoAId,
+        tipoReserva: 'INDIVIDUAL',
+        estado: 'COMPLETADA',
+        modoConfirmacion: 'MANUAL',
+        fechaCita: new Date('2026-11-10T00:00:00.000Z'),
+        horaInicio: new Date('2026-11-10T10:00:00.000Z'),
+        horaFin: new Date('2026-11-10T10:30:00.000Z'),
+        totalPagar: 500,
+      },
+    });
+
+    const ficha = await request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaA}/clients/${clienteId}/profile`)
+      .set('Authorization', `Bearer ${tokenBarberoA}`)
+      .set('x-barberia-id', barberiaA);
+    expect(ficha.status).toBe(200);
+    expect(ficha.body.id).toBe(clienteId);
+
+    const nota = await request(app.getHttpServer())
+      .post(`${api}/shops/${barberiaA}/clients/${clienteId}/notes`)
+      .set('Authorization', `Bearer ${tokenBarberoA}`)
+      .set('x-barberia-id', barberiaA)
+      .send({ contenido: 'Nota del barbero sobre su cliente' });
     expect(nota.status).toBe(201);
   });
 
