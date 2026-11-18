@@ -18,8 +18,12 @@ export class ClienteController {
     @Param('id', ParseUUIDPipe) clienteId: string,
     // Fase 5 (Punto 5.3): la sede sale de la ruta, nunca de una cabecera.
     @CurrentBarberiaId() barberiaId: string,
+    // MAPA-1 · el alcance del BARBERO se resuelve con el usuario del token, no
+    // con la ruta: la ficha de un cliente ajeno a su agenda deja de estar a un
+    // cambio de URL.
+    @CurrentUser() user: UsuarioAutenticado,
   ) {
-    return this.clienteService.obtenerFicha(clienteId, barberiaId);
+    return this.clienteService.obtenerFicha(clienteId, barberiaId, user);
   }
 
   @Post(':id/notes')
@@ -32,6 +36,6 @@ export class ClienteController {
     @Body('contenido') contenido: string,
     @CurrentUser() user: UsuarioAutenticado
   ) {
-    return this.clienteService.guardarNota(clienteId, barberiaId, user.id, contenido);
+    return this.clienteService.guardarNota(clienteId, barberiaId, user, contenido);
   }
 }
