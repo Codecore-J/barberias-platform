@@ -1386,6 +1386,8 @@ describe('BarberiaService', () => {
       expect(prisma.barberia.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
+            // MAPA-3 · el staff ve las sedes ACTIVAS donde participa.
+            estado: 'ACTIVO',
             OR: [
               { responsableId: 'usuario-z' },
               {
@@ -1528,6 +1530,7 @@ describe('BarberiaService', () => {
       expect(prisma.barberia.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
+            estado: 'ACTIVO',
             OR: [
               { responsableId: 'staff-nuevo' },
               {
@@ -1547,6 +1550,32 @@ describe('BarberiaService', () => {
       expect(result[0].id).toBe(SEDE);
       // Es ADMIN_BARBERIA de ESA sede (E1-05): la puerta de entrada sí se entrega.
       expect((result[0] as any).codigoAcceso).toBe('CODIGOZ');
+    });
+
+    /**
+     * MAPA-3 (L3) · el hub del staff no puede ofrecer una sede suspendida: el
+     * `VinculoBarberiaGuard` responde 403 en todas sus pantallas, así que la
+     * tarjeta es un callejón sin salida («mi barbería desapareció / no me deja
+     * entrar»). Las otras dos ramas del MISMO método —ADMINISTRADOR y
+     * CLIENTE— ya filtran por `estado`: el criterio de visibilidad no puede
+     * depender de quién pregunta.
+     */
+    it('MAPA-3: el staff solo recibe sedes ACTIVAS, igual que el resto de roles', async () => {
+      // La consulta real ya viene filtrada por la base: si el `where` no lleva
+      // `estado`, Prisma devuelve también la suspendida.
+      (prisma.barberia.findMany as any).mockResolvedValue([]);
+
+      const result = await service.findAllByResponsable(
+        'staff-nuevo',
+        STAFF_POR_ROL_ADMIN,
+      );
+
+      expect(prisma.barberia.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ estado: 'ACTIVO' }),
+        }),
+      );
+      expect(result).toHaveLength(0);
     });
 
     it('H-01: el BARBERO asignado por rol recibe su sede SIN codigoAcceso', async () => {
