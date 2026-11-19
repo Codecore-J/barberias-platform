@@ -77,7 +77,9 @@ test.describe('/admin/usuarios · gestión de cuentas de la plataforma', () => {
       // bandeja estuviera vacía el componente pinta su estado vacío explícito.
       const filas = page.locator('tbody tr');
       await expect(filas.first()).toBeVisible();
-      await expect(page.getByText(ADMIN_EMAIL, { exact: true })).toBeVisible();
+      // T-14 · el correo también aparece en la tarjeta de usuario del sidebar,
+      // así que la aserción se acota a la tabla para no ser ambigua.
+      await expect(page.locator('tbody').getByText(ADMIN_EMAIL, { exact: true })).toBeVisible();
       await expect(page.getByRole('columnheader', { name: 'Estado' })).toBeVisible();
     });
 
