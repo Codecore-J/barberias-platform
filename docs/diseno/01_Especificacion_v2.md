@@ -251,7 +251,7 @@ Payload: `barberiaId`, `fecha` (`YYYY-MM-DD` de la sede), `inicio` y `fin` como 
 
 - El aviso no reserva el hueco: entre `NOTIFICADO` y la reserva real, otro cliente puede tomarlo (el aviso es una oportunidad, no un bloqueo).
 - Si el worker muere justo después del test-and-set, un reintento del job podría avisar a una segunda candidata (HALLAZGO-CB-02, abierto).
-- La implementación V1 es una lista explícita de suscripciones; no es el fan-out a 25 elegibles que describía el borrador de D22 (ver §12).
+- La implementación V1 es una lista explícita de suscripciones; no es el fan-out a 25 elegibles que describía el borrador de D22 (ver §12). Ese fan-out quedó **descartado por T-19** (2026-11-18).
 
 ---
 
@@ -311,7 +311,7 @@ Los errores de negocio tienen forma estable:
 
 ### 12.2 Desviaciones documentadas
 
-1. **Carril B V1** implementa una lista de espera con suscripción explícita (FIFO, un aviso por hueco). El borrador de D22 describía un fan-out a un máximo de 25 clientes elegibles con notificación APP; esa variante no está implementada. La suscripción permite al cliente declarar qué aceptaría y evita avisos masivos.
+1. **Carril B V1** implementa una lista de espera con suscripción explícita (FIFO, un aviso por hueco). El borrador de D22 describía un fan-out a un máximo de 25 clientes elegibles con notificación APP; esa variante no está implementada. La suscripción permite al cliente declarar qué aceptaría y evita avisos masivos. **Descartada definitivamente por T-19 (2026-11-18):** el fan-out no se implementará (ver `docs/CIERRE_T19_2026-11-18.md`).
 2. **Notificaciones**: el procesador simula el envío; no hay SendGrid/Twilio/FCM.
 3. **Cierre de suscripciones**: `CERRADO` existe en el catálogo y en el CHECK, pero todavía no hay job que cierre por vencimiento ni al conseguir cita.
 4. **Reportes**: la tabla `reportes` y el módulo existen en el esquema, pero el módulo `src/cliente/` está deliberadamente sin registrar (H22). Las rutas de ficha/notas responden 404.
