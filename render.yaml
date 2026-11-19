@@ -53,10 +53,10 @@ services:
     # (con Redis incluido) sigue disponible en /api/v1/health para alertas y
     # balanceadores: no se usa como `healthCheckPath`.
     healthCheckPath: /api/v1/health/liveness
-    # T-32 · sin auto-deploy: un push a `main` ya no despliega solo. Se publica
-    # con Manual Deploy → Deploy latest commit, después del QA en el preview.
+    # Auto-deploy ACTIVADO (revierte T-32): cada push a `main` despliega solo.
     # Vive aquí y no solo en el panel porque el blueprint lo revertiría.
-    autoDeploy: false
+    # Consecuencia: el QA en el preview tiene que cerrarse ANTES de mergear.
+    autoDeploy: true
     envVars:
       # APP_ENV es obligatorio: `main.ts` aborta el arranque si falta o no es
       # dev/staging/production.
