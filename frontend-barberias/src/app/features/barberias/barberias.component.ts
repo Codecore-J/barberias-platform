@@ -187,9 +187,17 @@ interface CamposEditables {
                     <i class="pi pi-arrow-right"></i> Entrar
                   </button>
                 } @else if (puedeSeleccionar(barberia)) {
+                  <!--
+                    P3 · el botón queda bloqueado mientras corre el PATCH /select.
+                    Antes se podía pulsar dos veces o navegar antes de que el
+                    backend fijara la sede: el guard devolvía al hub y parecía que
+                    «Seleccionar» no había hecho nada.
+                  -->
                   <button (click)="seleccionar(barberia.id)"
-                          class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-md shadow-amber-500/20 hover:scale-105 transition-transform flex items-center justify-center gap-2">
-                    <i class="pi pi-check-circle"></i> Seleccionar
+                          [disabled]="seleccionandoId() === barberia.id"
+                          class="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-md shadow-amber-500/20 hover:scale-105 transition-transform flex items-center justify-center gap-2 disabled:opacity-60 disabled:hover:scale-100 disabled:cursor-wait">
+                    <i class="pi" [class]="seleccionandoId() === barberia.id ? 'pi-spin pi-spinner' : 'pi-check-circle'"></i>
+                    {{ seleccionandoId() === barberia.id ? 'Seleccionando…' : 'Seleccionar' }}
                   </button>
                 } @else {
                   <!--
@@ -574,6 +582,12 @@ export class BarberiasComponent implements OnInit {
 
   showVincularModal = signal(false);
 
+  /**
+   * P3 · sede cuyo `PATCH /select` está en vuelo. Bloquea el botón para que no
+   * se pulse dos veces ni se navegue antes de que el backend fije el contexto.
+   */
+  readonly seleccionandoId = signal<string | null>(null);
+
   /** Término del buscador de sedes (D05). Local: no dispara peticiones. */
   readonly filtro = signal('');
 
@@ -942,12 +956,20 @@ export class BarberiasComponent implements OnInit {
   }
 
   seleccionar(id: string) {
+    // P3 · una sola selección a la vez: el `PATCH /select` es una escritura y
+    // navegar antes de que responda deja el contexto sin fijar.
+    if (this.seleccionandoId()) return;
+
+    this.seleccionandoId.set(id);
     this.tenantService.seleccionarBarberia(id).subscribe({
-      next: () => this.irAlPanel(),
+      next: () => {
+        this.seleccionandoId.set(null);
+        this.irAlPanel();
+      },
       // Hallazgo 2: si el backend rechaza la selección no se navega y la sede
       // anterior sigue siendo la activa; el mensaje ya queda en
       // `tenantService.error()` y lo muestra el banner de arriba.
-      error: () => undefined,
+      error: () => this.seleccionandoId.set(null),
     });
   }
 

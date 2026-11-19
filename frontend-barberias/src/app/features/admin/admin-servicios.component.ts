@@ -71,7 +71,7 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'">
               <i class="pi pi-star text-[10px]"></i>
-              <span>Combos DFS</span>
+              <span>Combos</span>
               <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-zinc-800 text-zinc-300">{{ countCombos() }}</span>
             </button>
           </div>
