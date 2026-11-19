@@ -151,7 +151,7 @@ Las D01 a D13 son del plan estratégico; las D14 en adelante se agregaron al arm
 | D19 | Catálogo de motivos de la sección 5.5. |
 | D20 | La restricción por no presentados persiste al desvincular y revincular (no se evade desvinculándose). |
 | D21 | Revincular reactiva la MISMA fila de `cliente_barberias`: historial y contadores intactos. |
-| D22 | Oportunidades de espacio: se disparan al cancelarse una reserva CONFIRMADA o liberarse un bloqueo. Elegibles: vinculación ACTIVO y barbería activa, sin restricción, sin reserva confirmada solapada, y que no canceló ese espacio. Máximo 25 destinatarios, sin duplicados. |
+| D22 | **Descartada (T-19, 2026-11-18):** el fan-out proactivo a elegibles NO se implementa — no aporta valor al modelo de negocio de la barbería, genera spam y provoca fricción en la experiencia del cliente. Lo vigente es la lista de espera con suscripción explícita (opt-in, un solo aviso FIFO por hueco). Cierre: `docs/CIERRE_T19_2026-11-18.md`. *Texto original, ya no vigente:* ~~oportunidades de espacio: se disparan al cancelarse una reserva CONFIRMADA o liberarse un bloqueo; elegibles vinculación ACTIVO y barbería activa, sin restricción, sin reserva confirmada solapada y que no canceló ese espacio; máximo 25 destinatarios, sin duplicados.~~ |
 | D23 | Bloqueo temporal de cuenta: 5 inicios de sesión fallidos en 15 minutos bloquean 15 minutos. |
 | D24 | `usuarios.token_version` en el JWT permite cerrar sesión en todos los dispositivos. |
 | D25 | Imágenes en V1: solo URL HTTPS (`logo_url`, `imagen_url`). La subida de archivos se aplaza. |
@@ -174,7 +174,7 @@ Las D01 a D13 son del plan estratégico; las D14 en adelante se agregaron al arm
 | D44 | Existe un endpoint de cotización (`/reservas/cotizar`) para que el frontend nunca calcule bloques ni precios. |
 | D45 | Capacidad de una reserva grupal: la sede conserva UN carril de agenda (D06). «Espacio» es una plaza de participante DENTRO de la reserva —1 adulto responsable + N niños—, nunca un carril paralelo ni asientos concurrentes. |
 | D46 | Límites de la reserva grupal: el total incluye al adulto responsable y `max_ninos` cuenta solo a los niños. Un límite nulo es «sin límite propio de la sede», nunca «sin validación», y todo grupo queda acotado por `MAX_PARTICIPANTES_POR_GRUPO` (constante de plataforma; valor propuesto 8). Violación → 422 `CAPACIDAD_EXCEDIDA`. |
-| D47 | Huecos: las alternativas en el flujo y la oportunidad proactiva de D22 usan el MISMO calculador (la función pura de E3-02). Una sugerencia NUNCA retiene el hueco: se revalida al confirmar y un 409 `CONFLICTO_HORARIO` es la respuesta honesta. |
+| D47 | Huecos: las alternativas en el flujo y la lista de espera del Carril B usan el MISMO calculador (la función pura de E3-02). Una sugerencia NUNCA retiene el hueco: se revalida al confirmar y un 409 `CONFLICTO_HORARIO` es la respuesta honesta. *(La «oportunidad proactiva a elegibles» de D22 quedó descartada por T-19 el 2026-11-18.)* |
 | D48 | La penalización por inasistencias es LOCAL: el contador de una sede nunca suspende la cuenta global (`usuarios.estado_cuenta`), que solo cambia por decisión manual, motivada y auditada del ADMINISTRADOR. |
 
 **Códigos de error de negocio (`codigo`):** `ESTADO_INVALIDO`, `SOLICITUD_EXPIRADA`, `FUERA_DE_VENTANA`, `CONFLICTO_HORARIO`, `CLIENTE_RESTRINGIDO`, `NO_VINCULADO`, `LIMITE_BARBERIAS`, `LIMITE_VINCULACIONES`, `GRUPAL_NO_DISPONIBLE`, `HAY_PENDIENTES`, `RESERVAS_PAUSADAS`, `FUERA_DE_HORIZONTE`, `CAPACIDAD_EXCEDIDA`, `SIN_RESTRICCION`, `REACTIVACION_PENDIENTE`.
@@ -848,21 +848,24 @@ hecho.
 
 ### E4-02 · Oportunidades de espacio (huecos) y horarios alternativos
 `P1 · L · Depende: E3-02, E3-03, E3-07 · Rama: feat/oportunidades-espacio`
+
+> **T-19 · CERRADA / DESCARTADA (2026-11-18).** Se descarta el fan-out de notificaciones por disponibilidad (D22). No aporta valor al modelo de negocio de la barbería, genera spam y provoca fricción en la experiencia del cliente. Lo único retirado es el aviso masivo a clientes elegibles que no lo pidieron (puntos 5, 6 y 9 de esta tarea); siguen vigentes el Carril A (alternativas en el flujo y `GET /shops/:shopId/disponibilidad/huecos`) y la lista de espera con suscripción explícita (V1 opt-in). Detalle: `docs/CIERRE_T19_2026-11-18.md`.
+
 **Contexto:** D22 define la oportunidad de espacio —se dispara al cancelarse una reserva `CONFIRMADA` o al liberarse un bloqueo; elegibles: vinculación `ACTIVO` y barbería activa, sin restricción, sin reserva confirmada solapada y que no canceló ese espacio; máximo 25 destinatarios, sin duplicados— pero sigue en «Reglas del diseño ausentes» (sección 7): E3-07 dejó el disparo pendiente y el reporte de E3-08 lo registra como ausente. Además, cuando el tramo pedido no tiene capacidad, hoy la única respuesta es el error: no hay alternativas.
 **Hacer:**
 1. D47: los DOS caminos usan el MISMO cálculo. Un solo calculador —la función pura de E3-02— alimenta (a) las alternativas en el flujo y (b) la oportunidad proactiva de D22. Nunca un segundo algoritmo de huecos.
 2. Carril A · alternativas en el flujo: cuando `POST .../reservas` no puede tomar el tramo pedido, la respuesta incluye `alternativas: [{ fecha, horaInicio, horaFin }]` (máximo 5, ordenadas por cercanía temporal, dentro del horizonte y de los períodos de la sede), y `GET /barberias/:barberiaId/disponibilidad/huecos?fecha=&participantes=` (CLIENTE vinculado, ADMIN_BARBERIA, ADMINISTRADOR) devuelve las mismas para un tamaño de grupo dado.
 3. Las alternativas respetan el tamaño real del grupo (D46), los pasos de 15 minutos (D41), los bloqueos, las excepciones y la pausa (`nuevas_reservas_activas`). No se ofrece ninguna alternativa si la sede no acepta ese tipo de reserva.
 4. Una alternativa NO retiene el hueco: se revalida al confirmar y, si se ocupó, responde 409 `CONFLICTO_HORARIO`. Retener el hueco exige resolver antes la divergencia D37/H41 y no es alcance de esta tarea.
-5. Carril B · oportunidad proactiva (D22): al liberarse un hueco —cancelación del cliente, cancelación del admin o cancelación especial aprobada de una reserva `CONFIRMADA`, y bloqueo liberado (E2-07)— se calculan los elegibles y se encola UN job idempotente por hueco (`jobId` determinístico, D33) que crea las notificaciones de canal APP (D12).
-6. Elegibilidad y cortesía: máximo 25 destinatarios, sin duplicados, excluyendo a quien canceló ese espacio, a los restringidos (E3-10) y a quien ya tiene una reserva confirmada solapada; nunca se ofrece un hueco ya pasado ni uno que se ocupe antes del envío.
+5. Carril B · oportunidad proactiva (D22): al liberarse un hueco —cancelación del cliente, cancelación del admin o cancelación especial aprobada de una reserva `CONFIRMADA`, y bloqueo liberado (E2-07)— se calculan los elegibles y se encola UN job idempotente por hueco (`jobId` determinístico, D33) que crea las notificaciones de canal APP (D12). *(DESCARTADO por T-19 el 2026-11-18: el sistema no notifica la liberación de huecos a elegibles.)*
+6. Elegibilidad y cortesía: máximo 25 destinatarios, sin duplicados, excluyendo a quien canceló ese espacio, a los restringidos (E3-10) y a quien ya tiene una reserva confirmada solapada; nunca se ofrece un hueco ya pasado ni uno que se ocupe antes del envío. *(DESCARTADO por T-19 el 2026-11-18: no hay fan-out de elegibles.)*
 7. Privacidad (principio 2): la notificación nombra sede, fecha, hora y duración — nunca quién canceló, ni la identidad de otros clientes, ni datos de otra barbería.
 8. Bandera `configuracion_barberia.oportunidades_espacio_activas BOOLEAN DEFAULT TRUE` para que una sede pueda apagarlas (expuesta por E3-11 y auditada).
-9. Tests: hueco liberado con 3 elegibles → 3 notificaciones y ninguna duplicada al reejecutar el job; grupo que no cabe → 5 alternativas coherentes con la disponibilidad real; alternativa ocupada antes de confirmar → 409; sede con la bandera en falso → 0 notificaciones.
+9. Tests: hueco liberado con 3 elegibles → 3 notificaciones y ninguna duplicada al reejecutar el job; grupo que no cabe → 5 alternativas coherentes con la disponibilidad real; alternativa ocupada antes de confirmar → 409; sede con la bandera en falso → 0 notificaciones. *(El primer caso y el último quedan descartados por T-19; los de alternativas y `409` siguen vigentes y probados.)*
 **No hacer:** retener los huecos sugeridos; notificar a no elegibles; exponer datos de otras sedes; un segundo calculador de disponibilidad.
 **Aceptación:**
-- [ ] Una reserva `CONFIRMADA` cancelada dispara la oportunidad a los elegibles de D22 (≤ 25, sin duplicados, sin el que canceló).
-- [ ] Reejecutar el job no duplica notificaciones (idempotencia).
+- **Descartado (T-19, 2026-11-18):** ~~Una reserva `CONFIRMADA` cancelada dispara la oportunidad a los elegibles de D22 (≤ 25, sin duplicados, sin el que canceló).~~
+- **Descartado (T-19, 2026-11-18):** ~~Reejecutar el job no duplica notificaciones (idempotencia).~~
 - [ ] Un grupo de 3 personas solo recibe tramos donde caben las 3.
 - [ ] Rojo → verde.
 **Evidencia:** salida de los tests.
@@ -896,6 +899,10 @@ hecho.
 > Las tareas de esta sección llegan con la numeración `T-xx` con la que se
 > reportan los hallazgos de las revisiones; se registran aquí para que tengan el
 > mismo protocolo de cierre que las épicas (rojo → verde, evidencia adjunta).
+
+### T-14 · Navegación: sidebar lateral colapsable del panel de administración
+`P1 · M · Cerrada 2026-11-19 · Cierre: docs/CIERRE_T14_2026-11-19.md`
+> **T-14 · CERRADA / RESUELTA (2026-11-19).** El navbar flotante del área de administración se reemplazó por un sidebar lateral colapsable (240px ↔ 72px, drawer con backdrop por debajo de 1024px) para el staff (`ADMINISTRADOR`, `ADMIN_BARBERIA`, `BARBERO`); el cliente conserva su navbar. **«Configuración» quedó anclada en el pie, en la sección «Gobernanza de sede», apuntando a los ajustes de la sede activa (`/admin/horarios`; `/barbero/horarios` para el barbero) y nunca a `/barberias/nueva`.** No se tocaron rutas, guards ni redirecciones: cada entrada visible es una ruta existente cuyo `roleGuard` admite el rol efectivo. La cuenta dual muestra sus dos chips de rol sin duplicar texto y el `ADMINISTRADOR` ve el catálogo con aviso de solo lectura (T-17). Verificación: `npm run build` sin errores, 254 tests de frontend en verde y revisión visual real a 1440px y 390px (expandido, colapsado, ruta activa, drawer y notificaciones). Detalle: `docs/CIERRE_T14_2026-11-19.md`.
 
 ### T-37 · Hardening: `verificarAcceso` en analíticas acepta un rol sin sede
 `P2 · S · Depende: T-16 · Rama: fix/t37-verificar-acceso-analiticas`

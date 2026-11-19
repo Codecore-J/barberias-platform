@@ -5,13 +5,14 @@ import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { WinstonModule } from 'nest-winston';
-import express from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module.js';
 import { PrismaExceptionFilter } from './shared/filters/prisma-exception.filter.js';
 import { DecimalSerializerInterceptor } from './shared/interceptors/decimal-serializer.interceptor.js';
 import { opcionesLogger } from './shared/observability/logger.config.js';
 import { inicializarSentry } from './shared/observability/sentry.js';
+import { origenAutorizado, origenesPermitidos } from './shared/cors/cors-policy.js';
 
 async function bootstrap() {
   const allowedEnvs = ['dev', 'staging', 'production'];
@@ -71,42 +72,38 @@ async function bootstrap() {
 
   // Configuración estricta de CORS (CONF-02):
   // Solo se permiten orígenes autorizados del frontend oficial y entornos locales de desarrollo.
-  const allowedOrigins = [
-    'https://barberias-platform-git-main-developerstem.vercel.app',
-    'https://barberias-platform.vercel.app',
-    'http://localhost:4200',
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://127.0.0.1:4200',
-  ];
+  //
+  // P3 · un origen desconocido se rechaza con 403 y un cuerpo del contrato, no
+  // con una excepción: antes el callback devolvía `new Error(...)`, Express lo
+  // propagaba y el filtro global lo pintaba como **500 Internal Server Error**,
+  // de modo que un preview local parecía una caída del backend. Este middleware
+  // va ANTES de `enableCors` para que también cubra el preflight (OPTIONS).
+  const allowedOrigins = origenesPermitidos();
 
-  if (process.env.FRONTEND_URL) {
-    allowedOrigins.push(
-      ...process.env.FRONTEND_URL.split(',').map((u) => u.trim()),
-    );
-  }
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const origin = req.headers.origin;
+    if (origenAutorizado(origin, allowedOrigins)) return next();
+
+    return res.status(403).json({
+      statusCode: 403,
+      error: 'Forbidden',
+      codigo: 'ORIGEN_NO_AUTORIZADO',
+      mensaje: 'El origen de esta petición no está autorizado para acceder a esta API.',
+      message: 'El origen de esta petición no está autorizado para acceder a esta API.',
+    });
+  });
 
   app.enableCors({
     origin: (origin, callback) => {
-      // Permitir peticiones sin origen (curl, pruebas locales, postman, llamadas servidor a servidor)
-      if (!origin) {
+      // Sin origen (curl, pruebas locales, postman, server-to-server) se permite:
+      // CORS es una defensa del navegador, no un mecanismo de autenticación.
+      if (origenAutorizado(origin, allowedOrigins)) {
         return callback(null, true);
       }
 
-      // Validar si está en la lista blanca de orígenes
-      const isAllowed = allowedOrigins.includes(origin);
-
-      // Permitir previsualizaciones dinámicas de Vercel del equipo
-      const isVercelPreview = /^https:\/\/barberias-platform.*-developerstem\.vercel\.app$/.test(origin);
-
-      if (isAllowed || isVercelPreview) {
-        return callback(null, true);
-      }
-
-      return callback(
-        new Error(`Política de CORS: El origen ${origin} no está autorizado para acceder a esta API.`),
-        false,
-      );
+      // Rechazo LIMPIO: sin cabeceras CORS el navegador bloquea la lectura y el
+      // backend no responde 500. El 403 lo pone el middleware de arriba.
+      return callback(null, false);
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
