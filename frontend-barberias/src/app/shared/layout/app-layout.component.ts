@@ -5,11 +5,12 @@ import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../auth/auth.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { AdminShellComponent } from './admin-shell/admin-shell.component';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, AdminShellComponent],
   template: `
     <div class="relative min-h-screen bg-[#09090b] text-zinc-100 overflow-x-hidden perspective-1200 bg-ambient-mesh">
       <!-- Decoración de Fondo 3D Atmosférico -->
@@ -25,6 +26,14 @@ import { NotificationService } from '../../core/services/notification.service';
         </div>
       </div>
 
+      @if (esStaff()) {
+        <!--
+          T-14 · el panel de administración usa un sidebar lateral colapsable.
+          El staff NO pierde ninguna ruta: las entradas del menú son las mismas
+          que declara app.routes.ts, con sus guards intactos.
+        -->
+        <app-admin-shell [(colapsado)]="sidebarColapsado" (cerrarSesion)="onLogout()" />
+      } @else {
       <!-- NAVBAR FLOTANTE GLASSMORPHISM -->
       <header class="app-header fixed top-4 left-0 right-0 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto transition-all duration-300">
         <nav class="glass-panel rounded-2xl px-4 py-3 sm:px-6 flex items-center justify-between border border-amber-500/20 shadow-2xl backdrop-blur-xl">
@@ -527,14 +536,24 @@ import { NotificationService } from '../../core/services/notification.service';
           </div>
         }
       </header>
+      }
 
-      <!-- CONTENEDOR PRINCIPAL CON PROFUNDIDAD ESPACIAL 3D -->
-      <main class="relative z-10 pt-28 pb-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto transform-style-3d">
-        <router-outlet></router-outlet>
-      </main>
+      <!--
+        T-14 · la clase con-sidebar reserva el ancho del sidebar (240px o 72px) para el
+        contenido y su pie; en móvil no hay margen porque el panel es un drawer.
+      -->
+      <div
+        class="relative z-10"
+        [class.con-sidebar]="esStaff()"
+        [class.colapsado]="esStaff() && sidebarColapsado()"
+      >
+        <!-- CONTENEDOR PRINCIPAL CON PROFUNDIDAD ESPACIAL 3D -->
+        <main class="relative pt-28 pb-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto transform-style-3d">
+          <router-outlet></router-outlet>
+        </main>
 
-      <!-- FOOTER DE LUJO -->
-      <footer class="app-footer relative border-t border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md py-8 px-4 text-center text-xs text-zinc-500">
+        <!-- FOOTER DE LUJO -->
+        <footer class="app-footer relative border-t border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md py-8 px-4 text-center text-xs text-zinc-500">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
@@ -544,7 +563,8 @@ import { NotificationService } from '../../core/services/notification.service';
             &copy; 2026 <span class="gold-gradient-text font-bold">IMPERIAL BARBERS PLATFORM</span>. Todos los derechos reservados.
           </p>
         </div>
-      </footer>
+        </footer>
+      </div>
     </div>
   `,
   styles: [`
@@ -557,6 +577,11 @@ export class AppLayoutComponent implements OnInit {
   protected readonly authService = inject(AuthService);
   protected readonly tenantService = inject(TenantService);
   protected readonly notificationService = inject(NotificationService);
+
+  /** T-14 · estado del sidebar del panel (se recuerda entre sesiones). */
+  readonly sidebarColapsado = signal<boolean>(
+    typeof localStorage !== 'undefined' && localStorage.getItem('sidebar_admin_colapsado') === 'true',
+  );
 
   readonly mobileMenuOpen = signal<boolean>(false);
   readonly profileDropdownOpen = signal<boolean>(false);
@@ -627,6 +652,19 @@ export class AppLayoutComponent implements OnInit {
   /** Lo que se pinta en la cabecera: la etiqueta legible, no el código. */
   userRoleLabel(): string {
     return ETIQUETA_ROL[this.userRole()];
+  }
+
+  /**
+   * T-14 · ¿esta sesión opera el panel de administración?
+   *
+   * El cliente (y la cuenta sin rol) conserva el navbar flotante; el staff usa
+   * el sidebar. Se decide por ROL EFECTIVO, así que una cuenta dual
+   * `ADMIN_BARBERIA + BARBERO` entra como administrador de sede, que es la
+   * misma precedencia que aplican los guards.
+   */
+  esStaff(): boolean {
+    const rol = this.userRole();
+    return rol === 'ADMINISTRADOR' || rol === 'ADMIN_BARBERIA' || rol === 'BARBERO';
   }
 
   /** Solo el staff con permiso de gestión entra a /barberias desde el perfil. */

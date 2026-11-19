@@ -212,3 +212,117 @@ select:-webkit-autofill {
 .drawer-layer {
   z-index: var(--app-z-drawer);
 }
+
+/*
+ * T-14 · Sidebar lateral del panel de administración.
+ *
+ * Se declara aquí y no con utilidades arbitrarias de Tailwind porque el ancho
+ * (240px ↔ 72px) y el margen del contenido deben cambiar JUNTOS y sin
+ * parpadeo: las dos cosas comparten transición y punto de ruptura. Por debajo
+ * de 1024px el panel es un drawer que entra desde la izquierda con backdrop.
+ */
+.app-sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 60;
+  display: flex;
+  width: 240px;
+  flex-direction: column;
+  border-right: 1px solid rgba(212, 175, 55, 0.16);
+  background: rgba(11, 11, 14, 0.97);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 24px 0 60px rgba(0, 0, 0, 0.55);
+  transform: translateX(-100%);
+  transition:
+    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-sidebar.abierta-movil {
+  transform: translateX(0);
+}
+
+.app-sidebar .nav-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 0.65rem;
+  background: transparent;
+  color: #a1a1aa;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.app-sidebar .nav-item > i {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  color: rgba(212, 175, 55, 0.7);
+  transition: color 0.2s ease;
+}
+
+.app-sidebar .nav-item:hover {
+  color: #f4f4f5;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.app-sidebar .nav-item:hover > i {
+  color: #facc15;
+}
+
+/* Indicador de ruta activa (`routerLinkActive`). */
+.app-sidebar .nav-item.activo {
+  color: #fbbf24;
+  background: rgba(212, 175, 55, 0.12);
+  border-color: rgba(212, 175, 55, 0.32);
+}
+
+.app-sidebar .nav-item.activo > i {
+  color: #fbbf24;
+}
+
+/* T-14 · Configuración es gobernanza, no operación: se separa del resto. */
+.app-sidebar .nav-item.nav-config {
+  border-color: rgba(212, 175, 55, 0.25);
+  background: rgba(212, 175, 55, 0.07);
+  color: #fcd34d;
+}
+
+@media (min-width: 1024px) {
+  .app-sidebar {
+    transform: none;
+  }
+
+  .app-sidebar.colapsado {
+    width: 72px;
+  }
+
+  .con-sidebar {
+    padding-left: 240px;
+    transition: padding-left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .con-sidebar.colapsado {
+    padding-left: 72px;
+  }
+
+  /*
+   * El sidebar ya no flota: el contenido no necesita el margen del navbar
+   * (la segunda clase vence al `pt-28` de Tailwind sin usar `!important`).
+   */
+  .con-sidebar > main.relative {
+    padding-top: 2.5rem;
+  }
+}
