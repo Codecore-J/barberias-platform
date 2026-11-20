@@ -70,6 +70,22 @@ export class AuthController {
   }
 
   /**
+   * QA2-02 · cierra la sesión del token que llama.
+   *
+   * Es una ruta autenticada —sin token no hay sesión que cerrar, y el guard
+   * responde 401— y no devuelve cuerpo: 204. El token con el que se invoca deja
+   * de valer en la siguiente petición, junto con los de cualquier otro
+   * dispositivo de la misma cuenta (trade-off aceptado: `token_version` es por
+   * cuenta, no por sesión).
+   */
+  @Autenticado()
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async logout(@CurrentUser() user: UsuarioAutenticado): Promise<void> {
+    await this.authService.logout(user);
+  }
+
+  /**
    * Consulta del perfil del usuario actualmente autenticado.
    * Endpoint protegido: extrae el usuario a partir del JWT verificado.
    *

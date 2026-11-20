@@ -66,6 +66,10 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /auth/register': TODOS,
   'POST /auth/login': TODOS,
   'GET /auth/me': TODOS,
+  // QA2-02 · cierre de sesión: `@Autenticado` sin lista de roles, igual que
+  // `GET /auth/me`. No hay rol que exigir —cierra la sesión del propio token— y
+  // el usuario sale del JWT, no del cuerpo. Sin token el guard responde 401.
+  'POST /auth/logout': TODOS,
   'POST /auth/forgot-password': TODOS,
   'POST /auth/reset-password': TODOS,
   // V2.1 · verificación OTP: son rutas `@Autenticado`, sin lista de roles, así
@@ -678,8 +682,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // suma el lote de membresías del cliente: 118 × 4 = 472 decisiones. T-21
   // suma el reenvío del OTP y la corrección del contacto: 120 × 4 = 480. T-15
   // suma las métricas de plataforma: 122 × 4 = 488 (T-17 añade
-  // `GET /shops/:shopId/categorias/:id`, el detalle de categoría).
-  expect(evaluaciones).toBe(488);
+  // `GET /shops/:shopId/categorias/:id`, el detalle de categoría). QA2-02 suma
+  // `POST /auth/logout`: 123 × 4 = 492.
+  expect(evaluaciones).toBe(492);
     expect(
       desviaciones.length === 0
         ? ''
