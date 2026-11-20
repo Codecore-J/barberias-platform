@@ -17,7 +17,7 @@ import { LoginDto } from './dto/login.dto.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { UsuarioResponseDto } from './dto/usuario-response.dto.js';
-import { JwtPayload } from '../domain/jwt.interface.js';
+import { JwtPayload, UsuarioAutenticado } from '../domain/jwt.interface.js';
 import { validarAsignacionRol } from '../domain/roles.js';
 import { plainToInstance } from 'class-transformer';
 
@@ -227,6 +227,54 @@ export class AuthService {
         roles,
       }),
     };
+  }
+
+  /**
+   * QA2-02 · cierre de sesión real.
+   *
+   * El JWT vive 24 h (`expiresIn` de `JwtModule`) y antes no había forma de
+   * apagarlo: un token copiado seguía sirviendo hasta su vencimiento aunque la
+   * persona hubiera pulsado «Cerrar sesión». Se reutiliza el mecanismo que ya
+   * existe para la suspensión (D24): subir `usuarios.token_version`. El
+   * `JwtStrategy` compara en cada petición el `tv` firmado contra la versión
+   * vigente, así que el token que cierra sesión deja de valer de inmediato y
+   * los demás dispositivos de la cuenta también caen. Ese «cerrar en uno cierra
+   * en todos» es el trade-off aceptado por el dueño.
+   *
+   * No se crea un segundo mecanismo de revocación (lista de tokens, tabla de
+   * sesiones): el guard ya validaba `token_version` y esta ruta solo la sube.
+   * El evento `SESION_CERRADA` se escribe en la MISMA transacción, sin datos
+   * sensibles (ni contraseña, ni token, ni hash).
+   *
+   * Idempotencia imposible por diseño: la segunda llamada con el mismo token ya
+   * no llega aquí, el guard la rechaza con 401 porque su `tv` quedó atrás.
+   */
+  async logout(usuario: UsuarioAutenticado): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const actualizado = await tx.usuario.update({
+        where: { id: usuario.id },
+        data: { tokenVersion: { increment: 1 } },
+        select: { tokenVersion: true },
+      });
+
+      await tx.auditoria.create({
+        data: {
+          usuarioId: usuario.id,
+          accion: 'SESION_CERRADA',
+          entidad: 'usuarios',
+          entidadId: usuario.id,
+          contexto: {
+            motivo: 'CIERRE_DE_SESION',
+            tokenVersion: actualizado.tokenVersion,
+            sesionesCerradas: true,
+          },
+        },
+      });
+    });
+
+    this.logger.log(
+      `Sesión cerrada para el usuario ${usuario.id} (token_version incrementada).`,
+    );
   }
 
   /**

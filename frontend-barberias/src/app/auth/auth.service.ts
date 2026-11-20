@@ -1,6 +1,6 @@
 import { Injectable, signal, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, catchError, of, shareReplay } from 'rxjs';
+import { Observable, tap, catchError, of, shareReplay, finalize } from 'rxjs';
 import { Router } from '@angular/router';
 import { mensajeDeError } from '../core/utils/error-message.js';
 import {
@@ -51,6 +51,9 @@ export class AuthService {
    * token aún válido. Se invalida al cambiar el token (login/logout).
    */
   private sesionCargada$: Observable<UsuarioResponseDto | null> | null = null;
+
+  /** QA2-02 · evita el bucle `logout → 401 → logout` con el interceptor. */
+  private cerrandoSesion = false;
 
   // Reactive state using Angular Signals
   readonly authState = signal<AuthState>({
@@ -208,7 +211,45 @@ export class AuthService {
     this.updateState({ error: null });
   }
 
+  /**
+   * QA2-02 · cerrar sesión invalida el token EN EL SERVIDOR, no solo en el
+   * navegador.
+   *
+   * Antes se borraba `localStorage` y se navegaba: el JWT seguía siendo válido
+   * 24 h para cualquiera que lo hubiera copiado. Ahora se llama a
+   * `POST /auth/logout` (que sube `token_version`) ANTES de borrar el token
+   * local —el interceptor adjunta el `Authorization` desde el almacenamiento,
+   * así que el orden importa— y el estado se limpia en `finalize`, pase lo que
+   * pase: si la red falla o el token ya venció (401), la sesión local se cierra
+   * igual y la persona vuelve al login.
+   *
+   * `cerrandoSesion` evita el bucle con `authInterceptor`: un 401 de cualquier
+   * petición dispara `logout()`, y el propio `POST /auth/logout` puede responder
+   * 401 si el token ya no valía. En ese caso la segunda llamada no vuelve a
+   * pedir nada y solo limpia.
+   */
   logout() {
+    if (this.cerrandoSesion) return;
+
+    const token = this.getToken();
+    if (!token) {
+      this.limpiarSesionLocal();
+      return;
+    }
+
+    this.cerrandoSesion = true;
+    this.http
+      .post<void>(`${this.apiUrl}/logout`, null)
+      .pipe(
+        finalize(() => {
+          this.cerrandoSesion = false;
+          this.limpiarSesionLocal();
+        }),
+      )
+      .subscribe({ error: () => undefined });
+  }
+
+  private limpiarSesionLocal() {
     this.removeToken();
     this.updateState({
       user: null,
