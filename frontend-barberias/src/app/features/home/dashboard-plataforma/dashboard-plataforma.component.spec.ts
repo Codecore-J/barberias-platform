@@ -1,8 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
-import { signal } from '@angular/core';
+import { Router, provideRouter, type Routes } from '@angular/router';
+import { Component, signal } from '@angular/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Subject, of, throwError } from 'rxjs';
 import { DashboardPlataformaComponent } from './dashboard-plataforma.component';
@@ -18,6 +18,10 @@ import { AuthService } from '../../../auth/auth.service';
  * aserciones miran el estado, el texto de error y la ausencia de cifras durante
  * la carga, no solo que el componente exista.
  */
+/** Destino mínimo de la ruta real para comprobar la navegación del enlace. */
+@Component({ standalone: true, template: '' })
+class DestinoAnaliticas {}
+
 describe('DashboardPlataformaComponent (T-15)', () => {
   let fixture: ComponentFixture<DashboardPlataformaComponent>;
   let analytics: { getMetricasPlataformaHoy: ReturnType<typeof vi.fn> };
@@ -33,14 +37,14 @@ describe('DashboardPlataformaComponent (T-15)', () => {
 
   const texto = (): string => (fixture.nativeElement as HTMLElement).textContent ?? '';
 
-  function crear(): void {
+  function crear(rutas: Routes = []): void {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [DashboardPlataformaComponent],
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        provideRouter([]),
+        provideRouter(rutas),
         {
           provide: AuthService,
           useValue: { authState: signal({ user: { nombreCompleto: 'Admin Global', roles: ['ADMINISTRADOR'] } }) },
@@ -127,6 +131,23 @@ describe('DashboardPlataformaComponent (T-15)', () => {
     const contenido = texto();
     expect(contenido).toContain('Sin citas agendadas hoy');
     expect(contenido).toContain('Sin cobros registrados hoy');
+  });
+
+  it('DEF-01: «Ver analíticas consolidadas» navega a /admin/analiticas', async () => {
+    // La ruta REAL registrada en `app.routes.ts` es `admin/analiticas`; el
+    // enlace apuntaba a `/admin/analytics`, que no existe y no navegaba.
+    crear([{ path: 'admin/analiticas', component: DestinoAnaliticas }]);
+    fixture.detectChanges();
+
+    const enlace = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('a'),
+    ).find((a) => a.textContent?.includes('Ver analíticas consolidadas'));
+    expect(enlace).toBeTruthy();
+
+    enlace!.click();
+    await fixture.whenStable();
+
+    expect(TestBed.inject(Router).url).toBe('/admin/analiticas');
   });
 
   it('el botón de reintento vuelve a pedir las métricas', () => {

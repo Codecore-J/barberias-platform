@@ -2489,6 +2489,64 @@ describe('BarberiaService', () => {
       expect(auditoria.registrarEvento).not.toHaveBeenCalled();
     });
 
+    /**
+     * DEF-02 · el ADMINISTRADOR global que administra una sede creada por él
+     * NO tiene fila `ADMIN_BARBERIA`: `create()` se la salta a propósito porque
+     * el rol global es transversal (barberia.service.ts:322). La guarda de no
+     * degradación solo miraba `usuario_roles` de la sede, así que no veía esa
+     * administración y dejaba convertir al dueño en BARBERO con un 201.
+     */
+    it('DEF-02 ROJO: ADMINISTRADOR global que administra la sede como responsable → 409 ADMIN_NO_SE_DEGRADA', async () => {
+      vi.mocked(prisma.barberia.findUnique).mockResolvedValue({
+        id: BARBERIA_A,
+        responsableId: usuarioExistente.id,
+      } as any);
+      // El global no tiene fila de rol de sede: administra por responsabilidad.
+      vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([] as any);
+      // Si el código deja pasar la invitación (el defecto), completa el 201.
+      vi.mocked(prisma.usuarioRol.create).mockResolvedValue({
+        estado: 'ACTIVO',
+        rol: { nombre: 'BARBERO' },
+      } as any);
+
+      let capturado: any;
+      try {
+        await service.invitarPersonal(BARBERIA_A, dtoBarbero, ADMIN_A);
+      } catch (error) {
+        capturado = error;
+      }
+
+      expect(capturado?.getStatus()).toBe(409);
+      expect(capturado?.getResponse()).toMatchObject({
+        statusCode: 409,
+        codigo: 'ADMIN_NO_SE_DEGRADA',
+      });
+      expect(prisma.usuarioRol.update).not.toHaveBeenCalled();
+      expect(prisma.usuarioRol.create).not.toHaveBeenCalled();
+      expect(auditoria.registrarEvento).not.toHaveBeenCalled();
+    });
+
+    it('DEF-02: ADMINISTRADOR global sin vínculo con la sede se invita como BARBERO con normalidad (201)', async () => {
+      vi.mocked(prisma.barberia.findUnique).mockResolvedValue({
+        id: BARBERIA_A,
+        responsableId: 'otro-responsable',
+      } as any);
+      vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([] as any);
+      vi.mocked(prisma.usuarioRol.create).mockResolvedValue({
+        estado: 'ACTIVO',
+        rol: { nombre: 'BARBERO' },
+      } as any);
+
+      const resultado = await service.invitarPersonal(
+        BARBERIA_A,
+        dtoBarbero,
+        ADMIN_A,
+      );
+
+      expect(resultado.roles).toEqual(['BARBERO']);
+      expect(prisma.usuarioRol.create).toHaveBeenCalledTimes(1);
+    });
+
     it('VERDE: con `conservarRolAdministrador` se AÑADE el vínculo BARBERO y el de administrador sigue vivo', async () => {
       vi.mocked(prisma.usuarioRol.findMany).mockResolvedValue([
         { id: 'rel-admin', estado: 'ACTIVO', rol: { nombre: 'ADMIN_BARBERIA' } },

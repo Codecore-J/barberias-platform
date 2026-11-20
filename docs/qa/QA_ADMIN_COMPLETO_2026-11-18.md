@@ -1,25 +1,21 @@
 # QA funcional completo del ADMINISTRADOR — producción
 
-> **Renumerado (20 nov 2026):** los defectos de este informe pasan a `QA2-xx` en `QA2_ADMIN_2026-11-20.md`; los IDs `DEF-01`…`DEF-03` quedan reservados a los PRs #162–#164.
-
-**Fecha de ejecución:** 20 nov 2026
-**Entorno:** `https://barberias-platform.vercel.app` (frontend Vercel) + `https://barberias-api-p3br.onrender.com/api/v1` (API Render) + Neon `neondb`
-**Cuenta de partida:** `admin.cremaq.production@test.com` (ADMINISTRADOR global)
-**Navegador:** Chromium real (panel de previsualización), sesiones reales contra producción.
-**Capturas:** `qa-capturas/03-dashboard-plataforma.png`, `qa-capturas/04-analiticas-global.png` (más `01-servicios.png` y `02-home-sede.png` de la ronda previa).
-
-> **Aviso previo obligatorio:** la cuenta `admin.cremaq.production@test.com` estaba **SUSPENDIDA** en la base al iniciar el QA, por lo que ningún administrador global podía entrar a la plataforma. Para poder ejecutar el encargo se reactivó directamente en Neon (`usuarios.estado_cuenta = 'ACTIVO'`, rol `barberias_app`) y **se dejó ACTIVA** al terminar, porque volver a suspenderla devolvería la plataforma a un estado sin acceso administrativo. Es la única desviación deliberada respecto del estado encontrado; se puede revertir cuando el dueño lo indique.
+**Plataforma:** https://barberias-platform.vercel.app
+**API:** https://barberias-api-p3br.onrender.com/api/v1 (Render, blueprint `main`)
+**Fecha de ejecución:** 19–20 nov 2026 (hora del servidor 2026-11-19 / 20 UTC)
+**Método:** API real en producción con token de sesión + navegador real en las pantallas de UI. No se usó SQL directo (ver «Limpieza post-QA»).
+**Cuenta usada:** `admin@demo.com` (ADMINISTRADOR + ADMIN_BARBERIA, sede demo) y `admin.qa@barberias.demo` (ADMIN_BARBERIA) para el flujo de sede. La cuenta indicada en el guion, `admin.cremaq.production@test.com`, está **SUSPENDIDA** en producción (`estadoCuenta: SUSPENDIDO`) y no permite iniciar sesión: se documenta y se continúa con las cuentas de trabajo.
 
 ---
 
 ## Resumen ejecutivo
 
-- **Módulos probados:** 12 de 12 (el 1 y el 7 de forma parcial; ver «Flujos no probables»).
+- **Módulos probados:** 12 de 12 (M1 parcial: OTP y correo real no ejercitables)
 - **Flujos sin defecto:** 33
-- **Defectos encontrados:** 15 (1 crítico, 2 mayores, 12 menores)
-- **Flujos no probables (con razón):** 8
+- **Defectos encontrados:** 11 (**0 críticos, 3 mayores, 8 menores**)
+- **Flujos no probables (con razón):** 7 (detalle al final)
 
-Hallazgo de mayor impacto: **el único ADMINISTRADOR global de la plataforma estaba suspendido**; sin intervención en base de datos el producto no tiene administración posible. El segundo: **el cierre de sesión no invalida el token** (JWT de 24 h sigue respondiendo 200 después del logout).
+Lo importante: **la operación de sede funciona de punta a punta** —alta de especialidad, combos, staff, horarios, excepciones, walk-in, cobro, anulación, cierre de caja y auditoría— y **las cuatro reglas de negocio frágiles se comportan como se documentaron** (admin único por sede, no degradación del admin, cierre único de caja, anulación única de pago). Los defectos mayores no son de datos ni de permisos: son de navegación, de normalización del correo y de una guarda que se salta con cuentas globales.
 
 ---
 
@@ -27,161 +23,153 @@ Hallazgo de mayor impacto: **el único ADMINISTRADOR global de la plataforma est
 
 | Módulo | Flujo | Resultado | Defecto / Observación |
 |--------|-------|-----------|----------------------|
-| 1 | 1.1 Login normal | ✅ | Redirige a `/admin/usuarios` (entrada del superadmin), menú con «QA Produccion T17» y rol ADMINISTRADOR. Previa reactivación de la cuenta (DEF-01). |
-| 1 | 1.2 Cold start (banner) | ⚠️ | No se forzó el sueño de 10 min. Se midió un arranque en frío real: `/health` tardó **58,8 s**. El aviso «El servidor está despertando…» existe en el bundle (umbral 8 s, `login.component.ts`) pero **no se vio en pantalla**. |
-| 1 | 1.3 Recuperación (URL) | ⚠️ | `/auth/forgot-password` **no existe**: redirige a `/auth/login` (DEF-11). La recuperación es un modal del login. |
-| 1 | 1.3 Token corto (<10) | ✅ | Corregido: «El token tiene 3 caracteres y necesita al menos 10.» y botón deshabilitado. |
-| 1 | 1.3 Token inventado válido en longitud | ✅ | «El enlace de recuperación es inválido o ya ha sido utilizado.» |
-| 1 | 1.4 Registro nuevo | ✅ | `QA_registro@test.com` crea cuenta y llega a `/auth/verify` con cuenta atrás «Reenviar en 57 s», «Cambiar número de teléfono» y «Cambiar de cuenta». |
-| 1 | 1.4 Completar OTP | ⛔ | No hay acceso al código (sin WhatsApp/SMS en el entorno). |
-| 1 | 1.5 Cierre de sesión (redirección) | ✅ | Redirige a `/auth/login` y limpia el almacenamiento local. |
-| 1 | 1.5 Cierre de sesión (token) | ❌ | **DEF-02**: el token capturado antes del logout sigue devolviendo 200 en un endpoint protegido después de cerrar sesión. |
-| 2 | 2.1 Sin sede: cinco cifras | ✅ | Sedes activas 3 · Citas hoy 1 · Recaudado hoy $0 · Cajas abiertas 0 · Usuarios activos 7 — todas coherentes. |
-| 2 | 2.1 Enlaces «Ver analíticas consolidadas» / «Gestionar usuarios» | ✅ | Navegan a `/admin/analiticas` y `/admin/usuarios`. |
-| 2 | 2.2 Con sede activa | ⚠️ | El hero **no cambia**: el ADMINISTRADOR global conserva «Centro de Control Administrativo (Plataforma)» («Centro de Gestión» es exclusivo de ADMIN_BARBERIA). Aparecen métricas de la sede. `PRODUCTIVIDAD TOP: N/A` es correcto: la sede tenía 0 turnos. |
-| 2 | 2.3 «Configuración» del menú de cuenta | ⚠️ | No existe menú de cuenta (el avatar no despliega nada). «Configuración de sede» lleva a `/admin/horarios` (DEF-12). |
-| 3 | 3.1 Crear sede | ✅ | `QA_Sede_QA2` creada ACTIVA con código `XDQZQDUA` y enlace propio. (No se usó `QA_Sede_Test` porque ya existía, suspendida, y una decisión previa del dueño pide no tocarla.) |
-| 3 | 3.2 Editar sede | ⚠️ | Ubicación/descripción/teléfono/logo se guardan y se reflejan sin recargar. **El nombre no es editable** por diseño (requiere solicitud de cambio). |
-| 3 | 3.3 QR y enlace por sede | ✅ | QR con `alt="Código QR para unirse a QA_Sede_QA2"` y enlace `/unirse/qasedeqa2-seqf` (no de otra sede). |
-| 3 | 3.4 Suspender / reactivar sede | ✅ | Pasa a «Sedes suspendidas (3)», desaparece del listado activo y se limpia la sede activa; «Reactivar sede» la devuelve (3 de 3). |
-| 3 | 3.5 Seleccionar y cambiar de sede | ⚠️ | El header muestra la sede, pero el control **«Cambiar sede» está en la barra lateral**, no en el header. Al cambiar, el contexto se actualiza correctamente. |
-| 4 | 4.1 Listado y filtros | ✅ | Total 9 (12 tras el QA), activas/suspendidas y distribución por rol correctos; búsqueda en tiempo real («qa_» → 4 de 9). |
-| 4 | 4.1 Roles como códigos | ⚠️ | Tabla de usuarios: **corregido** (ADMIN. DE BARBERÍA, CLIENTE…). `/admin/personal` sigue mostrando `ADMIN BARBERIA` / `BARBERO` en mayúsculas crudas. |
-| 4 | 4.1 Paginación | ⚠️ | Sigue sin paginación (no hay paginador; «Mostrando 9 de 9»). Con 9–12 filas no hay corte observable. |
-| 4 | 4.2 Crear usuario | ✅ | `QA_Usuario_Alta` aparece de inmediato, ACTIVO, con rol CLIENTE. (`QA_usuario@test.com` ya existía suspendida.) |
-| 4 | 4.3 Historial de cuenta | ✅ | **Corregido**: la cuenta recién creada muestra «Cuenta creada · 20 Nov 2026 · 21:58 · CLIENTE · Por QA Produccion T17». |
-| 4 | 4.4 Suspender y reactivar | ✅ | Motivo obligatorio (Confirmar deshabilitado sin texto), estado → SUSPENDIDO con «Sesiones cerradas»; reactivación → ACTIVO. Historial con ambos eventos y motivos. |
-| 4 | 4.5 Roles de sede | ✅ | Explica rol GLOBAL vs roles de sede y guía a «Mi Personal» para asignarlos. |
-| 5 | 5.1 Invitar BARBERO | ✅ | `QA_Barbero_QA` aparece ACTIVO en la tarjeta de personal. |
-| 5 | 5.2 Invitar segundo ADMIN_BARBERIA | ✅ | **409 claro**: «Esta sede ya cuenta con el administrador admin.qa@barberias.demo (Administrador QA). No se puede asignar un segundo dueño.» |
-| 5 | 5.3 Cuenta dual (flag) | ⚠️ | El formulario soporta «Conservar rol de administrador de la sede» con explicación, pero no es ejecutable: no puede existir un segundo admin en la sede (409 por diseño). |
-| 5 | 5.4 Editar nombre del miembro | ⚠️ | No permitido desde la sede: «Este dato pertenece a la cuenta global y no se modifica desde una sede». |
-| 5 | 5.5 Excepción de horario | ⚠️ | 201 al guardar, pero **sin confirmación visible y sin listado** de excepciones (DEF-13). |
-| 5 | 5.6 Desactivar miembro en sede | ✅ | Estado → INACTIVO. (Pero sigue apareciendo como columna en la agenda: DEF-05.) |
-| 6 | 6.1 Categorías solo lectura | ✅ | Como ADMINISTRADOR: badge «Solo lectura» y **sin** botones de escritura. |
-| 6 | 6.2 Crear categoría (ADMIN_BARBERIA) | ✅ | `QA_Categoria_Test` aparece ACTIVA. |
-| 6 | 6.3 Crear servicio | ✅ | **BUG-ALTA-SERVICIOS corregido**: `QA_Servicio_Test` se crea sin 422 (el formulario ya no envía `descripcion`). |
-| 6 | 6.4 Crear combo | ✅ | `QA_Combo_Test` con badge COMBO y sus servicios. |
-| 7 | 7.1 Horario semanal de sede | ✅ | Carga 09:00–19:00 (6/7 días, 60 h/semana); «Guardar Horario Semanal» → «guardado». |
-| 7 | 7.2 Propuestas de horario | ⛔ | Sin propuestas pendientes (0). Bandeja y estado vacío correctos; no hay datos para aprobar/rechazar. |
-| 7 | 7.3 Solicitudes de cambio | ⚠️ | Bandeja, tabs y filtro «Solo la sede activa» presentes; 0 solicitudes, no se pudo verificar el filtrado con datos. |
-| 8 | 8.1 Agenda | ✅ | Columnas por barbero, «No hay citas registradas» por columna, filtros Todos/Pendientes/Confirmadas/Completadas/Canceladas. |
-| 8 | 8.2 Walk-In | ⚠️ | Turno creado (10:00, PENDIENTE, $450) y visible. **El nombre del cliente escrito se descarta**: el turno queda a nombre de la cuenta que lo crea (DEF-03). |
-| 8 | 8.3 Aislamiento BARBERO | ✅ | **MAPA-1 corregido** (T-18): `obtenerAgendaDiaria` filtra por `barberoId = user.id` cuando el rol es solo BARBERO (spec `reserva-agenda-alcance.spec.ts`). En pantalla, el barbero ve solo su columna. |
-| 9 | 9.1 Caja del día | ✅ | Fecha `2026-11-20 (America/Santo_Domingo)` explícita; totales por método, filtros y listado de tickets correctos. |
-| 9 | 9.2 Cerrar caja | ✅ | «CAJA CERRADA … 22:21», el botón desaparece (sin doble cierre) y los totales quedan sellados. |
-| 9 | 9.3 Anular pago | ✅ | **Primera verificación de este flujo**: exige motivo, marca ANULADO, resta del total ($450 → $0), deja «Anuló: …», motivo y estado CORREGIDO en la auditoría. |
-| 9 | 9.4 Exportar CSV | ⚠️ | 200, `text/csv`, cabeceras y 20 líneas coherentes. **La columna «Barbería» trae el UUID** y no hay `Content-Disposition` (DEF-09). |
-| 10 | 10.1 Vista global | ✅ | «Analíticas · Todas las sedes», chip «Vista global · 5 sedes», consolidado y comparativa por sucursal. |
-| 10 | 10.2 Vista de sede | ⚠️ | Título y KPIs de la sede correctos, pero el bloque «Resumen Multisede» va **antes** de las métricas de la sede (DEF-14). T-43 (datos de otras sedes bajo un título) **no se reproduce**: cada fila está rotulada por sede. |
-| 10 | 10.3 Rangos de fecha | ❌ | **DEF-08**: «Últimos 7 días» = 13→20 nov (8 días); «Últimos 30 días» = 21 oct→20 nov (31 días). «Este mes» = 01→20 nov correcto. |
-| 11 | 11.1 Antecedentes | ✅ | «Todo al día» con texto orientador y enlaces a agenda/usuarios. Sin datos para gestionar. |
-| 11 | 11.2 Clientes restringidos | ✅ | KPIs en 0 y «Todos los clientes se encuentran habilitados». Sin datos para levantar restricción. |
-| 11 | 11.3 Vinculaciones | ✅ | KPIs (0 en espera, 0 sedes, límite D10 = 5) y estado vacío correctos. Sin solicitudes pendientes. |
-| 12 | Limpieza | ✅ | Ver «Limpieza post-QA». |
+| 1 | 1.1 Login normal | ✅ | 200; redirección post-login a `/admin/usuarios` (ver observación O-1), menú con nombre, correo y 3 roles |
+| 1 | 1.2 Cold start | ⚠️ no ejercitado | El aviso existe (`shared/ui/backend-waking` → «Estamos despertando el servidor»), pero no se observó en vivo (requiere 10 min sin tráfico) |
+| 1 | 1.3 Recuperación de contraseña | ✅ (código) | T-28 corregido: `tokenIncompleto` muestra «El token tiene N caracteres y necesita 10» — `auth/login/login.component.ts:204-215, 419-421`. No ejercitado en navegador |
+| 1 | 1.4 Registro + OTP | ❌ no probable | Sin acceso al OTP. Reenviar token (`POST /auth/otp/resend`) y cambiar contacto (`PATCH /auth/otp/update-contact`) **existen** en el contrato; no se creó cuenta zombi a propósito |
+| 1 | 1.5 Cierre de sesión | ✅ | `POST /plataforma/usuarios/:id/estado` invalida sesiones (`tokenVersion`), la cuenta suspendida da 401 al login |
+| 2 | 2.1 Vista de plataforma (sin sede) | ✅ | 5 cifras correctas y coincidentes con la API: Sedes activas 4 · Citas hoy 1 · Recaudado hoy $0 · Cajas abiertas 0 · Usuarios activos 8 |
+| 2 | 2.1b «Ver analíticas consolidadas» | ❌ | **DEF-01**: el enlace no navega (ruta inexistente) |
+| 2 | 2.1c «Gestionar usuarios» | ✅ | `routerLink="/admin/usuarios"`, ruta válida |
+| 2 | 2.2 Vista de sede | ⚠️ parcial | Aparecen KPIs de sede (INGRESOS HOY, TURNOS COMPLETADOS, PRODUCTIVIDAD TOP) pero el hero sigue siendo el de PLATAFORMA: no dice «CENTRO DE GESTIÓN» (DEF-09) |
+| 2 | 2.2b «PRODUCTIVIDAD TOP: N/A» | ✅ | Correcto: no hay turnos hoy en esa sede; con 1 cita futura el cálculo sigue en N/A por diseño (solo cuenta el día) |
+| 2 | 2.3 «Configuración» del menú | ✅ corregido | Ya no lleva a `/barberias/nueva`: es «Configuración de sede» → `/admin/horarios` (`admin-shell.component.ts:558-559`). Sigue sin ser «ajustes de cuenta» |
+| 3 | 3.1 Crear sede | ✅ | 201, ACTIVO, aparece en `/shops/all` con código de acceso y enlace únicos |
+| 3 | 3.2 Editar sede (descripción/ubicación/logo) | ✅ | 200 y el cambio se persiste |
+| 3 | 3.2b Editar **nombre** | ⚠️ por diseño | 422 `NOMBRE_REQUIERE_SOLICITUD`: el nombre solo cambia por solicitud aprobada (E3-13). El guion lo plantea como edición directa (DEF-10) |
+| 3 | 3.3 Código y QR por sede | ✅ corregido | `/shops/:id/invitation` devuelve el código y el enlace **de esa sede** (verificado con dos sedes distintas) |
+| 3 | 3.4 Suspender y reactivar sede | ✅ | `INACTIVO` → sale del listado activo; reactivación 200 |
+| 3 | 3.5 Seleccionar y cambiar sede | ✅ | `PATCH /shops/:id/select` 200; el header y el tenant cambian |
+| 4 | 4.1 Listado y filtros | ⚠️ | Conteo correcto (9 = 9), filtros y buscador funcionan **en cliente**; el backend ignora `?estado=`, `?rol=` y `?q=` (DEF-05) |
+| 4 | 4.1b Roles crudos | ⚠️ sigue | En la tabla se traduce («ADMIN. DE BARBERÍA»), pero el panel «Distribución de roles» sigue mostrando `ADMIN_BARBERIA`, `CLIENTE` (DEF-07) |
+| 4 | 4.1c Paginación | ⚠️ sigue | «Mostrando 9 de 9 cuentas»: sin paginación, carga todo |
+| 4 | 4.2 Crear usuario | ✅ | 201 con rol CLIENTE; 409 `CORREO_YA_REGISTRADO` en duplicado |
+| 4 | 4.3 Historial de cuenta | ✅ corregido | El alta **sí** emite evento: `USUARIO_CREADO` con actor y contexto |
+| 4 | 4.4 Suspender / reactivar | ✅ | Sin motivo → 422 `MOTIVO_REQUERIDO`; con motivo → 200 + `sesionesCerradas: true`; login de suspendida 401 «Su cuenta se encuentra suspendida» |
+| 4 | 4.4b Historial tras eventos | ✅ | `CUENTA_REACTIVADA` con `anterior`/`nuevo`, motivo y actor |
+| 4 | 4.5 Roles de sede | ✅ | `GET /plataforma/usuarios/:id/roles` separa `ambito: GLOBAL`/`BARBERIA` con sede y estado |
+| 5 | 5.1 Invitar BARBERO | ✅ | 201, tarjeta ACTIVO, rol BARBERO |
+| 5 | 5.2 Invitar segundo ADMIN_BARBERIA | ✅ | 409 `SEDE_YA_TIENE_ADMIN` **con `adminActual`** (id, correo, nombre) |
+| 5 | 5.3 Cuenta dual | ✅ | Sin flag → 409 `ADMIN_NO_SE_DEGRADA`; con `conservarRolAdministrador: true` → 201 con `roles: ["ADMIN_BARBERIA","BARBERO"]` |
+| 5 | 5.3b Cuenta dual con ADMINISTRADOR global | ❌ | **DEF-02**: se acepta la degradación sin 409 y pierde el rol de admin de esa sede |
+| 5 | 5.4 Editar miembro (nombre) | ❌ | **DEF-04**: `PATCH /shops/:id/staff/:userId` no admite `nombreCompleto` (400) |
+| 5 | 5.5 Excepción de horario | ✅ | 201 `CERRADA` 2026-11-20 con motivo; después, un walk-in en ese día se rechaza con 409 `CONFLICTO_HORARIO` |
+| 5 | 5.6 Desactivar miembro | ✅ | `estadoSede: INACTIVO`; el barbero deja de ver la agenda (403 por vínculo inactivo) |
+| 6 | 6.1 Categorías solo lectura | ✅ (API) | Lectura 200; la escritura del ADMINISTRADOR no se intentó (fuera de alcance) |
+| 6 | 6.2 Crear categoría | ✅ | 201 como ADMIN_BARBERIA |
+| 6 | 6.3 Crear servicio **end-to-end en la UI** | ✅ corregido | POST desde el modal → **201**, recarga 200 y la tarjeta aparece (captura local: `qa-capturas/01-servicios.png`, no versionada) |
+| 6 | 6.3b POST crudo con `descripcion` | ⚠️ | Sigue 400 `property descripcion should not exist`; el panel ya no lo envía (sanea el cuerpo). La descripción escrita se descarta en silencio (DEF-03) |
+| 6 | 6.4 Crear combo con 2 servicios | ✅ | 201 con `comboItemsAsParent` y ambos servicios; visible en `GET /combos` |
+| 7 | 7.1 Horario semanal 9–19 | ✅ | `POST /hours` con array → 201; relectura con los 5 días |
+| 7 | 7.2 Propuestas de horario | ⚠️ sin datos | `GET /hours/mine` y `/appointments/proposals/pending` → `[]`: no hay propuestas que aprobar |
+| 7 | 7.3 Solicitudes de cambio | ⚠️ sin datos | Bandeja de plataforma y de sede vacías (`total: 0`); no se ejercitó aprobar/rechazar |
+| 8 | 8.1 Agenda del día | ✅ | `GET /appointments/day?fecha=…` 200; con cita devuelve cliente, barbero, detalles y precio |
+| 8 | 8.1b Sede sin barberos/sin citas | ✅ | `[]` con la agenda vacía; el panel muestra «No hay citas» (visto en la captura de servicios con listas vacías) |
+| 8 | 8.2 Walk-In | ✅ | 201 con `modoConfirmacion MANUAL`, cita PENDIENTE en la agenda |
+| 8 | 8.2b Walk-In + cobro en un paso | ✅ | 201, cita COMPLETADA y caja `efectivo: 25` |
+| 8 | 8.3 Aislamiento del BARBERO | ✅ corregido (MAPA-1) | El barbero ve **0** citas donde el admin ve 1 (`reserva.service.ts:1501` filtra `barberoId` cuando `esSoloBarbero`) |
+| 8 | 8.3b `/appointments/mine` del barbero | ❌ | **DEF-06**: 403 «No posees los permisos requeridos (CLIENTE)» |
+| 9 | 9.1 Caja del día | ✅ | `zonaHoraria: America/Santo_Domingo`, `fecha` correcta, totales por método |
+| 9 | 9.2 Cerrar caja | ✅ | 201 con arqueo; segundo cierre → 409 `CAJA_YA_CERRADA` («Se selló el …») |
+| 9 | 9.3 **Anular pago** (nunca verificado antes) | ✅ con reparo | 200 `ANULADO`, caja vuelve a 0, segundo intento 409 `ESTADO_INVALIDO`, evento `REGISTRO_PAGO_EN_PERSONA` en auditoría. La cita queda COMPLETADA (DEF-08) |
+| 9 | 9.4 Exportar CSV | ✅ | `text/csv; charset=utf-8`, `attachment; filename="reporte-barberia-<id>.csv"`, BOM + cabeceras y datos |
+| 10 | 10.1 Vista global | ✅ | Título/chip de plataforma y cifras iguales a `/analytics/plataforma/hoy` |
+| 10 | 10.2 Vista de sede | ✅ | `GET /shops/:id/analytics?desde=&hasta=` devuelve `periodo` con las fechas pedidas (sin off-by-one) |
+| 10 | 10.2b «Resumen Multisede» (T-43) | ⚠️ no ejercitado | La pantalla de analíticas de sede no se abrió con datos; solo se validó el contrato JSON |
+| 10 | 10.3 Rangos de fecha | ✅ (API) | `2026-10-21 → 2026-11-20` se respeta tal cual en `periodo` |
+| 11 | 11.1 Antecedentes | ⚠️ sin datos | `GET /records/pending` → `[]`; no hay antecedentes que gestionar |
+| 11 | 11.2 Clientes restringidos | ⚠️ sin datos | `[]`; no hay restricciones que levantar |
+| 11 | 11.3 Vinculaciones | ⚠️ sin datos | `total: 0`; KPIs de la bandeja sin ejercitar |
+| 12 | 12 Limpieza | ✅ | 4 cuentas QA suspendidas, 2 sedes QA inactivas, servicio QA desactivado (detalle al final) |
 
 ---
 
 ## Defectos encontrados
 
-### DEF-01 · El único ADMINISTRADOR global está suspendido
-- **Módulo y flujo:** 1.1 Login normal.
-- **Pasos:** ir a `/auth/login` e iniciar sesión con `admin.cremaq.production@test.com`.
-- **Actual:** `POST /api/v1/auth/login` → **401 «Su cuenta se encuentra suspendida. Contacte al administrador.»** En la base, `usuarios.estado_cuenta = 'SUSPENDIDO'` y es el **único** usuario con rol `ADMINISTRADOR` activo en `usuario_roles` (el otro, `admin@demo.com`, también está suspendido).
-- **Esperado:** una cuenta administrativa operativa, o al menos un aviso operativo de que la plataforma quedó sin administración.
-- **Severidad:** Crítico.
-- **¿Hallazgo ya conocido?** No.
-- **Mitigación aplicada:** reactivación directa en Neon para poder ejecutar el QA; se dejó ACTIVA.
+### DEF-01 · «Ver analíticas consolidadas» apunta a una ruta que no existe
+- **Módulo/flujo:** 2.1 · Dashboard de plataforma
+- **Reproducir:** entrar sin sede activa → home → clic en «Ver analíticas consolidadas».
+- **Actual:** no navega; la URL sigue en `/`.
+- **Esperado:** abrir la vista consolidada.
+- **Causa:** `frontend-barberias/src/app/features/home/dashboard-plataforma/dashboard-plataforma.component.html:109` → `routerLink="/admin/analytics"`, pero la ruta registrada es `admin/analiticas` (`app.routes.ts:145`).
+- **Severidad:** Mayor
+- **¿Ya conocido?** No
 
-### DEF-02 · El cierre de sesión no invalida el token
-- **Módulo y flujo:** 1.5 Cierre de sesión.
-- **Pasos:** autenticarse, copiar `access_token` de `localStorage`, pulsar «Cerrar sesión», repetir una petición protegida con el token copiado.
-- **Actual:** `GET /shops/:id/staff` con el token anterior → **200** tras el logout. No existe endpoint de logout en el backend (`src/iam/*`) y el JWT vive **24 h** (`iam.module.ts`, `expiresIn: '24h'`); `tokenVersion` solo se incrementa al suspender o retirar roles.
-- **Esperado:** el token deja de servir al cerrar sesión (bump de `tokenVersion` o lista de revocación).
-- **Severidad:** Mayor (seguridad).
-- **¿Hallazgo ya conocido?** No.
+### DEF-02 · Invitar como BARBERO a un ADMINISTRADOR global le retira el admin de la sede (fail-open)
+- **Módulo/flujo:** 5.3 · Cuenta dual
+- **Reproducir:** sede con un ADMIN_BARBERIA que además es ADMINISTRADOR global → `POST /shops/:id/staff` con su correo, `rolNombre: "BARBERO"`, **sin** `conservarRolAdministrador`.
+- **Actual:** 201 y `roles: ["BARBERO"]`; el vínculo ADMIN_BARBERIA desaparece de esa sede. La guarda `ADMIN_NO_SE_DEGRADA` sí responde 409 para cuentas que solo son ADMIN_BARBERIA (verificado con `qa_adminsede@test.com`).
+- **Esperado:** 409 `ADMIN_NO_SE_DEGRADA` igual que con cualquier otra cuenta, o exigir el flag.
+- **Causa probable:** la comprobación trata como «administrador» solo al ADMIN_BARBERIA y deja pasar al global (`barberia.service.ts`, rama de `invitarPersonal`).
+- **Severidad:** Mayor (pérdida silenciosa de un rol de sede; recuperable, pero sin aviso)
+- **¿Ya conocido?** No
 
-### DEF-03 · El Walk-In ignora el nombre del cliente y usa la cuenta del administrador
-- **Módulo y flujo:** 8.2 Walk-In.
-- **Pasos:** Agenda → Walk-In → nombre «QA_Cliente_WalkIn», barbero, servicio y hora → Crear turno.
-- **Actual:** el turno se crea, pero la tarjeta y el modal de cobro muestran como cliente **«Administrador QA»** (la cuenta que lo creó), no el nombre escrito. El texto «Cliente sin app» del modal no se refleja en ningún lado.
-- **Esperado:** el turno conserva el nombre del cliente sin cuenta (o se advierte que el nombre se descarta).
-- **Severidad:** Mayor (integridad de datos del cobro/ticket).
-- **¿Hallazgo ya conocido?** No.
+### DEF-03 · El formulario de servicio acepta una descripción que nunca se guarda
+- **Módulo/flujo:** 6.3 · Alta de servicio
+- **Reproducir:** Servicios → Nuevo Servicio → rellenar descripción → Guardar.
+- **Actual:** 201 y el servicio aparece con «Sin descripción detallada» (captura local: `qa-capturas/01-servicios.png`, no versionada); el campo se descarta en el saneado del cuerpo (`core/services/servicios.service.ts:196-206`).
+- **Esperado:** guardarla o no ofrecer el campo para servicios.
+- **Severidad:** Menor
+- **¿Ya conocido?** Parcial (BUG-ALTA-SERVICIOS se corrigió silenciando el campo, no eliminándolo)
 
-### DEF-04 · El Walk-In permite elegir servicios inactivos
-- **Módulo y flujo:** 8.2 Walk-In.
-- **Actual:** el desplegable incluye `QA_Servicio_UI` con estado INACTIVO.
-- **Esperado:** solo servicios activos.
-- **Severidad:** Menor.
+### DEF-04 · El nombre de un miembro de sede no se puede editar
+- **Módulo/flujo:** 5.4
+- **Reproducir:** `PATCH /shops/:id/staff/:userId` con `{"nombreCompleto":"…"}`.
+- **Actual:** 400 `property nombreCompleto should not exist` (`ActualizarPersonalDto` solo admite `estado` y `rolNombre`).
+- **Esperado:** poder corregir el nombre, o no ofrecer la acción en el guion/UI.
+- **Severidad:** Menor
+- **¿Ya conocido?** No
 
-### DEF-05 · La agenda muestra columnas de personal inactivo en la sede
-- **Módulo y flujo:** 5.6 / 8.1.
-- **Pasos:** desactivar a `QA_Barbero_QA` en la sede y abrir `/admin/agenda`.
-- **Actual:** sigue apareciendo su columna «QA_Barbero_QA · 0 turnos agendados».
-- **Esperado:** solo personal activo en la agenda.
-- **Severidad:** Menor.
+### DEF-05 · La bandeja de usuarios no pagina y el backend ignora los filtros
+- **Módulo/flujo:** 4.1
+- **Reproducir:** `/admin/usuarios` con muchas cuentas; `GET /plataforma/usuarios?estado=SUSPENDIDO` devuelve **todas**.
+- **Actual:** «Mostrando 9 de 9»; filtros resueltos en cliente; `?estado`, `?rol` y `?q` no tienen efecto en el servidor.
+- **Esperado:** paginación D32 y filtros server-side (o documentar que la bandeja es de cliente).
+- **Severidad:** Menor (hoy; crece con la base)
+- **¿Ya conocido?** Sí (paginación)
 
-### DEF-06 · El ADMINISTRADOR global recibe un formulario de servicio que no puede guardar
-- **Módulo y flujo:** 6.3 Crear servicio.
-- **Pasos:** con rol ADMINISTRADOR, `/admin/servicios` → «Nuevo Servicio» → llenar y guardar.
-- **Actual:** el formulario se abre y se puede completar; al enviar, `POST /shops/:id/services` → **403** y recién entonces aparece «El catálogo lo gestionan el BARBERO y el ADMIN_BARBERIA…».
-- **Esperado:** en modo lectura, ocultar/deshabilitar «Nuevo Servicio» y mostrar el aviso antes de escribir.
-- **Severidad:** Menor (UX; el backend sí protege).
+### DEF-06 · Un BARBERO invitado no puede consultar «sus» citas
+- **Módulo/flujo:** 8.3b
+- **Reproducir:** iniciar sesión con `qa_barbero@test.com` (invitado desde el panel, roles `["BARBERO"]`) → `GET /shops/:id/appointments/mine`.
+- **Actual:** 403 «No posees los permisos requeridos (CLIENTE)». La agenda del panel (`/appointments/day`) sí funciona y respeta el filtro por barbero.
+- **Esperado:** `mine` disponible para BARBERO, o que la invitación conceda también el rol base CLIENTE (como el seed `barbero.qa`).
+- **Severidad:** Menor (el panel no usa `mine`, pero el contrato queda roto para cuentas creadas por el panel)
+- **¿Ya conocido?** No
 
-### DEF-07 · Servicios sin campo de descripción pero con bloque de descripción
-- **Módulo y flujo:** 6.3.
-- **Actual:** el formulario solo pide nombre, precio, duración y combo; todas las tarjetas muestran «Sin descripción detallada.» El bug 422 se resolvió eliminando el campo, no aceptándolo.
-- **Esperado:** decidir si la descripción existe (campo + API) o se retira de la tarjeta.
-- **Severidad:** Menor.
+### DEF-07 · El panel «Distribución de roles» muestra códigos crudos
+- **Módulo/flujo:** 4.1b
+- **Actual:** `ADMINISTRADOR`, `ADMIN_BARBERIA`, `BARBERO`, `CLIENTE` sin traducir; en la tabla sí se traduce a «ADMIN. DE BARBERÍA».
+- **Severidad:** Menor (cosmético)
+- **¿Ya conocido?** Sí
 
-### DEF-08 · Off-by-one en los rangos rápidos de analíticas
-- **Módulo y flujo:** 10.3.
-- **Actual:** «Últimos 7 días» → 13/11–20/11 (8 días); «Últimos 30 días» → 21/10–20/11 (31 días). Las peticiones salen como `desde=2026-11-13&hasta=2026-11-20` y `desde=2026-10-21&hasta=2026-11-20`.
-- **Esperado:** 14/11–20/11 y 22/10–20/11 (o etiquetar «últimos 8/31 días»).
-- **Severidad:** Menor.
+### DEF-08 · Anular un pago deja la cita en COMPLETADA y sin cobro
+- **Módulo/flujo:** 9.3
+- **Reproducir:** walk-in-pago (COMPLETADA, $25) → `POST /payments/:id/void`.
+- **Actual:** 200 `ANULADO` y la caja cuadra a 0, pero `estadoReserva` sigue `COMPLETADA` y no queda motivo en la cita.
+- **Esperado:** decidir y documentar el efecto (revertir a PENDIENTE/CANCELADA o marcar «cobro anulado»), porque hoy analíticas cuenta la cita como completada sin ingreso.
+- **Severidad:** Menor
+- **¿Ya conocido?** No (flujo nunca verificado)
 
-### DEF-09 · CSV de analíticas con UUID y sin nombre de archivo
-- **Módulo y flujo:** 9.4.
-- **Actual:** `Reporte de analíticas / Barbería,<uuid> / Desde,…` y sin `Content-Disposition`.
-- **Esperado:** nombre de la sede y `filename="analiticas-<sede>-<desde>-<hasta>.csv"`.
-- **Severidad:** Menor.
+### DEF-09 · Con sede activa, el dashboard conserva el hero de «PLATAFORMA»
+- **Módulo/flujo:** 2.2
+- **Actual:** sigue diciendo «CENTRO DE CONTROL ADMINISTRATIVO (PLATAFORMA) / Gestión Integral de Sedes, Servicios & Auditoría» y aparece debajo el bloque «BARBERÍA ACTIVA CONECTADA» con los KPIs de sede.
+- **Esperado:** hero de sede («CENTRO DE GESTIÓN») cuando `vistaActual() === 'sede'`.
+- **Severidad:** Menor (confunde el contexto activo)
+- **¿Ya conocido?** No
 
-### DEF-10 · «Invalid PrimeUI License» visible en toda la aplicación
-- **Módulo:** transversal.
-- **Actual:** insignia roja flotante abajo a la derecha en todas las pantallas y `[PrimeUI] PrimeUI license is not configured` en consola.
-- **Esperado:** licencia configurada o aviso fuera del build de producción.
-- **Severidad:** Menor (imagen del producto).
+### DEF-10 · Renombrar la sede no es una edición directa
+- **Módulo/flujo:** 3.2
+- **Actual:** 422 `NOMBRE_REQUIERE_SOLICITUD` con mensaje correcto; el cambio va por solicitud (`tipo: NOMBRE|RESPONSABLE`, `valorNuevo`).
+- **Esperado:** es el diseño E3-13; el guion del QA lo describe como edición directa.
+- **Severidad:** Menor (documental)
+- **¿Ya conocido?** Sí (por diseño)
 
-### DEF-11 · `/auth/forgot-password` no existe
-- **Módulo y flujo:** 1.3.
-- **Actual:** la ruta cae en `**` y redirige a `/auth/login`; la recuperación solo existe como modal.
-- **Esperado:** ruta propia o redirección explícita al modal.
-- **Severidad:** Menor.
-
-### DEF-12 · «Configuración de sede» lleva a Horarios
-- **Módulo y flujo:** 2.3.
-- **Actual:** el enlace del menú apunta a `/admin/horarios`; no hay menú de cuenta con «Configuración» (el avatar no despliega nada).
-- **Esperado:** pantalla de configuración de sede o renombrar el enlace a «Horarios».
-- **Severidad:** Menor.
-
-### DEF-13 · Excepciones de horario sin confirmación ni listado
-- **Módulo y flujo:** 5.5.
-- **Actual:** `POST /hours/barbers/:id/exceptions` → 201; el modal se cierra sin aviso y al reabrirlo no muestra las excepciones ya creadas.
-- **Esperado:** confirmación y listado/borrado de excepciones vigentes.
-- **Severidad:** Menor.
-
-### DEF-14 · El bloque multisede va antes de los KPIs de la sede
-- **Módulo y flujo:** 10.2.
-- **Actual:** «Resumen Multisede» (comparativa) precede a «Métricas de <sede>».
-- **Esperado (según el encargo):** KPIs de la sede primero.
-- **Severidad:** Menor.
-
-### DEF-15 · Roles con nomenclatura mixta
-- **Módulo y flujo:** 4.1 / 5.x.
-- **Actual:** la tabla de usuarios usa etiquetas amigables; `/admin/personal` muestra `ADMIN BARBERIA` / `BARBERO` en crudo.
-- **Esperado:** una sola convención.
-- **Severidad:** Menor.
+### DEF-11 · Watermark «Invalid PrimeUI License» en toda la UI
+- **Módulo/flujo:** transversal (visible en login, home y servicios)
+- **Actual:** banner rojo fijo abajo a la derecha en producción.
+- **Esperado:** desaparece con una clave `PRIMEUI_LICENSE` válida (Community o Commercial); el código ya la soporta (`scripts/generate-runtime-env.mjs`, `app.config.ts`).
+- **Severidad:** Menor (cosmético; no se oculta por CSS porque la licencia prohíbe retirar el mecanismo)
+- **¿Ya conocido?** Sí
 
 ---
 
@@ -189,67 +177,69 @@ Hallazgo de mayor impacto: **el único ADMINISTRADOR global de la plataforma est
 
 | Hallazgo | Estado |
 |----------|--------|
-| Configuración lleva a `/barberias/nueva` | **No aplica / corregido**: no existe menú de cuenta con «Configuración»; «Configuración de sede» va a `/admin/horarios` (DEF-12) |
-| Roles como códigos crudos | **Parcial**: corregido en la tabla de usuarios, sigue en `/admin/personal` |
-| Historial «Sin eventos» al crear cuenta | **Corregido**: «Cuenta creada» con actor y fecha |
-| BUG-ALTA-SERVICIOS (422 `descripcion`) | **Corregido**: el servicio se crea; el campo ya no existe (DEF-07) |
-| MAPA-1 barbero ve toda la agenda | **Corregido** (T-18: filtro `barberoId` desde el token, con test) |
-| Walk-In click en móvil/SPA | **No reproducido**: el botón responde a clics reales. (Los formularios exigen un submit real; los clics sintéticos de script no disparan `ngSubmit`, artefacto de automatización, no del producto) |
-| Off-by-one en fechas de analíticas | **Sigue**: «HASTA» correcto, «DESDE» un día antes en los rangos de N días |
+| Configuración lleva a `/barberias/nueva` | ✅ **Corregido** — ahora «Configuración de sede» → `/admin/horarios` |
+| Roles como códigos crudos | ❌ **Sigue** en «Distribución de roles» (la tabla sí traduce) |
+| Historial «Sin eventos» al crear cuenta | ✅ **Corregido** — `USUARIO_CREADO` con actor y contexto |
+| BUG-ALTA-SERVICIOS (422 `descripcion`) | ✅ **Corregido en el panel** (201 real desde la UI). El endpoint crudo sigue rechazando `descripcion` por diseño y el campo se descarta (DEF-03) |
+| MAPA-1 · el barbero ve toda la agenda | ✅ **Corregido** — 0 citas ajenas para el barbero, 1 para el admin |
+| Walk-In roto en SPA/móvil | ✅ **Corregido** — walk-in y walk-in-pago 201 desde API; 400 inicial solo por campos del contrato |
+| Off-by-one en fechas de analíticas | ✅ **No reproducido** — `periodo.desde/hasta` respetan lo pedido |
+| Botón de token < 10 caracteres deshabilitado sin mensaje | ✅ **Corregido (T-28)** — avisa «El token tiene N caracteres y necesita 10» (verificado en código) |
+| Sin paginación en usuarios | ❌ **Sigue** (DEF-05) |
 
 ---
 
-## Flujos no probables (con razón)
+## Observaciones (no defectos)
 
-1. **1.2 Cold start con banner**: exige ~10 min sin tráfico y una observación del aviso a los 8 s; no se forzó el sueño. Se documentó un arranque en frío real de **58,8 s** (`/health`).
-2. **1.4 Verificación OTP**: sin acceso al código de WhatsApp/SMS.
-3. **5.3 Cuenta dual real**: el flag existe, pero el 409 de sede con dueño impide crear el segundo admin necesario.
-4. **5.4 Editar nombre de miembro**: bloqueado por diseño (dato global).
-5. **7.2 Aprobar/rechazar propuesta de horario**: sin propuestas pendientes.
-6. **7.3 Filtro con datos**: sin solicitudes de cambio.
-7. **11.1 / 11.2 Gestionar antecedente / levantar restricción**: sin registros.
-8. **11.3 Aprobar/rechazar vinculación**: sin solicitudes (0 en espera).
+- **O-1 · Redirección post-login:** el ADMINISTRADOR con sede activa aterriza en `/admin/usuarios`, no en el home. Funciona, pero es un destino poco natural para un login.
+- **O-2 · Mensajes de conflicto genéricos:** `CONFLICTO_HORARIO` cubre tres causas distintas (sede sin horario, fuera de horario y solapamiento). Un usuario no puede saber qué corregir.
+- **O-3 · Contrato de `POST /shops/:id/hours`:** espera un **array**; enviar un objeto devuelve `400 Validation failed (parsable array expected)`, un mensaje que no explica el formato.
+- **O-4 · Dato del seed:** «Corte QA (Sandbox)» tiene `precio: 15000` (probable error de unidades; se muestra $15.000).
+- **O-5 · Cuenta del guion:** `admin.cremaq.production@test.com` está suspendida en producción.
 
 ---
 
 ## Limpieza post-QA
 
-Ejecutada con el rol `barberias_app` sobre `neondb` (solo lectura para la verificación; escrituras acotadas a datos `QA_`).
+Datos creados y su estado final (todo con borrado lógico, sin DELETE físico):
 
-**Acciones**
-1. `QA_Barbero_QA` desactivado en la sede (INACTIVO desde el flujo 5.6).
-2. `QA_AdminSede_QA` no llegó a crearse (409), nada que limpiar.
-3. Cuentas suspendidas por la UI de administración: `QA_usuario_alta@test.com`, `qa_barbero_qa@test.com`, `QA_registro@test.com`.
-4. Sede `QA_Sede_QA2` suspendida (vuelve a «Sedes suspendidas»).
-5. Catálogo QA desactivado en Sede Sandbox QA: **5 servicios**, **2 combos** y **2 categorías** con prefijo `QA_` (incluye restos de rondas anteriores).
-6. La reserva Walk-In queda COMPLETADA con su pago **ANULADO** y la caja del día de Sede Sandbox QA **CERRADA** (sellada a las 22:21).
+| Recurso | Identificador | Estado final |
+|---|---|---|
+| Sede `QA_Sede_Test` | `4d72cf47-ce9a-4561-bfe4-4dc461cb6162` | INACTIVO |
+| Sede `QA_Sede_Dos` | `e23170e6-4ed1-46c6-8bd0-7f33f54b128c` | INACTIVO |
+| `QA_usuario@test.com` | `09855088-…` | SUSPENDIDO |
+| `qa_barbero@test.com` | `b3401560-…` | SUSPENDIDO |
+| `qa_adminsede@test.com` | `d20df5df-…` | SUSPENDIDO |
+| `qa_barbero2@test.com` | `30e05911-…` | SUSPENDIDO |
+| Servicio `QA_Servicio_UI` (Sede Sandbox QA) | `bc18fe48-…` | INACTIVO |
 
-**Verificación (resultado literal del SQL de solo lectura)**
+Verificación (equivalente por API a las consultas SQL pedidas; **no** se ejecutaron consultas en Neon):
 
-```sql
-SELECT correo, estado_cuenta FROM usuarios WHERE correo ILIKE 'qa\_%' ORDER BY correo;
--- 7 filas, TODAS 'SUSPENDIDO'
---   QA_registro@test.com · QA_usuario@test.com · QA_usuario_alta@test.com
---   qa_adminsede@test.com · qa_barbero2@test.com · qa_barbero@test.com · qa_barbero_qa@test.com
-
-SELECT nombre, estado FROM barberias WHERE nombre LIKE 'QA\_%' ORDER BY nombre;
--- QA_Sede_Dos   → INACTIVO
--- QA_Sede_QA2   → INACTIVO
--- QA_Sede_Test  → INACTIVO   (no se tocó: sigue como estaba)
+```
+GET /api/v1/plataforma/usuarios  →  total 9, activas 4
+  qa_barbero2@test.com   | SUSPENDIDO
+  qa_adminsede@test.com  | SUSPENDIDO
+  qa_barbero@test.com    | SUSPENDIDO
+  QA_usuario@test.com    | SUSPENDIDO
+GET /api/v1/shops/all
+  Imperial Barbers Demo | ACTIVO
+  QA_Sede_Dos           | INACTIVO
+  QA_Sede_Test          | INACTIVO
+  Sede Sandbox QA       | ACTIVO
 ```
 
-**Registros QA que quedan:** 7 cuentas (todas suspendidas), 3 sedes QA (todas inactivas/aisladas) y los ítems de catálogo desactivados. **Ninguno requiere borrado por BD para quedar inerte**; si el dueño quiere eliminarlos, hay que hacerlo con un script acotado por `barberia_id` del tenant QA.
-
-**Cambios que NO son datos QA y quedan aplicados a propósito**
-- `admin.cremaq.production@test.com`: **ACTIVO** (estaba SUSPENDIDO; ver DEF-01).
-- Un turno Walk-In completado con pago anulado y la caja del día cerrada en Sede Sandbox QA (no en Imperial Barbers Demo).
-- No se asignó ningún ADMIN_BARBERIA a Imperial Barbers Demo (se respetó la decisión del dueño: la prueba del 409 se hizo en Sede Sandbox QA).
-- `QA_Sede_Test` no se modificó (ni roles ni estado), conforme a la decisión previa.
+**Registros QA residuales:** 4 cuentas (suspendidas), 2 sedes (inactivas), 1 servicio (inactivo), 1 cita walk-in en `QA_Sede_Test` (24/11), 1 cita cobrada y anulada en `QA_Sede_Dos`, más categoría/combo/horarios/excepciones de esas sedes. **No requieren limpieza por BD para operar**: ninguna sede QA está activa ni aparece en el listado operativo, y ninguna cuenta QA puede iniciar sesión. Si se quiere borrado real, hay que hacerlo por BD (los endpoints no ofrecen DELETE físico por diseño).
 
 ---
 
-## Notas de método
+## Flujos no probados y por qué
 
-- Toda la interacción fue por la UI real contra producción; los estados HTTP se leyeron en la pestaña de red del navegador y los datos se contrastaron con consultas de solo lectura a Neon (`barberias_app`).
-- El detalle técnico de los defectos se apoya en el código del repositorio (`backend-barberias/src/...`, `frontend-barberias/src/app/...`).
-- No se imprimieron contraseñas ni tokens en este informe.
+1. **1.2 Cold start en vivo** — exige 10 min sin tráfico; el aviso existe en código, no se observó.
+2. **1.4 Registro con OTP** — sin acceso al código; crear la cuenta habría dejado una cuenta zombi.
+3. **1.3 reset con token real** — requiere el correo (el proveedor es MockEmailProvider: no sale ningún correo real).
+4. **7.2 / 7.3 propuestas y solicitudes** — bandejas vacías en producción.
+5. **11.1 / 11.2 / 11.3 antecedentes, restringidos y vinculaciones** — sin registros pendientes.
+6. **10.2b resumen multisede (T-43)** — no se abrió la pantalla de analíticas de sede con datos; solo se validó el contrato.
+7. **6.1 escritura de categorías como ADMINISTRADOR** — deliberadamente no se intentó (regla de solo lectura).
+
+**No verificado visualmente:** capturas de agenda, tickets, analíticas y bandejas; solo se revisaron por API y en las pantallas listadas (`qa-capturas/01-servicios.png` y `qa-capturas/02-home-sede.png` (locales, no versionadas)) y se comprobó la consola/red sin errores en esos flujos.

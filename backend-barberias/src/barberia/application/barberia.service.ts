@@ -459,7 +459,11 @@ export class BarberiaService {
       return await withSerializableTransaction(this.prisma, async (tx) => {
         const barberia = await tx.barberia.findUnique({
           where: { id: barberiaId },
-          select: { id: true },
+          // DEF-02 · `responsableId` participa en la guarda de no degradación:
+          // un ADMINISTRADOR global que creó la sede NO recibe fila
+          // `ADMIN_BARBERIA` (ver `create`, más arriba), así que la única prueba
+          // de que la administra es la responsabilidad.
+          select: { id: true, responsableId: true },
         });
         if (!barberia) throw new NotFoundException('Sede no encontrada.');
 
@@ -504,7 +508,15 @@ export class BarberiaService {
           const nombresDeRoles = relaciones
             .map((fila) => fila.rol?.nombre)
             .filter((nombre): nombre is string => !!nombre);
-          const administraLaSede = nombresDeRoles.includes(ROL_ADMIN_BARBERIA);
+          // DEF-02 · «administra la sede» no es solo tener la fila de rol: el
+          // ADMINISTRADOR global es transversal y `create()` no le escribe
+          // `ADMIN_BARBERIA`, pero sigue siendo el responsable de la sede. Sin
+          // esta segunda condición, invitarlo como BARBERO respondía 201 y lo
+          // dejaba como único vínculo de sede, degradando su administración sin
+          // aviso (la guarda de abajo nunca llegaba a evaluarse).
+          const administraLaSede =
+            nombresDeRoles.includes(ROL_ADMIN_BARBERIA) ||
+            barberia.responsableId === usuarioExistente.id;
           // Un `usuario_roles` con dos filas en la MISMA sede solo es legítimo
           // si son el administrador y el barbero del dueño que corta pelo.
           const esCuentaDual =
