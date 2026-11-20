@@ -767,7 +767,7 @@ export class AdminAgendaComponent {
   async cancelarTurno(turno: Turno): Promise<void> {
     const confirmado = await this.confirmDialog.confirm({
       titulo: 'Cancelar turno',
-      mensaje: `¿Cancelar el turno de ${turno.cliente?.nombre ?? 'este cliente'}? La cita dejará de ocupar la agenda y la franja quedará libre para otro cliente.`,
+      mensaje: `¿Cancelar el turno de ${turno.cliente?.nombre ?? 'este cliente'}?`,
       textoConfirmar: 'Sí, cancelar',
       tono: 'peligro',
       icono: 'pi pi-calendar-minus',
@@ -782,7 +782,7 @@ export class AdminAgendaComponent {
       .subscribe({
       next: () => {
         this.procesandoId.set(null);
-        this.mensajeAccion.set('Turno cancelado. La franja quedó liberada.');
+        this.mensajeAccion.set('Turno cancelado.');
         setTimeout(() => this.mensajeAccion.set(null), 4000);
         this.recargar();
       },
