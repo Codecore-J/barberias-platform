@@ -54,3 +54,6 @@ endpoints.json
 
 # Capturas de la validación visual de QA (Fase 3)
 qa-fase3/
+
+# QA local: capturas no versionadas
+qa-capturas/
