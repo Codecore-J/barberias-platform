@@ -222,12 +222,6 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
                   </select>
                 </div>
               }
-
-              <!-- Descripción -->
-              <div class="space-y-2 md:col-span-2">
-                <label for="servicio-descripcion" class="text-xs font-bold text-zinc-400 uppercase">Descripción (Opcional)</label>
-                <textarea id="servicio-descripcion" formControlName="descripcion" rows="3" class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 px-4 text-white focus:border-amber-500/50 outline-none resize-none"></textarea>
-              </div>
             </div>
 
             @if (serviciosService.error()) {
@@ -319,9 +313,10 @@ export class AdminServiciosComponent implements OnInit {
   // Computado para obtener solo los servicios regulares (no combos)
   serviciosRegulares = computed(() => this.serviciosService.servicios().filter(s => !s.esCombo));
 
+  // DEF-03 · el servicio no tiene descripción: el campo se retiró del
+  // formulario y del payload en vez de aceptarlo y descartarlo en silencio.
   form: FormGroup = this.fb.group({
     nombre: ['', [Validators.required]],
-    descripcion: [''],
     precio: [0, [Validators.required, Validators.min(0)]],
     duracionMinutos: [30, [Validators.required, Validators.min(5)]],
     esCombo: [false],
@@ -347,7 +342,6 @@ export class AdminServiciosComponent implements OnInit {
       this.editingId.set(servicio.id);
       this.form.patchValue({
         nombre: servicio.nombre,
-        descripcion: servicio.descripcion,
         precio: servicio.precio,
         duracionMinutos: servicio.duracionMinutos,
         esCombo: servicio.esCombo,
