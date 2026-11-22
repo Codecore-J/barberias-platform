@@ -230,3 +230,6 @@ Hasta que se decida, no se tocan:
 10. **Propuesta de horario del cliente** (`POST …/:id/propose-time`).
 11. **Publicación propia del barbero** (`mis-servicios`).
 12. **Combos** y **reasignación de barbero** (`PATCH /reservas/:id/asignar-barbero`).
+13. **`horario.base.aprobar` no tiene ruta.** Es la única de las 21 acciones de la matriz
+    sin endpoint: el barbero propone su plantilla en `PUT …/mi-horario/base`, pero no
+    existe la ruta con la que la sede la aprueba o rechaza.
