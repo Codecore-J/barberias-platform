@@ -465,11 +465,15 @@ Roles: ADMIN_BARBERIA de esa sede (ADMINISTRADOR ❌, BARBERO ❌, CLIENTE ❌)
 ## 9 · Estado de este documento
 
 - **No** modifica el spec de rutas, ni controladores, guards o decoradores.
-- **No** fusiona nada ni empieza T-10, T-11 ni T-12.
+- **No** fusiona nada: #172 y #174 los fusionó el dueño el 23 nov 2026 (`b4ee6a7` y
+  `8d8dece`).
 - **Sí** escribe: las nueve altas y las rutas de las solicitudes están ya en
   `docs/MATRIZ_PERMISOS_OBJETIVO.md` (§1 y §5 de ese documento, rama
   `docs/matriz-permisos-objetivo`, PR #172), ya sin †: el dueño aprobó las nueve el
   23 nov 2026 y la matriz queda en 30 acciones. Las 21 filas vigentes no se tocaron.
 - Las cuatro preguntas de §7.1 están cerradas (§5.12–§5.15).
-- Pendiente: la autorización para fusionar #172 y #174. La Fase 1 no empieza hasta que el
-  dueño diga «arranca Fase 1», y cada paso que cambie código se confirma antes.
+- **T-10 hecho** (rama `feat/t10-matriz-acciones`): `backend-barberias/src/iam/domain/matriz.ts`
+  lleva las 30 acciones, el mapa ruta → acción de las 123 filas, las 12 brechas de §6 y las
+  12 brechas de rol de §2; `backend-barberias/test/matriz-acciones.spec.ts` comprueba que el
+  mapa sigue cuadrando con esta tabla. **No cambia ningún permiso**: T-11 y T-12 siguen sin
+  empezar y cada paso que cambie código se confirma antes.
