@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -74,6 +75,23 @@ export class CategoriasController {
     const categoria = await this.categoriasService.obtener(barberiaId, id);
     await this.auditarLecturaGlobal(user, barberiaId, 'detalle', 1);
     return categoria;
+  }
+
+  /**
+   * T-21 · borrado de una categoría GLOBAL. Solo procede si ningún servicio de
+   * barbero la usa: en ese caso responde 409 `CATEGORIA_CON_SERVICIOS` con la
+   * cuenta y el panel ofrece desactivarla. La política es la misma que la
+   * escritura (ADMINISTRADOR) y la sede del path sigue siendo obligatoria.
+   */
+  @Delete(':id')
+  @Roles('ADMINISTRADOR')
+  @UseGuards(VinculoBarberiaGuard)
+  @HttpCode(HttpStatus.OK)
+  eliminar(
+    @CurrentBarberiaId() barberiaId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.categoriasService.eliminar(barberiaId, id);
   }
 
   @Patch(':id')

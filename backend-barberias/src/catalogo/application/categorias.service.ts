@@ -168,4 +168,44 @@ export class CategoriasService {
     this.logger.log(`Categoría global actualizada: ${id}`);
     return actualizada;
   }
+
+  /**
+   * T-21 · borrado REAL de una categoría global, con una única condición: que no
+   * la use ningún servicio de barbero.
+   *
+   * El camino normal sigue siendo desactivarla (`activa = false`), así que el
+   * borrado es la excepción para una categoría creada por error. La cuenta NO
+   * filtra por `activo`: un servicio desactivado sigue apuntando a la categoría y
+   * borrarla lo dejaría huérfano. El 409 devuelve `servicios` para que el panel
+   * pueda decir cuántos la bloquean.
+   */
+  async eliminar(barberiaId: string, id: string) {
+    CategoriasService.exigirSede(barberiaId);
+
+    const categoria = await this.prisma.categoriaServicio.findFirst({
+      where: { id, barberiaId: null },
+      select: { id: true, nombre: true },
+    });
+
+    if (!categoria) {
+      throw new NotFoundException(`Categoría con ID ${id} no encontrada en el catálogo global`);
+    }
+
+    const servicios = await this.prisma.servicioBarbero.count({
+      where: { categoriaId: id },
+    });
+
+    if (servicios > 0) {
+      throw errorDeConflicto(
+        'CATEGORIA_CON_SERVICIOS',
+        `No se puede eliminar la categoría «${categoria.nombre}» porque la usan ${servicios} servicio(s) de barbero. Desactívala en lugar de borrarla.`,
+        { servicios },
+      );
+    }
+
+    await this.prisma.categoriaServicio.delete({ where: { id } });
+
+    this.logger.log(`Categoría global eliminada: ${id}`);
+    return { id: categoria.id, nombre: categoria.nombre, eliminada: true };
+  }
 }
