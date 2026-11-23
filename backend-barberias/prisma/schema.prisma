@@ -8,50 +8,50 @@ datasource db {
 }
 
 model Usuario {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nombreCompleto String    @map("nombre_completo") @db.VarChar(150)
-  correo         String    @unique @db.VarChar(150)
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombreCompleto     String    @map("nombre_completo") @db.VarChar(150)
+  correo             String    @unique @db.VarChar(150)
   // H-02 · el formato (exactamente 10 dígitos) lo impone además PostgreSQL con
   // el CHECK `chk_usuario_telefono_10_digitos` de la migración
   // `add_telefono_check_constraint`. Prisma no sabe expresar CHECKs, así que
   // aquí solo queda la validación del DTO; la garantía real vive en la base.
-  telefono       String    @unique @db.VarChar(30)
-  cedula         String?   @unique @db.VarChar(30)
-  passwordHash   String    @map("password_hash") @db.VarChar(255)
-  estadoCuenta   String    @default("ACTIVO") @map("estado_cuenta") @db.VarChar(20)
+  telefono           String    @unique @db.VarChar(30)
+  cedula             String?   @unique @db.VarChar(30)
+  passwordHash       String    @map("password_hash") @db.VarChar(255)
+  estadoCuenta       String    @default("ACTIVO") @map("estado_cuenta") @db.VarChar(20)
   // E4-03/5 · D24: versión del token. Suspender una cuenta la sube y con eso
   // quedan inválidos los JWT ya firmados (se cierran todas las sesiones).
-  tokenVersion   Int       @default(0) @map("token_version")
+  tokenVersion       Int       @default(0) @map("token_version")
   // V2.1 · Verificación OTP: el correo y el teléfono se confirman con un código
   // de 6 dígitos antes de poder ocupar agenda (`VerificacionGuard`).
-  correoVerificado   Boolean @default(false) @map("correo_verificado")
-  telefonoVerificado Boolean @default(false) @map("telefono_verificado")
-  creadoAt       DateTime? @default(now()) @map("creado_at") @db.Timestamptz
+  correoVerificado   Boolean   @default(false) @map("correo_verificado")
+  telefonoVerificado Boolean   @default(false) @map("telefono_verificado")
+  creadoAt           DateTime? @default(now()) @map("creado_at") @db.Timestamptz
 
-  usuarioRoles       UsuarioRol[]
-  barberias          Barberia[]                @relation("Responsable")
-  clienteBarberias   ClienteBarberia[]
-  reservas           Reserva[]                 @relation("ClienteReserva")
-  pagosRegistrados   Pago[]                    @relation("RegistradoPor")
+  usuarioRoles           UsuarioRol[]
+  barberias              Barberia[]                @relation("Responsable")
+  clienteBarberias       ClienteBarberia[]
+  reservas               Reserva[]                 @relation("ClienteReserva")
+  pagosRegistrados       Pago[]                    @relation("RegistradoPor")
   // H68: quién anuló un cobro (la corrección de §7.3).
-  pagosAnulados      Pago[]                    @relation("AnuladoPorPago")
-  antecedentes       Antecedente[]
-  notificaciones     Notificacion[]
-  auditoria          Auditoria[]
-  bloqueosCreados    BloqueosAgenda[]          @relation("BloqueoCreador")
-  tokensRecuperacion TokenRecuperacion[]
-  horariosBarbero    HorarioBarbero[]          @relation("HorarioDeBarbero")
-  excepcionesBarbero ExcepcionHorarioBarbero[] @relation("ExcepcionDeBarbero")
+  pagosAnulados          Pago[]                    @relation("AnuladoPorPago")
+  antecedentes           Antecedente[]
+  notificaciones         Notificacion[]
+  auditoria              Auditoria[]
+  bloqueosCreados        BloqueosAgenda[]          @relation("BloqueoCreador")
+  tokensRecuperacion     TokenRecuperacion[]
+  horariosBarbero        HorarioBarbero[]          @relation("HorarioDeBarbero")
+  excepcionesBarbero     ExcepcionHorarioBarbero[] @relation("ExcepcionDeBarbero")
   // V3 · plantilla semanal recurrente del barbero (independiente de la sede).
-  horariosBase       HorarioBaseBarbero[]      @relation("HorarioBaseDeBarbero")
+  horariosBase           HorarioBaseBarbero[]      @relation("HorarioBaseDeBarbero")
   // V3 · excepciones de horario que este usuario modificó (barbero o admin).
-  excepcionesEditadas ExcepcionHorarioBarbero[] @relation("ExcepcionModificadaPor")
-  reservasBarbero    Reserva[]                 @relation("BarberoReserva")
-  bloqueosBarbero    BloqueosAgenda[]          @relation("BloqueoDeBarbero")
+  excepcionesEditadas    ExcepcionHorarioBarbero[] @relation("ExcepcionModificadaPor")
+  reservasBarbero        Reserva[]                 @relation("BarberoReserva")
+  bloqueosBarbero        BloqueosAgenda[]          @relation("BloqueoDeBarbero")
   // E3-08/D17: quién ejecutó la cancelación especial de una reserva.
-  reservasCanceladas Reserva[]                 @relation("CanceladoPorReserva")
+  reservasCanceladas     Reserva[]                 @relation("CanceladoPorReserva")
   // E3-08/D18: quién creó una propuesta de horario (el CLIENTE dueño).
-  propuestasHorario  PropuestaHorario[]
+  propuestasHorario      PropuestaHorario[]
   // E3-13/D26: quién solicitó y quién resolvió un cambio de la sede.
   solicitudesSolicitadas SolicitudCambioBarberia[] @relation("SolicitudSolicitadaPor")
   solicitudesResueltas   SolicitudCambioBarberia[] @relation("SolicitudResueltaPor")
@@ -129,30 +129,30 @@ model UsuarioRol {
 }
 
 model Barberia {
-  id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nombre        String  @db.VarChar(150)
-  descripcion   String? @db.Text
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre        String    @db.VarChar(150)
+  descripcion   String?   @db.Text
   // H-02 · formato de 10 dígitos garantizado además por PostgreSQL con el CHECK
   // `chk_barberia_telefono_10_digitos` (migración `add_barberias_telefono_check`).
   // Prisma no expresa CHECKs: `CreateBarberiaDto`/`UpdateBarberiaDto` validan
   // primero y esta restricción cubre cualquier escritura que los esquive.
-  telefono      String  @db.VarChar(30)
-  ubicacion     String  @db.Text
-  codigoAcceso  String  @unique @map("codigo_acceso") @db.VarChar(50)
-  enlaceUnico   String  @unique @map("enlace_unico") @db.VarChar(100)
-  responsableId String  @map("responsable_id") @db.Uuid
-  estado        String  @default("ACTIVO") @db.VarChar(20)
+  telefono      String    @db.VarChar(30)
+  ubicacion     String    @db.Text
+  codigoAcceso  String    @unique @map("codigo_acceso") @db.VarChar(50)
+  enlaceUnico   String    @unique @map("enlace_unico") @db.VarChar(100)
+  responsableId String    @map("responsable_id") @db.Uuid
+  estado        String    @default("ACTIVO") @db.VarChar(20)
   // E2-04 / D15: zona horaria de la sede. Las fechas y horas de cita
   // (`fecha_cita`, `hora_inicio`, `hora_fin`) son ETIQUETAS locales a esta zona
   // y los instantes (`expira_at`, `creado_at`) son UTC. La columna llega con la
   // migración `e204_zona_horaria`; E2-03 la dejará con su CHECK (D15).
-  zonaHoraria   String  @default("America/Santo_Domingo") @map("zona_horaria") @db.VarChar(50)
+  zonaHoraria   String    @default("America/Santo_Domingo") @map("zona_horaria") @db.VarChar(50)
   // E3-13: el logo es edición directa de la sede (junto a descripción y
   // ubicación); el nombre y el responsable solo cambian por solicitud aprobada.
   // `Text` (no `VarChar(500)`) porque `dev` ya tenía la columna como `text`
   // cuando llegó E3-13: la migración la declara idempotente y así el esquema y
   // la base coinciden también en bases creadas desde cero. Ver H50.
-  logoUrl       String? @map("logo_url") @db.Text
+  logoUrl       String?   @map("logo_url") @db.Text
   // E2-03: alta de la sede. La crea la migración reconstruida
   // `20261011130000_e203_integridad_base`; en `dev` ya existía (H50).
   creadoAt      DateTime? @default(now()) @map("creado_at") @db.Timestamptz
@@ -166,6 +166,9 @@ model Barberia {
   // V3 · catálogo híbrido: las categorías las crea el ADMIN_BARBERIA de la sede
   // y los barberos publican sus servicios dentro de ellas.
   categoriasServicio    CategoriaServicio[]
+  // T-20 · servicios del barbero publicados EN esta sede (la categoría ya es
+  // global, así que la sede del servicio vive en `servicios_barbero`).
+  serviciosBarberoSede  ServicioBarbero[]         @relation("ServiciosBarberoDeSede")
   combos                Combo[]
   horarios              Horario[]
   excepcionesHorario    ExcepcionHorario[]
@@ -226,30 +229,38 @@ model Servicio {
   @@map("servicios")
 }
 
-/// V3 · categoría de servicio de una sede (nomenclatura del negocio).
+/// V3 · categoría de servicio GLOBAL de la plataforma (nomenclatura del negocio).
 ///
-/// «Categorización estricta con nomenclatura libre»: el ADMIN_BARBERIA decide
-/// las categorías de SU sede (Corte, Barba, Color...) y cada BARBERO publica
-/// dentro de ellas sus propios servicios con precio y duración. La categoría
-/// nunca se borra (§9): se desactiva con `activa = false` y deja de ofrecerse.
+/// T-20 (23 nov 2026): la taxonomía dejó de ser de cada sede. `barberia_id`
+/// admite NULL y ese NULL significa «global»: el ADMINISTRADOR define una vez
+/// (Corte, Barba, Color...) y las sedes publican dentro de esas categorías. Antes
+/// cada sede tenía su propia copia del mismo nombre —en producción había 33
+/// filas para 11 nombres— y renombrar una no cambiaba las demás.
+///
+/// El nombre es único en TODO el catálogo (normalizado a minúsculas y sin
+/// espacios sobrantes): dos «Corte» en sedes distintas vuelven a ser dos
+/// categorías distintas para el cliente. `orden` decide el orden de presentación
+/// y la categoría nunca se borra (§9): se desactiva con `activa = false`.
+///
+/// La columna `barberia_id` se conserva porque la migración de T-20 necesita
+/// saber de qué sede salió cada fila; las categorías vivas la llevan en NULL.
 model CategoriaServicio {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  barberiaId    String   @map("barberia_id") @db.Uuid
+  barberiaId    String?  @map("barberia_id") @db.Uuid
   nombre        String   @db.VarChar(100)
   descripcion   String?  @db.Text
   activa        Boolean  @default(true)
+  orden         Int      @default(0)
   creadoAt      DateTime @default(now()) @map("creado_at") @db.Timestamptz
   actualizadoAt DateTime @default(now()) @updatedAt @map("actualizado_at") @db.Timestamptz
 
-  barberia Barberia          @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
+  barberia  Barberia?         @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
   servicios ServicioBarbero[]
 
-  // Nomenclatura única por sede: dos «Corte» en la misma sede confundirían al
-  // cliente y al barbero que elige dónde publicar.
-  // `name` nombra el ACCESOR del cliente; `map` el índice real en PostgreSQL.
-  // Faltaba `map`, así que Prisma quería renombrar el índice al nombre por
-  // defecto que él mismo generaría.
-  @@unique([barberiaId, nombre], name: "uk_categoria_sede_nombre", map: "uk_categoria_sede_nombre")
+  // Unicidad GLOBAL del nombre: la migración de T-20 fusiona las copias por sede
+  // antes de crear este índice, y el servicio compara con `mode: 'insensitive'`
+  // igual que este índice normaliza.
+  @@unique([nombre], name: "uk_categoria_global_nombre", map: "uk_categoria_global_nombre")
   @@map("categorias_servicio")
 }
 
@@ -263,6 +274,10 @@ model ServicioBarbero {
   id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   categoriaId         String   @map("categoria_id") @db.Uuid
   barberoId           String   @map("barbero_id") @db.Uuid
+  // T-20 (23 nov 2026): la categoría pasó a ser global, así que ya no identifica
+  // la sede. El servicio sigue siendo DE UNA SEDE y esa sede se guarda aquí; sin
+  // esta columna, el catálogo de un barbero con rol en dos sedes se mezclaría.
+  barberiaId          String   @map("barberia_id") @db.Uuid
   nombrePersonalizado String   @map("nombre_personalizado") @db.VarChar(100)
   precio              Decimal  @db.Decimal(10, 2)
   duracionMinutos     Int      @map("duracion_minutos")
@@ -275,6 +290,7 @@ model ServicioBarbero {
   // normal es desactivarla (`activa = false`).
   categoria CategoriaServicio @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
   barbero   Usuario           @relation("ServiciosDeBarbero", fields: [barberoId], references: [id], onDelete: Cascade)
+  barberia  Barberia          @relation("ServiciosBarberoDeSede", fields: [barberiaId], references: [id], onDelete: Cascade)
 
   // V3 fase 4 · snapshot de las reservas creadas con este servicio: la otra
   // mitad del vínculo opcional de `participante_servicios`.
@@ -283,6 +299,7 @@ model ServicioBarbero {
   @@unique([barberoId, categoriaId, nombrePersonalizado], name: "uk_servicio_barbero_categoria_nombre", map: "uk_servicio_barbero_categoria_nombre")
   @@index([categoriaId, activo], name: "idx_servicios_barbero_categoria")
   @@index([barberoId, activo], name: "idx_servicios_barbero_barbero")
+  @@index([barberiaId, activo], name: "idx_servicios_barbero_sede")
   @@map("servicios_barbero")
 }
 
@@ -360,15 +377,15 @@ model ExcepcionHorario {
 /// opcionales y viven dentro de la jornada; el CHECK de la migración lo impone
 /// además de la validación del DTO.
 model HorarioBarbero {
-  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  barberiaId        String    @map("barberia_id") @db.Uuid
-  barberoId         String    @map("barbero_id") @db.Uuid
-  diaSemana         Int       @map("dia_semana") @db.SmallInt
-  horaInicio        DateTime? @map("hora_inicio") @db.Time
-  horaFin           DateTime? @map("hora_fin") @db.Time
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId         String    @map("barberia_id") @db.Uuid
+  barberoId          String    @map("barbero_id") @db.Uuid
+  diaSemana          Int       @map("dia_semana") @db.SmallInt
+  horaInicio         DateTime? @map("hora_inicio") @db.Time
+  horaFin            DateTime? @map("hora_fin") @db.Time
   horaInicioDescanso DateTime? @map("hora_inicio_descanso") @db.Time
   horaFinDescanso    DateTime? @map("hora_fin_descanso") @db.Time
-  esDiaLibre        Boolean   @default(false) @map("es_dia_libre")
+  esDiaLibre         Boolean   @default(false) @map("es_dia_libre")
 
   barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
   barbero  Usuario  @relation("HorarioDeBarbero", fields: [barberoId], references: [id], onDelete: Cascade)
@@ -378,14 +395,14 @@ model HorarioBarbero {
 }
 
 model ExcepcionHorarioBarbero {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  barberiaId String    @map("barberia_id") @db.Uuid
-  barberoId  String    @map("barbero_id") @db.Uuid
-  fecha      DateTime  @db.Date
-  tipo       String    @db.VarChar(20)
-  horaInicio DateTime? @map("hora_inicio") @db.Time
-  horaFin    DateTime? @map("hora_fin") @db.Time
-  motivo     String?   @db.Text
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId      String                    @map("barberia_id") @db.Uuid
+  barberoId       String                    @map("barbero_id") @db.Uuid
+  fecha           DateTime                  @db.Date
+  tipo            String                    @db.VarChar(20)
+  horaInicio      DateTime?                 @map("hora_inicio") @db.Time
+  horaFin         DateTime?                 @map("hora_fin") @db.Time
+  motivo          String?                   @db.Text
   // V3 · autoría del cambio. `modificadoPor` dice el ORIGEN (el propio barbero
   // o un administrador de la sede) y `modificadoPorId` el usuario concreto.
   // El id es opcional porque las filas anteriores a esta migración no lo
@@ -460,45 +477,45 @@ model BloqueosAgenda {
 }
 
 model Reserva {
-  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  barberiaId            String    @map("barberia_id") @db.Uuid
-  clienteId             String    @map("cliente_id") @db.Uuid
-  barberoId             String?   @map("barbero_id") @db.Uuid
-  tipoReserva           String    @map("tipo_reserva") @db.VarChar(20)
-  estado                String    @default("PENDIENTE") @db.VarChar(30)
-  modoConfirmacion      String    @map("modo_confirmacion") @db.VarChar(20)
-  fechaCita             DateTime  @map("fecha_cita") @db.Date
-  horaInicio            DateTime  @map("hora_inicio") @db.Time
-  horaFin               DateTime  @map("hora_fin") @db.Time
-  margenGrupalHistorico Int?      @map("margen_grupal_historico")
-  totalPagar            Decimal   @map("total_pagar") @db.Decimal(10, 2)
-  expiraAt              DateTime? @map("expira_at") @db.Timestamptz
-  creadoAt              DateTime? @default(now()) @map("creado_at") @db.Timestamptz
+  id                         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId                 String    @map("barberia_id") @db.Uuid
+  clienteId                  String    @map("cliente_id") @db.Uuid
+  barberoId                  String?   @map("barbero_id") @db.Uuid
+  tipoReserva                String    @map("tipo_reserva") @db.VarChar(20)
+  estado                     String    @default("PENDIENTE") @db.VarChar(30)
+  modoConfirmacion           String    @map("modo_confirmacion") @db.VarChar(20)
+  fechaCita                  DateTime  @map("fecha_cita") @db.Date
+  horaInicio                 DateTime  @map("hora_inicio") @db.Time
+  horaFin                    DateTime  @map("hora_fin") @db.Time
+  margenGrupalHistorico      Int?      @map("margen_grupal_historico")
+  totalPagar                 Decimal   @map("total_pagar") @db.Decimal(10, 2)
+  expiraAt                   DateTime? @map("expira_at") @db.Timestamptz
+  creadoAt                   DateTime? @default(now()) @map("creado_at") @db.Timestamptz
   // E3-09 · instante en que la reserva entró en COMPLETADA (§5.2 fila 11).
   // Nullable: solo lo escriben los cobros. Lo crea la migración reconstruida
   // `20261011130000_e203_integridad_base`; en `dev` ya existía (H50).
-  completadaAt          DateTime? @map("completada_at") @db.Timestamptz
+  completadaAt               DateTime? @map("completada_at") @db.Timestamptz
   // E3-04/D19: motivo estructurado del rechazo (§5.5). El CHECK del catálogo
   // vive en la migración; Prisma no sabe expresarlo.
-  motivoCodigo          String?   @map("motivo_codigo") @db.VarChar(40)
-  motivoDetalle         String?   @map("motivo_detalle") @db.Text
+  motivoCodigo               String?   @map("motivo_codigo") @db.VarChar(40)
+  motivoDetalle              String?   @map("motivo_detalle") @db.Text
   // E3-08/D17 · cancelación especial: quién canceló, en qué estado quedó la
   // solicitud y con qué motivo del catálogo de cancelación (§5.5). Los CHECK
   // de estado y motivo viven en la migración.
-  canceladoPorId           String?   @map("cancelado_por_id") @db.Uuid
-  cancelacionEspecialEstado String?  @map("cancelacion_especial_estado") @db.VarChar(20)
-  cancelacionEspecialMotivo String?  @map("cancelacion_especial_motivo") @db.VarChar(40)
-  cancelacionEspecialDetalle String? @map("cancelacion_especial_detalle") @db.Text
+  canceladoPorId             String?   @map("cancelado_por_id") @db.Uuid
+  cancelacionEspecialEstado  String?   @map("cancelacion_especial_estado") @db.VarChar(20)
+  cancelacionEspecialMotivo  String?   @map("cancelacion_especial_motivo") @db.VarChar(40)
+  cancelacionEspecialDetalle String?   @map("cancelacion_especial_detalle") @db.Text
   // Fase 7 · recordatorio preventivo de no-show. El cron lo marca ANTES de
   // emitir `reserva.recordatorio`, y el `updateMany` condicionado a `false` es
   // lo que impide que dos ejecuciones solapadas (o dos instancias del API)
   // avisen dos veces de la misma cita.
-  recordatorioEnviado      Boolean   @default(false) @map("recordatorio_enviado")
+  recordatorioEnviado        Boolean   @default(false) @map("recordatorio_enviado")
 
-  barberia     Barberia  @relation(fields: [barberiaId], references: [id])
-  cliente      Usuario   @relation("ClienteReserva", fields: [clienteId], references: [id])
-  barbero      Usuario?  @relation("BarberoReserva", fields: [barberoId], references: [id])
-  canceladoPor Usuario?  @relation("CanceladoPorReserva", fields: [canceladoPorId], references: [id])
+  barberia     Barberia @relation(fields: [barberiaId], references: [id])
+  cliente      Usuario  @relation("ClienteReserva", fields: [clienteId], references: [id])
+  barbero      Usuario? @relation("BarberoReserva", fields: [barberoId], references: [id])
+  canceladoPor Usuario? @relation("CanceladoPorReserva", fields: [canceladoPorId], references: [id])
 
   participantes ParticipanteReserva[]
   propuestas    PropuestaHorario[]
@@ -536,8 +553,8 @@ model PropuestaHorario {
   creadoPor  String    @map("creado_por") @db.Uuid
   creadoAt   DateTime? @default(now()) @map("creado_at") @db.Timestamptz
 
-  reserva   Reserva @relation(fields: [reservaId], references: [id], onDelete: Cascade)
-  creador   Usuario @relation(fields: [creadoPor], references: [id])
+  reserva Reserva @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+  creador Usuario @relation(fields: [creadoPor], references: [id])
 
   @@index([reservaId], name: "idx_propuestas_horario_reserva")
   @@map("propuestas_horario")
@@ -589,23 +606,23 @@ model ParticipanteServicio {
 }
 
 model Pago {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  reservaId     String    @unique @map("reserva_id") @db.Uuid
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservaId       String    @unique @map("reserva_id") @db.Uuid
   // V3 fase 6: la sede del cobro, copiada de la reserva en la misma
   // transacción. El arqueo diario filtra por ella y por `registrado_at`; sin
   // esta columna la caja tendría que unir `pagos` con `reservas` en cada
   // consulta.
-  barberiaId    String    @map("barberia_id") @db.Uuid
+  barberiaId      String    @map("barberia_id") @db.Uuid
   // H68: `ANULADO` es un estado del catálogo, no un borrado. El CHECK vive en la
   // migración `h68_anulacion_pagos`; Prisma no sabe expresarlo.
-  estadoPago    String    @default("PENDIENTE_DE_PAGO") @map("estado_pago") @db.VarChar(20)
-  monto         Decimal   @db.Decimal(10, 2)
+  estadoPago      String    @default("PENDIENTE_DE_PAGO") @map("estado_pago") @db.VarChar(20)
+  monto           Decimal   @db.Decimal(10, 2)
   // H68: el método viaja en la fila porque el recibo de la sede lo muestra y la
   // auditoría no es un listado. `EN_PERSONA` es el valor histórico del cajero.
-  metodoPago    String    @default("EN_PERSONA") @map("metodo_pago") @db.VarChar(30)
-  registradoPor String?   @map("registrado_por") @db.Uuid
-  registradoAt  DateTime? @default(now()) @map("registrado_at") @db.Timestamptz
-  actualizadoAt DateTime? @map("actualizado_at") @db.Timestamptz
+  metodoPago      String    @default("EN_PERSONA") @map("metodo_pago") @db.VarChar(30)
+  registradoPor   String?   @map("registrado_por") @db.Uuid
+  registradoAt    DateTime? @default(now()) @map("registrado_at") @db.Timestamptz
+  actualizadoAt   DateTime? @map("actualizado_at") @db.Timestamptz
   // H68 · §7.3: rastro de la corrección EN LA FILA —quién, cuándo y por qué—,
   // además del evento `PAGO_ANULADO` que se escribe en la misma transacción.
   anuladoAt       DateTime? @map("anulado_at") @db.Timestamptz
@@ -631,17 +648,17 @@ model Pago {
 /// apertura explícita de turno): se conservan los dos porque el contrato los
 /// pide y porque permiten añadir la apertura sin migrar la tabla.
 model CierreCaja {
-  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  barberiaId         String   @map("barberia_id") @db.Uuid
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId         String    @map("barberia_id") @db.Uuid
   /// Etiqueta de calendario (DATE) del día arqueado en la zona de la sede.
-  fechaArqueo        DateTime @map("fecha_arqueo") @db.Date
-  totalEfectivo      Decimal  @default(0) @map("total_efectivo") @db.Decimal(12, 2)
-  totalTarjeta       Decimal  @default(0) @map("total_tarjeta") @db.Decimal(12, 2)
-  totalTransferencia Decimal  @default(0) @map("total_transferencia") @db.Decimal(12, 2)
-  totalGeneral       Decimal  @default(0) @map("total_general") @db.Decimal(12, 2)
-  estado             String   @default("CERRADO") @db.VarChar(20)
-  abiertoPor         String?  @map("abierto_por") @db.Uuid
-  cerradoPor         String?  @map("cerrado_por") @db.Uuid
+  fechaArqueo        DateTime  @map("fecha_arqueo") @db.Date
+  totalEfectivo      Decimal   @default(0) @map("total_efectivo") @db.Decimal(12, 2)
+  totalTarjeta       Decimal   @default(0) @map("total_tarjeta") @db.Decimal(12, 2)
+  totalTransferencia Decimal   @default(0) @map("total_transferencia") @db.Decimal(12, 2)
+  totalGeneral       Decimal   @default(0) @map("total_general") @db.Decimal(12, 2)
+  estado             String    @default("CERRADO") @db.VarChar(20)
+  abiertoPor         String?   @map("abierto_por") @db.Uuid
+  cerradoPor         String?   @map("cerrado_por") @db.Uuid
   abiertoAt          DateTime? @map("abierto_at") @db.Timestamptz
   cerradoAt          DateTime? @map("cerrado_at") @db.Timestamptz
   creadoAt           DateTime  @default(now()) @map("creado_at") @db.Timestamptz
@@ -725,30 +742,30 @@ model Reporte {
 }
 
 model ConfiguracionBarberia {
-  barberiaId             String    @id @map("barberia_id") @db.Uuid
-  modoReserva            String    @default("MANUAL") @map("modo_reserva") @db.VarChar(20)
-  aceptaIndividual       Boolean   @default(true) @map("acepta_individual")
-  aceptaGrupal           Boolean   @default(true) @map("acepta_grupal")
-  maxPendientes          Int?      @map("max_pendientes")
-  maxNinos               Int?      @map("max_ninos")
-  maxPersonasTotal       Int?      @map("max_personas_total")
-  horizonteReservaDias   Int?      @map("horizonte_reserva_dias")
-  nuevasReservasActivas  Boolean   @default(true) @map("nuevas_reservas_activas")
-  motivoPausa            String?   @map("motivo_pausa") @db.Text
-  pausaDesde             DateTime? @map("pausa_desde") @db.Timestamptz
-  reactivacionProgramada DateTime? @map("reactivacion_programada") @db.Timestamptz
-  reactivacionReal       DateTime? @map("reactivacion_real") @db.Timestamptz
+  barberiaId                  String    @id @map("barberia_id") @db.Uuid
+  modoReserva                 String    @default("MANUAL") @map("modo_reserva") @db.VarChar(20)
+  aceptaIndividual            Boolean   @default(true) @map("acepta_individual")
+  aceptaGrupal                Boolean   @default(true) @map("acepta_grupal")
+  maxPendientes               Int?      @map("max_pendientes")
+  maxNinos                    Int?      @map("max_ninos")
+  maxPersonasTotal            Int?      @map("max_personas_total")
+  horizonteReservaDias        Int?      @map("horizonte_reserva_dias")
+  nuevasReservasActivas       Boolean   @default(true) @map("nuevas_reservas_activas")
+  motivoPausa                 String?   @map("motivo_pausa") @db.Text
+  pausaDesde                  DateTime? @map("pausa_desde") @db.Timestamptz
+  reactivacionProgramada      DateTime? @map("reactivacion_programada") @db.Timestamptz
+  reactivacionReal            DateTime? @map("reactivacion_real") @db.Timestamptz
   // D42 (2026-10-02): margen grupal propio de la barbería, default 10, rango 0-60.
   // Se snapshottea en reservas.margen_grupal_historico al crear (nunca suma ni DTO).
-  margenGrupalMinutos    Int       @default(10) @map("margen_grupal_minutos")
+  margenGrupalMinutos         Int       @default(10) @map("margen_grupal_minutos")
   // D17: habilita la cancelación especial (fuera de la ventana de 30 min).
   // Por defecto FALSE: una sede no acepta cancelaciones especiales hasta que
   // lo activa explícitamente (E3-11 expondrá el PATCH de configuración).
-  permiteCancelacionEspecial Boolean @default(false) @map("permite_cancelacion_especial")
+  permiteCancelacionEspecial  Boolean   @default(false) @map("permite_cancelacion_especial")
   // E4-02/8 · D22: la sede puede apagar las oportunidades de espacio. Es la
   // bandera que gobierna el endpoint de huecos (GET .../disponibilidad/huecos):
   // con FALSE el endpoint responde 200 y la lista VACÍA, nunca 403.
-  oportunidadesEspacioActivas Boolean @default(true) @map("oportunidades_espacio_activas")
+  oportunidadesEspacioActivas Boolean   @default(true) @map("oportunidades_espacio_activas")
 
   barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
 
@@ -816,8 +833,8 @@ model ListaEspera {
   creadoAt      DateTime? @default(now()) @map("creado_at") @db.Timestamptz
   actualizadoAt DateTime? @default(now()) @map("actualizado_at") @db.Timestamptz
 
-  usuario  Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
-  barberia Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
+  usuario   Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  barberia  Barberia   @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
   /// Servicios que el cliente aceptaría para esa fecha. Relación implícita de
   /// Prisma: la tabla de unión la crea `prisma migrate` y conserva la FK a
   /// `servicios`, así que un servicio eliminado no deja suscripciones huérfanas.

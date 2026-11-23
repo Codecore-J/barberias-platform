@@ -51,7 +51,11 @@ describe('CategoriasService', () => {
   }
 
   describe('crear', () => {
-    it('crea la categoría en la sede de la ruta y normaliza el nombre', async () => {
+    // T-20 · Antes: «crea la categoría en la sede de la ruta» (barberiaId: SEDE).
+    // Ahora: la crea GLOBAL (barberiaId: null) con su `orden`. Por qué: la
+    // taxonomía dejó de ser de cada sede y el `shopId` de la ruta solo autoriza
+    // el vínculo.
+    it('crea la categoría global y normaliza el nombre', async () => {
       prisma.categoriaServicio.findFirst.mockResolvedValue(null);
       prisma.categoriaServicio.create.mockResolvedValue(categoriaBase());
 
@@ -62,9 +66,10 @@ describe('CategoriasService', () => {
 
       expect(prisma.categoriaServicio.create).toHaveBeenCalledWith({
         data: {
-          barberiaId: SEDE,
+          barberiaId: null,
           nombre: 'Corte clásico',
           descripcion: 'Tijera y máquina',
+          orden: 0,
         },
       });
       expect(resultado.id).toBe(CATEGORIA);
@@ -83,20 +88,19 @@ describe('CategoriasService', () => {
       expect(prisma.categoriaServicio.create).not.toHaveBeenCalled();
     });
 
-    it('la comprobación de duplicados se acota a la sede', async () => {
+    // T-20 · Antes: la unicidad se acotaba a la sede (barberiaId: SEDE). Ahora:
+    // es global, porque el índice único nuevo indexa el nombre normalizado en
+    // TODO el catálogo. Por qué: dos sedes con su propio «Corte» era justo el
+    // duplicado que T-20 elimina.
+    it('la comprobación de duplicados es global', async () => {
       prisma.categoriaServicio.findFirst.mockResolvedValue(null);
       prisma.categoriaServicio.create.mockResolvedValue(categoriaBase());
 
       await service.crear(SEDE, { nombre: 'Corte' });
 
-      expect(prisma.categoriaServicio.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            barberiaId: SEDE,
-            nombre: { equals: 'Corte', mode: 'insensitive' },
-          }),
-        }),
-      );
+      const where = prisma.categoriaServicio.findFirst.mock.calls[0][0].where;
+      expect(where).not.toHaveProperty('barberiaId');
+      expect(where.nombre).toEqual({ equals: 'Corte', mode: 'insensitive' });
     });
 
     it('sin sede responde 400 en lugar de crear en «ninguna» sede', async () => {
@@ -114,7 +118,10 @@ describe('CategoriasService', () => {
   });
 
   describe('listar', () => {
-    it('devuelve las categorías de la sede con el número de servicios activos', async () => {
+    // T-20 · Antes: listaba `where: { barberiaId: SEDE }`. Ahora: `barberiaId:
+    // null` (catálogo global). Por qué: la sede de la ruta ya no acota el
+    // catálogo; todas las sedes comparten las mismas categorías.
+    it('devuelve las categorías globales con el número de servicios activos', async () => {
       prisma.categoriaServicio.findMany.mockResolvedValue([
         categoriaBase({ servicios: [{ id: 's1' }, { id: 's2' }] }),
         categoriaBase({ id: 'cat-2', nombre: 'Barba', activa: false, servicios: [] }),
@@ -123,7 +130,7 @@ describe('CategoriasService', () => {
       const resultado = await service.listar(SEDE);
 
       expect(prisma.categoriaServicio.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { barberiaId: SEDE } }),
+        expect.objectContaining({ where: { barberiaId: null } }),
       );
       expect(resultado).toEqual([
         expect.objectContaining({ id: CATEGORIA, serviciosActivos: 2 }),
@@ -167,11 +174,13 @@ describe('CategoriasService', () => {
 
       await service.actualizar(SEDE, CATEGORIA, { nombre: 'Corte fino' });
 
-      expect(prisma.categoriaServicio.findFirst).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ id: { not: CATEGORIA }, barberiaId: SEDE }),
-        }),
+      // T-20 · Antes: el duplicado se buscaba dentro de la sede. Ahora: en el
+      // catálogo global, excluyendo la propia categoría.
+      const where = prisma.categoriaServicio.findFirst.mock.calls.at(-1)![0].where;
+      expect(where).toEqual(
+        expect.objectContaining({ id: { not: CATEGORIA } }),
       );
+      expect(where).not.toHaveProperty('barberiaId');
     });
 
     it('desactiva en lugar de borrar (§9) y es idempotente al no haber cambios', async () => {

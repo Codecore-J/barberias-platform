@@ -341,19 +341,18 @@ export async function sembrarDemo(
       });
 
       // ── 3. Catálogo (categorías + servicios por barbero) ───────────────────
-      // El catálogo es híbrido: la categoría es de la sede y el precio/duración
-      // son del barbero. Por eso cada servicio se siembra para CADA barbero.
+      // T-20 · el catálogo es híbrido: la categoría es GLOBAL (barberia_id NULL)
+      // y el precio/duración son del barbero. Por eso cada servicio se siembra
+      // para CADA barbero y guarda la sede en su propia columna.
       const serviciosPorNombre = new Map<string, string>();
       const barberos = [barbero1, barbero2];
 
       for (const categoriaDemo of CATEGORIAS) {
         const categoria = await tx.categoriaServicio.upsert({
-          where: {
-            uk_categoria_sede_nombre: { barberiaId: barberia.id, nombre: categoriaDemo.nombre },
-          },
+          where: { nombre: categoriaDemo.nombre },
           update: { descripcion: categoriaDemo.descripcion, activa: true },
           create: {
-            barberiaId: barberia.id,
+            barberiaId: null,
             nombre: categoriaDemo.nombre,
             descripcion: categoriaDemo.descripcion,
           },
@@ -376,6 +375,7 @@ export async function sembrarDemo(
               },
               create: {
                 barberoId: barbero.id,
+                barberiaId: barberia.id,
                 categoriaId: categoria.id,
                 nombrePersonalizado: servicio.nombre,
                 precio: servicio.precio,

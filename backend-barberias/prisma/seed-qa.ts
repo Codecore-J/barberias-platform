@@ -351,16 +351,13 @@ async function main() {
 
   // 6) Catálogo aislado (legacy + V3 híbrido)
   await asegurarServicio(qaBarberiaId);
+  // T-20 · la categoría es GLOBAL (barberia_id NULL); la sede del servicio vive
+  // en `servicios_barbero.barberia_id`.
   const categoria = await prisma.categoriaServicio.upsert({
-    where: {
-      uk_categoria_sede_nombre: {
-        barberiaId: qaBarberiaId,
-        nombre: QA.categoria.nombre,
-      },
-    },
+    where: { nombre: QA.categoria.nombre },
     update: { descripcion: QA.categoria.descripcion, activa: true },
     create: {
-      barberiaId: qaBarberiaId,
+      barberiaId: null,
       nombre: QA.categoria.nombre,
       descripcion: QA.categoria.descripcion,
       activa: true,
@@ -382,6 +379,7 @@ async function main() {
     create: {
       categoriaId: categoria.id,
       barberoId,
+      barberiaId: qaBarberiaId,
       nombrePersonalizado: QA.servicioBarbero.nombrePersonalizado,
       precio: QA.servicioBarbero.precio as any,
       duracionMinutos: QA.servicioBarbero.duracionMinutos,

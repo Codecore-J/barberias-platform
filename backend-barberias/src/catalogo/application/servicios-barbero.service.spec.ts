@@ -73,9 +73,12 @@ describe('ServiciosBarberoService', () => {
 
       const resultado = await service.crear(SEDE, BARBERO, dto);
 
+      // T-20 · el servicio guarda su sede: la categoría es global y ya no la
+      // identifica (antes la sede se deducía de `categoria.barberiaId`).
       expect(prisma.servicioBarbero.create).toHaveBeenCalledWith({
         data: {
           barberoId: BARBERO,
+          barberiaId: SEDE,
           categoriaId: CATEGORIA,
           nombrePersonalizado: 'Corte degradado',
           precio: 25.5,
@@ -125,7 +128,11 @@ describe('ServiciosBarberoService', () => {
       expect(prisma.servicioBarbero.create).not.toHaveBeenCalled();
     });
 
-    it('una categoría de otra sede no existe para este barbero (404)', async () => {
+    // T-20 · Antes: la categoría se buscaba con `barberiaId: OTRA_SEDE`, así que
+    // «la de otra sede» no existía aquí. Ahora: se busca en el catálogo GLOBAL
+    // (`barberiaId: null`); lo que da 404 es un id que no está en ese catálogo.
+    // Por qué: la categoría dejó de pertenecer a una sede.
+    it('una categoría fuera del catálogo global no existe para este barbero (404)', async () => {
       conRolBarbero();
       conCategoria(null);
 
@@ -133,7 +140,7 @@ describe('ServiciosBarberoService', () => {
         NotFoundException,
       );
       expect(prisma.categoriaServicio.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: CATEGORIA, barberiaId: OTRA_SEDE } }),
+        expect.objectContaining({ where: { id: CATEGORIA, barberiaId: null } }),
       );
     });
 
@@ -170,14 +177,17 @@ describe('ServiciosBarberoService', () => {
   });
 
   describe('listarMios', () => {
-    it('acota a la sede por la relación de la categoría', async () => {
+    // T-20 · Antes: la sede se deducía de la categoría (`categoria.barberiaId`).
+    // Ahora: se acota por la columna propia `barberiaId` del servicio. Por qué:
+    // la categoría es global y ya no identifica la sede del servicio.
+    it('acota a la sede del propio servicio', async () => {
       prisma.servicioBarbero.findMany.mockResolvedValue([]);
 
       await service.listarMios(SEDE, BARBERO);
 
       expect(prisma.servicioBarbero.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { barberoId: BARBERO, categoria: { barberiaId: SEDE } },
+          where: { barberoId: BARBERO, barberiaId: SEDE },
         }),
       );
     });
@@ -193,7 +203,9 @@ describe('ServiciosBarberoService', () => {
       expect(prisma.servicioBarbero.update).not.toHaveBeenCalled();
     });
 
-    it('la búsqueda exige barberoId propio y la sede de la categoría', async () => {
+    // T-20 · Antes: la sede se exigía por la relación de la categoría
+    // (`categoria: { barberiaId }`). Ahora: por la columna propia del servicio.
+    it('la búsqueda exige barberoId propio y la sede del servicio', async () => {
       prisma.servicioBarbero.findFirst.mockResolvedValue({
         id: SERVICIO,
         categoriaId: CATEGORIA,
@@ -211,13 +223,16 @@ describe('ServiciosBarberoService', () => {
           where: {
             id: SERVICIO,
             barberoId: BARBERO,
-            categoria: { barberiaId: SEDE },
+            barberiaId: SEDE,
           },
         }),
       );
     });
 
-    it('mueve el servicio a otra categoría de la MISMA sede', async () => {
+    // T-20 · Antes: «otra categoría de la MISMA sede» (búsqueda con barberiaId).
+    // Ahora: «otra categoría del catálogo global». Por qué: ya no hay categorías
+    // por sede; la sede del servicio se conserva en su propia columna.
+    it('mueve el servicio a otra categoría del catálogo global', async () => {
       prisma.servicioBarbero.findFirst
         .mockResolvedValueOnce({
           id: SERVICIO,
@@ -237,7 +252,7 @@ describe('ServiciosBarberoService', () => {
       await service.actualizar(SEDE, BARBERO, SERVICIO, { categoriaId: CATEGORIA_2 });
 
       expect(prisma.categoriaServicio.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: CATEGORIA_2, barberiaId: SEDE } }),
+        expect.objectContaining({ where: { id: CATEGORIA_2, barberiaId: null } }),
       );
       expect(prisma.servicioBarbero.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { categoriaId: CATEGORIA_2 } }),
@@ -302,9 +317,12 @@ describe('ServiciosBarberoService', () => {
 
       expect(prisma.categoriaServicio.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { barberiaId: SEDE, activa: true },
+          // T-20 · Antes: `where: { barberiaId: SEDE, activa: true }` y los
+          // servicios solo por `activo`. Ahora: categorías globales y servicios
+          // acotados a la sede. Por qué: la categoría dejó de ser por sede.
+          where: { barberiaId: null, activa: true },
           include: expect.objectContaining({
-            servicios: expect.objectContaining({ where: { activo: true } }),
+            servicios: expect.objectContaining({ where: { activo: true, barberiaId: SEDE } }),
           }),
         }),
       );
