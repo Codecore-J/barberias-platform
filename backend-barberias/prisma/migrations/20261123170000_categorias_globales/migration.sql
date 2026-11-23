@@ -40,18 +40,31 @@ ALTER TABLE "servicios_barbero"
 
 CREATE INDEX "idx_servicios_barbero_sede" ON "servicios_barbero" ("barberia_id", "activo");
 
--- 4) Superviviente por nombre normalizado: la primera ACTIVA y, entre iguales,
---    la más antigua. Las filas sin nombre no participan (jamás deberían existir).
+-- 4) Superviviente por nombre normalizado, con la regla acordada:
+--    sobrevive la fila con MÁS servicios de barbero vinculados; si empatan,
+--    la ACTIVA y, entre ellas, la más antigua. Las filas sin nombre no
+--    participan (jamás deberían existir).
+--    El conteo va en un CTE para no meter una subconsulta dentro del
+--    ORDER BY de la ventana.
 DROP TABLE IF EXISTS "_tmp_categoria_global";
 CREATE TABLE "_tmp_categoria_global" AS
+WITH "candidatas" AS (
+  SELECT
+    c."id",
+    c."nombre",
+    c."activa",
+    c."creado_at",
+    (SELECT count(*) FROM "servicios_barbero" AS sb WHERE sb."categoria_id" = c."id") AS "servicios"
+  FROM "categorias_servicio" AS c
+  WHERE c."nombre" IS NOT NULL AND btrim(c."nombre") <> ''
+)
 SELECT
   "id" AS origen_id,
   first_value("id") OVER (
     PARTITION BY lower(btrim("nombre"))
-    ORDER BY "activa" DESC, "creado_at" ASC, "id" ASC
+    ORDER BY "servicios" DESC, "activa" DESC, "creado_at" ASC, "id" ASC
   ) AS destino_id
-FROM "categorias_servicio"
-WHERE "nombre" IS NOT NULL AND btrim("nombre") <> '';
+FROM "candidatas";
 
 -- 4) Los servicios del barbero pasan a la categoría superviviente. Sin este paso
 --    el borrado posterior dejaría huérfano el catálogo de esas sedes.
