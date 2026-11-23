@@ -177,17 +177,23 @@ export class ServiciosService {
   /**
    * BUG-ALTA-SERVICIOS · el panel tiene UN formulario para servicios y combos,
    * pero en la API son dos recursos con DTO distinto y `forbidNonWhitelisted`
-   * activo. `descripcion`, `esCombo` y `serviciosComboIds` no existen en
-   * `CreateServicioDto`, así que reenviar el formulario tal cual devolvía 400 y
-   * el alta nunca se guardaba.
+   * activo. `esCombo` y `serviciosComboIds` no existen en `CreateServicioDto`,
+   * así que reenviar el formulario tal cual devolvía 400 y el alta nunca se
+   * guardaba.
    *
    * El cuerpo se compone aquí, campo por campo, con el contrato de cada
    * recurso: `POST /services` (CreateServicioDto) o `POST /combos`
    * (CreateComboDto). El panel no necesita saber cuál es cuál.
+   *
+   * T-22 · `descripcion` vuelve a existir en el contrato del servicio (DEF-03),
+   * así que se reenvía recortada y, si quedó vacía, como `null`.
    */
   private cuerpoServicio(dto: any): Record<string, unknown> {
+    const descripcion =
+      typeof dto?.descripcion === 'string' ? dto.descripcion.trim() : '';
     const cuerpo: Record<string, unknown> = {
       nombre: dto?.nombre,
+      descripcion: descripcion === '' ? null : descripcion,
       precio: Number(dto?.precio),
       duracionEstimada: Number(dto?.duracionEstimada ?? dto?.duracionMinutos ?? 30),
     };

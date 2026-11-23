@@ -11,15 +11,14 @@ import { AuthService } from '../../auth/auth.service';
 import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
 
 /**
- * DEF-03 · el servicio no tiene descripción.
+ * T-22 · la descripción vuelve al servicio (revierte DEF-03).
  *
- * El formulario ofrecía un campo «Descripción (Opcional)» que el saneado del
- * cuerpo descartaba (`servicios.service.ts`, `cuerpoServicio`): el usuario
- * escribía un texto y el alta lo perdía en silencio. El dueño decidió dejar de
- * mostrar el campo, así que aquí se fija que ni existe en el formulario ni
- * viaja en el payload.
+ * DEF-03 quitó el campo del formulario porque la API lo rechazaba y el texto se
+ * descartaba en silencio. Ahora el contrato del servicio la admite: el formulario
+ * la ofrece como opcional con tope de 500 y viaja en el payload de alta y de
+ * edición.
  */
-describe('AdminServiciosComponent · alta sin descripción (DEF-03)', () => {
+describe('AdminServiciosComponent · descripción del servicio (T-22)', () => {
   let fixture: ComponentFixture<AdminServiciosComponent>;
   let servicios: {
     servicios: ReturnType<typeof signal>;
@@ -71,24 +70,53 @@ describe('AdminServiciosComponent · alta sin descripción (DEF-03)', () => {
     fixture.detectChanges();
   }
 
-  it('el formulario de servicio no tiene campo de descripción', () => {
+  it('el formulario tiene el campo de descripción con tope de 500', () => {
     abrirFormulario();
 
-    expect(texto().querySelector('#servicio-descripcion')).toBeNull();
-    expect(texto().querySelector('[formControlName="descripcion"]')).toBeNull();
-    expect(fixture.componentInstance.form.get('descripcion')).toBeNull();
+    const campo = texto().querySelector('#servicio-descripcion') as HTMLTextAreaElement | null;
+    expect(campo).toBeTruthy();
+    expect(campo!.getAttribute('maxlength')).toBe('500');
+    expect(fixture.componentInstance.form.get('descripcion')).toBeTruthy();
   });
 
-  it('el payload de creación no incluye descripcion', () => {
+  it('rechaza una descripción de más de 500 caracteres', () => {
     abrirFormulario();
-    const form = fixture.componentInstance.form;
-    form.patchValue({ nombre: 'Corte QA', precio: 20, duracionMinutos: 30 });
+    const control = fixture.componentInstance.form.get('descripcion')!;
+
+    control.setValue('x'.repeat(501));
+
+    expect(control.invalid).toBe(true);
+  });
+
+  it('el payload de creación incluye la descripción', () => {
+    abrirFormulario();
+    fixture.componentInstance.form.patchValue({
+      nombre: 'Corte QA',
+      precio: 20,
+      duracionMinutos: 30,
+      descripcion: 'Tijera y máquina',
+    });
 
     fixture.componentInstance.onSubmit();
 
     expect(servicios.crearServicio).toHaveBeenCalledTimes(1);
     const payload = servicios.crearServicio.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload).not.toHaveProperty('descripcion');
-    expect(payload).toMatchObject({ nombre: 'Corte QA', precio: 20 });
+    expect(payload).toMatchObject({ nombre: 'Corte QA', descripcion: 'Tijera y máquina' });
+  });
+
+  it('al editar, el formulario se rellena con la descripción del servicio', () => {
+    fixture.componentInstance.openForm({
+      id: 's1',
+      nombre: 'Corte QA',
+      descripcion: 'Texto guardado',
+      precio: 20,
+      duracionMinutos: 30,
+      esCombo: false,
+      barberiaId: 'b1',
+      fechaCreacion: '',
+    } as never);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.form.get('descripcion')?.value).toBe('Texto guardado');
   });
 });

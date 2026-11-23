@@ -4,12 +4,13 @@ import { CreateServicioDto } from './create-servicio.dto.js';
 import { UpdateServicioDto } from './update-servicio.dto.js';
 
 /**
- * DEF-03 · contrato del catálogo: un servicio NO tiene descripción.
+ * T-22 · el servicio del catálogo de la sede vuelve a tener DESCRIPCIÓN.
  *
- * Los DTO ya no declaran el campo, así que `forbidNonWhitelisted` (el mismo
- * `ValidationPipe` global de `main.ts`) tiene que rechazar cualquier intento de
- * enviarlo y aceptar el payload sin él. Este test fija ese contrato para que
- * nadie vuelva a añadir el campo por la puerta de atrás.
+ * DEF-03 dejó el campo fuera del DTO para no aceptarlo y descartarlo en
+ * silencio. La decisión ahora es la contraria: la descripción forma parte del
+ * catálogo que gestiona el administrador de la barbería, así que el DTO la
+ * declara —opcional, texto y máximo 500— y `forbidNonWhitelisted` deja de
+ * rechazarla. Lo que sigue prohibido es cualquier OTRA propiedad.
  */
 const pipe = new ValidationPipe({
   whitelist: true,
@@ -24,29 +25,83 @@ const meta = (metatype: unknown): ArgumentMetadata => ({
   data: '',
 });
 
-describe('Servicio · contrato sin descripción (DEF-03)', () => {
-  it('rechaza `descripcion` como propiedad no declarada', async () => {
-    await expect(
-      pipe.transform(
-        { nombre: 'Corte QA', precio: 20, duracionEstimada: 30, descripcion: 'texto' },
-        meta(CreateServicioDto),
-      ),
-    ).rejects.toMatchObject({ status: 400 });
+describe('Servicio · descripción (T-22)', () => {
+  it('acepta `descripcion` al crear y la conserva en el DTO', async () => {
+    const dto = (await pipe.transform(
+      {
+        nombre: 'Corte QA',
+        precio: 20,
+        duracionEstimada: 30,
+        descripcion: 'Tijera y máquina',
+      },
+      meta(CreateServicioDto),
+    )) as CreateServicioDto;
+
+    expect(dto).toBeInstanceOf(CreateServicioDto);
+    expect(dto.descripcion).toBe('Tijera y máquina');
   });
 
-  it('acepta el payload de creación sin `descripcion`', async () => {
+  it('la descripción es opcional', async () => {
     const dto = (await pipe.transform(
       { nombre: 'Corte QA', precio: 20, duracionEstimada: 30 },
       meta(CreateServicioDto),
     )) as CreateServicioDto;
 
-    expect(dto).toBeInstanceOf(CreateServicioDto);
-    expect(dto).not.toHaveProperty('descripcion');
+    expect(dto.descripcion).toBeUndefined();
   });
 
-  it('la edición tampoco admite `descripcion`', async () => {
+  it('la edición también admite `descripcion`', async () => {
+    const dto = (await pipe.transform(
+      { descripcion: 'Texto nuevo' },
+      meta(UpdateServicioDto),
+    )) as UpdateServicioDto;
+
+    expect(dto.descripcion).toBe('Texto nuevo');
+  });
+
+  it('rechaza una descripción de más de 500 caracteres', async () => {
     await expect(
-      pipe.transform({ descripcion: 'texto' }, meta(UpdateServicioDto)),
+      pipe.transform(
+        {
+          nombre: 'Corte QA',
+          precio: 20,
+          duracionEstimada: 30,
+          descripcion: 'x'.repeat(501),
+        },
+        meta(CreateServicioDto),
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('acepta exactamente 500 caracteres', async () => {
+    const dto = (await pipe.transform(
+      {
+        nombre: 'Corte QA',
+        precio: 20,
+        duracionEstimada: 30,
+        descripcion: 'x'.repeat(500),
+      },
+      meta(CreateServicioDto),
+    )) as CreateServicioDto;
+
+    expect(dto.descripcion).toHaveLength(500);
+  });
+
+  it('un valor no textual se convierte a texto (el pipe global usa implicit conversion)', async () => {
+    const dto = (await pipe.transform(
+      { nombre: 'Corte QA', precio: 20, duracionEstimada: 30, descripcion: 123 },
+      meta(CreateServicioDto),
+    )) as CreateServicioDto;
+
+    expect(dto.descripcion).toBe('123');
+  });
+
+  it('sigue rechazando propiedades que el contrato no declara', async () => {
+    await expect(
+      pipe.transform(
+        { nombre: 'Corte QA', precio: 20, duracionEstimada: 30, inventado: true },
+        meta(CreateServicioDto),
+      ),
     ).rejects.toMatchObject({ status: 400 });
   });
 });
