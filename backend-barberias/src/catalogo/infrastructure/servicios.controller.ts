@@ -93,9 +93,12 @@ export class ServiciosController {
    * del catálogo (`findAll` filtra por ACTIVO). Las reglas de cuándo se puede
    * viven en el servicio: 422 `SERVICIO_EN_USO` si hay reservas por confirmar y
    * 422 `SERVICIO_EN_COMBO_ACTIVO` si está dentro de un combo activo.
+   *
+   * T-11: el BARBERO solo lee y edita el catálogo; dar de baja o reactivar un
+   * servicio queda en el ADMIN_BARBERIA de la sede.
    */
   @Patch(':id/deactivate')
-  @Roles('BARBERO', 'ADMIN_BARBERIA')
+  @Roles('ADMIN_BARBERIA')
   @UseGuards(OperadorBarberiaGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.OK)
   desactivar(
@@ -109,10 +112,11 @@ export class ServiciosController {
    * PATCH /shops/:shopId/services/:id/reactivate · E2-07 (D29)
    *
    * La vuelta atrás explícita: sin ella, `DELETE` era irreversible y recuperar
-   * un servicio exigía tocar la base.
+   * un servicio exigía tocar la base. T-11: misma política que la baja, solo el
+   * ADMIN_BARBERIA de la sede.
    */
   @Patch(':id/reactivate')
-  @Roles('BARBERO', 'ADMIN_BARBERIA')
+  @Roles('ADMIN_BARBERIA')
   @UseGuards(OperadorBarberiaGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.OK)
   reactivar(
