@@ -82,6 +82,9 @@ describe('T-22 · descripción del servicio', () => {
     });
 
     it('crea con descripción NULL si no se envía o viene vacía', async () => {
+      // Solo miran las dos llamadas de ESTA prueba: sin limpiar, las del caso
+      // anterior (que sí lleva descripción) entraban en el recuento.
+      prisma.servicio.create.mockClear();
       prisma.servicio.create.mockResolvedValue({ id: SERVICIO });
 
       await service.create(SEDE, { nombre: 'Corte', precio: 20 } as never);
