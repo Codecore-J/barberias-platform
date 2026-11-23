@@ -482,7 +482,6 @@ export class AdminShellComponent {
               icono: 'pi pi-tags',
               soloLectura: this.esSoloObservador(),
             },
-            { ruta: '/admin/personal', etiqueta: 'Equipo', icono: 'pi pi-users' },
             { ruta: '/admin/analiticas', etiqueta: 'Analíticas', icono: 'pi pi-chart-bar' },
           ],
         },

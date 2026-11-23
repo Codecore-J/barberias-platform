@@ -37,7 +37,7 @@ export class CombosController {
   constructor(private readonly combosService: CombosService) {}
 
   @Post()
-  @Roles('BARBERO', 'ADMIN_BARBERIA')
+  @Roles('ADMIN_BARBERIA')
   @UseGuards(OperadorBarberiaGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.CREATED)
   create(
@@ -68,7 +68,7 @@ export class CombosController {
   }
 
   @Patch(':id')
-  @Roles('BARBERO', 'ADMIN_BARBERIA')
+  @Roles('ADMIN_BARBERIA')
   @UseGuards(OperadorBarberiaGuard, VinculoBarberiaGuard)
   update(
     @CurrentBarberiaId() barberiaId: string,
@@ -84,7 +84,7 @@ export class CombosController {
    * desbloquea la regla `SERVICIO_EN_COMBO_ACTIVO` de sus servicios.
    */
   @Patch(':id/deactivate')
-  @Roles('BARBERO', 'ADMIN_BARBERIA')
+  @Roles('ADMIN_BARBERIA')
   @UseGuards(OperadorBarberiaGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.OK)
   desactivar(
@@ -96,7 +96,7 @@ export class CombosController {
 
   /** PATCH /shops/:shopId/combos/:id/reactivate · E2-07 (D29) */
   @Patch(':id/reactivate')
-  @Roles('BARBERO', 'ADMIN_BARBERIA')
+  @Roles('ADMIN_BARBERIA')
   @UseGuards(OperadorBarberiaGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.OK)
   reactivar(

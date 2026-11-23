@@ -78,7 +78,8 @@ interface CamposEditables {
           </p>
         </div>
 
-        @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'ADMINISTRADOR') {
+        <!-- D04 (23 nov 2026) · solo el ADMINISTRADOR global crea sedes. -->
+        @if (userRole() === 'ADMINISTRADOR') {
           <button routerLink="/barberias/nueva"
                   class="px-5 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg shadow-amber-500/20 hover:scale-105 transition-all flex items-center justify-center gap-2 shrink-0">
             <i class="pi pi-plus"></i>
@@ -315,7 +316,11 @@ interface CamposEditables {
           } @else {
             <h3 class="text-xl font-bold text-white">No tienes barberías vinculadas</h3>
             <p class="text-zinc-400 text-sm">
-              Para comenzar a agendar turnos o gestionar una barbería, necesitas vincularte a una barbería activa con un código de acceso, o crear la tuya propia.
+              @if (userRole() === 'ADMIN_BARBERIA') {
+                Para comenzar a agendar turnos o gestionar una barbería, necesitas vincularte a una barbería activa con un código de acceso.
+              } @else {
+                Para comenzar a agendar turnos o gestionar una barbería, necesitas vincularte a una barbería activa con un código de acceso, o crear la tuya propia.
+              }
             </p>
           }
           <div class="flex justify-center gap-4 pt-4">
@@ -324,7 +329,8 @@ interface CamposEditables {
                 <i class="pi pi-link mr-2"></i>Vincular con Código
               </button>
             }
-            @if (userRole() === 'ADMIN_BARBERIA' || userRole() === 'ADMINISTRADOR') {
+            <!-- D04 (23 nov 2026) · el admin de sede ya no ve el alta de sedes. -->
+            @if (userRole() === 'ADMINISTRADOR') {
               <button routerLink="/barberias/nueva" class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-200 glass-card hover:text-amber-400 transition-colors flex items-center">
                 <i class="pi pi-plus mr-2"></i>Crear Barbería
               </button>

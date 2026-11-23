@@ -17,7 +17,7 @@ import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import { VinculoBarberiaGuard } from '../../iam/infrastructure/vinculo-barberia.guard.js';
-import { OperadorBarberiaGuard } from './operador-barberia.guard.js';
+
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { esAdministradorGlobal } from '../../iam/domain/roles.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
@@ -25,22 +25,12 @@ import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 /**
  * V3 · Categorías de servicio de la sede.
  *
- * La ESCRITURA es del ADMIN_BARBERIA: el modelo de negocio pone la taxonomía en
- * manos de la sede, no del barbero (que elige dentro de ella) ni del
- * ADMINISTRADOR global (que supervisa). `RolesGuard` ya acota la ruta a los roles
- * declarados y al `barberiaId` del parámetro; `OperadorBarberiaGuard` cierra el
- * paso transversal del ADMINISTRADOR por la misma razón que en el catálogo (D16).
- *
- * La LECTURA la comparten el ADMIN_BARBERIA y el BARBERO: el barbero necesita ver
- * las categorías para publicar sus servicios. El CLIENTE no la necesita: recibe
- * el catálogo ya anidado en `GET /shops/:shopId/servicios`.
- *
- * T-17 · el ADMINISTRADOR global TAMBIÉN lee (lista y detalle) de cualquier sede,
- * en modo solo lectura: escribe por las mismas rutas que antes y recibe 403 de
- * `OperadorBarberiaGuard` (D16). La lectura no repite ADMINISTRADOR en `@Roles`:
- * la matriz aprobada (E1-04/E1-05) le concede lectura por jerarquía y el test
- * `test/permisos-matriz.spec.ts` exige que el decorador coincida con ella. Su
- * lectura queda auditada (supervisión trazable, sin datos sensibles).
+ * T-11 (matriz objetivo): la ESCRITURA de la taxonomía es del ADMINISTRADOR de
+ * plataforma (`catalogo.categorias.gestionar`); el ADMIN_BARBERIA conserva solo
+ * `catalogo.categorias.ver`, igual que el BARBERO. La LECTURA la comparten los
+ * cuatro roles: el CLIENTE ve las categorías de sus sedes y el global las
+ * supervisa. `VinculoBarberiaGuard` sigue exigiendo la sede —el global la salta
+ * por D05— y la lectura del global queda auditada.
  */
 @Controller('shops/:shopId/categorias')
 export class CategoriasController {
@@ -50,8 +40,8 @@ export class CategoriasController {
   ) {}
 
   @Post()
-  @Roles('ADMIN_BARBERIA')
-  @UseGuards(OperadorBarberiaGuard, VinculoBarberiaGuard)
+  @Roles('ADMINISTRADOR')
+  @UseGuards(VinculoBarberiaGuard)
   @HttpCode(HttpStatus.CREATED)
   crear(
     @CurrentBarberiaId() barberiaId: string,
@@ -61,7 +51,7 @@ export class CategoriasController {
   }
 
   @Get()
-  @Roles('ADMIN_BARBERIA', 'BARBERO')
+  @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @UseGuards(VinculoBarberiaGuard)
   async listar(
     @CurrentBarberiaId() barberiaId: string,
@@ -74,7 +64,7 @@ export class CategoriasController {
 
   /** T-17 · detalle de UNA categoría, con la misma política de lectura. */
   @Get(':id')
-  @Roles('ADMIN_BARBERIA', 'BARBERO')
+  @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
   @UseGuards(VinculoBarberiaGuard)
   async obtener(
     @CurrentBarberiaId() barberiaId: string,
@@ -87,8 +77,8 @@ export class CategoriasController {
   }
 
   @Patch(':id')
-  @Roles('ADMIN_BARBERIA')
-  @UseGuards(OperadorBarberiaGuard, VinculoBarberiaGuard)
+  @Roles('ADMINISTRADOR')
+  @UseGuards(VinculoBarberiaGuard)
   actualizar(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) id: string,

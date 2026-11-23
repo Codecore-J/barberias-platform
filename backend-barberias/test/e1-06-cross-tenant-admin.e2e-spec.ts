@@ -258,12 +258,12 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
     // pasa; lo que debe frenarlo es el aislamiento de tenant, que es el objetivo.
     await registrar('PATCH /shops/:shopId/services/:id', 'editar servicio de B', request(app.getHttpServer())
       .patch(`${api}/shops/${barberiaB}/services/${servicioB}`)
-      .set('Authorization', jwt(tokenBarberoA))
+      .set('Authorization', jwt(tokenAdminA))
       .send({ nombre: 'SECUESTRADO-POR-A' }));
 
     await registrar('PATCH /shops/:shopId/services/:id/deactivate', 'desactivar servicio de B', request(app.getHttpServer())
       .patch(`${api}/shops/${barberiaB}/services/${servicioB}/deactivate`)
-      .set('Authorization', jwt(tokenBarberoA)));
+      .set('Authorization', jwt(tokenAdminA)));
 
     await registrar('GET /shops/:shopId/combos/:id', 'leer combo de B', request(app.getHttpServer())
       .get(`${api}/shops/${barberiaB}/combos/${comboB}`)
@@ -271,12 +271,12 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
 
     await registrar('PATCH /shops/:shopId/combos/:id', 'editar combo de B', request(app.getHttpServer())
       .patch(`${api}/shops/${barberiaB}/combos/${comboB}`)
-      .set('Authorization', jwt(tokenBarberoA))
+      .set('Authorization', jwt(tokenAdminA))
       .send({ nombre: 'SECUESTRADO-POR-A' }));
 
     await registrar('PATCH /shops/:shopId/combos/:id/deactivate', 'desactivar combo de B', request(app.getHttpServer())
       .patch(`${api}/shops/${barberiaB}/combos/${comboB}/deactivate`)
-      .set('Authorization', jwt(tokenBarberoA)));
+      .set('Authorization', jwt(tokenAdminA)));
 
     await registrar('GET /shops/:shopId/services', 'listar el catálogo de B', request(app.getHttpServer())
       .get(`${api}/shops/${barberiaB}/services`)
@@ -360,11 +360,18 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       .set('Authorization', jwt(tokenSuelto)));
 
     // --- Control positivo: el operador de A SÍ puede con lo suyo ---
-    // D16: el catálogo lo escribe el personal de la sede (aquí, su barbero).
+    // Antes: editaba el BARBERO de A (D16). Ahora lo hace su ADMIN_BARBERIA,
+    // único rol con `catalogo.servicios.gestionar` tras T-11.
     const controlPropio = await request(app.getHttpServer())
       .patch(`${api}/shops/${barberiaA}/services/${servicioA}`)
+      .set('Authorization', jwt(tokenAdminA))
+      .send({ nombre: 'Corte E1-06-CTA de A (editado por su admin de sede)' });
+
+    // T-11 · el BARBERO deja de escribir el catálogo: 403 del guard.
+    const barberoEditaCatalogo = await request(app.getHttpServer())
+      .patch(`${api}/shops/${barberiaA}/services/${servicioA}`)
       .set('Authorization', jwt(tokenBarberoA))
-      .send({ nombre: 'Corte E1-06-CTA de A (editado por su barbero)' });
+      .send({ nombre: 'Corte E1-06-CTA de A (intento del barbero)' });
 
     // CATÁLOGO PRIVADO HASTA EL VÍNCULO (decision del dueno, E1-06 paso 5).
     // Un CLIENTE sin fila ACTIVA en cliente_barberias para esa sede recibe 403
@@ -398,7 +405,7 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
     console.log(
       '\n| ruta | intento | estado |\n|---|---|---|\n' +
         casos.map((c) => `| \`${c.ruta}\` | ${c.intento} | ${c.estado} |`).join('\n') +
-        `\n| \`PATCH /shops/:shopId/services/:id\` | *CONTROL* el barbero edita SU servicio | ${controlPropio.status} |` +
+        `\n| \`PATCH /shops/:shopId/services/:id\` | *CONTROL* el admin de sede edita SU servicio | ${controlPropio.status} |` +
         `\n| \`GET /shops/:shopId/hours (ruta A, cabecera B)\` | *CONTROL* lee A (diaSemana 1), no B (7) | ${rutaAconCabeceraB.status} |` +
         `\n| \`GET /shops/:shopId/services\` | cliente SIN vinculo lee el catalogo de A | ${catalogoSuelto.status} |` +
         `\n| \`GET /shops/:shopId/combos\` | cliente SIN vinculo lee los combos de A | ${combosSuelto.status} |` +
@@ -409,7 +416,8 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
 
     // El control positivo tiene que pasar: si esto no es 2xx, el 403/404 de los
     // casos ajenos no estaría probando aislamiento sino una app que deniega todo.
-    expect(controlPropio.status, 'control positivo: el barbero edita el servicio de su sede').toBe(200);
+    expect(controlPropio.status, 'control positivo: el admin de sede edita el servicio de su sede').toBe(200);
+    expect(barberoEditaCatalogo.status, 'T-11: el barbero ya no escribe el catálogo').toBe(403);
 
     // La regla de vinculo: sin fila ACTIVA, 403 en servicios y combos.
     expect(catalogoSuelto.status, 'cliente sin vinculo: /shops/:shopId/services').toBe(403);

@@ -4,6 +4,12 @@
 > del backend, qué acción de `docs/MATRIZ_PERMISOS_OBJETIVO.md` le corresponde, o
 > `sin acción` si la matriz no la cubre. Lo revisa el dueño antes de tocar controladores.
 
+> **Estado (T-11, 23 nov 2026).** Las **12 brechas actuales de rol** de §2 y §5.3 están
+> cerradas: el código ya impone la matriz en esas rutas. Las filas que dicen «Brecha actual»
+> se conservan como **registro histórico** de la revisión; el estado vivo es
+> `RUTAS_BRECHA_ROL = []` en `src/iam/domain/matriz.ts`, y `test/matriz-acciones.spec.ts` y
+> `test/permisos-matriz.spec.ts` fallan si alguna vuelve a desviarse.
+
 ## 1 · Cómo se construyó
 
 - **Fuente de las rutas:** `backend-barberias/test/permisos-matriz.spec.ts`, constante

@@ -45,11 +45,17 @@ describe('AnalyticsController', () => {
     await expect(controller.getAnalytics('shop-1', {} as any, user as any)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('permite a ADMINISTRADOR global', async () => {
+  // T-11 · Antes: «permite a ADMINISTRADOR global» (esperaba 200 y las fechas
+  // propagadas). Ahora: espera 403. Por qué: la analítica de sede es
+  // `caja.ver_y_cerrar` (ADMIN_BARBERIA del vínculo exacto); el administrador
+  // global quedó fuera de la operación de sede y su lectura de red vive en
+  // `PlataformaAnalyticsController` (`GET /analytics/plataforma/hoy`).
+  it('rechaza a ADMINISTRADOR global con 403 (fuera de la operación de sede)', async () => {
     const user = { roles: [ROL_ADMINISTRADOR], rolesDetallados: [] };
-    const result = await controller.getAnalytics('shop-1', { desde: '2026-10-01', hasta: '2026-10-31' } as any, user as any);
-    expect(result).toEqual({ ok: true });
-    expect(service.getShopAnalytics).toHaveBeenCalledWith('shop-1', '2026-10-01', '2026-10-31');
+    await expect(
+      controller.getAnalytics('shop-1', { desde: '2026-10-01', hasta: '2026-10-31' } as any, user as any),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(service.getShopAnalytics).not.toHaveBeenCalled();
   });
 
   describe('exportCsv', () => {
@@ -70,8 +76,12 @@ describe('AnalyticsController', () => {
       );
     });
 
+    // T-11 · Antes: actor ADMINISTRADOR global (200). Ahora: actor ADMIN_BARBERIA
+    // de la sede. Por qué: el global ya recibe 403 en la ruta de sede, así que
+    // para medir lo que esta prueba mide —que las fechas lleguen al servicio—
+    // el actor debe ser el que sí puede exportar la caja de esa sede.
     it('propaga las fechas al servicio', async () => {
-      const user = { roles: [ROL_ADMINISTRADOR], rolesDetallados: [] };
+      const user = { roles: [ROL_ADMIN_BARBERIA], rolesDetallados: [{ nombre: ROL_ADMIN_BARBERIA, barberiaId: 'shop-1' }] };
       const response = res();
 
       await controller.exportCsv(

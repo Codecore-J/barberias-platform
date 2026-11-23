@@ -21,7 +21,7 @@ import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 export class CajaController {
   constructor(private readonly cajaService: CajaService) {}
 
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Get('hoy')
   hoy(
     @CurrentBarberiaId() barberiaId: string,
@@ -34,7 +34,7 @@ export class CajaController {
    * `POST /caja/cierre` responde 201: nace un recurso (el arqueo). El 409 de
    * cierre duplicado es la única respuesta no-2xx esperada del flujo.
    */
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Post('cierre')
   @HttpCode(HttpStatus.CREATED)
   cerrar(

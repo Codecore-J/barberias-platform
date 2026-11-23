@@ -15,7 +15,7 @@ export class HorarioController {
    * Lectura del horario de la barbería (decisión 8): el CLIENTE no entra, la
    * usa la pantalla de administración de horarios.
    */
-  @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Get()
   findSchedules(@Param('shopId', ParseUUIDPipe) barberiaId: string) {
     return this.horarioService.getSchedules(barberiaId);
@@ -26,7 +26,7 @@ export class HorarioController {
    * Escribir el horario general es del responsable de la barbería; el BARBERO
    * solo escribe el suyo con `mi-horario`.
    */
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Post()
   configureSchedules(
     @Param('shopId', ParseUUIDPipe) barberiaId: string,
@@ -41,7 +41,7 @@ export class HorarioController {
    * Lectura de excepciones, misma política que la lectura de horarios
    * (decisión 8).
    */
-  @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Get('exceptions')
   findExceptions(
     @Param('shopId', ParseUUIDPipe) barberiaId: string,
@@ -57,7 +57,7 @@ export class HorarioController {
    * POST /barberias/:barberiaId/horarios/excepciones
    * Excepción global de la barbería: la declara su responsable.
    */
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Post('exceptions')
   addException(
     @Param('shopId', ParseUUIDPipe) barberiaId: string,
@@ -71,8 +71,13 @@ export class HorarioController {
    * GET /barberias/:barberiaId/horarios/mi-horario
    * El horario propio del barbero: el `barberoId` sale del token, nunca del
    * cuerpo ni de la ruta.
+   *
+   * T-11: quien puede ESCRIBIR su horario propio (`POST`, más abajo) también
+   * puede CONSULTARLO. El ADMIN_BARBERIA de la sede lee su propio horario desde
+   * el mismo token, sin poder elegir a qué barbero mira; el ADMINISTRADOR global
+   * queda fuera porque la matriz no le concede `agenda.propia.ver`.
    */
-  @Roles('BARBERO')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @Get('mine')
   findMyBarberSchedules(
     @Param('shopId', ParseUUIDPipe) barberiaId: string,
@@ -85,7 +90,7 @@ export class HorarioController {
    * POST /barberias/:barberiaId/horarios/mi-horario
    * El BARBERO declara sus horas; el resto usa el horario general de la sede.
    */
-  @Roles('BARBERO')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @Post('mine')
   configureMyBarberSchedules(
     @Param('shopId', ParseUUIDPipe) barberiaId: string,
@@ -100,7 +105,7 @@ export class HorarioController {
    * Excepción puntual de un barbero concreto: la puede pedir el propio barbero
    * o su responsable.
    */
-  @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Post('barbers/:barberoId/exceptions')
   addBarberException(
     @Param('shopId', ParseUUIDPipe) barberiaId: string,

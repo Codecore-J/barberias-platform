@@ -17,8 +17,16 @@ describe('E3-11 · configuración de la barbería', () => {
 
   let barberiaId: string;
   let adminId: string;
+  /**
+   * T-11 · el ADMINISTRADOR puro, sin vínculo de sede. No sirve `adminId`: esa
+   * cuenta también es ADMIN_BARBERIA de la sede, y el guard resuelve los roles
+   * desde la base, así que medir la escritura de plataforma con ella daba 200.
+   */
+  let globalId: string;
   let clienteId: string;
   let tokenAdmin: string;
+  /** T-11 · mismo usuario, pero con el rol de sede: es quien escribe la configuración. */
+  let tokenAdminSede: string;
   let tokenCliente: string;
 
   const sufijo = Date.now();
@@ -94,12 +102,24 @@ describe('E3-11 · configuración de la barbería', () => {
       }),
     ]);
 
+    const global = await prisma.usuario.create({
+      data: {
+        telefonoVerificado: true,
+        nombreCompleto: `Global E311 ${sufijo}`,
+        correo: `global.e311.${sufijo}@test.com`,
+        telefono: `7123456789`,
+        passwordHash: '$2b$10$HashFalso',
+      },
+      select: { id: true },
+    });
+
     adminId = admin.id;
+    globalId = global.id;
     clienteId = cliente.id;
 
     await prisma.usuarioRol.createMany({
       data: [
-        { usuarioId: adminId, rolId: roles[0].id, barberiaId: null },
+        { usuarioId: globalId, rolId: roles[0].id, barberiaId: null },
         { usuarioId: clienteId, rolId: roles[2].id, barberiaId: null },
       ],
     });
@@ -153,9 +173,17 @@ describe('E3-11 · configuración de la barbería', () => {
     });
 
     tokenAdmin = await jwtService.signAsync({
+      sub: globalId,
+      correo: `global.e311.${sufijo}@test.com`,
+      roles: ['ADMINISTRADOR'],
+    });
+
+    // T-11 · decisión 8: la escritura de la configuración es del
+    // ADMIN_BARBERIA de la sede; el ADMINISTRADOR global solo lee.
+    tokenAdminSede = await jwtService.signAsync({
       sub: adminId,
       correo: `admin.e311.${sufijo}@test.com`,
-      roles: ['ADMINISTRADOR'],
+      roles: ['ADMIN_BARBERIA'],
     });
 
     tokenCliente = await jwtService.signAsync({
@@ -168,11 +196,13 @@ describe('E3-11 · configuración de la barbería', () => {
   afterAll(async () => {
     await prisma.reserva.deleteMany({ where: { barberiaId } });
     await prisma.usuarioRol.deleteMany({
-      where: { usuarioId: { in: [adminId, clienteId] } },
+      where: { usuarioId: { in: [adminId, globalId, clienteId] } },
     });
     await prisma.configuracionBarberia.deleteMany({ where: { barberiaId } });
     await prisma.barberia.deleteMany({ where: { id: barberiaId } });
-    await prisma.usuario.deleteMany({ where: { id: { in: [adminId, clienteId] } } });
+    await prisma.usuario.deleteMany({
+      where: { id: { in: [adminId, globalId, clienteId] } },
+    });
     await app.close();
   }, 60_000);
 
@@ -227,10 +257,21 @@ describe('E3-11 · configuración de la barbería', () => {
       .expect(403);
   });
 
-  it('ADMINISTRADOR actualiza un campo no sensible sin reservas en curso', async () => {
-    const res = await request(app.getHttpServer())
+  // Antes: 200, porque la cuenta usada era ADMINISTRADOR en el token y también
+  // ADMIN_BARBERIA en la base, y el guard resolvía los roles desde la base.
+  // Ahora se mide con un ADMINISTRADOR puro: 403, la decisión 8 (T-11).
+  it('ADMINISTRADOR ya no modifica la configuración (403, decisión 8)', async () => {
+    await request(app.getHttpServer())
       .patch(`${API}/shops/${barberiaId}/settings`)
       .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ horizonteReservaDias: 15 })
+      .expect(403);
+  });
+
+  it('ADMIN_BARBERIA actualiza un campo no sensible sin reservas en curso', async () => {
+    const res = await request(app.getHttpServer())
+      .patch(`${API}/shops/${barberiaId}/settings`)
+      .set('Authorization', `Bearer ${tokenAdminSede}`)
       .send({ horizonteReservaDias: 15 })
       .expect(200);
 
@@ -242,7 +283,7 @@ describe('E3-11 · configuración de la barbería', () => {
 
     const res = await request(app.getHttpServer())
       .patch(`${API}/shops/${barberiaId}/settings`)
-      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .set('Authorization', `Bearer ${tokenAdminSede}`)
       .send({ modoReserva: 'AUTOMATICO' })
       .expect(409);
 
@@ -259,7 +300,7 @@ describe('E3-11 · configuración de la barbería', () => {
 
     const res = await request(app.getHttpServer())
       .patch(`${API}/shops/${barberiaId}/settings`)
-      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .set('Authorization', `Bearer ${tokenAdminSede}`)
       .send({ aceptaIndividual: false })
       .expect(409);
 
@@ -273,7 +314,7 @@ describe('E3-11 · configuración de la barbería', () => {
   it('409 CONFLICT CONFIG_CON_PENDIENTES con conteo al cambiar aceptaGrupal y maxPendientes', async () => {
     const porGrupal = await request(app.getHttpServer())
       .patch(`${API}/shops/${barberiaId}/settings`)
-      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .set('Authorization', `Bearer ${tokenAdminSede}`)
       .send({ aceptaGrupal: false })
       .expect(409);
 
@@ -284,7 +325,7 @@ describe('E3-11 · configuración de la barbería', () => {
 
     const porMax = await request(app.getHttpServer())
       .patch(`${API}/shops/${barberiaId}/settings`)
-      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .set('Authorization', `Bearer ${tokenAdminSede}`)
       .send({ maxPendientes: 5 })
       .expect(409);
 
@@ -297,7 +338,7 @@ describe('E3-11 · configuración de la barbería', () => {
   it('permite cambiar campos no bloqueados aunque haya reservas en curso', async () => {
     const res = await request(app.getHttpServer())
       .patch(`${API}/shops/${barberiaId}/settings`)
-      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .set('Authorization', `Bearer ${tokenAdminSede}`)
       .send({ margenGrupalMinutos: 15 })
       .expect(200);
 
@@ -309,7 +350,7 @@ describe('E3-11 · configuración de la barbería', () => {
   it('422 VALIDACION si max_personas_total < max_ninos + 1', async () => {
     const res = await request(app.getHttpServer())
       .patch(`${API}/shops/${barberiaId}/settings`)
-      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .set('Authorization', `Bearer ${tokenAdminSede}`)
       .send({ maxNinos: 5, maxPersonasTotal: 5 })
       .expect(422);
 
@@ -319,7 +360,7 @@ describe('E3-11 · configuración de la barbería', () => {
   it('422 VALIDACION estricta al enviar solo maxPersonasTotal frente al max_ninos persistido', async () => {
     const res = await request(app.getHttpServer())
       .patch(`${API}/shops/${barberiaId}/settings`)
-      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .set('Authorization', `Bearer ${tokenAdminSede}`)
       .send({ maxPersonasTotal: 5 })
       .expect(422);
 
@@ -329,7 +370,7 @@ describe('E3-11 · configuración de la barbería', () => {
   it('acepta max_personas_total = max_ninos + 1', async () => {
     const res = await request(app.getHttpServer())
       .patch(`${API}/shops/${barberiaId}/settings`)
-      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .set('Authorization', `Bearer ${tokenAdminSede}`)
       .send({ maxNinos: 5, maxPersonasTotal: 6 })
       .expect(200);
 
@@ -340,7 +381,7 @@ describe('E3-11 · configuración de la barbería', () => {
   it('la pausa guarda motivo y pausa_desde, y la reactivación los limpia', async () => {
     const pausada = await request(app.getHttpServer())
       .patch(`${API}/shops/${barberiaId}/settings`)
-      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .set('Authorization', `Bearer ${tokenAdminSede}`)
       .send({ nuevasReservasActivas: false, motivoPausa: 'Mantenimiento de cabinas' })
       .expect(200);
 
@@ -350,7 +391,7 @@ describe('E3-11 · configuración de la barbería', () => {
 
     const reactivada = await request(app.getHttpServer())
       .patch(`${API}/shops/${barberiaId}/settings`)
-      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .set('Authorization', `Bearer ${tokenAdminSede}`)
       .send({ nuevasReservasActivas: true })
       .expect(200);
 
@@ -362,7 +403,7 @@ describe('E3-11 · configuración de la barbería', () => {
   it('la pausa es visible para el resto de la lectura de configuración', async () => {
     await request(app.getHttpServer())
       .patch(`${API}/shops/${barberiaId}/settings`)
-      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .set('Authorization', `Bearer ${tokenAdminSede}`)
       .send({ nuevasReservasActivas: false, motivoPausa: 'Pausa visible' })
       .expect(200);
 

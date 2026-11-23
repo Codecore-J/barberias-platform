@@ -499,9 +499,6 @@ import { AdminShellComponent } from './admin-shell/admin-shell.component';
                 <a routerLink="/admin/agenda" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-calendar text-amber-400"></i>Agenda
                 </a>
-                <a routerLink="/admin/personal" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
-                  <i class="pi pi-users text-amber-400"></i>Equipo
-                </a>
                 <a routerLink="/admin/servicios" (click)="mobileMenuOpen.set(false)" class="px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2">
                   <i class="pi pi-list text-amber-400"></i>Catálogo
                 </a>

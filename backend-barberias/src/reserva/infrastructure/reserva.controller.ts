@@ -31,7 +31,7 @@ export class ReservaController {
   ) {}
 
   @Get('day')
-  @Roles('ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA', 'BARBERO')
   obtenerAgenda(
     @CurrentBarberiaId() barberiaId: string,
     @Query('fecha') fecha: string,
@@ -92,7 +92,7 @@ export class ReservaController {
    * un cliente. El decorador separa lo que hasta E3-03 eran dos pantallas
    * compartiendo UNA sola ruta con los cuatro roles.
    */
-  @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @Post('walk-in')
   crearReservaWalkIn(
     @CurrentBarberiaId() barberiaId: string,
@@ -121,7 +121,7 @@ export class ReservaController {
    * (`POST /shops/:shopId/payments`), pero abrir una cita al vuelo y cobrarla es
    * una operación de caja.
    */
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Post('walk-in-pago')
   crearWalkInYCobrar(
     @CurrentBarberiaId() barberiaId: string,
@@ -154,7 +154,7 @@ export class ReservaController {
    * admin de otra sede recibe 403 antes de llegar al servicio.
    */
   @Post(':id/accept')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   aceptarReserva(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) reservaId: string,
@@ -169,7 +169,7 @@ export class ReservaController {
    * Mismos roles que aceptar.
    */
   @Post(':id/reject')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   rechazarReserva(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) reservaId: string,
@@ -188,7 +188,7 @@ export class ReservaController {
    * sede. Cancela el job de expiración y audita `RESERVA_CANCELADA`.
    */
   @Post(':id/cancel')
-  @Roles('CLIENTE', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA')
   cancelarReserva(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) reservaId: string,
@@ -208,7 +208,7 @@ export class ReservaController {
    * backlog), que todavía no existe.
    */
   @Patch(':id/reschedule')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   reprogramarReserva(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) reservaId: string,
@@ -225,7 +225,7 @@ export class ReservaController {
    * ADMINISTRADOR global; el `RolesGuard` la acota al `barberiaId` del parámetro.
    */
   @Post(':id/special-cancellation')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   cancelacionEspecial(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) reservaId: string,
@@ -257,7 +257,7 @@ export class ReservaController {
    * lock de la sede. Mismos roles que la reprogramación directa.
    */
   @Post(':id/proposed-time/accept')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   aceptarPropuestaHorario(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) reservaId: string,
@@ -271,7 +271,7 @@ export class ReservaController {
    * La sede rechaza la propuesta sin mover la cita.
    */
   @Post(':id/proposed-time/reject')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   rechazarPropuestaHorario(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) reservaId: string,
@@ -287,7 +287,7 @@ export class ReservaController {
    * Declarada antes de `:id` para que la ruta no la capture el detalle.
    */
   @Get('proposals/pending')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   listarPropuestasHorarioPendientes(
     @CurrentBarberiaId() barberiaId: string,
     @CurrentUser() user: UsuarioAutenticado,
@@ -311,7 +311,7 @@ export class ReservaController {
    * del ADMINISTRADOR global.
    */
   @Post(':id/no-show')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   marcarInasistencia(
     @CurrentBarberiaId() barberiaId: string,
     @Param('id', ParseUUIDPipe) reservaId: string,

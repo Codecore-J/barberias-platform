@@ -21,8 +21,15 @@ import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 export class HorarioBarberoController {
   constructor(private readonly horarioService: HorarioService) {}
 
-  /** GET · la semana del barbero autenticado, con los siete días. */
-  @Roles('BARBERO')
+  /**
+   * GET · la semana del barbero autenticado, con los siete días.
+   *
+   * T-11 (23 nov 2026): la lectura acompaña a la escritura. Quien puede guardar
+   * su semana (`PUT`, dual) puede leerla; el `barberoId` sale del JWT en las
+   * dos, así que el ADMIN_BARBERIA no abre la semana de un compañero ni el
+   * ADMINISTRADOR global gana una vía que la matriz no le da.
+   */
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @UseGuards(VinculoBarberiaGuard)
   @Get()
   obtener(
@@ -38,7 +45,7 @@ export class HorarioBarberoController {
    * Es `PUT` y no `POST` porque reemplaza la semana entera: repetir la misma
    * petición deja exactamente el mismo estado, sin filas duplicadas.
    */
-  @Roles('BARBERO')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @UseGuards(VinculoBarberiaGuard)
   @Put()
   guardar(
@@ -55,8 +62,13 @@ export class HorarioBarberoController {
    * Es global —no cuelga de una sede—, pero se sirve bajo `shops/:shopId`
    * porque el acceso lo autoriza el vínculo con la sede: quien la lee es el
    * barbero autenticado, nunca un id que llegue del cliente.
+   *
+   * T-11 (23 nov 2026): la lectura acompaña a la escritura, igual que en la
+   * semana propia. Quien puede guardar su plantilla (`PUT base`, dual) puede
+   * leerla; el `barberoId` sale del JWT, así que el ADMIN_BARBERIA no abre la
+   * plantilla de un compañero ni el ADMINISTRADOR global gana una vía nueva.
    */
-  @Roles('BARBERO')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @UseGuards(VinculoBarberiaGuard)
   @Get('base')
   obtenerPlantilla(@CurrentUser() user: UsuarioAutenticado) {
@@ -68,7 +80,7 @@ export class HorarioBarberoController {
    * enviados). Un día puede apagarse con `activo: false` sin perder sus horas,
    * que es lo que evita tener que reescribir la semana entera.
    */
-  @Roles('BARBERO')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @UseGuards(VinculoBarberiaGuard)
   @Put('base')
   guardarPlantilla(

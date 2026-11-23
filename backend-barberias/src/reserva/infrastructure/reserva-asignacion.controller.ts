@@ -24,7 +24,7 @@ export class ReservaAsignacionController {
   constructor(private readonly reservaService: ReservaService) {}
 
   @Patch(':id/asignar-barbero')
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   asignarBarbero(
     @Param('id', ParseUUIDPipe) reservaId: string,
     @Body() dto: AsignarBarberoDto,

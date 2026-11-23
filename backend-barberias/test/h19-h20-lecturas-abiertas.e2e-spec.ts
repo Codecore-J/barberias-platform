@@ -212,28 +212,26 @@ describe('E1-03 · personal y bloqueos no se abren a otros tenants (H19/H20)', (
       expect(res.body[0].telefono).toBeTruthy();
     });
 
-    it('el ADMINISTRADOR global recibe 200 con correo y telefono', async () => {
+    it('el ADMINISTRADOR global ya NO recibe el personal: es de la sede (403)', async () => {
+      // Antes: 200 por la jerarquía de E1-04. Ahora `personal.gestionar` es solo
+      // del ADMIN_BARBERIA y el guard no concede nada por jerarquía (T-11).
       const res = await request(app.getHttpServer())
         .get(`/api/v1/shops/${barberiaB}/staff`)
         .set('Authorization', `Bearer ${tokenGlobal}`);
 
-      expect(res.status).toBe(200);
-      expect(res.body[0].correo).toBe('admin.b.h19@test.com');
+      expect(res.status).toBe(403);
+      expect(JSON.stringify(res.body)).not.toContain('@h19@test.com');
     });
 
-    it('el BARBERO de esa barbería recibe 200 sin correo ni telefono', async () => {
+    it('el BARBERO de esa barbería ya NO recibe el personal (403)', async () => {
+      // Antes: 200 con la nómina redactada (sin correo ni teléfono). Desde T-11
+      // el listado de personal exige ADMIN_BARBERIA, así que el barbero no pasa
+      // el guard y esa respuesta redactada deja de ser alcanzable por esta vía.
       const res = await request(app.getHttpServer())
         .get(`/api/v1/shops/${barberiaB}/staff`)
         .set('Authorization', `Bearer ${tokenBarberoB}`);
 
-      expect(res.status).toBe(200);
-
-      const barbero = res.body.find((p: any) => p.roles.includes('BARBERO'));
-      expect(barbero).toBeDefined();
-      expect(barbero.nombreCompleto).toBeTruthy();
-      expect(barbero.estado).toBeTruthy();
-      expect(barbero).not.toHaveProperty('correo');
-      expect(barbero).not.toHaveProperty('telefono');
+      expect(res.status).toBe(403);
       expect(JSON.stringify(res.body)).not.toContain('@h19@test.com');
     });
 

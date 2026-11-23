@@ -389,9 +389,12 @@ describe('E2-07 · P-SD-3/P-SD-4 · sede suspendida: no reserva, no expone agend
   });
 
   it('la API responde 400 antes que 500 si alguien manda un estado fuera de catálogo', async () => {
+    // Antes: 400 enviado por el BARBERO, que entonces escribía el catálogo (D16).
+    // Ahora: 400 enviado por el ADMIN_BARBERIA, único rol que escribe el catálogo
+    // tras T-11; el BARBERO recibiría 403 en el guard y no llegaría al DTO.
     const res = await request(app.getHttpServer())
       .patch(`${api}/shops/${datos.sede}/services/${datos.servicio}`)
-      .set(headers('barbero', datos.sede))
+      .set(headers('admin', datos.sede))
       .send({ estado: 'BORRADO' });
 
     expect(res.status, `PATCH /shops/${datos.sede}/services → ${res.status} ${JSON.stringify(res.body)}`).toBe(400);

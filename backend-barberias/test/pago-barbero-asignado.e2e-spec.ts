@@ -285,12 +285,16 @@ describe('E3-09 · POST /cobros: el BARBERO solo cobra lo que tiene asignado', (
     expect(reserva.estado).toBe('COMPLETADA');
   });
 
-  it('el ADMINISTRADOR global sí cobra una reserva SIN asignar (bypass global intacto)', async () => {
+  it('el ADMINISTRADOR global ya NO cobra: el cobro es de la sede (403)', async () => {
+    // Antes: 200 por el bypass de jerarquía, que dejaba al global entrar en
+    // `pagos.cobrar`. Ahora la ruta declara solo BARBERO y ADMIN_BARBERIA y el
+    // guard no concede nada por jerarquía (T-11), así que el global queda fuera.
     const res = await cobrar(tokenGlobal, reservaSinAsignarGlobal);
 
-    expect([200, 201]).toContain(res.status);
+    expect(res.status).toBe(403);
     const reserva = await prisma.reserva.findUniqueOrThrow({ where: { id: reservaSinAsignarGlobal } });
-    expect(reserva.estado).toBe('COMPLETADA');
+    expect(reserva.estado).toBe('CONFIRMADA');
+    expect(await prisma.pago.findUnique({ where: { reservaId: reservaSinAsignarGlobal } })).toBeNull();
   });
 
   it('E3-09 §5.2 fila 11: una cita que aún no empezó no se cobra → 422 CITA_NO_INICIADA', async () => {

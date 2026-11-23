@@ -100,7 +100,9 @@ describe('RolesGuard', () => {
   });
 
   describe('logistica de roles y tenant (sin cambios en E1-01)', () => {
-    it('debe permitir acceso si el usuario es ADMINISTRADOR global', () => {
+    // T-11 (opcion A): el ADMINISTRADOR global no entra por jerarquia; solo lo
+    // hace si la ruta lo declara en su lista.
+    it('debe denegar al ADMINISTRADOR global en una ruta que no lo declara', () => {
       mockPolitica({ roles: ['BARBERO'] });
       const context = createMockContext({
         id: '1',
@@ -108,7 +110,7 @@ describe('RolesGuard', () => {
         roles: ['ADMINISTRADOR'],
       });
 
-      expect(guard.canActivate(context)).toBe(true);
+      expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
     });
 
     it('debe permitir acceso a un BARBERO en su propia barbería específica', () => {
@@ -199,7 +201,9 @@ describe('RolesGuard', () => {
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
     });
 
-    it('debe seguir dejando pasar a un ADMINISTRADOR de ámbito GLOBAL con barberiaId nulo', () => {
+    // T-11 (opcion A): el ambito GLOBAL ya no es una llave transversal; la
+    // lista declarada manda y esta ruta no declara al ADMINISTRADOR.
+    it('debe denegar a un ADMINISTRADOR de ámbito GLOBAL en una ruta que solo declara ADMIN_BARBERIA', () => {
       mockPolitica({ roles: ['ADMIN_BARBERIA'] });
       const context = createMockContext(
         {
@@ -211,7 +215,7 @@ describe('RolesGuard', () => {
         { shopId: '22222222-2222-4222-8222-222222222222' },
       );
 
-      expect(guard.canActivate(context)).toBe(true);
+      expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
     });
   });
 });

@@ -222,6 +222,11 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
   }, 60_000);
 
   // ── Fase 2 · limitación de la edición directa (PATCH /barberias/:id) ───────
+  //
+  // T-11 (23 nov 2026): editar la sede es `plataforma.sedes.gestionar`, que solo
+  // tiene el ADMINISTRADOR. Antes estas pruebas usaban al ADMIN_BARBERIA (era el
+  // responsable quien editaba); ahora ese rol recibe 403 del guard y las reglas
+  // de D26/D27 se miden con el global, que es el único que llega al servicio.
   describe('PATCH /barberias/:id solo admite descripción, ubicación, logo y teléfono', () => {
     it('422 NOMBRE_REQUIERE_SOLICITUD al intentar cambiar el nombre y la sede no cambia', async () => {
       const antes = await prisma.barberia.findUniqueOrThrow({
@@ -231,7 +236,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
 
       const res = await request(app.getHttpServer())
         .patch(`${API}/shops/${barberiaA}`)
-        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .set('Authorization', `Bearer ${tokenGlobal}`)
         .send({ nombre: 'Nombre por la puerta de atrás' })
         .expect(422);
 
@@ -250,7 +255,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
     it('permite descripcion, ubicacion y logoUrl sin contraseña', async () => {
       const res = await request(app.getHttpServer())
         .patch(`${API}/shops/${barberiaA}`)
-        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .set('Authorization', `Bearer ${tokenGlobal}`)
         .send({
           descripcion: 'Descripción E3-13',
           ubicacion: 'Ubicación E3-13',
@@ -268,7 +273,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
     it('422 PASSWORD_REQUERIDA si se intenta cambiar el teléfono sin la contraseña actual (D27)', async () => {
       const res = await request(app.getHttpServer())
         .patch(`${API}/shops/${barberiaA}`)
-        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .set('Authorization', `Bearer ${tokenGlobal}`)
         .send({ telefono: '9333333333' })
         .expect(422);
 
@@ -284,7 +289,7 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
     it('422 PASSWORD_INCORRECTA si la contraseña actual no coincide', async () => {
       const res = await request(app.getHttpServer())
         .patch(`${API}/shops/${barberiaA}`)
-        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .set('Authorization', `Bearer ${tokenGlobal}`)
         // Contraseña deliberadamente incorrecta para provocar el 422: no es un
         // secreto real. `gitleaks:allow` exime esta línea del escáner de CI.
         .send({ telefono: '9333333333', passwordActual: 'NoEsMiClave123' }) // gitleaks:allow
@@ -296,19 +301,24 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
     it('cambia el teléfono con la contraseña actual correcta', async () => {
       const res = await request(app.getHttpServer())
         .patch(`${API}/shops/${barberiaA}`)
-        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .set('Authorization', `Bearer ${tokenGlobal}`)
         .send({ telefono: '9333333333', passwordActual: PASSWORD_ADMIN_A })
         .expect(200);
 
       expect(res.body.telefono).toBe('9333333333');
     });
 
-    it('el CLIENTE sigue recibiendo 403 en la edición directa', async () => {
-      await request(app.getHttpServer())
-        .patch(`${API}/shops/${barberiaA}`)
-        .set('Authorization', `Bearer ${tokenCliente}`)
-        .send({ descripcion: 'No debería' })
-        .expect(403);
+    it('el ADMIN_BARBERIA y el CLIENTE reciben 403 en la edición directa', async () => {
+      // Antes: el ADMIN_BARBERIA editaba su sede (200) y solo el CLIENTE quedaba
+      // fuera. Ahora la edición es de plataforma, así que el administrador de la
+      // sede también es 403; su vía para el nombre es la solicitud de cambio.
+      for (const token of [tokenAdminA, tokenCliente]) {
+        await request(app.getHttpServer())
+          .patch(`${API}/shops/${barberiaA}`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ descripcion: 'No debería' })
+          .expect(403);
+      }
     });
   });
 
@@ -550,21 +560,23 @@ describe('E3-13 · solicitudes de cambio de nombre y responsable', () => {
         .expect(403);
     });
 
-    it('el nuevo responsable puede editar la sede', async () => {
+    it('el nuevo responsable tampoco edita la sede: 403 (T-11)', async () => {
+      // Antes: 200, porque el nuevo ADMIN_BARBERIA pasaba a ser el responsable y
+      // la edición directa era suya. Ahora `PATCH /shops/:shopId` es
+      // `plataforma.sedes.gestionar` (solo global): el traspaso del rol sigue
+      // ocurriendo (arriba), pero ya no da acceso a esta ruta.
       const tokenNuevo = await jwtService.signAsync({
         sub: nuevoResponsableId,
         correo: `nuevo.responsable.e313.${sufijo}@test.com`,
         roles: ['ADMIN_BARBERIA'],
       });
 
-      const res = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .patch(`${API}/shops/${barberiaB}`)
         .set('Authorization', `Bearer ${tokenNuevo}`)
         .set('x-barberia-id', barberiaB)
         .send({ descripcion: 'Gestionada por el nuevo responsable' })
-        .expect(200);
-
-      expect(res.body.descripcion).toBe('Gestionada por el nuevo responsable');
+        .expect(403);
     });
   });
 

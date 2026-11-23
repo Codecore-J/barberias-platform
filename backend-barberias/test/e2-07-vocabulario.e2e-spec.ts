@@ -283,10 +283,12 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
   }, 120_000);
 
   it('REGLA 3 · desactivar un servicio sin reservas abiertas y volver a activarlo', async () => {
-    // D16: escribe el BARBERO de la sede, no su administrador.
+    // Antes: escribía el BARBERO (D16 lo llamaba «el personal de la sede»), 200.
+    // Ahora escribe el ADMIN_BARBERIA, único rol con `catalogo.servicios.gestionar`
+    // tras T-11; el mismo PATCH con el barbero sería 403.
     const desactivar = await request(app.getHttpServer())
       .patch(`${api}/shops/${datos.sede}/services/${datos.servicioLibre}/deactivate`)
-      .set(headers('barbero', datos.sede));
+      .set(headers('admin', datos.sede));
     expect(desactivar.status).toBe(200);
 
     const enBd = await prisma.servicio.findUniqueOrThrow({
@@ -311,7 +313,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
 
     const reactivar = await request(app.getHttpServer())
       .patch(`${api}/shops/${datos.sede}/services/${datos.servicioLibre}/reactivate`)
-      .set(headers('barbero', datos.sede));
+      .set(headers('admin', datos.sede));
     expect(reactivar.status).toBe(200);
 
     const trasReactivar = await prisma.servicio.findUniqueOrThrow({
@@ -322,9 +324,11 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
   });
 
   it('REGLA 1 · 422 SERVICIO_EN_USO con una reserva PENDIENTE que usa el servicio', async () => {
+    // Antes: 422 con el BARBERO escribiendo. Ahora lo intenta el ADMIN_BARBERIA
+    // (T-11); con el barbero el guard respondería 403 y no se mediría la regla.
     const res = await request(app.getHttpServer())
       .patch(`${api}/shops/${datos.sede}/services/${datos.servicioEnUso}/deactivate`)
-      .set(headers('barbero', datos.sede));
+      .set(headers('admin', datos.sede));
 
     expect(res.status).toBe(422);
     expect(res.body.codigo).toBe('SERVICIO_EN_USO');
@@ -338,9 +342,11 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
   });
 
   it('REGLA 2 · 422 SERVICIO_EN_COMBO_ACTIVO, y el combo primero desbloquea', async () => {
+    // Antes: las tres escrituras las hacía el BARBERO. Ahora el ADMIN_BARBERIA
+    // es el único que escribe el catálogo (T-11), así que el 422 se mide en él.
     const bloqueado = await request(app.getHttpServer())
       .patch(`${api}/shops/${datos.sede}/services/${datos.servicioEnCombo}/deactivate`)
-      .set(headers('barbero', datos.sede));
+      .set(headers('admin', datos.sede));
 
     expect(bloqueado.status).toBe(422);
     expect(bloqueado.body.codigo).toBe('SERVICIO_EN_COMBO_ACTIVO');
@@ -357,12 +363,12 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     // Se resuelve el combo (el orden que pide el backlog) y entonces sí.
     const combo = await request(app.getHttpServer())
       .patch(`${api}/shops/${datos.sede}/combos/${datos.combo}/deactivate`)
-      .set(headers('barbero', datos.sede));
+      .set(headers('admin', datos.sede));
     expect(combo.status).toBe(200);
 
     const despues = await request(app.getHttpServer())
       .patch(`${api}/shops/${datos.sede}/services/${datos.servicioEnCombo}/deactivate`)
-      .set(headers('barbero', datos.sede));
+      .set(headers('admin', datos.sede));
     expect(despues.status).toBe(200);
 
     const enBd = await prisma.servicio.findUniqueOrThrow({
@@ -450,10 +456,12 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
   });
 
   it('visibilidad por rol: inactivos ocultos al cliente, visibles al admin', async () => {
+    // Antes: desactivaba el BARBERO. Ahora desactiva el ADMIN_BARBERIA, que es
+    // quien escribe el catálogo desde T-11; las dos lecturas no cambian.
     // Desactivar un servicio para que quede INACTIVO
     const desactivar = await request(app.getHttpServer())
       .patch(`${api}/shops/${datos.sede}/services/${datos.servicioLibre}/deactivate`)
-      .set(headers('barbero', datos.sede));
+      .set(headers('admin', datos.sede));
     expect(desactivar.status).toBe(200);
 
     // Cliente solo ve ACTIVOS
@@ -473,15 +481,17 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     // Reactivar para dejar estado limpio
     const reactivar = await request(app.getHttpServer())
       .patch(`${api}/shops/${datos.sede}/services/${datos.servicioLibre}/reactivate`)
-      .set(headers('barbero', datos.sede));
+      .set(headers('admin', datos.sede));
     expect(reactivar.status).toBe(200);
   });
 
   it('visibilidad de combos por rol y endpoints de transición', async () => {
+    // Antes: el BARBERO desactivaba y reactivaba el combo. Ahora lo hace el
+    // ADMIN_BARBERIA (T-11); las lecturas por rol se mantienen igual.
     // Desactivar combo
     const desactivarCombo = await request(app.getHttpServer())
       .patch(`${api}/shops/${datos.sede}/combos/${datos.combo}/deactivate`)
-      .set(headers('barbero', datos.sede));
+      .set(headers('admin', datos.sede));
     expect(desactivarCombo.status).toBe(200);
 
     // Cliente no ve inactivo
@@ -501,29 +511,29 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     // Reactivar combo
     const reactivarCombo = await request(app.getHttpServer())
       .patch(`${api}/shops/${datos.sede}/combos/${datos.combo}/reactivate`)
-      .set(headers('barbero', datos.sede));
+      .set(headers('admin', datos.sede));
     expect(reactivarCombo.status).toBe(200);
   });
 
   /**
-   * D16 (Especificación §2/§3.1): el catálogo lo opera el personal de la sede.
+   * T-11 (23 nov 2026) · el catálogo lo escribe SOLO el ADMIN_BARBERIA.
    *
-   *   BARBERO ✅ · ADMIN_BARBERIA ✅ · ADMINISTRADOR global ❌ · CLIENTE ❌
+   *   ADMIN_BARBERIA ✅ · BARBERO ❌ · ADMINISTRADOR global ❌ · CLIENTE ❌
    *
-   * El caso interesante sigue siendo el ADMINISTRADOR global: `RolesGuard` le
-   * concede acceso transversal a cualquier `@Roles` por jerarquía (E1-04), así
-   * que sin `OperadorBarberiaGuard` habría seguido creando servicios. Y el
-   * ADMIN_BARBERIA tiene que poder: en V1 es el operador de la barbería.
+   * Antes: el BARBERO también creaba y editaba (D16 lo llamaba «el personal de
+   * la sede») y el ADMINISTRADOR global entraba por jerarquía. Ahora la lista
+   * declarada de `catalogo.servicios.gestionar` es la decisión completa, así que
+   * la escritura queda en el administrador de la sede; las lecturas no cambian.
    */
-  it('RBAC del catálogo · BARBERO y ADMIN_BARBERIA escriben, global y cliente no', async () => {
+  it('RBAC del catálogo · solo el ADMIN_BARBERIA escribe, global, cliente y barbero no', async () => {
     const nuevoServicio = {
-      nombre: 'Servicio del barbero E2-07',
+      nombre: 'Servicio del admin de sede E2-07',
       precio: 25,
       duracionEstimada: 30,
     };
 
     // Roles que NO operan el catálogo: 403 aunque la sede sea la suya.
-    for (const rol of ['global', 'cliente']) {
+    for (const rol of ['global', 'cliente', 'barbero']) {
       const res = await request(app.getHttpServer())
         .post(`${api}/shops/${datos.sede}/services`)
         .set(headers(rol, datos.sede))
@@ -534,17 +544,9 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     }
 
     // El operador de la sede (ADMIN_BARBERIA) crea sin problemas.
-    const creadoPorAdmin = await request(app.getHttpServer())
-      .post(`${api}/shops/${datos.sede}/services`)
-      .set(headers('admin', datos.sede))
-      .send({ ...nuevoServicio, nombre: 'Servicio del admin de sede E2-07' });
-    expect(creadoPorAdmin.status, JSON.stringify(creadoPorAdmin.body)).toBe(201);
-    expect(creadoPorAdmin.body.barberiaId).toBe(datos.sede);
-
-    // Y el BARBERO también.
     const creado = await request(app.getHttpServer())
       .post(`${api}/shops/${datos.sede}/services`)
-      .set(headers('barbero', datos.sede))
+      .set(headers('admin', datos.sede))
       .send(nuevoServicio);
     expect(creado.status, JSON.stringify(creado.body)).toBe(201);
     expect(creado.body.barberiaId).toBe(datos.sede);
@@ -565,15 +567,14 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
     expect(adminEdita.status, JSON.stringify(adminEdita.body)).toBe(200);
     expect(Number(adminEdita.body.precio)).toBe(30);
 
-    // ...y edita el BARBERO.
+    // ...y el BARBERO ya no: 403 del guard.
     const barberoEdita = await request(app.getHttpServer())
       .patch(`${api}/shops/${datos.sede}/services/${creado.body.id}`)
       .set(headers('barbero', datos.sede))
       .send({ precio: 35 });
-    expect(barberoEdita.status).toBe(200);
-    expect(Number(barberoEdita.body.precio)).toBe(35);
+    expect(barberoEdita.status).toBe(403);
 
-    // El ADMINISTRADOR global no edita: 403 explícito.
+    // El ADMINISTRADOR global tampoco edita: 403 explícito.
     const globalEdita = await request(app.getHttpServer())
       .patch(`${api}/shops/${datos.sede}/services/${creado.body.id}`)
       .set(headers('global', datos.sede))

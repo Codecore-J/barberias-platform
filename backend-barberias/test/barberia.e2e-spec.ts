@@ -99,8 +99,8 @@ describe('Barberias Endpoints (e2e)', () => {
   let createdBarberiaId: string;
   let createdCodigoAcceso: string;
 
-  describe('T2.1 Creación y configuración de barberías', () => {
-    it('debe crear una barbería, generar código único y asignar ADMIN_BARBERIA', async () => {
+  describe('T2.1 Alta de sede (T-11)', () => {
+    it('debe rechazar el alta de autoservicio: `POST /shops` es del ADMINISTRADOR global', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/v1/shops')
         .set('Authorization', `Bearer ${ownerToken}`)
@@ -111,30 +111,38 @@ describe('Barberias Endpoints (e2e)', () => {
           ubicacion: 'Centro',
         });
 
-      if (response.status !== 201) {
-        console.error('ERROR BODY:', response.body);
-      }
+      expect(response.status).toBe(403);
+    });
 
-      expect(response.status).toBe(201);
-      expect(response.body.id).toBeDefined();
-      expect(response.body.codigoAcceso).toBeDefined();
-      expect(response.body.enlaceUnico).toBeDefined();
+    // T-11 cerró el alta de autoservicio, así que la sede que necesita el resto
+    // de la suite se siembra con las mismas piezas que creaba el servicio:
+    // código de acceso, configuración y ADMIN_BARBERIA del responsable.
+    it('debe dejar la sede del fixture lista para la vinculación', async () => {
+      const sufijo = Date.now().toString(36);
+      const barberia = await prisma.barberia.create({
+        data: {
+          nombre: 'Barberia E2E Test',
+          descripcion: 'Barberia de prueba',
+          telefono: '1112223333',
+          ubicacion: 'Centro',
+          enlaceUnico: `barberia-e2e-${sufijo}`,
+          codigoAcceso: `E2E${sufijo}`.toUpperCase(),
+          responsableId: ownerId,
+        },
+      });
+      createdBarberiaId = barberia.id;
+      createdCodigoAcceso = barberia.codigoAcceso;
 
-      createdBarberiaId = response.body.id;
-      createdCodigoAcceso = response.body.codigoAcceso;
+      await prisma.configuracionBarberia.create({ data: { barberiaId: barberia.id } });
+      const rolAdmin = await prisma.rol.findFirst({ where: { nombre: 'ADMIN_BARBERIA' } });
+      await prisma.usuarioRol.create({
+        data: { usuarioId: ownerId, rolId: rolAdmin!.id, barberiaId: barberia.id },
+      });
 
-      // Verificar en BD que la Configuración existe
       const config = await prisma.configuracionBarberia.findUnique({
         where: { barberiaId: createdBarberiaId },
       });
       expect(config).toBeDefined();
-
-      // Verificar en BD que tiene el rol ADMIN_BARBERIA
-      const rolAdmin = await prisma.rol.findFirst({ where: { nombre: 'ADMIN_BARBERIA' } });
-      const usuarioRol = await prisma.usuarioRol.findFirst({
-        where: { usuarioId: ownerId, rolId: rolAdmin!.id, barberiaId: createdBarberiaId },
-      });
-      expect(usuarioRol).toBeDefined();
     });
   });
 

@@ -97,16 +97,27 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     ownerToken = ownerRes.body.accessToken;
     _ownerId = ownerRes.body.usuario.id;
 
-    // Crear Barberia
-    const bRes = await request(app.getHttpServer())
-      .post('/api/v1/shops')
-      .set('Authorization', `Bearer ${ownerToken}`)
-      .send({
+    // T-11 · el alta de sede (`POST /shops`) es exclusiva del ADMINISTRADOR
+    // global, así que la sede del fixture se siembra directamente: este test
+    // mide el IDOR de la reserva, no el alta. El owner recibe su ADMIN_BARBERIA
+    // en la sede, que es lo que le permite ver la reserva.
+    const sufijoX = Date.now().toString(36);
+    const barberiaX = await prisma.barberia.create({
+      data: {
         nombre: 'Barberia IDOR Test',
         telefono: '9991112222',
         ubicacion: 'Centro',
-      });
-    barberiaId = bRes.body.id;
+        enlaceUnico: `barberia-idor-${sufijoX}`,
+        codigoAcceso: `IDOR${sufijoX}`.toUpperCase(),
+        responsableId: _ownerId,
+      },
+    });
+    barberiaId = barberiaX.id;
+    const rolAdminBarberiaX = await prisma.rol.findFirst({ where: { nombre: 'ADMIN_BARBERIA' } });
+    await prisma.usuarioRol.create({
+      data: { usuarioId: _ownerId, rolId: rolAdminBarberiaX!.id, barberiaId },
+    });
+    await prisma.configuracionBarberia.create({ data: { barberiaId } });
 
     // Crear Servicio
     const s = await prisma.servicio.create({
@@ -181,11 +192,11 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     // Vincular usa vincular() para hacerlo limpiamente en vez de prisma.usuarioRol
     await request(app.getHttpServer()).post('/api/v1/shops/link')
       .set('Authorization', `Bearer ${clienteAToken}`)
-      .send({ codigoAcceso: bRes.body.codigoAcceso });
+      .send({ codigoAcceso: barberiaX.codigoAcceso });
 
     await request(app.getHttpServer()).post('/api/v1/shops/link')
       .set('Authorization', `Bearer ${clienteBToken}`)
-      .send({ codigoAcceso: bRes.body.codigoAcceso });
+      .send({ codigoAcceso: barberiaX.codigoAcceso });
 
   }, 30000);
 
@@ -285,16 +296,20 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
   });
 
   it('Usuario con rol BARBERO en otra barberia pero CLIENTE aqui NO debe poder ver la reserva', async () => {
-    // 1. Crear Barberia Y
-    const bYRes = await request(app.getHttpServer())
-      .post('/api/v1/shops')
-      .set('Authorization', `Bearer ${ownerToken}`)
-      .send({
+    // 1. Sembrar la Barberia Y (T-11: el alta por HTTP es del ADMINISTRADOR
+    //    global y aquí solo hace falta que exista otra sede del mismo owner).
+    const sufijoY = Date.now().toString(36);
+    const barberiaY = await prisma.barberia.create({
+      data: {
         nombre: 'Barberia Y',
         telefono: '9993334444',
         ubicacion: 'Norte',
-      });
-    const barberiaIdY = bYRes.body.id;
+        enlaceUnico: `barberia-y-${sufijoY}`,
+        codigoAcceso: `BY${sufijoY}`.toUpperCase(),
+        responsableId: _ownerId,
+      },
+    });
+    const barberiaIdY = barberiaY.id;
 
     // 2. Register Usuario U
     await request(app.getHttpServer()).post('/api/v1/auth/register').send({

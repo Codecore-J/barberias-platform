@@ -205,22 +205,11 @@ export const RUTAS_BRECHA_MATRIZ: readonly string[] = [
 
 /**
  * §2 del mapa: rutas que sí tienen acción, pero cuyos roles en el código hoy
- * contradicen la matriz. No cambian de acción: las corrige T-11.
+ * contradicen la matriz. T-11 ya alineó las 12: la lista queda vacía a
+ * propósito y el test la vigila para que ninguna vuelva a desviarse sin que se
+ * note.
  */
-export const RUTAS_BRECHA_ROL: readonly string[] = [
-  'POST /shops/',
-  'PATCH /shops/:shopId',
-  'GET /shops/:shopId/appointments/day',
-  'PATCH /shops/:shopId/records/:id/evaluate',
-  'POST /shops/:shopId/services/',
-  'PATCH /shops/:shopId/services/:id',
-  'POST /shops/:shopId/combos/',
-  'PATCH /shops/:shopId/combos/:id',
-  'PATCH /shops/:shopId/combos/:id/deactivate',
-  'PATCH /shops/:shopId/combos/:id/reactivate',
-  'POST /shops/:shopId/categorias/',
-  'PATCH /shops/:shopId/categorias/:id',
-];
+export const RUTAS_BRECHA_ROL: readonly string[] = [];
 
 /** Acciones de una ruta; `[]` si la matriz no la cubre. */
 export function accionesDe(clave: string): readonly Accion[] {
