@@ -40,23 +40,20 @@ export class BarberiaController {
 
   /**
    * POST /shops
-   * D04: cualquier usuario autenticado puede crear una barbería —es la vía de
-   * alta del producto—, con límite de 2 sedes ACTIVAS por responsable,
-   * auditoría y LIMITE DE PETICIONES. El responsable sale del JWT, nunca del
-   * cuerpo.
+   * T-11 · la matriz objetivo asigna el alta de sedes a
+   * `plataforma.sedes.gestionar`, que solo tiene el ADMINISTRADOR global: la
+   * creación de una barbería deja de ser un alta de autoservicio y pasa a ser
+   * una operación de plataforma. El resto de roles recibe 403 del guard antes
+   * de llegar al servicio.
    *
-   * H-04: la ruta era `@Autenticado()` sin más y el tercer control de D04 (el
-   * de peticiones) no existía: solo frenaba el 120/min global por IP. Un token
-   * comprometido podía martillear la ruta, y el cupo de 2 no protege de eso
-   * porque se agota en la primera sede y luego cada intento sigue costando una
-   * transacción SERIALIZABLE. 5/min es holgado para un alta legítima (el tope
-   * real son 2 sedes) y corta el abuso sin castigar a un usuario que corrige
-   * un dato y reenvía.
+   * El límite de peticiones de H-04 se conserva: un token de plataforma
+   * comprometido tampoco debe poder martillear una transacción SERIALIZABLE, y
+   * el tope de 2 sedes ACTIVAS no frena los intentos fallidos.
    *
    * El servicio aplica además el límite de sedes y asigna ADMIN_BARBERIA al
    * creador en la sede nueva (E0-07).
    */
-  @Autenticado()
+  @Roles('ADMINISTRADOR')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -291,10 +288,11 @@ export class BarberiaController {
 
   /**
    * PATCH /shops/:shopId
-   * Solo el ADMIN_BARBERIA de la barbería o el ADMINISTRADOR global puede
-   * editarla; la pertenencia la comprueba el servicio.
+   * T-11 · editar la sede es `plataforma.sedes.gestionar`, que solo tiene el
+   * ADMINISTRADOR global: el ADMIN_BARBERIA deja de poder cambiarla por esta
+   * vía (su camino para el nombre es la solicitud de cambio de E3-13).
    */
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMINISTRADOR')
   @Patch(':shopId')
   update(
     @Param('shopId', ParseUUIDPipe) id: string,

@@ -41,7 +41,13 @@ const CASOS: Caso[] = [
   { verbo: 'post', ruta: '/shops/link', permitidos: ['CLIENTE', 'ADMINISTRADOR'], cuerpo: { codigoAcceso: 'TESTPM' } },
   // E3-13: `PATCH /barberias/:id` ya no renombra (el nombre va por solicitud),
   // asi que la matriz mide el decorador con un campo que SI se edita directo.
-  { verbo: 'patch', ruta: '/shops/{A}', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: { descripcion: 'Matriz permisos' } },
+  // T-11 (matriz objetivo): editar la sede es `plataforma.sedes.gestionar`, que
+  // solo tiene el ADMINISTRADOR global. El ADMIN_BARBERIA propone el nombre por
+  // la solicitud de cambio de E3-13, no por esta ruta.
+  { verbo: 'patch', ruta: '/shops/{A}', permitidos: ['ADMINISTRADOR'], cuerpo: { descripcion: 'Matriz permisos' } },
+  // T-11: el alta de sedes es de plataforma; el cuerpo vacio NO crea nada (el
+  // ADMINISTRADOR recibe 400 de validacion, que cuenta como ruta permitida).
+  { verbo: 'post', ruta: '/shops', permitidos: ['ADMINISTRADOR'], cuerpo: {} },
   { verbo: 'post', ruta: '/shops/{A}/change-requests', permitidos: ['ADMIN_BARBERIA'], cuerpo: { tipo: 'NOMBRE', valorNuevo: 'Matriz permisos E3-13' } },
   { verbo: 'get', ruta: '/plataforma/solicitudes-cambio', permitidos: ['ADMINISTRADOR'] },
   // H54 (E4-03/2): el estado propio lo consulta el CLIENTE. El ADMINISTRADOR no

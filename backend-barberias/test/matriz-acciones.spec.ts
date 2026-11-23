@@ -64,21 +64,8 @@ const BRECHAS_MATRIZ = [
   'POST /pagos/cobrar',
 ].sort();
 
-/** Las 12 rutas de §2: tienen acción, pero el rol del código contradice la matriz (T-11). */
-const BRECHAS_ROL = [
-  'POST /shops/',
-  'PATCH /shops/:shopId',
-  'GET /shops/:shopId/appointments/day',
-  'PATCH /shops/:shopId/records/:id/evaluate',
-  'POST /shops/:shopId/services/',
-  'PATCH /shops/:shopId/services/:id',
-  'POST /shops/:shopId/combos/',
-  'PATCH /shops/:shopId/combos/:id',
-  'PATCH /shops/:shopId/combos/:id/deactivate',
-  'PATCH /shops/:shopId/combos/:id/reactivate',
-  'POST /shops/:shopId/categorias/',
-  'PATCH /shops/:shopId/categorias/:id',
-].sort();
+/** Las 12 rutas de §2: tenían acción, pero el rol del código contradecía la matriz. T-11 las cerró. */
+const BRECHAS_ROL: string[] = [];
 
 /**
  * Las nueve acciones aprobadas que todavía no tienen endpoint: las cubren las
@@ -152,7 +139,7 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     ).toBe('');
   });
 
-  it('las 12 brechas de rol de §2 tienen acción (las cierra T-11)', () => {
+  it('no queda ninguna brecha de rol de §2 (las cerró T-11)', () => {
     expect([...RUTAS_BRECHA_ROL].sort()).toEqual(BRECHAS_ROL);
 
     const sinAccion = RUTAS_BRECHA_ROL.filter((clave) => RUTA_ACCION[clave]?.length === 0);
