@@ -246,7 +246,7 @@ export class CatalogoHibridoService {
         catchError((error) => {
           this.guardandoCategoria.set(false);
           this.errorCategorias.set(
-            CatalogoHibridoService.mensajeDeError(error, 'No se pudo eliminar la categoría.'),
+            CatalogoHibridoService.mensajeDeError(error, 'No se pudo retirar la categoría.'),
           );
           return throwError(() => error);
         }),

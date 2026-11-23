@@ -88,10 +88,23 @@ const BORRADOS_AUTORIZADOS: Record<string, string> = {
 };
 
 /**
+ * Peticiones HTTP `DELETE` del frontend autorizadas, con su porqué. La clave es
+ * `ruta/al/servicio.ts:http.delete`, relativa a `src/app/`.
+ */
+const PETICIONES_DELETE_FRONTEND_AUTORIZADAS: Record<string, string> = {
+  'core/services/catalogo-hibrido.service.ts:http.delete':
+    'T-21 (backlog de catálogo) · único borrado físico del panel: retira una categoría GLOBAL que ningún servicio de barbero usa. El backend responde 409 CATEGORIA_CON_SERVICIOS si alguno la usa y la pantalla ofrece desactivar, así que no sustituye al cambio de estado del §9: con servicios, la categoría se desactiva con PATCH.',
+};
+
+/**
  * Alias del vocabulario del frontend autorizados, con su porqué. La clave es
  * `archivo.ts:identificador` relativo a `core/services/`.
  */
 const VOCABULARIO_FRONTEND_AUTORIZADO: Record<string, string> = {
+  'catalogo-hibrido.service.ts:delete':
+    'Es el verbo HTTP de `eliminarCategoria`, el mismo borrado autorizado de T-21: `DELETE /shops/:shopId/categorias/:id` solo retira una categoría que ningún servicio de barbero usa y el 409 CATEGORIA_CON_SERVICIOS manda a desactivar. No es un cambio de estado encubierto.',
+  'catalogo-hibrido.service.ts:eliminarCategoria':
+    'T-21 · `DELETE /shops/:shopId/categorias/:id` solo procede cuando ningún servicio de barbero usa la categoría; el 409 CATEGORIA_CON_SERVICIOS devuelve la cuenta y la pantalla ofrece desactivarla. El nombre es el del contrato, no un cambio de estado encubierto.',
   'servicios.service.ts:eliminarServicio':
     'Alias del nombre antiguo que delega en `desactivarServicio` (`PATCH .../desactivar`). No borra nada: conserva el nombre solo para no romper las llamadas que ya existen, y el backend responde 422 si la desactivación no procede.',
   'horarios.service.ts:eliminarBloqueo':
@@ -246,8 +259,8 @@ function fuenteCompleta(): string {
 /** Peticiones HTTP `DELETE` emitidas por el frontend, con archivo y línea. */
 const REGEX_HTTP_DELETE = /\bhttp\.delete\s*\(|\.delete\s*</;
 
-function peticionesDeleteDelFrontend(): string[] {
-  const hallazgos: string[] = [];
+function peticionesDeleteDelFrontend(): Borrado[] {
+  const hallazgos = new Map<string, string>();
 
   for (const archivo of archivosBajo(RAIZ_FRONTEND_APP, esCodigoDeProduccion)) {
     const relativo = rutaRelativa(RAIZ_FRONTEND_APP, archivo);
@@ -256,11 +269,12 @@ function peticionesDeleteDelFrontend(): string[] {
       // El verbo en mayúsculas también delata un `delete` montado a mano (por
       // ejemplo con `method: 'DELETE'` o en un interceptor).
       if (!REGEX_HTTP_DELETE.test(texto) && !/['"]DELETE['"]/.test(texto)) continue;
-      hallazgos.push(`${relativo}:${numero} · ${texto}`);
+      const clave = `${relativo}:http.delete`;
+      if (!hallazgos.has(clave)) hallazgos.set(clave, `${relativo}:${numero} · ${texto}`);
     }
   }
 
-  return hallazgos;
+  return [...hallazgos].map(([clave, detalle]) => ({ clave, detalle }));
 }
 
 /**
@@ -386,17 +400,14 @@ describe('E2-07 · vocabulario del diseño en el frontend', () => {
     ).toBe('');
   });
 
-  it('el frontend no emite ninguna petición HTTP DELETE', () => {
+  it('el frontend no emite peticiones HTTP DELETE salvo la excepción documentada', () => {
     const hallazgos = peticionesDeleteDelFrontend();
 
-    // Sin allowlist: en el vocabulario del diseño (Spec 01 §9) no existe ningún
-    // borrado por HTTP. Desactivar es `PATCH`, liberar es `POST`, y la sede se
-    // suspende con `PATCH :id/estado`.
-    expect(
-      hallazgos.length === 0
-        ? ''
-        : `peticiones HTTP DELETE en el frontend:\n${hallazgos.map((hallazgo) => `  ${hallazgo}`).join('\n')}`,
-    ).toBe('');
+    // El vocabulario del diseño (Spec 01 §9) no tiene borrado por HTTP:
+    // desactivar es `PATCH`, liberar es `POST` y la sede se suspende con
+    // `PATCH :id/estado`. La única excepción es el borrado de T-21.
+    expect(desviacionesDeAllowlist(hallazgos, PETICIONES_DELETE_FRONTEND_AUTORIZADAS)).toBe('');
+    expect(hallazgos.length).toBeGreaterThan(0);
   });
 
   it('los servicios de datos no usan el verbo eliminar salvo alias documentados', () => {

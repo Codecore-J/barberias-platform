@@ -261,10 +261,14 @@ model CategoriaServicio {
   barberia  Barberia?         @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
   servicios ServicioBarbero[]
 
-  // Unicidad GLOBAL del nombre: la migración de T-20 fusiona las copias por sede
-  // antes de crear este índice, y el servicio compara con `mode: 'insensitive'`
-  // igual que este índice normaliza.
-  @@unique([nombre], name: "uk_categoria_global_nombre", map: "uk_categoria_global_nombre")
+  // La unicidad GLOBAL del nombre vive SOLO en la base, en el índice
+  // `uk_categoria_global_nombre`, que es de EXPRESIÓN
+  // (`lower(btrim(regexp_replace(nombre, '\s+', ' ', 'g')))`) para que «Corte» y
+  // «corte  » sean la misma categoría. Prisma no sabe modelar un índice de
+  // expresión: declararlo aquí como `@unique` mentiría y cualquier `upsert`
+  // emitiría `ON CONFLICT (nombre)`, que PostgreSQL rechaza con 42P10. Por eso
+  // el código resuelve el nombre con `findFirst` (como `CategoriasService`) y no
+  // con `upsert`. Ver la migración 20261123170000_categorias_globales.
   @@map("categorias_servicio")
 }
 

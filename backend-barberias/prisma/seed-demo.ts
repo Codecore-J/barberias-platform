@@ -348,15 +348,25 @@ export async function sembrarDemo(
       const barberos = [barbero1, barbero2];
 
       for (const categoriaDemo of CATEGORIAS) {
-        const categoria = await tx.categoriaServicio.upsert({
+        // T-20 · la unicidad del nombre es un índice de EXPRESIÓN
+        // (`uk_categoria_global_nombre`), que Prisma no puede modelar: no hay
+        // `upsert` por nombre. Se resuelve con `findFirst` como el servicio.
+        const existente = await tx.categoriaServicio.findFirst({
           where: { nombre: categoriaDemo.nombre },
-          update: { descripcion: categoriaDemo.descripcion, activa: true },
-          create: {
-            barberiaId: null,
-            nombre: categoriaDemo.nombre,
-            descripcion: categoriaDemo.descripcion,
-          },
+          select: { id: true },
         });
+        const categoria = existente
+          ? await tx.categoriaServicio.update({
+              where: { id: existente.id },
+              data: { descripcion: categoriaDemo.descripcion, activa: true },
+            })
+          : await tx.categoriaServicio.create({
+              data: {
+                barberiaId: null,
+                nombre: categoriaDemo.nombre,
+                descripcion: categoriaDemo.descripcion,
+              },
+            });
 
         for (const servicio of categoriaDemo.servicios) {
           for (const barbero of barberos) {

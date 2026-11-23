@@ -52,10 +52,17 @@ describe('T-20 · categorías globales', () => {
       expect(modelo).toMatch(/orden\s+Int\s+@default\(0\)/);
     });
 
-    it('la unicidad del nombre deja de ser por sede y pasa a ser global', () => {
+    it('la unicidad del nombre es GLOBAL y vive en el índice de la migración', () => {
       const modelo = modeloCategoria();
+      const sql = sqlDeCategoriasGlobales();
+
       expect(modelo).not.toMatch(/@@unique\(\[barberiaId, nombre\]/);
-      expect(modelo).toMatch(/@@unique\(\[nombre\]/);
+      // Prisma no modela índices de EXPRESIÓN, y declarar la unicidad en el
+      // modelo como `@@unique([nombre])` haría que cualquier `upsert` emitiera
+      // `ON CONFLICT (nombre)`, que PostgreSQL rechaza con 42P10.
+      expect(modelo).not.toMatch(/@@unique/);
+      expect(sql).toMatch(/CREATE UNIQUE INDEX "uk_categoria_global_nombre"/i);
+      expect(sql).toMatch(/lower\(btrim\(regexp_replace/i);
     });
 
     it('existe la migración y relaja la columna en vez de recrear la tabla', () => {
