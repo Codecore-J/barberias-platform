@@ -549,11 +549,21 @@ export class AdminAgendaComponent {
         : Promise.resolve([] as Turno[]),
   });
 
-  /** Equipo de la sede: barberos y admins asignables. Independiente de la fecha. */
+  /**
+   * Equipo de la sede: barberos y admins asignables. Independiente de la fecha.
+   *
+   * T-11 · `GET /shops/:shopId/staff` ya no admite al BARBERO (solo al
+   * ADMIN_BARBERIA de la sede), así que su agenda no pide la lista: pedirla
+   * sería un 403 seguro y el error de carga taparía la agenda. Su columna sale
+   * de la propia sesión (ver `barberos`).
+   */
   private readonly equipoResource = resource({
-    params: () => ({ barberiaId: this.tenantService.barberiaActivaId() }),
+    params: () => ({
+      barberiaId: this.tenantService.barberiaActivaId(),
+      soloBarbero: rolEfectivo(this.authService.authState().user?.roles) === 'BARBERO',
+    }),
     loader: ({ params }) =>
-      params.barberiaId
+      params.barberiaId && !params.soloBarbero
         ? firstValueFrom(this.personalService.obtenerPersonal(params.barberiaId))
         : Promise.resolve([] as Personal[]),
   });
@@ -606,8 +616,21 @@ export class AdminAgendaComponent {
     const soloBarberos = equipo.filter((p) => p.roles.includes('BARBERO'));
 
     if (this.esSoloBarbero()) {
-      const propioId = this.authService.authState().user?.id;
-      return soloBarberos.filter((p) => p.id === propioId);
+      // Sin la lista del equipo —la ruta no deja entrar al BARBERO— la columna
+      // propia sale de la sesión: es su única columna y no revela a nadie más.
+      const user = this.authService.authState().user;
+      if (!user) return [];
+      return [
+        {
+          id: user.id,
+          nombreCompleto: user.nombreCompleto,
+          correo: user.correo,
+          telefono: user.telefono,
+          estado: 'ACTIVO',
+          estadoSede: 'ACTIVO',
+          roles: user.roles,
+        },
+      ];
     }
 
     return soloBarberos.length > 0 ? soloBarberos : equipo;

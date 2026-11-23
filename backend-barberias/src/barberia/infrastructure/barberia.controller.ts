@@ -142,11 +142,13 @@ export class BarberiaController {
   /**
    * GET /shops/:shopId/staff
    * Lista el personal (barberos y administradores) de una barbería.
-   * ADMIN_BARBERIA o BARBERO de esa barbería, y el ADMINISTRADOR global;
-   * la pertenencia y el ocultado del contacto se validan en el servicio
+   * Solo el ADMIN_BARBERIA de esa barbería: el BARBERO y el ADMINISTRADOR
+   * global no tienen lectura de personal (`personal.gestionar`) y, desde T-11,
+   * tampoco entran por jerarquía. La agenda del barbero no pide esta lista. La
+   * pertenencia y el ocultado del contacto se validan en el servicio
    * (E1-03 · H19).
    */
-  @Roles('ADMIN_BARBERIA', 'BARBERO')
+  @Roles('ADMIN_BARBERIA')
   @Get(':shopId/staff')
   findPersonal(
     @Param('shopId', ParseUUIDPipe) id: string,
