@@ -57,3 +57,7 @@ qa-fase3/
 
 # QA local: capturas no versionadas
 qa-capturas/
+
+# Evidencias de QA: capturas de paneles (Render, Vercel, Neon) que se adjuntan
+# al informe pero no se versionan. Sin esta regla, un `git add docs/` las sube.
+docs/qa/evidencias/
