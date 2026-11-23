@@ -45,7 +45,7 @@ export class ServiciosController {
   constructor(private readonly serviciosService: ServiciosService) {}
 
   @Post()
-  @Roles('BARBERO', 'ADMIN_BARBERIA')
+  @Roles('ADMIN_BARBERIA')
   @UseGuards(OperadorBarberiaGuard, VinculoBarberiaGuard)
   @HttpCode(HttpStatus.CREATED)
   create(
@@ -76,7 +76,7 @@ export class ServiciosController {
   }
 
   @Patch(':id')
-  @Roles('BARBERO', 'ADMIN_BARBERIA')
+  @Roles('ADMIN_BARBERIA')
   @UseGuards(OperadorBarberiaGuard, VinculoBarberiaGuard)
   update(
     @CurrentBarberiaId() barberiaId: string,
