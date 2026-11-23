@@ -11,11 +11,12 @@
   falla si el servidor descubre una ruta que no esté ahí, y también si sobra una clave.
   Hoy tiene **123 claves** y el test exige **492 evaluaciones** (123 × 4 roles).
 - **Fuente de las acciones:** `docs/MATRIZ_PERMISOS_OBJETIVO.md` (PR #172). Los **21
-  identificadores vigentes se usan tal cual**, sin renombrar ni derivar.
+  identificadores vigentes se usan tal cual**, sin renombrar ni derivar; las **nueve altas**
+  de §7 están ya escritas en esa matriz (marcadas con †), pendientes de aprobación.
 - **La propuesta no ajusta la matriz.** Donde la matriz no tiene acción, la fila dice
   `sin acción`; si la operación es de sede o plataforma, §6 propone un rol y, cuando ningún
-  identificador vigente la cubre, una acción nueva en §7. Nada de eso está escrito todavía
-  en la matriz: necesita la aprobación explícita del dueño.
+  identificador vigente la cubre, una acción nueva en §7. Las nueve altas están ya escritas
+  en la matriz como pendientes (†); siguen necesitando la aprobación explícita del dueño.
 
 ### Leyenda de la columna «Propuesta»
 
@@ -31,8 +32,8 @@
 | Categoría | Rutas |
 |---|:-:|
 | Con acción de la matriz (directa o con matiz) | 69 |
-| `sin acción` — fuera del alcance de la matriz (identidad, autoservicio, vitrina, integración) | 38 |
-| `sin acción` — **brecha**: operación que la matriz debería cubrir y no cubre | 16 |
+| `sin acción` — fuera del alcance de la matriz (identidad, autoservicio, vitrina, integración) | 41 |
+| `sin acción` — **brecha**: operación que la matriz debería cubrir y no cubre | 13 |
 | **Total** | **123** |
 
 Las 69 con acción incluyen la ruta 72: la matriz vigente le da `cita.estado.marcar` a la sede
@@ -44,11 +45,12 @@ matriz (33, 36, 79, 94, 105, 107, 111, 113, 114, 115, 116 y 118): se corrigen en
 (§5.3). Las cuatro de combos (111, 113, 114 y 115) se sumaron al aplicar la decisión del
 dueño sobre el catálogo (§5.5): hoy el código también deja gestionarlas al BARBERO.
 
-De las 16 brechas `sin acción`, §6 explica para cada una qué hace, qué rol debería tenerla
-y por qué. **Doce** necesitan acciones nuevas (§7); la ruta 44 se cubre con acciones
-vigentes; las **121–123** ya no son un hueco de matriz, sino código que hay que cerrar
-(§5.5). El número bajó de 18 a 16 porque las rutas 60 y 61 resultaron no ser una brecha
-(§5.4).
+De las 13 brechas `sin acción`, §6 explica para cada una qué hace, qué rol debería tenerla
+y por qué. **Doce** rutas necesitan acciones nuevas (§7) —ocho acciones—; la ruta 44 se
+cubre con acciones vigentes. El número bajó de 18 a 16 porque las rutas 60 y 61 resultaron
+no ser una brecha (§5.4), y de 16 a 13 porque las **121–123** dejaron de serlo al aprobarse
+la solicitud de servicio (§5.10): no son código que sobra, son la petición propia del
+barbero.
 
 ## 3 · Tabla (123 rutas)
 
@@ -211,14 +213,18 @@ vigentes; las **121–123** ya no son un hueco de matriz, sino código que hay q
 | 118 | `PATCH /shops/:shopId/categorias/:id` | `catalogo.categorias.gestionar` | **Brecha actual:** hoy ADMIN_BARBERIA. |
 | 119 | `GET /shops/:shopId/categorias/:id` | `catalogo.categorias.ver` | — |
 | 120 | `GET /shops/:shopId/servicios` | `sin acción` | Catálogo anidado de la vitrina del cliente. |
-| 121 | `POST /shops/:shopId/mis-servicios` | `sin acción` — **brecha de código** | **Decisión §5.5:** solo el ADMIN_BARBERIA crea servicios. Hoy esta ruta deja al BARBERO publicar uno propio con su precio; T-11 cierra la creación. Cómo «pide» el barbero queda pendiente (§5.5). |
-| 122 | `GET /shops/:shopId/mis-servicios` | `sin acción` — **brecha de código** | Ídem: lectura de un panel que ya no debería crear servicios. Su forma final se define con la petición del barbero (§5.5). |
-| 123 | `PATCH /shops/:shopId/mis-servicios/:id` | `sin acción` — **brecha de código** | Ídem: hoy el barbero edita precio y duración de un servicio propio. |
+| 121 | `POST /shops/:shopId/mis-servicios` | `sin acción` | **Decisión 10 (§5.10):** es la **solicitud** del barbero (nombre, categoría, duración, precio, descripción e imagen), nace `PENDIENTE`. Hoy esta ruta publica el servicio directamente. Autoservicio propio: el `barberoId` sale del JWT. |
+| 122 | `GET /shops/:shopId/mis-servicios` | `sin acción` | Panel propio: sus solicitudes con estado y motivo de rechazo, y los servicios ya aprobados. |
+| 123 | `PATCH /shops/:shopId/mis-servicios/:id` | `sin acción` | Solo su solicitud **mientras está `PENDIENTE`**. Sobre un servicio publicado no escribe: para cambiarlo manda una solicitud nueva (§5.10). |
 
 ## 4 · Lo que esta tabla no hace
 
 - No cambia controladores, guards ni decoradores.
-- No modifica `docs/MATRIZ_PERMISOS_OBJETIVO.md` (PR #172) ni `test/permisos-matriz.spec.ts`.
+- No modifica el inventario de `test/permisos-matriz.spec.ts`: lo ampliarán T-11 y T-12 con
+  las rutas nuevas.
+- Las nueve altas y las rutas de las solicitudes **sí** están escritas en
+  `docs/MATRIZ_PERMISOS_OBJETIVO.md` (§1 y §5 de ese documento, PR #172), sin tocar sus 21
+  filas vigentes.
 - No propone fusionar nada. T-10, T-11 y T-12 siguen sin empezar.
 
 ## 5 · Decisiones del dueño (22 nov 2026)
@@ -274,10 +280,54 @@ vigentes; las **121–123** ya no son un hueco de matriz, sino código que hay q
    plantilla vigente). La decisión la resuelve `horario.base.aprobar` con la ruta de §8; el
    estado es cambio de modelo y va en T-12, no en T-11.
 
-## 6 · Revisión de las 16 rutas `sin acción`
+### Tercera ronda (misma fecha)
+
+10. **Servicios: la solicitud del barbero con aprobación (cierra el pendiente de §5.5).**
+    El BARBERO crea una **solicitud de servicio** con nombre, categoría, duración, precio,
+    descripción e imagen; nace `PENDIENTE`. El ADMIN_BARBERIA de la sede la resuelve:
+    **aprobarla crea el servicio** (`APROBADA`) o la **rechaza con motivo**
+    (`RECHAZADA`, 422 `MOTIVO_RECHAZO_REQUERIDO`). El barbero **no edita servicios
+    publicados**: si quiere un cambio, manda una solicitud nueva.
+    - Las tres rutas del barbero siguen siendo **autoservicio propio**, sin acción de la
+      matriz: la 121 crea la solicitud, la 122 muestra sus solicitudes con estado y motivo y
+      la 123 solo edita una solicitud `PENDIENTE`. El `barberoId` sale del JWT y
+      `SoloBarberoGuard` sigue siendo el guard de rol.
+    - La resolución usa `catalogo.servicios.gestionar`, que ya es solo del ADMIN_BARBERIA:
+      aprobar **es** crear el servicio. Por eso las altas siguen siendo **nueve**.
+    - **Rutas nuevas:** la bandeja y la resolución del administrador están en §7.2. No
+      existen hoy: las crea T-12 junto con los estados.
+    - **Pendiente de T-12:** en qué tabla aterriza el servicio aprobado, porque hay dos
+      catálogos —`Servicio`, el de la sede, que ve el panel de administración y del que se
+      arman los combos, y `ServicioBarbero`, el que pinta la vitrina del cliente con precio
+      y barbero propios—. La consecuencia está en §5.11. Los campos nuevos (estado, motivo
+      de rechazo, descripción e imagen) no existen en ninguna de las dos tablas, y la imagen
+      necesita definir dónde se guarda.
+11. **Combos: solo el ADMIN_BARBERIA los crea y edita, sin solicitudes (aceptado).** No veo
+    problema de permisos: las rutas 111, 113, 114 y 115 caen en
+    `catalogo.servicios.gestionar`, que la matriz ya da solo al ADMIN_BARBERIA, y siguen
+    siendo brechas de rol que T-11 cierra. Sí veo tres consecuencias operativas, y las dejo
+    escritas para que no aparezcan en QA como defectos:
+    - **Un combo no puede llevar un servicio de barbero.** `ComboItem.servicioId` apunta a
+      `Servicio`, no a `ServicioBarbero`. Si el servicio aprobado nace en
+      `ServicioBarbero`, no se puede meter en un combo desde la pantalla de combos y el
+      administrador no tiene forma de hacerlo. Se resuelve al decidir la tabla del alta
+      (§5.10) o moviendo `ComboItem`, que es más trabajo.
+    - **El precio del combo es de la sede y el del servicio es de cada barbero.**
+      `Combo.precioEspecial` es uno para toda la sede, mientras `ServicioBarbero.precio`
+      cambia por barbero: el mismo descuento cae distinto en cada uno y el combo no puede
+      respetar los precios individuales. Si eso importa, el combo tendría que ser por
+      barbero, y eso no está en la decisión.
+    - **Desactivar un combo es lo que desbloquea `SERVICIO_EN_COMBO_ACTIVO`.** Con el combo
+      solo en manos del administrador, un barbero bloqueado por un combo activo deja de
+      poder desbloquearse solo: depende de la sede. Es coherente con que el catálogo sea de
+      la sede, pero es una espera nueva.
+    Lo demás no cambia: el combo no se borra (E2-07/D29) y las lecturas siguen igual.
+
+## 6 · Revisión de las 13 rutas `sin acción`
 
 Para cada ruta: qué hace hoy en el código, qué rol debería tenerla y por qué. La columna
-«Acción» es una **propuesta**; ninguna de las acciones nuevas está en la matriz.
+«Acción» es una **propuesta**; las acciones nuevas están en la matriz como altas †, todavía
+pendientes de aprobación.
 
 | # | Ruta | Qué hace | Rol propuesto | Acción | Por qué |
 |--:|---|---|---|---|---|
@@ -294,16 +344,18 @@ Para cada ruta: qué hace hoy en el código, qué rol debería tenerla y por qu�
 | 75 | `POST /shops/:shopId/appointments/:id/propose-time` | El CLIENTE dueño propone otro bloque para su cita. No ocupa agenda: deja una propuesta `PENDIENTE` con 10 minutos de ventana que resuelve la sede (E3-08, D18). | CLIENTE (solo la suya) | `cita.propia.proponer_horario` (**nueva**) | No es marcar estado: crea una propuesta. El estado lo mueve la sede con `cita.estado.marcar` (filas 76 y 77). Darle `cita.estado.marcar` al CLIENTE abriría también aceptar, rechazar y no presentado. |
 | 98 | `POST /shops/:shopId/payments/` | Registra atención y cobro en persona. El BARBERO solo cobra sus reservas asignadas; una reserva sin barbero solo la cobra la sede (E3-09). | ADMIN_BARBERIA (toda la sede) y BARBERO (solo sus citas) | `pagos.cobrar` (**nueva**) | La matriz separa `caja.ver_y_cerrar` (ver y cerrar) de `pagos.anular` (deshacer), pero **no tiene cobrar**, que es la operación central de la caja. **Decisiones 2 y 3 (§5.6–§5.7):** el barbero cobra sus citas y el ADMINISTRADOR global no cobra; hoy entra por jerarquía y T-11 debe excluirlo. |
 | 100 | `POST /pagos/cobrar` | El mismo cobro desde la agenda (V3 fase 6); entra al mismo `PagoService.registrarPagoEnPersona`, así que las reglas no pueden desincronizarse. | ADMIN_BARBERIA (toda la sede) y BARBERO (solo sus citas) | `pagos.cobrar` (**nueva**) | Es la misma operación que la 98 con otro contrato: una sola acción para las dos rutas evita que una quede con permiso y la otra no. **Decisiones 2 y 3 (§5.6–§5.7):** el ADMINISTRADOR global tampoco cobra por esta ruta. |
-| 121 | `POST /shops/:shopId/mis-servicios` | El BARBERO publica un servicio **propio** (otra tabla que el catálogo de la sede). El `barberoId` sale del JWT y `SoloBarberoGuard` impide publicar «en su nombre». | Ninguno: el barbero **pide** el servicio al ADMIN_BARBERIA (§5.5) | `sin acción` — **brecha de código** | La decisión deja el catálogo solo en el ADMIN_BARBERIA y `mis-servicios` hoy permite al barbero crear con su precio. T-11 cierra la creación; cómo se pide queda pendiente (§5.5). |
-| 122 | `GET /shops/:shopId/mis-servicios` | Lista los servicios propios del barbero autenticado. | — | `sin acción` — **brecha de código** | Lectura del mismo panel que hoy permite crear: su forma final depende de cómo se implemente la petición del barbero (§5.5). |
-| 123 | `PATCH /shops/:shopId/mis-servicios/:id` | Edita un servicio propio (el servicio comprueba que sea del barbero del token). | Ninguno | `sin acción` — **brecha de código** | Hoy el barbero cambia precio y duración de un servicio propio; la decisión lo deja en manos del ADMIN_BARBERIA. T-11 cierra la edición. |
+| 121 | `POST /shops/:shopId/mis-servicios` | Crea la **solicitud** de servicio (nombre, categoría, duración, precio, descripción, imagen), que nace `PENDIENTE`; hoy publica el servicio directamente. El `barberoId` sale del JWT y `SoloBarberoGuard` impide pedir «en su nombre». | BARBERO (solo la suya) | `sin acción` — autoservicio propio | Decisión 10 (§5.10): la petición es del barbero y no publica nada; la resolución usa `catalogo.servicios.gestionar` (§7.2). |
+| 122 | `GET /shops/:shopId/mis-servicios` | Panel propio: sus solicitudes con estado y motivo de rechazo, y los servicios ya aprobados. | BARBERO (solo las suyas) | `sin acción` — autoservicio propio | Es su propio panel; el `barberoId` sale del JWT. |
+| 123 | `PATCH /shops/:shopId/mis-servicios/:id` | Edita su solicitud **mientras está `PENDIENTE`**; sobre un servicio ya publicado no escribe. | BARBERO (solo la suya) | `sin acción` — autoservicio propio | Decisión 10: el barbero no edita servicios publicados; T-12 devuelve 409 si la solicitud ya está resuelta. |
 
 ## 7 · Acciones nuevas propuestas
 
-Nueve acciones: `cita.propia.cancelar`, que el dueño ya aprobó (§5.1), y ocho más.
-**Ninguna entra en `docs/MATRIZ_PERMISOS_OBJETIVO.md` hasta que el dueño las apruebe.**
-La matriz pasaría de **21 a 30 acciones** y **ninguna de las 21 filas vigentes cambia de
-celda**: las decisiones del dueño solo añaden.
+Nueve acciones: `cita.propia.cancelar`, que el dueño ya aprobó (§5.1), y ocho más. **Ya
+están escritas en `docs/MATRIZ_PERMISOS_OBJETIVO.md`** (§1 de ese documento, rama
+`docs/matriz-permisos-objetivo`, PR #172) como altas marcadas con †, junto con las rutas de
+las solicitudes (§5 de ese documento); el dueño todavía no las aprobó y #172 sigue sin
+fusionar. La matriz pasa de **21 a 30 acciones** y **ninguna de las 21 filas vigentes cambia
+de celda**: las decisiones del dueño solo añaden.
 
 | Acción nueva | ADMINISTRADOR | ADMIN_BARBERIA | BARBERO | CLIENTE | Rutas |
 |---|:-:|:-:|:-:|:-:|---|
@@ -323,10 +375,37 @@ la decisión §5.5.
 ### Pendientes que la matriz todavía no resuelve
 
 1. **`GET /shops/overview` (fila 44) con dos acciones según el alcance.** Es la única de las
-   16 que no necesita acción nueva, pero exige que el guard distinga audiencia (sede vs
+   13 que no necesita acción nueva, pero exige que el guard distinga audiencia (sede vs
    plataforma). No está decidido cómo.
-2. **Cómo «pide» el barbero los servicios (§5.5).** Fuera del sistema o como solicitud con
-   aprobación y estado propio. Cambia si hace falta una acción nueva y una migración.
+2. **En qué tabla aterriza el servicio aprobado (§5.10).** En `Servicio` (sede, panel de
+   administración, sirve para combos) o en `ServicioBarbero` (vitrina del cliente, con
+   precio y barbero). Decide si el servicio aprobado puede entrar en un combo (§5.11).
+3. **Si la solicitud del barbero lleva acción propia.** Hoy queda como autoservicio propio
+   para no pasar de nueve altas; si el dueño la quiere en la matriz sería una décima,
+   `catalogo.solicitudes_servicio.proponer` (BARBERO ✅, el resto ❌).
+4. **Si el barbero puede desactivar un servicio ya aprobado** o eso también es una solicitud
+   al administrador. Hoy `PATCH …/mis-servicios/:id` lo permite.
+
+### Rutas de las solicitudes (objetivo, todavía no existen)
+
+Las altas son nueve; las rutas de la solicitud de servicio y de la propuesta de horario base
+son estas. No están implementadas: T-12 las crea junto con los estados.
+
+| Ruta | Quién | Qué hace | Acción |
+|---|---|---|---|
+| `POST /shops/:shopId/mis-servicios` | BARBERO | Crea la solicitud `PENDIENTE`. | `sin acción` (autoservicio propio) |
+| `GET /shops/:shopId/mis-servicios` | BARBERO | Sus solicitudes y servicios aprobados, con estado y motivo. | `sin acción` |
+| `PATCH /shops/:shopId/mis-servicios/:id` | BARBERO | Edita la solicitud mientras está `PENDIENTE`. | `sin acción` |
+| `GET /shops/:shopId/solicitudes-servicio` (**nueva**) | ADMIN_BARBERIA | Bandeja de solicitudes `PENDIENTE` de la sede. | `catalogo.servicios.gestionar` |
+| `PATCH /shops/:shopId/solicitudes-servicio/:id` (**nueva**) | ADMIN_BARBERIA | `{aprobar:true}` crea el servicio y deja la solicitud `APROBADA`; `{aprobar:false,motivoRechazo}` la deja `RECHAZADA` (422 `MOTIVO_RECHAZO_REQUERIDO`). | `catalogo.servicios.gestionar` |
+| `PUT /shops/:shopId/mi-horario/base` | BARBERO | Pasa a crear la **propuesta** `PENDIENTE` (hoy escribe la plantilla vigente). | `excepciones.propias.registrar` |
+| `PATCH /shops/:shopId/hours/barbers/:barberoId/base` (**nueva**, §8) | ADMIN_BARBERIA | Aprueba o rechaza la propuesta, con motivo en el rechazo. | `horario.base.aprobar` |
+
+- Las propuestas de horario base pendientes se leen por la ruta que ya existe,
+  `GET /shops/:shopId/hours/` (81), añadiendo el estado; no hace falta bandeja aparte.
+- Los estados son los mismos en las dos solicitudes (`PENDIENTE`, `APROBADA`,
+  `RECHAZADA` con motivo); la de servicio añade descripción e imagen, que hoy no existen en
+  ninguna de las dos tablas del catálogo.
 
 ## 8 · Ruta propuesta para `horario.base.aprobar`
 
@@ -352,10 +431,11 @@ Roles: ADMIN_BARBERIA de esa sede (ADMINISTRADOR ❌, BARBERO ❌, CLIENTE ❌)
 
 ## 9 · Estado de este documento
 
-- **No** modifica `docs/MATRIZ_PERMISOS_OBJETIVO.md` (PR #172), ni el spec de rutas, ni
-  controladores, guards o decoradores.
+- **No** modifica el spec de rutas, ni controladores, guards o decoradores.
 - **No** fusiona nada ni empieza T-10, T-11 ni T-12.
-- Pendiente: el visto bueno del dueño sobre §7 (las nueve acciones nuevas; la de cancelación
-  ya está aprobada) y sobre las dos preguntas de §7.1 (guard de `overview` y forma de la
-  petición del barbero). Cualquier cambio a la matriz necesita su aprobación explícita; esta
-  propuesta no la toca.
+- **Sí** escribe: las nueve altas y las rutas de las solicitudes están ya en
+  `docs/MATRIZ_PERMISOS_OBJETIVO.md` (§1 y §5 de ese documento, rama
+  `docs/matriz-permisos-objetivo`, PR #172), marcadas como altas pendientes de aprobación.
+  Las 21 filas vigentes de la matriz no se tocaron.
+- Pendiente: el visto bueno del dueño sobre las nueve altas, la autorización para fusionar
+  #172 y #174, y las cuatro preguntas de §7.1.
