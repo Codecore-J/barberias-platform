@@ -30,9 +30,10 @@ import type { UsuarioAutenticado } from '../src/iam/domain/jwt.interface.js';
  *
  *  1. `POLITICA_DECLARADA`: los roles que declara cada decorador. Es lo que el
  *     código tiene que escribir, sin deducciones ni atajos.
- *  2. `MATRIZ_ESPERADA`: a qué roles `RolesGuard` concede realmente la ruta,
- *     ya con la regla de jerarquía de `RolesGuard` (el `ADMINISTRADOR` global
- *     pasa cualquier `@Roles`). El guard es el que decide, no el decorador.
+ *  2. `MATRIZ_ESPERADA`: a qué roles `RolesGuard` concede realmente la ruta.
+ *     T-11 (opción A): el guard ya no tiene jerarquía y concede exactamente la
+ *     lista declarada, así que una ruta 📕 `ADMINISTRADOR ❌` en la matriz no
+ *     deja entrar al global.
  *
  * Cualquier ruta nueva que no esté en las dos constantes hace fallar el test:
  * una ruta sin decisión de permisos no puede entrar en `main`.
@@ -58,8 +59,13 @@ const VERBO: Record<RequestMethod, string> = {
 const TODOS: Rol[] = [ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE];
 
 /**
- * Roles que declara cada decorador tras E1-05. Las rutas `@Public` y
- * `@Autenticado` no declaran lista, así que admiten a los cuatro.
+ * Roles que declara cada decorador. Las rutas `@Public` y `@Autenticado` no
+ * declaran lista, así que admiten a los cuatro.
+ *
+ * T-11 (23 nov 2026): esta es la política OBJETIVO de la matriz. Con la opción
+ * A, `RolesGuard` no concede nada por jerarquía, así que cada lista es la
+ * decisión completa de la ruta. Los comentarios de más abajo que digan «el
+ * ADMINISTRADOR entra por jerarquía» describen el estado anterior a T-11.
  */
 const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'GET /': TODOS,
@@ -96,19 +102,19 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // cuatro», igual que el resto de rutas públicas.
   'POST /webhooks/whatsapp/': TODOS,
 
-  'GET /auditoria/': [ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA],
+  'GET /auditoria/': [ROL_ADMINISTRADOR],
   'GET /auditoria/estadisticas': [ROL_ADMINISTRADOR],
   'POST /auditoria/purgar': [ROL_ADMINISTRADOR],
 
   'GET /shops/': TODOS,
-  'POST /shops/': TODOS,
+  'POST /shops/': [ROL_ADMINISTRADOR],
   'GET /shops/all': [ROL_ADMINISTRADOR],
-  'GET /shops/:shopId/staff': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
-  'POST /shops/:shopId/staff': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'PATCH /shops/:shopId/staff/:userId': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/staff': [ROL_ADMIN_BARBERIA],
+  'POST /shops/:shopId/staff': [ROL_ADMIN_BARBERIA],
+  'PATCH /shops/:shopId/staff/:userId': [ROL_ADMIN_BARBERIA],
   'GET /shops/:shopId': TODOS,
   'PATCH /shops/:shopId/select': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'PATCH /shops/:shopId': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /shops/:shopId': [ROL_ADMINISTRADOR],
   // E2-07 (2026-10-13): el borrado lógico de la sede pasa a ser un cambio de
   // estado explícito. La ruta usa `:id` (no `:barberiaId`), así que el guard NO
   // resuelve la sede del parámetro y la política es la lista plana: el
@@ -128,17 +134,17 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'GET /shops/:shopId/settings/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'PATCH /shops/:shopId/settings/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   // Paso 10: analíticas operativas y de retención (solo admin de sede / plataforma).
-  'GET /shops/:shopId/analytics/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/analytics/': [ROL_ADMIN_BARBERIA],
   // Paso 13: descarga CSV del mismo panel. Es el mismo balance financiero, así
   // que la política es idéntica y el guard vuelve a acotar la sede del parámetro.
-  'GET /shops/:shopId/analytics/export': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/analytics/export': [ROL_ADMIN_BARBERIA],
   // T-15 · métricas consolidadas de la PLATAFORMA: solo el ADMINISTRADOR
   // global. Un ADMIN_BARBERIA no ve la facturación de otras sedes (D05).
   'GET /analytics/plataforma/hoy': [ROL_ADMINISTRADOR],
   // Paso 12: resumen consolidado multisede / franquicia. E4-04: la ruta vive en
   // `BarberiaController` (antes que `:shopId`), así que ya no lleva la barra
   // final que arrastraba el controlador propio con `@Controller('shops/overview')`.
-  'GET /shops/overview': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/overview': [ROL_ADMIN_BARBERIA],
 
   // E3-13 (2026-10-11): el nombre y el responsable solo cambian por solicitud
   // aprobada. La ruta usa `:id` (no `:barberiaId`), así que el guard NO resuelve
@@ -150,7 +156,7 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // siendo de la plataforma (D26), así que esta lectura no tiene acciones de
   // escritura. Declara también al ADMINISTRADOR porque su supervisión es
   // transversal y la pertenencia la vuelve a exigir el servicio.
-  'GET /shops/:shopId/change-requests': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/change-requests': [ROL_ADMIN_BARBERIA],
   // E4-03 (2026-10-12): la bandeja de restringidos es de la SEDE. Como en
   // E3-13 la ruta usa `:id` y el guard no resuelve la sede del parámetro, así
   // que la pertenencia la exige el servicio (403). D48: la lista es local y no
@@ -220,11 +226,11 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // tiene sentido desde plataforma; los de sede se cambian en `.../staff`.
   'PATCH /plataforma/usuarios/:id/administrador': [ROL_ADMINISTRADOR],
 
-  'GET /shops/:shopId/appointments/schedule/blocks': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
-  'POST /shops/:shopId/appointments/schedule/blocks': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/appointments/schedule/blocks': [ROL_ADMIN_BARBERIA],
+  'POST /shops/:shopId/appointments/schedule/blocks': [ROL_ADMIN_BARBERIA],
   // E2-07: `DELETE .../bloqueos/:id` —que borraba la fila— pasa a
   // `POST .../bloqueos/:id/liberar`, que fija `liberado_at` y conserva el rastro.
-  'POST /shops/:shopId/appointments/schedule/blocks/:id/release': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/schedule/blocks/:id/release': [ROL_ADMIN_BARBERIA],
   'GET /shops/:shopId/appointments/schedule/availability': TODOS,
   'POST /shops/:shopId/appointments/schedule/availability': TODOS,
   // E4-02 (2026-10): los huecos de espacio son lectura de la capacidad de venta
@@ -237,29 +243,29 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
     ROL_ADMINISTRADOR,
   ],
 
-  'POST /shops/:shopId/records/': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'PATCH /shops/:shopId/records/:id/evaluate': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'GET /shops/:shopId/records/client/:clientId': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'GET /shops/:shopId/records/pending': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/records/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'PATCH /shops/:shopId/records/:id/evaluate': [ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/records/client/:clientId': [ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA, ROL_BARBERO],
+  'GET /shops/:shopId/records/pending': [ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA, ROL_BARBERO],
 
-  'GET /shops/:shopId/hours/': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /shops/:shopId/hours/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/hours/': [ROL_ADMIN_BARBERIA],
+  'POST /shops/:shopId/hours/': [ROL_ADMIN_BARBERIA],
   'GET /shops/:shopId/hours/mine': [ROL_BARBERO],
-  'POST /shops/:shopId/hours/mine': [ROL_BARBERO],
+  'POST /shops/:shopId/hours/mine': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   // V3 fase 5 · semana propia del barbero (días libres y descansos). El
   // `barberoId` sale del JWT: la ruta no lo lleva ni en la ruta ni en el cuerpo.
   'GET /shops/:shopId/mi-horario/': [ROL_BARBERO],
-  'PUT /shops/:shopId/mi-horario/': [ROL_BARBERO],
+  'PUT /shops/:shopId/mi-horario/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   // V3 · plantilla base semanal (recurrente, sin sede). Misma política que la
   // semana de la sede: es el barbero quien declara su horario, y el `barberoId`
   // sale del JWT. La sede del path solo autoriza el vínculo.
   'GET /shops/:shopId/mi-horario/base': [ROL_BARBERO],
-  'PUT /shops/:shopId/mi-horario/base': [ROL_BARBERO],
-  'GET /shops/:shopId/hours/exceptions': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /shops/:shopId/hours/barbers/:barberoId/exceptions': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PUT /shops/:shopId/mi-horario/base': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'GET /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA],
+  'POST /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA],
+  'POST /shops/:shopId/hours/barbers/:barberoId/exceptions': [ROL_ADMIN_BARBERIA],
 
-  'GET /shops/:shopId/payments/audit': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/payments/audit': [ROL_ADMIN_BARBERIA],
   // E3-09 (2026-10): la política de la RUTA no cambia — el guard sigue
   // admitiendo a los tres roles en POST /cobros. Lo que se añade es una
   // comprobación de SERVICIO: un BARBERO solo cobra las reservas asignadas a
@@ -275,13 +281,13 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // NO resuelve la sede del parámetro y la pertenencia la vuelve a exigir
   // `PagoService.anularPago` con la sede del PAGO (403 `ANULACION_SOLO_ADMIN` si
   // quien anula es barbero de esa sede, 404 si el cobro es de otra sede).
-  'GET /shops/:shopId/payments/history': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/payments/history': [ROL_ADMIN_BARBERIA],
   // V3 fase 6: el cobro desde la agenda (mismos roles que la caja histórica) y
   // el arqueo diario, que es decisión de la sede.
   'POST /pagos/cobrar': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'GET /caja/hoy': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /caja/cierre': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /shops/:shopId/payments/:id/void': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'GET /caja/hoy': [ROL_ADMIN_BARBERIA],
+  'POST /caja/cierre': [ROL_ADMIN_BARBERIA],
+  'POST /shops/:shopId/payments/:id/void': [ROL_ADMIN_BARBERIA],
 
   // E3-03 (2026-10): la única fila de cuatro roles se parte en dos. El alias
   // `/reservas` lo usaban DOS pantallas: el wizard del cliente
@@ -292,12 +298,12 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // sede y siempre con barbero, queda para el staff. No se debilita ninguna
   // de las dos: se sustituyen 4 aserciones mezcladas por 2 + 2 más estrictas.
   'POST /shops/:shopId/appointments/': [ROL_CLIENTE],
-  'POST /shops/:shopId/appointments/walk-in': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/walk-in': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   // Fase 3 · cita directa COBRADA en un solo paso. No lo declara el BARBERO a
   // propósito: abrir una cita al vuelo y cobrarla mueve la caja del día, y
   // deshacer un cobro ya es una decisión administrativa (H68, §7.3). El barbero
   // sigue cobrando lo suyo desde su agenda con `POST /shops/:shopId/payments`.
-  'POST /shops/:shopId/appointments/walk-in-pago': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/walk-in-pago': [ROL_ADMIN_BARBERIA],
   // D44: la cotización sin persistir la usan tanto el wizard del cliente (que
   // necesita cotizar antes de crear su propia reserva) como el modal de
   // walk-in, así que declara los cuatro roles: cotizar no persiste nada y el
@@ -311,38 +317,38 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // aceptar/rechazar/cancelar y hasta cobrar sin pasar por caja. La matriz
   // pierde esa fila (64 → 63 rutas) y el único escritor de estado es ahora
   // `ReservaService.cambiarEstado`, privado y con la máquina delante.
-  'POST /shops/:shopId/appointments/:id/no-show': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/:id/no-show': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   // E3-04 (2026-10-09): aceptar y rechazar una solicitud son decisiones de la
   // SEDE, no del barbero: la misma matriz que el no presentado (D02) y que el
   // cambio de estado (decisión 11, hoy ya sin ruta genérica). El `RolesGuard`
   // las acota al `barberiaId` del parámetro, así que un admin de otra sede
   // recibe 403.
-  'POST /shops/:shopId/appointments/:id/accept': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /shops/:shopId/appointments/:id/reject': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/:id/accept': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'POST /shops/:shopId/appointments/:id/reject': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   // E3-05 (2026-10-09): cancelar la declaran los tres roles. El CLIENTE dueño
   // cancela lo suyo y la sede cancela por mostrador; lo que el guard NO puede
   // ver —que la reserva sea del CLIENTE que la cancela— lo exige el servicio
   // (403 RESERVA_AJENA) y lo cubren las pruebas de servicio y el E2E.
-  'POST /shops/:shopId/appointments/:id/cancel': [ROL_CLIENTE, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/:id/cancel': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA],
   // E3-06 (2026-10-09): reprogramar una reserva vigente es una decisión de la
   // SEDE, como aceptar, rechazar o marcar el no presentado: la misma política y
   // el mismo acotado por `barberiaId` del parámetro. La vía del CLIENTE para
   // cambiar de horario es la propuesta con ventana de 10 minutos (§5.4), que
   // sigue pendiente como tarea del backlog.
-  'PATCH /shops/:shopId/appointments/:id/reschedule': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /shops/:shopId/appointments/:id/reschedule': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   // E3-08 (2026-10-10): la cancelación especial (D17) es una decisión de la SEDE
   // con motivo obligatorio, así que declara los mismos dos roles que aceptar,
   // rechazar o reprogramar. La propuesta de horario (D18) es la vía del CLIENTE
   // dueño y su bandeja de resolución (aceptar/rechazar) vuelve a ser de la SEDE.
-  'POST /shops/:shopId/appointments/:id/special-cancellation': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/:id/special-cancellation': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   'POST /shops/:shopId/appointments/:id/propose-time': [ROL_CLIENTE],
-  'POST /shops/:shopId/appointments/:id/proposed-time/accept': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /shops/:shopId/appointments/:id/proposed-time/reject': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/appointments/:id/proposed-time/accept': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'POST /shops/:shopId/appointments/:id/proposed-time/reject': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   // H-03: bandeja de propuestas de horario pendientes de la sede. Misma política
   // que aceptar/rechazar (D02): es decisión de la SEDE, no del barbero ni del
   // cliente. El ADMINISTRADOR global entra por jerarquía (E1-04).
-  'GET /shops/:shopId/appointments/proposals/pending': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'GET /shops/:shopId/appointments/day': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/appointments/proposals/pending': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'GET /shops/:shopId/appointments/day': [ROL_ADMIN_BARBERIA],
   // D16 (Especificación §2/§3.1): el catálogo lo opera el personal de la sede.
   // Las escrituras son del BARBERO y del ADMIN_BARBERIA (en V1 suele ser el
   // único responsable/operador). El ADMINISTRADOR global queda FUERA de la
@@ -350,20 +356,20 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // se ocupa `OperadorBarberiaGuard`. Las lecturas conservan al CLIENTE porque
   // son la vitrina pública y el wizard.
   'GET /shops/:shopId/services/': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
-  'POST /shops/:shopId/services/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'POST /shops/:shopId/services/': [ROL_ADMIN_BARBERIA],
   'GET /shops/:shopId/services/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
-  'PATCH /shops/:shopId/services/:id': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'PATCH /shops/:shopId/services/:id': [ROL_ADMIN_BARBERIA],
   // E2-07: el `DELETE` del catálogo se parte en los dos verbos del cambio de
   // estado. Desactivar tiene reglas de negocio (422) que el guard no puede ver.
-  'PATCH /shops/:shopId/services/:id/deactivate': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
-  'PATCH /shops/:shopId/services/:id/reactivate': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'PATCH /shops/:shopId/services/:id/deactivate': [ROL_ADMIN_BARBERIA],
+  'PATCH /shops/:shopId/services/:id/reactivate': [ROL_ADMIN_BARBERIA],
 
   'GET /shops/:shopId/combos/': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
-  'POST /shops/:shopId/combos/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'POST /shops/:shopId/combos/': [ROL_ADMIN_BARBERIA],
   'GET /shops/:shopId/combos/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO, ROL_CLIENTE, ROL_ADMINISTRADOR],
-  'PATCH /shops/:shopId/combos/:id': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
-  'PATCH /shops/:shopId/combos/:id/deactivate': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
-  'PATCH /shops/:shopId/combos/:id/reactivate': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
+  'PATCH /shops/:shopId/combos/:id': [ROL_ADMIN_BARBERIA],
+  'PATCH /shops/:shopId/combos/:id/deactivate': [ROL_ADMIN_BARBERIA],
+  'PATCH /shops/:shopId/combos/:id/reactivate': [ROL_ADMIN_BARBERIA],
 
   // E4-02 · D22 (2026-10-20): el alta de la lista de espera es del CLIENTE: el
   // `usuarioId` sale del token, así que la ruta no lleva `:barberiaId` y el
@@ -374,12 +380,12 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // categorías las crea y edita su ADMIN_BARBERIA —OperadorBarberiaGuard cierra
   // el paso del ADMINISTRADOR global por jerarquía, igual que en el catálogo de
   // E1-05— y el BARBERO solo las lee para publicar dentro.
-  'POST /shops/:shopId/categorias/': [ROL_ADMIN_BARBERIA],
-  'GET /shops/:shopId/categorias/': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
-  'PATCH /shops/:shopId/categorias/:id': [ROL_ADMIN_BARBERIA],
+  'POST /shops/:shopId/categorias/': [ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/categorias/': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /shops/:shopId/categorias/:id': [ROL_ADMINISTRADOR],
   // T-17 · detalle de categoría: misma política de lectura que el listado
   // (el ADMINISTRADOR global entra por la jerarquía de E1-04, en solo lectura).
-  'GET /shops/:shopId/categorias/:id': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
+  'GET /shops/:shopId/categorias/:id': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
 
   // V3 · el catálogo anidado que consume el frontend del cliente. Se declaran los
   // cuatro roles porque es la vitrina (como GET /shops/:shopId/services): la
@@ -399,22 +405,16 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // reprogramar. La ruta NO lleva :shopId, así que el guard solo filtra el rol y
   // la pertenencia la exige ReservaService.asignarBarbero contra la sede de la
   // reserva (403 RESERVA_AJENA); mismo patrón que la anulación de un cobro (H68).
-  'PATCH /reservas/:id/asignar-barbero': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'PATCH /reservas/:id/asignar-barbero': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
 
 };
 
 /**
- * Decisión efectiva de `RolesGuard` por ruta y rol. Coincide con la política
- * declarada más la regla de jerarquía: `ADMINISTRADOR` tiene acceso transversal
- * y `RolesGuard` lo concede antes de mirar la lista de roles, así que pasa
- * cualquier `@Roles` (E1-04).
+ * Decisión efectiva de `RolesGuard` por ruta y rol. T-11 (opción A): el guard
+ * ya no concede nada por jerarquía, así que la decisión efectiva es exactamente
+ * la lista declarada. Si una ruta no declara `ADMINISTRADOR`, el global no entra.
  */
-const MATRIZ_ESPERADA: Record<string, Rol[]> = Object.fromEntries(
-  Object.entries(POLITICA_DECLARADA).map(([ruta, roles]) => [
-    ruta,
-    roles.includes(ROL_ADMINISTRADOR) ? roles : [...roles, ROL_ADMINISTRADOR],
-  ]),
-);
+const MATRIZ_ESPERADA: Record<string, Rol[]> = POLITICA_DECLARADA;
 
 interface RutaDescubierta {
   clave: string;
@@ -611,7 +611,7 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     ).toBe('');
   }, 60_000);
 
-  it('RolesGuard concede a cada rol exactamente lo que dice la matriz', () => {
+  it('RolesGuard concede a cada rol exactamente lo que declara la ruta (sin jerarquía)', () => {
     const desviaciones: string[] = [];
     let evaluaciones = 0;
 
@@ -685,10 +685,14 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // `GET /shops/:shopId/categorias/:id`, el detalle de categoría). QA2-02 suma
   // `POST /auth/logout`: 123 × 4 = 492.
   expect(evaluaciones).toBe(492);
+
+    const resumen =
+      desviaciones.length > 40
+        ? `${desviaciones.slice(0, 40).join('\n')}\n… y ${desviaciones.length - 40} desviaciones más`
+        : desviaciones.join('\n');
+
     expect(
-      desviaciones.length === 0
-        ? ''
-        : `${desviaciones.length} desviaciones:\n${desviaciones.join('\n')}`,
+      desviaciones.length === 0 ? '' : `${desviaciones.length} desviaciones:\n${resumen}`,
     ).toBe('');
   }, 60_000);
 });
