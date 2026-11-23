@@ -46,29 +46,26 @@ export class ConfiguracionBarberiaController {
     return this.configuracionService.getConfiguracion(barberiaId);
   }
 
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Patch()
   async actualizarConfiguracion(
     @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @Body() dto: ConfiguracionBarberiaDto,
     @CurrentUser() user: UsuarioAutenticado,
   ) {
-    // Mismo criterio de acceso que GET.
-    const esGlobal = user?.roles?.includes('ADMINISTRADOR') ?? false;
+    // Decisión 8: la escritura es solo del ADMIN_BARBERIA de la sede. El
+    // ADMINISTRADOR global conserva la lectura (GET) y no escribe.
+    const esAdminDeEsta =
+      user?.rolesDetallados?.some(
+        (rol) =>
+          rol.nombre === 'ADMIN_BARBERIA' &&
+          (rol.barberiaId === barberiaId || !rol.barberiaId),
+      ) ?? false;
 
-    if (!esGlobal) {
-      const esAdminDeEsta =
-        user?.rolesDetallados?.some(
-          (rol) =>
-            rol.nombre === 'ADMIN_BARBERIA' &&
-            (rol.barberiaId === barberiaId || !rol.barberiaId),
-        ) ?? false;
-
-      if (!esAdminDeEsta) {
-        throw new ForbiddenException(
-          'No tienes permisos para modificar la configuración de esta barbería.',
-        );
-      }
+    if (!esAdminDeEsta) {
+      throw new ForbiddenException(
+        'No tienes permisos para modificar la configuración de esta barbería.',
+      );
     }
 
     return this.configuracionService.actualizarConfiguracion(barberiaId, dto, user);

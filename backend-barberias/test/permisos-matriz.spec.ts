@@ -132,7 +132,9 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // E3-11 (2026-10-11): la configuración de la barbería la consulta y la
   // modifica la SEDE; el `RolesGuard` la acota al `barberiaId` del parámetro.
   'GET /shops/:shopId/settings/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'PATCH /shops/:shopId/settings/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  // Decisión 8 (T-11): el ADMINISTRADOR global lee la configuración y no la
+  // escribe. La ruta declara su política completa, sin fail-open.
+  'PATCH /shops/:shopId/settings/': [ROL_ADMIN_BARBERIA],
   // Paso 10: analíticas operativas y de retención (solo admin de sede / plataforma).
   'GET /shops/:shopId/analytics/': [ROL_ADMIN_BARBERIA],
   // Paso 13: descarga CSV del mismo panel. Es el mismo balance financiero, así
@@ -162,10 +164,8 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // que la pertenencia la exige el servicio (403). D48: la lista es local y no
   // existe ninguna acción de cuenta global en estos dos endpoints.
   'GET /shops/:shopId/restricted-clients/': [ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
-  'POST /shops/:shopId/restricted-clients/:clientId/reactivate': [
-    ROL_ADMIN_BARBERIA,
-    ROL_ADMINISTRADOR,
-  ],
+  // Decisión 8: el global ve la bandeja (GET) y no levanta la restricción.
+  'POST /shops/:shopId/restricted-clients/:clientId/reactivate': [ROL_ADMIN_BARBERIA],
   'GET /plataforma/solicitudes-cambio/': [ROL_ADMINISTRADOR],
   'POST /plataforma/solicitudes-cambio/:id/resolver': [ROL_ADMINISTRADOR],
   // E3-12 (2026-10-15): la 6.ª vinculación (D10) la resuelve la PLATAFORMA.
@@ -266,14 +266,14 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /shops/:shopId/hours/barbers/:barberoId/exceptions': [ROL_ADMIN_BARBERIA],
 
   'GET /shops/:shopId/payments/audit': [ROL_ADMIN_BARBERIA],
-  // E3-09 (2026-10): la política de la RUTA no cambia — el guard sigue
-  // admitiendo a los tres roles en POST /cobros. Lo que se añade es una
+  // E3-09 (2026-10): el guard admite al BARBERO y al ADMIN_BARBERIA en
+  // POST /cobros (decisiones 2 y 3: el global no cobra). Lo que se añade es una
   // comprobación de SERVICIO: un BARBERO solo cobra las reservas asignadas a
   // él (y las sin asignar solo las cobra un ADMIN), que el guard no puede ver
   // porque no consulta la reserva. Cubierto por
   // `test/pago-barbero-asignado.e2e-spec.ts` (5 casos, rojo→verde) y por el
   // describe E3-09 de `src/pago/application/pago.service.spec.ts`.
-  'POST /shops/:shopId/payments/': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /shops/:shopId/payments/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   // H68 (2026-10-18): §7.3 · corregir un cobro. El recibo de la sede es la
   // lectura del dinero cobrado y la anulación es una decisión administrativa,
   // así que las dos son de la SEDE: el BARBERO cobra (E3-09) pero no deshace un
@@ -284,7 +284,7 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'GET /shops/:shopId/payments/history': [ROL_ADMIN_BARBERIA],
   // V3 fase 6: el cobro desde la agenda (mismos roles que la caja histórica) y
   // el arqueo diario, que es decisión de la sede.
-  'POST /pagos/cobrar': [ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
+  'POST /pagos/cobrar': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   'GET /caja/hoy': [ROL_ADMIN_BARBERIA],
   'POST /caja/cierre': [ROL_ADMIN_BARBERIA],
   'POST /shops/:shopId/payments/:id/void': [ROL_ADMIN_BARBERIA],

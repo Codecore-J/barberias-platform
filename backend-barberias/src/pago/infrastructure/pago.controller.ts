@@ -23,16 +23,17 @@ export class PagoController {
 
   /**
    * POST /shops/:shopId/payments
-   * Registrar atención y pago: BARBERO, ADMIN_BARBERIA y ADMINISTRADOR
-   * (decisión 9). Lo usa el modal de cobro de la pantalla de agenda, que
-   * comparten el barbero y el responsable.
+   * Registrar atención y pago: BARBERO y ADMIN_BARBERIA. Decisiones 2 y 3: el
+   * ADMINISTRADOR global no cobra por esta ruta (T-11 le quita el acceso por
+   * jerarquía y la lista ya no lo declara). Lo usa el modal de cobro de la
+   * pantalla de agenda, que comparten el barbero y el responsable.
    *
    * E3-09: el BARBERO solo cobra las reservas que tiene asignadas; una reserva
    * sin barbero solo puede cobrarla el ADMIN_BARBERIA o el ADMINISTRADOR. La
    * comprobación vive en `PagoService.registrarPagoEnPersona`, porque necesita
    * la reserva concreta y el decorador solo ve el rol.
    */
-  @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @Post()
   registrarPagoEnPersona(
     @CurrentBarberiaId() barberiaId: string,

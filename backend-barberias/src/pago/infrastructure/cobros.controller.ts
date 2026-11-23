@@ -22,7 +22,9 @@ import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 export class CobrosController {
   constructor(private readonly pagoService: PagoService) {}
 
-  @Roles('BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
+  // Decisiones 2 y 3: el cobro es del BARBERO y del ADMIN_BARBERIA de la sede;
+  // el ADMINISTRADOR global no cobra (T-11).
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @Post('cobrar')
   cobrar(@Body() dto: CobrarPagoDto, @CurrentUser() user: UsuarioAutenticado) {
     return this.pagoService.registrarPagoEnPersona(user.id, null, {

@@ -44,8 +44,11 @@ export class ClientesRestringidosController {
    * POST /shops/:shopId/restricted-clients/:clientId/reactivate
    * Levanta la restricción de esa sede y reinicia su contador (auditado).
    * Responde 200: no crea un recurso, resuelve una restricción.
+   *
+   * Decisión 8: el ADMINISTRADOR global ve la bandeja pero no levanta la
+   * restricción; desde T-11 tampoco entra por jerarquía.
    */
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Post(':clientId/reactivate')
   @HttpCode(HttpStatus.OK)
   reactivar(
