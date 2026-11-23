@@ -94,7 +94,8 @@ const CASOS: Caso[] = [
   // ── horarios ─────────────────────────────────────────────────────────────
   { verbo: 'get', ruta: '/shops/{A}/hours', permitidos: ['ADMIN_BARBERIA'] },
   { verbo: 'post', ruta: '/shops/{A}/hours', permitidos: ['ADMIN_BARBERIA'], cuerpo: [] },
-  { verbo: 'get', ruta: '/shops/{A}/hours/mine', permitidos: ['BARBERO'] },
+  // T-11: la lectura del horario propio acompaña a su escritura.
+  { verbo: 'get', ruta: '/shops/{A}/hours/mine', permitidos: ['BARBERO', 'ADMIN_BARBERIA'] },
   { verbo: 'post', ruta: '/shops/{A}/hours/mine', permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: [] },
   { verbo: 'get', ruta: '/shops/{A}/hours/exceptions', permitidos: ['ADMIN_BARBERIA'] },
   { verbo: 'post', ruta: '/shops/{A}/hours/exceptions', permitidos: ['ADMIN_BARBERIA'], cuerpo: {} },

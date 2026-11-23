@@ -71,8 +71,13 @@ export class HorarioController {
    * GET /barberias/:barberiaId/horarios/mi-horario
    * El horario propio del barbero: el `barberoId` sale del token, nunca del
    * cuerpo ni de la ruta.
+   *
+   * T-11: quien puede ESCRIBIR su horario propio (`POST`, más abajo) también
+   * puede CONSULTARLO. El ADMIN_BARBERIA de la sede lee su propio horario desde
+   * el mismo token, sin poder elegir a qué barbero mira; el ADMINISTRADOR global
+   * queda fuera porque la matriz no le concede `agenda.propia.ver`.
    */
-  @Roles('BARBERO')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @Get('mine')
   findMyBarberSchedules(
     @Param('shopId', ParseUUIDPipe) barberiaId: string,

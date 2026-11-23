@@ -250,7 +250,9 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
 
   'GET /shops/:shopId/hours/': [ROL_ADMIN_BARBERIA],
   'POST /shops/:shopId/hours/': [ROL_ADMIN_BARBERIA],
-  'GET /shops/:shopId/hours/mine': [ROL_BARBERO],
+  // T-11: la lectura acompaña a la escritura. Quien declara su horario propio
+  // puede consultarlo; el `barberoId` sale del JWT en las dos.
+  'GET /shops/:shopId/hours/mine': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   'POST /shops/:shopId/hours/mine': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   // V3 fase 5 · semana propia del barbero (días libres y descansos). El
   // `barberoId` sale del JWT: la ruta no lo lleva ni en la ruta ni en el cuerpo.
@@ -613,6 +615,20 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
         : `${desviaciones.length} desviaciones:\n${desviaciones.join('\n')}`,
     ).toBe('');
   }, 60_000);
+
+  it('quien puede escribir su horario propio también puede leerlo (GET y POST /hours/mine)', () => {
+    const lectura = POLITICA_DECLARADA['GET /shops/:shopId/hours/mine'];
+    const escritura = POLITICA_DECLARADA['POST /shops/:shopId/hours/mine'];
+
+    expect(escritura.length).toBeGreaterThan(0);
+    expect([...lectura].sort()).toEqual([...escritura].sort());
+    expect(lectura).toContain(ROL_ADMIN_BARBERIA);
+
+    // El `barberoId` sale del JWT: la lectura no abre el horario de un compañero
+    // ni concede al ADMINISTRADOR global una vía que la matriz no le da.
+    expect(lectura).not.toContain(ROL_ADMINISTRADOR);
+    expect(lectura).not.toContain(ROL_CLIENTE);
+  });
 
   it('RolesGuard concede a cada rol exactamente lo que declara la ruta (sin jerarquía)', () => {
     const desviaciones: string[] = [];
