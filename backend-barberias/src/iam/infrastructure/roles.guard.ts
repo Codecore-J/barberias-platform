@@ -12,7 +12,7 @@ import { esUuidSede } from './current-barberia.decorator.js';
 import { AUTENTICADO_KEY } from './autenticado.decorator.js';
 import { IS_PUBLIC_KEY } from './public.decorator.js';
 import { UsuarioAutenticado } from '../domain/jwt.interface.js';
-import { alcanceCumple, esAdministradorGlobal } from '../domain/roles.js';
+import { alcanceCumple } from '../domain/roles.js';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -34,16 +34,9 @@ export class RolesGuard implements CanActivate {
     }
 
     // Sin @Public, @Autenticado ni @Roles, la ruta no declara su politica y
-    // falla cerrado (E1-01). Antes devolvia true y dejaba la ruta abierta a
-    // cualquier usuario con sesion.
+    // falla cerrado (E1-01). T-11 (opcion A): el ADMINISTRADOR global tampoco
+    // entra sin politica; nadie tiene acceso por defecto.
     if (!requiredRoles || requiredRoles.length === 0) {
-      // E1-04: si no hay politica declarada, verificar si es admin global.
-      // Si es ADMINISTRADOR global, permitimos el acceso para que pueda usar
-      // endpoints que no tienen politica definida (fail-open para el global).
-      const user = context.switchToHttp().getRequest().user as UsuarioAutenticado | undefined;
-      if (user?.roles?.includes('ADMINISTRADOR') && esAdministradorGlobal(user)) {
-        return true;
-      }
       const request = context.switchToHttp().getRequest();
       const ruta = `${request?.method ?? '?'} ${request?.originalUrl ?? request?.url ?? '?'}`;
       new Logger(RolesGuard.name).warn(
@@ -61,10 +54,8 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('Acceso denegado: usuario no autenticado o sin roles asignados.');
     }
 
-    // Regla de jerarquía: ADMINISTRADOR tiene acceso transversal global
-    if (esAdministradorGlobal(user)) {
-      return true;
-    }
+    // T-11 (opcion A): sin jerarquia. El ADMINISTRADOR global entra solo si la
+    // ruta lo declara en su lista, igual que cualquier otro rol.
 
     // Extraer la sede del contexto (si aplica a la ruta).
     const crudo =
