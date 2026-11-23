@@ -38,7 +38,7 @@ export class HorarioBarberoController {
    * Es `PUT` y no `POST` porque reemplaza la semana entera: repetir la misma
    * petición deja exactamente el mismo estado, sin filas duplicadas.
    */
-  @Roles('BARBERO')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @UseGuards(VinculoBarberiaGuard)
   @Put()
   guardar(
@@ -68,7 +68,7 @@ export class HorarioBarberoController {
    * enviados). Un día puede apagarse con `activo: false` sin perder sus horas,
    * que es lo que evita tener que reescribir la semana entera.
    */
-  @Roles('BARBERO')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @UseGuards(VinculoBarberiaGuard)
   @Put('base')
   guardarPlantilla(
