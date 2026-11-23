@@ -15,7 +15,7 @@ export class AuditoriaController {
   }
 
   @Get()
-  @Roles('ADMINISTRADOR', 'ADMIN_BARBERIA')
+  @Roles('ADMINISTRADOR')
   consultarAuditorias(
     @CurrentUser() user: UsuarioAutenticado,
     @Query('entidad') entidad?: string,

@@ -225,7 +225,7 @@ export class BarberiaController {
    * que en la creación: la ruta usa `:shopId` con un segmento extra, así que el
    * `RolesGuard` no acota la sede del parámetro.
    */
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Get(':shopId/change-requests')
   listarSolicitudesCambio(
     @Param('shopId', ParseUUIDPipe) id: string,
