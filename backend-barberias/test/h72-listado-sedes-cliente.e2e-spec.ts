@@ -333,10 +333,11 @@ describe('H72 · el cliente lista sus sedes (GET /mi-estado/barberias)', () => {
       await listar(tokenAdminSede).expect(403);
     });
 
-    it('el ADMINISTRADOR pasa por jerarquía (E1-04) y solo ve sus propios vínculos', async () => {
-      const res = await listar(tokenAdminGlobal).expect(200);
-
-      expect(res.body).toEqual([]);
+    it('el ADMINISTRADOR global ya no entra: la ruta es del CLIENTE (403)', async () => {
+      // Antes: 200 vacío por la jerarquía de E1-04 (el global pasaba cualquier
+      // `@Roles` y solo veía sus propios vínculos, que no tiene). Ahora la ruta
+      // declara solo CLIENTE y el guard no concede nada por jerarquía (T-11).
+      await listar(tokenAdminGlobal).expect(403);
     });
   });
 });

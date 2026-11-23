@@ -140,12 +140,16 @@ describe('E1-02 · GET /auditoria no cruza barberias (H18)', () => {
     await app.close();
   }, 30000);
 
-  it('el admin de A sin barberiaId recibe 400 y ningun registro', async () => {
+  it('el admin de sede ya no consulta la auditoría: 403 sin registro', async () => {
+    // Antes: 400 («indica la barbería») y ningún registro, porque la ruta era
+    // del ADMIN_BARBERIA y el filtro por sede era su responsabilidad. Ahora
+    // `plataforma.auditoria.ver` es solo del ADMINISTRADOR y el guard deniega
+    // antes de mirar la query (T-11).
     const res = await request(app.getHttpServer())
       .get('/api/v1/auditoria')
       .set('Authorization', `Bearer ${tokenAdminA}`);
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(403);
     expect(res.body?.data ?? []).toHaveLength(0);
   });
 
@@ -157,10 +161,22 @@ describe('E1-02 · GET /auditoria no cruza barberias (H18)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('el admin de A con su propia barberiaId solo ve sus registros', async () => {
+  it('el admin de sede tampoco lee su propia sede: 403 (T-11)', async () => {
+    // Antes: 200 solo con los registros de A. Ahora el rol no entra a la ruta;
+    // el filtro por `barberiaId` se sigue midiendo abajo con el global, que es
+    // quien tiene `plataforma.auditoria.ver`, para que un `?barberiaId=` no
+    // convierta la lectura en una fuga cross-tenant.
     const res = await request(app.getHttpServer())
       .get(`/api/v1/auditoria?barberiaId=${barberiaA}`)
       .set('Authorization', `Bearer ${tokenAdminA}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('el ADMINISTRADOR con barberiaId solo ve esa barberia', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/auditoria?barberiaId=${barberiaA}`)
+      .set('Authorization', `Bearer ${tokenGlobal}`);
 
     expect(res.status).toBe(200);
     const marcas = (res.body.data ?? res.body.registros).map((r: any) => r.contexto?.marca);

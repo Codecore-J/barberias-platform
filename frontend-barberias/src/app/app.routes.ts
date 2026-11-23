@@ -56,8 +56,13 @@ export const routes: Routes = [
           import('./features/barberias/unirse/unirse.component').then((m) => m.UnirseComponent),
       },
       {
+        //
+        // D04 (23 nov 2026) · solo el ADMINISTRADOR global crea sedes. El alias
+        // 'ADMIN' incluye al ADMIN_BARBERIA, así que aquí se nombra el rol
+        // exacto: un admin de sede no entra ni por URL directa.
+        //
         path: 'barberias/nueva',
-        canActivate: [authGuard, roleGuard(['ADMIN'])],
+        canActivate: [authGuard, roleGuard(['ADMINISTRADOR'])],
         loadComponent: () =>
           import('./features/barberias/crear-barberia.component').then((m) => m.CrearBarberiaComponent),
       },

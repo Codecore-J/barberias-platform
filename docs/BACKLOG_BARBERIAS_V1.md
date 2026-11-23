@@ -133,7 +133,7 @@ Las D01 a D13 son del plan estratégico; las D14 en adelante se agregaron al arm
 | D01 | Margen individual con varios servicios: se suma el de cada servicio. **Revisada 2026-10-02:** la suma ya no determina el bloque (ver 5.4 y D42); se conserva como snapshot por servicio en `margen_historico`. |
 | D02 | El no presentado lo marca el admin (ADMIN_BARBERIA o ADMINISTRADOR), solo pasados los 15 minutos. |
 | D03 | Se añaden el estado `COMPLETADA` y `barberias.zona_horaria`. |
-| D04 | Cualquier usuario autenticado puede crear barberías: límite 2 por responsable, sin aprobación previa, con límite de peticiones y auditoría. El ADMINISTRADOR puede dejarlas `INACTIVO`. |
+| D04 | **Revisada 2026-11-23 (T-11):** solo el ADMINISTRADOR global crea y edita sedes (`POST /shops`, `PATCH /shops/:shopId`). El ADMIN_BARBERIA ni siquiera ve el alta en el frontend; para cambiar los datos de su sede usa la solicitud de cambio (E3-13/D26). Límite 2 sedes activas por responsable, con límite de peticiones y auditoría; el ADMINISTRADOR puede dejarlas `INACTIVO`. *(Regla anterior, derogada: «cualquier usuario autenticado puede crear barberías». Cierre: `docs/MATRIZ_RUTAS_ACCIONES.md`, filas de `POST /shops` y `PATCH /shops/:shopId`.)* |
 | D05 | El rol global es solo `ADMINISTRADOR`. `SUPER_ADMIN` se elimina. |
 | D06 | V1 = un responsable por barbería. Personal y `BARBERO` como staff pasan a V2. |
 | D07 | Autorización por roles en V1. Los permisos granulares (`permisos`, `rol_permisos`) se aplazan. |

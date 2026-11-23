@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { ThrottlerStorage } from '@nestjs/throttler';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -67,6 +68,7 @@ async function limpiarCorridasAnteriores(prisma: PrismaService): Promise<void> {
 describe('Fase 3 · administrador único por sede y cuenta dual (E2E)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let jwtService: JwtService;
 
   const api = '/api/v1';
   const sufijo = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -84,11 +86,19 @@ describe('Fase 3 · administrador único por sede y cuenta dual (E2E)', () => {
   const password = 'Password1!';
 
   let tokenGlobal = '';
+  /**
+   * T-11 · las rutas de personal (`/shops/:shopId/staff`) son del ADMIN_BARBERIA
+   * de la sede, no del ADMINISTRADOR global. Antes esta suite las llamaba con el
+   * token global y el guard lo dejaba pasar por jerarquía; ahora se firma un
+   * token del dueño de la sede (mismo usuario que crea el test 1).
+   */
+  let tokenDueno = '';
   let sedeId = '';
   let duenoId = '';
   let barberoId = '';
 
   const auth = () => ({ Authorization: `Bearer ${tokenGlobal}` });
+  const authSede = () => ({ Authorization: `Bearer ${tokenDueno}` });
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -112,6 +122,7 @@ describe('Fase 3 · administrador único por sede y cuenta dual (E2E)', () => {
     );
     await app.init();
     prisma = app.get(PrismaService);
+    jwtService = app.get(JwtService);
 
     await limpiarCorridasAnteriores(prisma);
 
@@ -193,6 +204,12 @@ describe('Fase 3 · administrador único por sede y cuenta dual (E2E)', () => {
     expect(res.body.roles).toEqual(['ADMIN_BARBERIA']);
     duenoId = res.body.id;
 
+    tokenDueno = await jwtService.signAsync({
+      sub: duenoId,
+      correo: correos.dueno,
+      roles: ['ADMIN_BARBERIA'],
+    });
+
     const vinculo = await prisma.usuarioRol.findFirst({
       where: { usuarioId: duenoId, barberiaId: sedeId, rol: { nombre: 'ADMIN_BARBERIA' } },
       select: { estado: true },
@@ -236,7 +253,7 @@ describe('Fase 3 · administrador único por sede y cuenta dual (E2E)', () => {
   it('3 · la invitación de personal tampoco admite un segundo dueño (misma regla, otra puerta)', async () => {
     const res = await request(app.getHttpServer())
       .post(`${api}/shops/${sedeId}/staff`)
-      .set(auth())
+      .set(authSede())
       .send({
         nombreCompleto: 'Tercer Dueño',
         correo: correos.tercero,
@@ -256,7 +273,7 @@ describe('Fase 3 · administrador único por sede y cuenta dual (E2E)', () => {
   it('4 · invitar al dueño como BARBERO sin el flag → 409 ADMIN_NO_SE_DEGRADA y el rol intacto', async () => {
     const res = await request(app.getHttpServer())
       .post(`${api}/shops/${sedeId}/staff`)
-      .set(auth())
+      .set(authSede())
       .send({
         nombreCompleto: 'Dueño Fase 3',
         correo: correos.dueno,
@@ -283,7 +300,7 @@ describe('Fase 3 · administrador único por sede y cuenta dual (E2E)', () => {
   it('5 · con conservarRolAdministrador:true se crea la cuenta dual sin perder el rol de dueño', async () => {
     const res = await request(app.getHttpServer())
       .post(`${api}/shops/${sedeId}/staff`)
-      .set(auth())
+      .set(authSede())
       .send({
         nombreCompleto: 'Dueño Fase 3',
         correo: correos.dueno,
@@ -314,7 +331,7 @@ describe('Fase 3 · administrador único por sede y cuenta dual (E2E)', () => {
   it('6 · repetir la invitación con el flag es idempotente (no duplica vínculos)', async () => {
     const res = await request(app.getHttpServer())
       .post(`${api}/shops/${sedeId}/staff`)
-      .set(auth())
+      .set(authSede())
       .send({
         nombreCompleto: 'Dueño Fase 3',
         correo: correos.dueno,
@@ -335,7 +352,7 @@ describe('Fase 3 · administrador único por sede y cuenta dual (E2E)', () => {
   it('7 · el listado de personal muestra al dueño con sus dos roles', async () => {
     const res = await request(app.getHttpServer())
       .get(`${api}/shops/${sedeId}/staff`)
-      .set(auth());
+      .set(authSede());
 
     expect(res.status).toBe(200);
     const dueno = (res.body as { id: string; roles: string[] }[]).find(
@@ -352,7 +369,7 @@ describe('Fase 3 · administrador único por sede y cuenta dual (E2E)', () => {
     // Un barbero nuevo: la promoción es la tercera puerta del mismo conflicto.
     const alta = await request(app.getHttpServer())
       .post(`${api}/shops/${sedeId}/staff`)
-      .set(auth())
+      .set(authSede())
       .send({
         nombreCompleto: 'Barbero Fase 3',
         correo: correos.barbero,
@@ -365,7 +382,7 @@ describe('Fase 3 · administrador único por sede y cuenta dual (E2E)', () => {
 
     const res = await request(app.getHttpServer())
       .patch(`${api}/shops/${sedeId}/staff/${barberoId}`)
-      .set(auth())
+      .set(authSede())
       .send({ rolNombre: 'ADMIN_BARBERIA' });
 
     expect(res.status).toBe(409);

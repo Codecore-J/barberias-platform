@@ -21,8 +21,15 @@ import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 export class HorarioBarberoController {
   constructor(private readonly horarioService: HorarioService) {}
 
-  /** GET · la semana del barbero autenticado, con los siete días. */
-  @Roles('BARBERO')
+  /**
+   * GET · la semana del barbero autenticado, con los siete días.
+   *
+   * T-11 (23 nov 2026): la lectura acompaña a la escritura. Quien puede guardar
+   * su semana (`PUT`, dual) puede leerla; el `barberoId` sale del JWT en las
+   * dos, así que el ADMIN_BARBERIA no abre la semana de un compañero ni el
+   * ADMINISTRADOR global gana una vía que la matriz no le da.
+   */
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @UseGuards(VinculoBarberiaGuard)
   @Get()
   obtener(

@@ -399,15 +399,16 @@ describe('GET /shops/:shopId/services/:id', () => {
    * la sede.
    */
   describe('GET /shops/:shopId/payments/audit', () => {
-    it('el ADMINISTRADOR global la lee con la sede en la ruta', async () => {
+    it('el ADMINISTRADOR global ya NO la lee: es la caja de la sede', async () => {
+      // Antes: 200 por la jerarquía de E1-04, que dejaba entrar al global a
+      // cualquier `@Roles`. Ahora `caja.ver_y_cerrar` es solo del
+      // ADMIN_BARBERIA y el guard no concede nada por jerarquía (T-11).
       const res = await request(app.getHttpServer())
         .get(`/api/v1/shops/${barberiaA}/payments/audit`)
         .set('Authorization', `Bearer ${tokenGlobal}`);
 
-      expect(res.status).toBe(200);
-      expect(Array.isArray(res.body.data)).toBe(true);
-      expect(typeof res.body.total).toBe('number');
-      expect(res.body.page).toBe(1);
+      expect(res.status).toBe(403);
+      expect(JSON.stringify(res.body)).not.toContain('E1-06');
     });
 
     it('la ruta plana /cobros/auditoria ya no existe → 404', async () => {
