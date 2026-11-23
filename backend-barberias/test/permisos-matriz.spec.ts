@@ -263,7 +263,9 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // V3 · plantilla base semanal (recurrente, sin sede). Misma política que la
   // semana de la sede: es el barbero quien declara su horario, y el `barberoId`
   // sale del JWT. La sede del path solo autoriza el vínculo.
-  'GET /shops/:shopId/mi-horario/base': [ROL_BARBERO],
+  // T-11 (23 nov 2026): la lectura acompaña a la escritura también aquí. Quien
+  // puede guardar su plantilla puede leerla.
+  'GET /shops/:shopId/mi-horario/base': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   'PUT /shops/:shopId/mi-horario/base': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   'GET /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA],
   'POST /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA],
@@ -630,6 +632,23 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     expect(lectura).toContain(ROL_ADMIN_BARBERIA);
 
     // El `barberoId` sale del JWT: ni el global ni el cliente tienen semana
+    // propia que leer aquí, y la matriz no les da esa vía.
+    expect(lectura).not.toContain(ROL_ADMINISTRADOR);
+    expect(lectura).not.toContain(ROL_CLIENTE);
+  });
+
+  it('quien puede escribir su plantilla base también puede leerla (GET y PUT /mi-horario/base)', () => {
+    const lectura = POLITICA_DECLARADA['GET /shops/:shopId/mi-horario/base'];
+    const escritura = POLITICA_DECLARADA['PUT /shops/:shopId/mi-horario/base'];
+
+    // Misma decisión que en la semana propia: si se separan, el admin de la
+    // sede guarda una plantilla que después no puede abrir.
+    expect(escritura.length).toBeGreaterThan(0);
+    expect([...lectura].sort()).toEqual([...escritura].sort());
+    expect(lectura).toContain(ROL_BARBERO);
+    expect(lectura).toContain(ROL_ADMIN_BARBERIA);
+
+    // El `barberoId` sale del JWT: ni el global ni el cliente tienen plantilla
     // propia que leer aquí, y la matriz no les da esa vía.
     expect(lectura).not.toContain(ROL_ADMINISTRADOR);
     expect(lectura).not.toContain(ROL_CLIENTE);

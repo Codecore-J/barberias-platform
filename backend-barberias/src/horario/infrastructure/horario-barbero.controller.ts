@@ -62,8 +62,13 @@ export class HorarioBarberoController {
    * Es global —no cuelga de una sede—, pero se sirve bajo `shops/:shopId`
    * porque el acceso lo autoriza el vínculo con la sede: quien la lee es el
    * barbero autenticado, nunca un id que llegue del cliente.
+   *
+   * T-11 (23 nov 2026): la lectura acompaña a la escritura, igual que en la
+   * semana propia. Quien puede guardar su plantilla (`PUT base`, dual) puede
+   * leerla; el `barberoId` sale del JWT, así que el ADMIN_BARBERIA no abre la
+   * plantilla de un compañero ni el ADMINISTRADOR global gana una vía nueva.
    */
-  @Roles('BARBERO')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @UseGuards(VinculoBarberiaGuard)
   @Get('base')
   obtenerPlantilla(@CurrentUser() user: UsuarioAutenticado) {
