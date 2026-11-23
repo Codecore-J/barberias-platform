@@ -226,6 +226,33 @@ export class CatalogoHibridoService {
     );
   }
 
+  /**
+   * T-21 · borrado REAL de una categoría global. Solo procede si ningún servicio
+   * la usa; el 409 `CATEGORIA_CON_SERVICIOS` llega con `servicios` en el cuerpo y
+   * la pantalla ofrece desactivarla. El error se relanza para que el componente
+   * distinga ese caso de un fallo de red.
+   */
+  eliminarCategoria(id: string): Observable<{ id: string; nombre: string; eliminada: boolean }> {
+    this.guardandoCategoria.set(true);
+    this.errorCategorias.set(null);
+
+    return this.http
+      .delete<{ id: string; nombre: string; eliminada: boolean }>(`${this.categoriasUrl}/${id}`)
+      .pipe(
+        tap(() => {
+          this.guardandoCategoria.set(false);
+          this.cargarCategorias().subscribe();
+        }),
+        catchError((error) => {
+          this.guardandoCategoria.set(false);
+          this.errorCategorias.set(
+            CatalogoHibridoService.mensajeDeError(error, 'No se pudo eliminar la categoría.'),
+          );
+          return throwError(() => error);
+        }),
+      );
+  }
+
   // ── Servicios propios del barbero ───────────────────────────────────────
 
   cargarMisServicios(): Observable<ServicioBarbero[]> {

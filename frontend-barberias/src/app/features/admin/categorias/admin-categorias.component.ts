@@ -12,15 +12,18 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
 import { ToastService } from '../../../shared/ui/toast/toast.service.js';
 
 /**
- * V3 · Categorías de servicio de la sede (panel del ADMIN_BARBERIA).
+ * V3 · Categorías de servicio GLOBALES (panel del ADMINISTRADOR).
  *
- * La taxonomía es de la SEDE: aquí se crean, renombran, describen y desactivan
- * las categorías dentro de las cuales cada barbero publica sus servicios. El
- * ADMINISTRADOR global entra en modo lectura —el backend le responde 403 en
- * cualquier escritura— así que la pantalla no le muestra los botones.
+ * T-20 dejó la taxonomía fuera de la sede: el ADMINISTRADOR la define una vez y
+ * los barberos publican dentro de ella. Aquí se crean, renombran, describen,
+ * desactivan y —T-21— eliminan las categorías; el ADMIN_BARBERIA conserva la
+ * misma pantalla. La sede activa sigue haciendo falta para llegar a la ruta.
  *
- * Nada se borra: desactivar una categoría la retira del catálogo del cliente y
- * conserva los servicios que cuelgan de ella para cuando se reactive (§9).
+ * El camino normal sigue siendo desactivar (§9): una categoría inactiva deja de
+ * ofrecerse al crear servicios nuevos, pero sus servicios existentes funcionan.
+ * Eliminar solo procede si NINGÚN servicio la usa; si el backend responde 409
+ * `CATEGORIA_CON_SERVICIOS` la pantalla dice cuántos la bloquean y ofrece
+ * desactivarla en su lugar.
  */
 @Component({
   selector: 'app-admin-categorias',
@@ -36,11 +39,10 @@ import { ToastService } from '../../../shared/ui/toast/toast.service.js';
           </h2>
           <p class="text-sm text-zinc-400">
             @if (puedeGestionar()) {
-              Define las categorías de {{ tenantService.nombreBarberiaActiva() }}. Los barberos publican
-              sus servicios dentro de ellas.
+              Define las categorías del catálogo global. Los barberos publican sus servicios dentro de
+              ellas.
             } @else {
-              Categorías de {{ tenantService.nombreBarberiaActiva() }} · modo lectura (las gestiona el
-              administrador de la sede).
+              Catálogo global · modo lectura (lo gestiona el administrador de la plataforma).
             }
           </p>
         </div>
@@ -210,10 +212,49 @@ import { ToastService } from '../../../shared/ui/toast/toast.service.js';
                             ></i>
                             {{ categoria.activa ? 'Desactivar' : 'Reactivar' }}
                           </button>
+                          <button
+                            (click)="eliminar(categoria)"
+                            [disabled]="eliminandoId() === categoria.id"
+                            class="px-3 py-1.5 rounded-lg text-xs font-bold bg-zinc-800 text-zinc-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <i
+                              class="pi"
+                              [ngClass]="
+                                eliminandoId() === categoria.id ? 'pi-spin pi-spinner' : 'pi-trash'
+                              "
+                            ></i>
+                            Eliminar
+                          </button>
                         </div>
                       </td>
                     }
                   </tr>
+
+                  <!-- T-21 · el 409 no se pinta como alerta genérica: se ancla a
+                       la fila y ofrece el camino normal, desactivar. -->
+                  @if (bloqueoBorrado()?.id === categoria.id) {
+                    <tr class="bg-rose-500/[0.04]">
+                      <td colspan="5" class="px-5 py-3">
+                        <div
+                          class="flex flex-col sm:flex-row sm:items-center gap-3 text-xs text-rose-200"
+                          role="status"
+                        >
+                          <span class="flex items-center gap-1.5 flex-1">
+                            <i class="pi pi-exclamation-triangle"></i>
+                            «{{ bloqueoBorrado()!.nombre }}» no se puede eliminar: la usan
+                            {{ bloqueoBorrado()!.servicios }} servicio(s).
+                          </span>
+                          <button
+                            (click)="desactivarEnSuLugar()"
+                            [disabled]="procesandoId() === categoria.id"
+                            class="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <i class="pi pi-ban"></i> Desactivar en su lugar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  }
                 }
               </tbody>
             </table>
@@ -302,16 +343,20 @@ export class AdminCategoriasComponent implements OnInit {
   readonly modalAbierto = signal(false);
   readonly editandoId = signal<string | null>(null);
   readonly procesandoId = signal<string | null>(null);
+  readonly eliminandoId = signal<string | null>(null);
+
+  /** T-21 · categoría cuyo borrado chocó con servicios; ancla el aviso a su fila. */
+  readonly bloqueoBorrado = signal<{ id: string; nombre: string; servicios: number } | null>(null);
 
   /**
-   * La taxonomía la escribe el ADMIN_BARBERIA de la sede. El ADMINISTRADOR global
-   * entra por jerarquía al guard de la ruta, pero el backend le responde 403 al
-   * guardar: aquí ve la pantalla sin botones de escritura (misma regla que el
-   * catálogo de E1-05).
+   * T-20 · la taxonomía es GLOBAL: quien la escribe es el ADMINISTRADOR de la
+   * plataforma (`catalogo.categorias.gestionar`). El ADMIN_BARBERIA conserva la
+   * pantalla y sus controles. Cualquier otro rol no llega a la ruta, pero si lo
+   * hiciera vería la lista sin botones.
    */
   readonly puedeGestionar = computed(() => {
     const roles = this.authService.authState().user?.roles ?? [];
-    return roles.includes('ADMIN_BARBERIA');
+    return roles.includes('ADMIN_BARBERIA') || roles.includes('ADMINISTRADOR');
   });
 
   /** T-17 · sin sede activa la pantalla orienta en vez de listar el vacío. */
@@ -399,6 +444,64 @@ export class AdminCategoriasComponent implements OnInit {
         this.mostrarExito(
           categoria.activa ? 'Categoría desactivada.' : 'Categoría reactivada.',
         );
+      },
+      error: () => this.procesandoId.set(null),
+    });
+  }
+
+  /**
+   * T-21 · borrado real, solo para categorías que ningún servicio usa. Si el
+   * backend responde 409 `CATEGORIA_CON_SERVICIOS`, en vez de dejar el error
+   * genérico se guarda la cuenta y la fila ofrece «Desactivar en su lugar».
+   */
+  async eliminar(categoria: CategoriaServicio): Promise<void> {
+    if (!this.puedeGestionar()) return;
+
+    const confirmado = await this.confirmDialog.confirm({
+      titulo: 'Eliminar categoría',
+      mensaje: `¿Eliminar «${categoria.nombre}»? Solo es posible si ningún servicio la usa. Si la usan, podrás desactivarla en su lugar.`,
+      textoConfirmar: 'Sí, eliminar',
+      tono: 'peligro',
+      icono: 'pi pi-trash',
+    });
+    if (!confirmado) return;
+
+    this.bloqueoBorrado.set(null);
+    this.eliminandoId.set(categoria.id);
+
+    this.catalogoService.eliminarCategoria(categoria.id).subscribe({
+      next: () => {
+        this.eliminandoId.set(null);
+        this.mostrarExito('Categoría eliminada.');
+      },
+      error: (error) => {
+        this.eliminandoId.set(null);
+        const cuerpo = error?.error ?? {};
+
+        if (error?.status === 409 && cuerpo.codigo === 'CATEGORIA_CON_SERVICIOS') {
+          // El aviso vive en la fila; el banner de arriba repetiría el mensaje.
+          this.catalogoService.errorCategorias.set(null);
+          this.bloqueoBorrado.set({
+            id: categoria.id,
+            nombre: categoria.nombre,
+            servicios: Number(cuerpo.servicios ?? categoria.serviciosActivos ?? 0),
+          });
+        }
+      },
+    });
+  }
+
+  /** El 409 ya explicó por qué no se borra: aquí solo se aplica el camino normal. */
+  desactivarEnSuLugar(): void {
+    const bloqueo = this.bloqueoBorrado();
+    if (!bloqueo || !this.puedeGestionar()) return;
+
+    this.procesandoId.set(bloqueo.id);
+    this.catalogoService.actualizarCategoria(bloqueo.id, { activa: false }).subscribe({
+      next: () => {
+        this.procesandoId.set(null);
+        this.bloqueoBorrado.set(null);
+        this.mostrarExito('Categoría desactivada.');
       },
       error: () => this.procesandoId.set(null),
     });
