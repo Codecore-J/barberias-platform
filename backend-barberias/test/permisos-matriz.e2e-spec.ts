@@ -42,7 +42,7 @@ const CASOS: Caso[] = [
   // E3-13: `PATCH /barberias/:id` ya no renombra (el nombre va por solicitud),
   // asi que la matriz mide el decorador con un campo que SI se edita directo.
   { verbo: 'patch', ruta: '/shops/{A}', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: { descripcion: 'Matriz permisos' } },
-  { verbo: 'post', ruta: '/shops/{A}/change-requests', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: { tipo: 'NOMBRE', valorNuevo: 'Matriz permisos E3-13' } },
+  { verbo: 'post', ruta: '/shops/{A}/change-requests', permitidos: ['ADMIN_BARBERIA'], cuerpo: { tipo: 'NOMBRE', valorNuevo: 'Matriz permisos E3-13' } },
   { verbo: 'get', ruta: '/plataforma/solicitudes-cambio', permitidos: ['ADMINISTRADOR'] },
   // H54 (E4-03/2): el estado propio lo consulta el CLIENTE. El ADMINISTRADOR no
   // se mide aquí a propósito: no tiene vinculación propia en la sede, así que
@@ -58,44 +58,45 @@ const CASOS: Caso[] = [
   // comprueba el servicio y aquí no se mide (un 404 de un cliente sin vínculo
   // es una respuesta válida de una ruta permitida).
   { verbo: 'get', ruta: '/shops/{A}/restricted-clients', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
-  { verbo: 'post', ruta: `/shops/{A}/restricted-clients/${randomUUID()}/reactivate`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
+  { verbo: 'post', ruta: `/shops/{A}/restricted-clients/${randomUUID()}/reactivate`, permitidos: ['ADMIN_BARBERIA'], cuerpo: {} },
   { verbo: 'get', ruta: '/shops/{A}', permitidos: TODOS },
-  { verbo: 'get', ruta: '/shops/{A}/staff', permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR'] },
+  { verbo: 'get', ruta: '/shops/{A}/staff', permitidos: ['ADMIN_BARBERIA'] },
   // E2-07: el borrado lógico de la sede pasa a cambio de estado explícito.
   { verbo: 'patch', ruta: '/shops/{B}/status', permitidos: [], sinAdministrador: true, cuerpo: { estado: 'INACTIVO' } },
 
   // ── agenda ──────────────────────────────────────────────────────────────
-  // E1-03/H20: la lectura de bloqueos la filtra también el servicio
-  // (`validateAccess`): el BARBERO pasa el guard de rol pero recibe 403 del
-  // servicio, que reserva la agenda a la sede y al ADMINISTRADOR global.
-  { verbo: 'get', ruta: '/shops/{A}/appointments/schedule/blocks?fromDate=2026-11-01&toDate=2026-12-31', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
-  { verbo: 'post', ruta: '/shops/{A}/appointments/schedule/blocks', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
+  // T-11: bloqueos y liberaciones son agenda de la SEDE (`agenda.sede.ver`).
+  // El BARBERO ni siquiera pasa el guard y el ADMINISTRADOR global tampoco.
+  { verbo: 'get', ruta: '/shops/{A}/appointments/schedule/blocks?fromDate=2026-11-01&toDate=2026-12-31', permitidos: ['ADMIN_BARBERIA'] },
+  { verbo: 'post', ruta: '/shops/{A}/appointments/schedule/blocks', permitidos: ['ADMIN_BARBERIA'], cuerpo: {} },
   // E2-07: liberar un bloqueo en vez de borrarlo. Con un UUID al azar el
   // servicio responde 404, que tambien es «permitido» para esta matriz.
-  { verbo: 'post', ruta: `/shops/{A}/appointments/schedule/blocks/${randomUUID()}/release`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
+  { verbo: 'post', ruta: `/shops/{A}/appointments/schedule/blocks/${randomUUID()}/release`, permitidos: ['ADMIN_BARBERIA'] },
   { verbo: 'get', ruta: '/shops/{A}/appointments/schedule/availability?fecha=2026-10-05&duracionMinutos=30', permitidos: TODOS },
   { verbo: 'post', ruta: '/shops/{A}/appointments/schedule/availability', permitidos: TODOS, cuerpo: { fecha: '2026-10-05', duracionTotal: 30 } },
   // E4-02: los huecos de espacio no son para el BARBERO (§E4-02/2).
   { verbo: 'get', ruta: '/shops/{A}/appointments/schedule/slots?fecha=2026-10-05&duracionMinutos=30', permitidos: ['CLIENTE', 'ADMIN_BARBERIA', 'ADMINISTRADOR'] },
 
   // ── antecedentes ─────────────────────────────────────────────────────────
-  { verbo: 'post', ruta: '/shops/{A}/records', permitidos: ['BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
-  { verbo: 'patch', ruta: `/shops/{A}/records/${randomUUID()}/evaluate`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
+  { verbo: 'post', ruta: '/shops/{A}/records', permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: {} },
+  { verbo: 'patch', ruta: `/shops/{A}/records/${randomUUID()}/evaluate`, permitidos: ['ADMINISTRADOR'], cuerpo: {} },
+  // El decorador declara también al BARBERO, pero la cola de evaluación exige
+  // rol de sede en el servicio (`validateAdminAccess`): el 403 real se mantiene.
   { verbo: 'get', ruta: '/shops/{A}/records/pending', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
-  { verbo: 'get', ruta: `/shops/{A}/records/client/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
+  { verbo: 'get', ruta: `/shops/{A}/records/client/${randomUUID()}`, permitidos: ['ADMINISTRADOR', 'ADMIN_BARBERIA', 'BARBERO'] },
 
   // ── horarios ─────────────────────────────────────────────────────────────
-  { verbo: 'get', ruta: '/shops/{A}/hours', permitidos: ['BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR'] },
-  { verbo: 'post', ruta: '/shops/{A}/hours', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: [] },
-  { verbo: 'get', ruta: '/shops/{A}/hours/mine', permitidos: ['BARBERO', 'ADMINISTRADOR'] },
-  { verbo: 'post', ruta: '/shops/{A}/hours/mine', permitidos: ['BARBERO', 'ADMINISTRADOR'], cuerpo: [] },
-  { verbo: 'get', ruta: '/shops/{A}/hours/exceptions', permitidos: ['BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR'] },
-  { verbo: 'post', ruta: '/shops/{A}/hours/exceptions', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
-  { verbo: 'post', ruta: '/shops/{A}/hours/barbers/{BARBERO}/exceptions', permitidos: ['BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
+  { verbo: 'get', ruta: '/shops/{A}/hours', permitidos: ['ADMIN_BARBERIA'] },
+  { verbo: 'post', ruta: '/shops/{A}/hours', permitidos: ['ADMIN_BARBERIA'], cuerpo: [] },
+  { verbo: 'get', ruta: '/shops/{A}/hours/mine', permitidos: ['BARBERO'] },
+  { verbo: 'post', ruta: '/shops/{A}/hours/mine', permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: [] },
+  { verbo: 'get', ruta: '/shops/{A}/hours/exceptions', permitidos: ['ADMIN_BARBERIA'] },
+  { verbo: 'post', ruta: '/shops/{A}/hours/exceptions', permitidos: ['ADMIN_BARBERIA'], cuerpo: {} },
+  { verbo: 'post', ruta: '/shops/{A}/hours/barbers/{BARBERO}/exceptions', permitidos: ['ADMIN_BARBERIA'], cuerpo: {} },
 
   // ── pagos ────────────────────────────────────────────────────────────────
-  { verbo: 'get', ruta: '/shops/{A}/payments/audit', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
-  { verbo: 'post', ruta: '/shops/{A}/payments', permitidos: ['BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
+  { verbo: 'get', ruta: '/shops/{A}/payments/audit', permitidos: ['ADMIN_BARBERIA'] },
+  { verbo: 'post', ruta: '/shops/{A}/payments', permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: {} },
 
   // ── reservas ─────────────────────────────────────────────────────────────
   // E3-03: el alias se parte en dos rutas con política distinta. `/reservas`
@@ -104,33 +105,32 @@ const CASOS: Caso[] = [
   // `/reservas/walk-in` con los tres roles de la sede. Ver también
   // `test/reserva-walkin-split.e2e-spec.ts` para el efecto real sobre un
   // recurso (aquí solo se mide el 403 del guard).
-  { verbo: 'post', ruta: '/shops/{A}/appointments', permitidos: ['CLIENTE', 'ADMINISTRADOR'], cuerpo: {} },
-  { verbo: 'post', ruta: '/shops/{A}/appointments/walk-in', permitidos: ['BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
-  { verbo: 'get', ruta: '/shops/{A}/appointments/mine', permitidos: ['CLIENTE', 'ADMINISTRADOR'] },
-  { verbo: 'get', ruta: '/shops/{A}/appointments/day?fecha=2026-10-05', permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'ADMINISTRADOR'] },
-  { verbo: 'get', ruta: `/shops/{A}/appointments/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR'] },
+  { verbo: 'post', ruta: '/shops/{A}/appointments', permitidos: ['CLIENTE'], cuerpo: {} },
+  { verbo: 'post', ruta: '/shops/{A}/appointments/walk-in', permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: {} },
+  { verbo: 'get', ruta: '/shops/{A}/appointments/mine', permitidos: ['CLIENTE'] },
+  { verbo: 'get', ruta: '/shops/{A}/appointments/day?fecha=2026-10-05', permitidos: ['ADMIN_BARBERIA', 'BARBERO'] },
+  { verbo: 'get', ruta: `/shops/{A}/appointments/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'CLIENTE'] },
   // E2-02 (2026-10-11): `PATCH /reservas/:id/estado` ya no existe (el caso se
   // quitó de la matriz; con él, cualquier rol recibía 404). El no presentado
   // conserva su ruta dedicada.
-  { verbo: 'post', ruta: `/shops/{A}/appointments/${randomUUID()}/no-show`, permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'], cuerpo: {} },
+  { verbo: 'post', ruta: `/shops/{A}/appointments/${randomUUID()}/no-show`, permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: {} },
 
   // ── catálogo ─────────────────────────────────────────────────────────────
-  // D16: lecturas para todos (vitrina pública incluida) y escrituras del
-  // BARBERO y del ADMIN_BARBERIA de la sede. El ADMINISTRADOR global NO escribe
-  // el catálogo aunque `RolesGuard` le conceda acceso por jerarquía: de ese 403
-  // se ocupa `OperadorBarberiaGuard`.
+  // T-11 (matriz objetivo): lecturas para todos (vitrina incluida) y escrituras
+  // solo del ADMIN_BARBERIA de la sede (`catalogo.servicios.gestionar`). El
+  // BARBERO deja de publicar por su cuenta: su vía son las solicitudes de T-12.
   { verbo: 'get', ruta: '/shops/{A}/services', permitidos: TODOS },
-  { verbo: 'post', ruta: '/shops/{A}/services', permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: {} },
+  { verbo: 'post', ruta: '/shops/{A}/services', permitidos: ['ADMIN_BARBERIA'], cuerpo: {} },
   { verbo: 'get', ruta: `/shops/{A}/services/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR'] },
-  { verbo: 'patch', ruta: `/shops/{A}/services/${randomUUID()}`, permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: {} },
-  { verbo: 'patch', ruta: `/shops/{A}/services/${randomUUID()}/deactivate`, permitidos: ['BARBERO', 'ADMIN_BARBERIA'] },
-  { verbo: 'patch', ruta: `/shops/{A}/services/${randomUUID()}/reactivate`, permitidos: ['BARBERO', 'ADMIN_BARBERIA'] },
+  { verbo: 'patch', ruta: `/shops/{A}/services/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA'], cuerpo: {} },
+  { verbo: 'patch', ruta: `/shops/{A}/services/${randomUUID()}/deactivate`, permitidos: ['ADMIN_BARBERIA'] },
+  { verbo: 'patch', ruta: `/shops/{A}/services/${randomUUID()}/reactivate`, permitidos: ['ADMIN_BARBERIA'] },
   { verbo: 'get', ruta: '/shops/{A}/combos', permitidos: TODOS },
-  { verbo: 'post', ruta: '/shops/{A}/combos', permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: {} },
+  { verbo: 'post', ruta: '/shops/{A}/combos', permitidos: ['ADMIN_BARBERIA'], cuerpo: {} },
   { verbo: 'get', ruta: `/shops/{A}/combos/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA', 'BARBERO', 'CLIENTE', 'ADMINISTRADOR'] },
-  { verbo: 'patch', ruta: `/shops/{A}/combos/${randomUUID()}`, permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: {} },
-  { verbo: 'patch', ruta: `/shops/{A}/combos/${randomUUID()}/deactivate`, permitidos: ['BARBERO', 'ADMIN_BARBERIA'] },
-  { verbo: 'patch', ruta: `/shops/{A}/combos/${randomUUID()}/reactivate`, permitidos: ['BARBERO', 'ADMIN_BARBERIA'] },
+  { verbo: 'patch', ruta: `/shops/{A}/combos/${randomUUID()}`, permitidos: ['ADMIN_BARBERIA'], cuerpo: {} },
+  { verbo: 'patch', ruta: `/shops/{A}/combos/${randomUUID()}/deactivate`, permitidos: ['ADMIN_BARBERIA'] },
+  { verbo: 'patch', ruta: `/shops/{A}/combos/${randomUUID()}/reactivate`, permitidos: ['ADMIN_BARBERIA'] },
 
   // ── E3-12/3 · la salida del cliente por su cuenta ─────────────────────────
   // Va al FINAL a propósito: es la única ruta de la matriz que CAMBIA el
