@@ -348,7 +348,10 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // que aceptar/rechazar (D02): es decisión de la SEDE, no del barbero ni del
   // cliente. El ADMINISTRADOR global entra por jerarquía (E1-04).
   'GET /shops/:shopId/appointments/proposals/pending': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
-  'GET /shops/:shopId/appointments/day': [ROL_ADMIN_BARBERIA],
+  // Decisión del dueño (23 nov 2026, opción a): el BARBERO sigue leyendo la
+  // agenda con `agenda.propia.ver`; `obtenerAgendaDiaria` recorta la respuesta a
+  // SU columna (T-18) y el ADMINISTRADOR global deja de entrar.
+  'GET /shops/:shopId/appointments/day': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
   // D16 (Especificación §2/§3.1): el catálogo lo opera el personal de la sede.
   // Las escrituras son del BARBERO y del ADMIN_BARBERIA (en V1 suele ser el
   // único responsable/operador). El ADMINISTRADOR global queda FUERA de la

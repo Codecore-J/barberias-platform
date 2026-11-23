@@ -64,7 +64,7 @@ export class AgendaController {
    * Crear un bloqueo es escribir la agenda: ADMIN_BARBERIA de la barbería y
    * ADMINISTRADOR global. El BARBERO solo gestiona su propio horario.
    */
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Post('blocks')
   crearBloqueo(
     @Param('shopId', ParseUUIDPipe) barberiaId: string,
@@ -76,7 +76,7 @@ export class AgendaController {
 
   // E1-03 · H20: un CLIENTE nunca lee bloqueos ni sus motivos; para su
   // disponibilidad usa `GET .../agenda/disponibilidad`.
-  @Roles('ADMIN_BARBERIA', 'BARBERO')
+  @Roles('ADMIN_BARBERIA')
   @Get('blocks')
   obtenerBloqueos(
     @Param('shopId', ParseUUIDPipe) barberiaId: string,
@@ -101,7 +101,7 @@ export class AgendaController {
    * su ADMIN_BARBERIA o el ADMINISTRADOR global pueden retirarlo. Se responde
    * 200 (no el 201 por defecto de POST) porque no se crea ningún recurso.
    */
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Post('blocks/:id/release')
   @HttpCode(HttpStatus.OK)
   liberarBloqueo(
