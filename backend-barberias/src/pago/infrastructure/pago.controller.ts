@@ -53,7 +53,7 @@ export class PagoController {
    * fuente: la tabla `pagos`, porque una anulación tiene que verse en el listado
    * y la auditoría es el rastro, no la vista.
    */
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Get('history')
   listarHistorial(
     @CurrentBarberiaIdOpcional() barberiaId: string | null,
@@ -77,7 +77,7 @@ export class PagoController {
    * ingreso, y el servicio vuelve a comprobarlo con la sede del pago (el guard
    * solo ve el rol cuando la ruta no lleva `:barberiaId`).
    */
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Post(':id/void')
   @HttpCode(HttpStatus.OK)
   anularPago(
@@ -98,7 +98,7 @@ export class PagoController {
    * ADMINISTRADOR global. El barbero ve sus cobros en la agenda, no la
    * auditoría.
    */
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Get('audit')
   obtenerAuditoriaPagos(
     @CurrentBarberiaIdOpcional() barberiaId: string | null,

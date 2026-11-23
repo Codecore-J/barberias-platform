@@ -126,7 +126,7 @@ export class BarberiaController {
    * administra y el ADMINISTRADOR ve el consolidado global.
    */
   @Get('overview')
-  @Roles('ADMINISTRADOR', 'ADMIN_BARBERIA')
+  @Roles('ADMIN_BARBERIA')
   obtenerOverview(
     @Query() query: AnalyticsQueryDto,
     @CurrentUser() user: UsuarioAutenticado,

@@ -18,11 +18,11 @@ import { RolesGuard } from '../../iam/infrastructure/roles.guard.js';
 import { JwtAuthGuard } from '../../iam/infrastructure/jwt-auth.guard.js';
 import { VinculoBarberiaGuard } from '../../iam/infrastructure/vinculo-barberia.guard.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
-import { ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA } from '../../iam/domain/roles.js';
+import { ROL_ADMIN_BARBERIA } from '../../iam/domain/roles.js';
 
 @Controller('shops/:shopId/analytics')
 @UseGuards(JwtAuthGuard, RolesGuard, VinculoBarberiaGuard)
-@Roles(ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA)
+@Roles(ROL_ADMIN_BARBERIA)
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
@@ -69,9 +69,6 @@ export class AnalyticsController {
   }
 
   private verificarAcceso(user: UsuarioAutenticado, shopId: string): void {
-    const esGlobal = user?.roles?.includes(ROL_ADMINISTRADOR) ?? false;
-    if (esGlobal) return;
-
     // F1 / T-37 · el `barberiaId` nulo NO es comodín. Antes, `|| !rol.barberiaId`
     // hacía que una fila ADMIN_BARBERIA sin sede —el caso corrupto que E1-04
     // describe— abriera las analíticas de CUALQUIER sede. Un rol de ámbito
