@@ -112,7 +112,7 @@ porque la 44 tiene ya acción al determinarse la audiencia por la ruta (decisió
 | 41 | `PATCH /shops/:shopId/settings/` | `sin acción` — **brecha** | Ídem, y esta además es escritura. |
 | 42 | `GET /shops/:shopId/analytics/` | `caja.ver_y_cerrar` | Es el mismo balance financiero que la caja; la matriz no tiene «analíticas de sede». |
 | 43 | `GET /shops/:shopId/analytics/export` | `caja.ver_y_cerrar` | Exportación CSV del mismo panel. |
-| 44 | `GET /shops/overview` | `caja.ver_y_cerrar` | **Decisión 15 (§5):** la audiencia la fija la ruta, así que esta es de sede y su acción es la de la caja. El consolidado de plataforma necesita su propia ruta, `GET /plataforma/overview` (§7.2), o el ADMINISTRADOR se queda sin él. |
+| 44 | `GET /shops/overview` | `caja.ver_y_cerrar` | **Decisión 15 (§5):** la audiencia la fija la ruta, así que esta es de sede y su acción es la de la caja. El consolidado de plataforma va por su propia ruta, `GET /plataforma/overview` (§7.2, **aprobada el 23 nov 2026**). |
 | 45 | `POST /shops/:shopId/change-requests` | `solicitudes_cambio.gestionar` | La sede propone el cambio. |
 | 46 | `GET /shops/:shopId/change-requests` | `solicitudes_cambio.gestionar` | La sede ve el estado de lo que propuso. |
 | 47 | `GET /shops/:shopId/restricted-clients/` | `sin acción` — **brecha** | Bandeja local de restringidos (E4-03); la matriz no la cubre. |
@@ -347,9 +347,9 @@ porque la 44 tiene ya acción al determinarse la audiencia por la ruta (decisió
 15. **La audiencia (sede o plataforma) se determina por la ruta.** Ninguna ruta lleva dos
     acciones según el alcance del usuario: si la ruta es de sede, vale la acción de sede; si
     es de plataforma, la de plataforma. Aplicado a la fila 44, `GET /shops/overview` es de
-    sede y le corresponde `caja.ver_y_cerrar`; el consolidado global necesita
-    `GET /plataforma/overview` (`plataforma.metricas.ver`, §7.2). Cierra el primer pendiente
-    de §7.1. La 19 (`GET /shops/all`) conserva `plataforma.sedes.gestionar` porque su rol ya
+    sede y le corresponde `caja.ver_y_cerrar`; el consolidado global va por
+    `GET /plataforma/overview` (`plataforma.metricas.ver`, §7.2), aprobada el 23 nov 2026.
+    Cierra el primer pendiente de §7.1. La 19 (`GET /shops/all`) conserva `plataforma.sedes.gestionar` porque su rol ya
     es único; alinear su nombre con el criterio (`/plataforma/sedes`) sería de T-12 y no
     cambia el permiso.
 
@@ -403,8 +403,8 @@ la decisión §5.5.
 
 1. **`GET /shops/overview` (fila 44): la audiencia la fija la ruta** (decisión 15, §5.15).
    Es de sede y lleva `caja.ver_y_cerrar`; el consolidado global va por
-   `GET /plataforma/overview` con `plataforma.metricas.ver` (ruta nueva, §7.2). No hace falta
-   un guard que adivine el alcance.
+   `GET /plataforma/overview` con `plataforma.metricas.ver` (ruta nueva, aprobada el 23 nov
+   2026, §7.2). No hace falta un guard que adivine el alcance.
 2. **Tabla del alta: `Servicio` más `ServicioBarbero` del solicitante** (decisión 12,
    §5.12). El servicio entra a la lista de la sede y el barbero que lo pidió queda habilitado
    para ofrecerlo con su propio precio, así que un servicio pedido sí puede entrar en un
@@ -429,7 +429,7 @@ estados.
 | `PATCH /shops/:shopId/solicitudes-servicio/:id` (**nueva**) | ADMIN_BARBERIA | Alta: `{aprobar:true}` crea el servicio en `Servicio` y habilita al solicitante en `ServicioBarbero` con su precio; desactivación: `{aprobar:true}` desactiva el servicio publicado. `{aprobar:false,motivoRechazo}` deja la solicitud `RECHAZADA` (422 `MOTIVO_RECHAZO_REQUERIDO`). | `catalogo.servicios.gestionar` |
 | `PUT /shops/:shopId/mi-horario/base` | BARBERO | Pasa a crear la **propuesta** `PENDIENTE` (hoy escribe la plantilla vigente). | `excepciones.propias.registrar` |
 | `PATCH /shops/:shopId/hours/barbers/:barberoId/base` (**nueva**, §8) | ADMIN_BARBERIA | Aprueba o rechaza la propuesta, con motivo en el rechazo. | `horario.base.aprobar` |
-| `GET /plataforma/overview` (**nueva**, §5.15) | ADMINISTRADOR | Consolidado global de sedes; la audiencia de la 44 queda en la ruta de sede. | `plataforma.metricas.ver` |
+| `GET /plataforma/overview` (**nueva, aprobada el 23 nov 2026**, §5.15) | ADMINISTRADOR | Consolidado global de sedes; la audiencia de la 44 queda en la ruta de sede. | `plataforma.metricas.ver` |
 
 - Las propuestas de horario base pendientes se leen por la ruta que ya existe,
   `GET /shops/:shopId/hours/` (81), añadiendo el estado; no hace falta bandeja aparte.
