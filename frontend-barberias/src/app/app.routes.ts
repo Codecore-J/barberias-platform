@@ -124,7 +124,7 @@ export const routes: Routes = [
       },
       {
         path: 'admin/personal',
-        canActivate: [tenantGuard, roleGuard(['ADMIN'])],
+        canActivate: [tenantGuard, roleGuard(['ADMIN_BARBERIA'])],
         loadComponent: () =>
           import('./features/admin/personal/admin-personal.component').then((m) => m.AdminPersonalComponent),
       },

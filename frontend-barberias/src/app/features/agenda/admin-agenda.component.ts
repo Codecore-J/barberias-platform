@@ -204,10 +204,12 @@ import { rolEfectivo } from '../../core/utils/rol';
               La agenda se organiza por barbero. Invita o activa al menos un miembro del personal para
               empezar a recibir turnos en esta sede.
             </p>
-            <a routerLink="/admin/personal"
-               class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-lg hover:brightness-110 transition-all">
-              <i class="pi pi-user-plus"></i> Gestionar personal
-            </a>
+            @if (authService.authState().user?.roles?.includes('ADMIN_BARBERIA')) {
+              <a routerLink="/admin/personal"
+                 class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-zinc-950 gold-gradient-bg shadow-lg hover:brightness-110 transition-all">
+                <i class="pi pi-user-plus"></i> Gestionar personal
+              </a>
+            }
           </div>
         }
       }

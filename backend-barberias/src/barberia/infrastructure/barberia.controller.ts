@@ -169,7 +169,7 @@ export class BarberiaController {
    *   barbero y el de administrador se conserva: la cuenta dual del dueño que
    *   corta pelo.
    */
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Post(':shopId/staff')
   @HttpCode(HttpStatus.CREATED)
   invitarPersonal(
@@ -187,7 +187,7 @@ export class BarberiaController {
    * `SEDE_YA_TIENE_ADMIN` (con `adminActual`) si la sede ya tiene otro dueño
    * ACTIVO. La regla es la misma del alta de plataforma y de la invitación.
    */
-  @Roles('ADMIN_BARBERIA', 'ADMINISTRADOR')
+  @Roles('ADMIN_BARBERIA')
   @Patch(':shopId/staff/:userId')
   @HttpCode(HttpStatus.OK)
   actualizarPersonal(
