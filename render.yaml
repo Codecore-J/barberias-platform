@@ -72,6 +72,12 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      # T-24 · foto del servicio del barbero. El SDK de Cloudinary lee
+      # `CLOUDINARY_URL` (cloudinary://api_key:api_secret@cloud_name). Sin ella
+      # la subida responde 503 `IMAGEN_NO_CONFIGURADA`; no falla en silencio.
+      # El valor se pega en el panel de Render (Environment), nunca en el repo.
+      - key: CLOUDINARY_URL
+        sync: false
       # `FRONTEND_URL` es la ÚNICA variable que el código lee para orígenes
       # extra de CORS (`backend-barberias/src/main.ts`). `CORS_ORIGINS` no la
       # consume nadie: existía en el servicio antiguo y no tenía efecto.
