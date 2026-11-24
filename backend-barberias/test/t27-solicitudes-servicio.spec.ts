@@ -185,12 +185,13 @@ describe('T-27 · solicitudes de servicio del barbero', () => {
         }));
     };
 
-    it('declara POST y GET bajo solicitudes-servicio', () => {
+    it('declara POST, GET y PATCH bajo solicitudes-servicio', () => {
       const declaradas = rutas();
       expect(declaradas).toEqual(
         expect.arrayContaining([
           { ruta: '/', metodo: RequestMethod.POST },
           { ruta: '/', metodo: RequestMethod.GET },
+          { ruta: ':id', metodo: RequestMethod.PATCH },
         ]),
       );
     });

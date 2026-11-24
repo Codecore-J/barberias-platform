@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsNumber,
@@ -59,4 +60,14 @@ export class CrearSolicitudServicioDto {
   @IsOptional()
   @IsUUID()
   servicioId?: string;
+}
+/** T-28 · resolución: aprobar o rechazar con motivo obligatorio. */
+export class ResolverSolicitudServicioDto {
+  @IsBoolean()
+  aprobar!: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  motivoRechazo?: string;
 }

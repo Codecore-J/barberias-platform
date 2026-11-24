@@ -5,12 +5,17 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import { SolicitudesServicioService } from '../application/solicitudes-servicio.service.js';
-import { CrearSolicitudServicioDto } from '../application/dto/solicitud-servicio.dto.js';
+import {
+  CrearSolicitudServicioDto,
+  ResolverSolicitudServicioDto,
+} from '../application/dto/solicitud-servicio.dto.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import { CurrentBarberiaId } from '../../iam/infrastructure/current-barberia.decorator.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
@@ -49,5 +54,16 @@ export class SolicitudesServicioController {
     @Query('estado') estado?: string,
   ) {
     return this.solicitudesService.listar(barberiaId, estado);
+  }
+  @Patch(':id')
+  @Roles('ADMIN_BARBERIA')
+  @UseGuards(VinculoBarberiaGuard)
+  resolver(
+    @CurrentBarberiaId() barberiaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResolverSolicitudServicioDto,
+  ) {
+    return this.solicitudesService.resolver(barberiaId, user.id, id, dto);
   }
 }

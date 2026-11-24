@@ -7,7 +7,10 @@ import {
   reglaDeNegocio,
 } from '../../shared/errors/d40.errors.js';
 import { ROL_BARBERO } from '../../iam/domain/roles.js';
-import { CrearSolicitudServicioDto } from './dto/solicitud-servicio.dto.js';
+import {
+  CrearSolicitudServicioDto,
+  ResolverSolicitudServicioDto,
+} from './dto/solicitud-servicio.dto.js';
 
 /**
  * T-27 / T-28 · el barbero pide, el ADMIN_BARBERIA de la sede resuelve.
@@ -208,5 +211,117 @@ export class SolicitudesServicioService {
         categoria: { select: { id: true, nombre: true } },
       },
     });
+  }
+  /**
+   * T-28 · resuelve la solicitud.
+   *
+   * El 404 de una solicitud ajena a la sede no confirma que exista en otra, igual
+   * que en el catálogo. Una solicitud ya resuelta es 409: el estado no vuelve
+   * atrás y no se resuelve dos veces.
+   */
+  async resolver(
+    barberiaId: string,
+    adminId: string,
+    id: string,
+    dto: ResolverSolicitudServicioDto,
+  ) {
+    const sede = SolicitudesServicioService.exigirSede(barberiaId);
+
+    const solicitud = await this.prisma.solicitudServicioBarbero.findFirst({
+      where: { id, barberiaId: sede },
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada en esta barbería.');
+    }
+
+    if (solicitud.estado !== 'PENDIENTE') {
+      throw errorDeConflicto(
+        'SOLICITUD_YA_RESUELTA',
+        `La solicitud ya fue ${solicitud.estado === 'APROBADA' ? 'aprobada' : 'rechazada'}: no se resuelve dos veces.`,
+        { estado: solicitud.estado },
+      );
+    }
+
+    if (!dto.aprobar) {
+      const motivo = (dto.motivoRechazo ?? '').trim();
+      if (motivo === '') {
+        throw reglaDeNegocio(
+          'MOTIVO_RECHAZO_REQUERIDO',
+          'Explica por qué rechazas la solicitud: el barbero necesita saber qué corregir.',
+        );
+      }
+
+      const rechazada = await this.prisma.$transaction((tx) =>
+        tx.solicitudServicioBarbero.update({
+          where: { id: solicitud.id },
+          data: {
+            estado: 'RECHAZADA',
+            motivoRechazo: motivo,
+            resueltoPor: adminId,
+            resueltaAt: new Date(),
+          },
+        }),
+      );
+
+      this.logger.log(`Solicitud rechazada: ${id} (sede: ${sede})`);
+      return rechazada;
+    }
+
+    if (solicitud.tipo === 'DESACTIVACION') {
+      const aprobada = await this.prisma.$transaction(async (tx) => {
+        if (solicitud.servicioId) {
+          await tx.servicioBarbero.update({
+            where: { id: solicitud.servicioId },
+            data: { activo: false },
+          });
+        }
+
+        return tx.solicitudServicioBarbero.update({
+          where: { id: solicitud.id },
+          data: { estado: 'APROBADA', resueltoPor: adminId, resueltaAt: new Date() },
+        });
+      });
+
+      this.logger.log(`Solicitud de desactivación aprobada: ${id} (sede: ${sede})`);
+      return aprobada;
+    }
+
+    const aprobada = await this.prisma.$transaction(async (tx) => {
+      const nombre =
+        solicitud.nombrePersonalizado ??
+        SolicitudesServicioService.normalizarNombre(solicitud.nombrePersonalizado);
+
+      await tx.servicio.create({
+        data: {
+          barberiaId: sede,
+          nombre,
+          descripcion: solicitud.descripcion,
+          precio: solicitud.precio ?? 0,
+          duracionEstimada: solicitud.duracionMinutos ?? 0,
+          estado: 'ACTIVO',
+        },
+      });
+
+      await tx.servicioBarbero.create({
+        data: {
+          barberoId: solicitud.barberoId,
+          barberiaId: sede,
+          categoriaId: solicitud.categoriaId as string,
+          nombrePersonalizado: nombre,
+          descripcion: solicitud.descripcion,
+          precio: solicitud.precio ?? 0,
+          duracionMinutos: solicitud.duracionMinutos ?? 0,
+        },
+      });
+
+      return tx.solicitudServicioBarbero.update({
+        where: { id: solicitud.id },
+        data: { estado: 'APROBADA', resueltoPor: adminId, resueltaAt: new Date() },
+      });
+    });
+
+    this.logger.log(`Solicitud de alta aprobada: ${id} (sede: ${sede})`);
+    return aprobada;
   }
 }

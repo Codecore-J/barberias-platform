@@ -28,7 +28,7 @@ import {
 
 const RUTA_SPEC = fileURLToPath(new URL('./permisos-matriz.spec.ts', import.meta.url));
 
-/** Las 127 claves de `POLITICA_DECLARADA`, leídas de su literal. */
+/** Las 128 claves de `POLITICA_DECLARADA`, leídas de su literal. */
 function clavesDePoliticaDeclarada(): string[] {
   const fuente = readFileSync(RUTA_SPEC, 'utf8').replace(/\r/g, '');
   const inicio = fuente.indexOf('const POLITICA_DECLARADA');
@@ -96,10 +96,10 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     expect(malFormadas).toEqual([]);
   });
 
-  it('cubre exactamente las 127 rutas del inventario', () => {
+  it('cubre exactamente las 128 rutas del inventario', () => {
     const claves = clavesDePoliticaDeclarada();
 
-    expect(claves.length).toBe(127);
+    expect(claves.length).toBe(128);
     expect(RUTAS.length).toBe(new Set(RUTAS).size);
 
     const sinDecision = claves.filter((clave) => !(clave in RUTA_ACCION));
@@ -117,13 +117,13 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     ).toBe('');
   });
 
-  it('reparte 72 rutas con acción y 55 sin acción (43 fuera + 12 brechas)', () => {
+  it('reparte 73 rutas con acción y 55 sin acción (43 fuera + 12 brechas)', () => {
     const conAccion = RUTAS.filter((clave) => RUTA_ACCION[clave].length > 0);
     const sinAccion = RUTAS.filter((clave) => RUTA_ACCION[clave].length === 0);
 
-    expect(conAccion.length).toBe(72);
+    expect(conAccion.length).toBe(73);
     expect(sinAccion.length).toBe(55);
-    expect(conAccion.length + sinAccion.length).toBe(127);
+    expect(conAccion.length + sinAccion.length).toBe(128);
 
     // De las 55 sin acción, doce son brecha de la matriz y las otras 43 quedan
     // fuera de su alcance (identidad, autoservicio, vitrina, integración).

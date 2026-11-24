@@ -191,6 +191,7 @@ export const RUTA_ACCION: Readonly<Record<string, readonly Accion[]>> = {
   // acción); la bandeja y su resolución usan gestionar el catálogo.
   'POST /shops/:shopId/solicitudes-servicio/': [],
   'GET /shops/:shopId/solicitudes-servicio/': ['catalogo.servicios.gestionar'],
+  'PATCH /shops/:shopId/solicitudes-servicio/:id': ['catalogo.servicios.gestionar'],
 };
 
 /**

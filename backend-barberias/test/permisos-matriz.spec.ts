@@ -418,11 +418,12 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // dueño (el `barberoId` sale del JWT).
   'PATCH /shops/:shopId/mis-servicios/:id/imagen': [ROL_BARBERO],
 
-  // T-27 · solicitudes de servicio: el barbero pide (su barberoId sale del JWT)
-  // y el ADMIN_BARBERIA de la sede ve la bandeja; el ADMINISTRADOR global no
-  // entra por jerarquía (T-11).
+  // T-27/T-28 · solicitudes de servicio: el barbero pide (su barberoId sale del
+  // JWT) y el ADMIN_BARBERIA de la sede ve la bandeja y la resuelve; el
+  // ADMINISTRADOR global no entra por jerarquía (T-11).
   'POST /shops/:shopId/solicitudes-servicio/': [ROL_BARBERO],
   'GET /shops/:shopId/solicitudes-servicio/': [ROL_ADMIN_BARBERIA],
+  'PATCH /shops/:shopId/solicitudes-servicio/:id': [ROL_ADMIN_BARBERIA],
 
   // V3 · reasignar barbero. Es una decisión de la SEDE (D02), como aceptar o
   // reprogramar. La ruta NO lleva :shopId, así que el guard solo filtra el rol y
@@ -756,9 +757,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // `GET /shops/:shopId/categorias/:id`, el detalle de categoría). QA2-02 suma
   // `POST /auth/logout`: 123 × 4 = 492. El borrado de categorías globales del
   // backlog de catálogo (T-21, fase 2) suma la 124. T-24 suma la imagen del
-  // servicio: 125 × 4 = 500. T-27 suma el alta y la bandeja de la solicitud de
-  // servicio: 127 × 4 = 508.
-  expect(evaluaciones).toBe(508);
+  // servicio: 125 × 4 = 500. T-27/T-28 suman las tres rutas de la solicitud de
+  // servicio (alta, bandeja y resolución): 128 × 4 = 512.
+  expect(evaluaciones).toBe(512);
 
     const resumen =
       desviaciones.length > 40
