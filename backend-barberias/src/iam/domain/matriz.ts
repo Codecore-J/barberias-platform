@@ -185,6 +185,8 @@ export const RUTA_ACCION: Readonly<Record<string, readonly Accion[]>> = {
   'POST /shops/:shopId/mis-servicios': [],
   'GET /shops/:shopId/mis-servicios': [],
   'PATCH /shops/:shopId/mis-servicios/:id': [],
+  // T-24 · foto del servicio: la sube su barbero dueño, igual que lo edita.
+  'PATCH /shops/:shopId/mis-servicios/:id/imagen': [],
 };
 
 /**

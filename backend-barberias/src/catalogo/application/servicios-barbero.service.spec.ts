@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { ServiciosBarberoService } from './servicios-barbero.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { CloudinaryService } from '../../shared/cloudinary/cloudinary.service.js';
 
 /**
  * V3 · Servicios propios del barbero.
@@ -36,7 +37,15 @@ describe('ServiciosBarberoService', () => {
     vi.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ServiciosBarberoService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        ServiciosBarberoService,
+        { provide: PrismaService, useValue: prisma },
+        // T-24 · la imagen no es el eje de estas pruebas (ver t24-imagen-servicio).
+        {
+          provide: CloudinaryService,
+          useValue: { configurado: () => false, subir: vi.fn(), borrar: vi.fn() },
+        },
+      ],
     }).compile();
 
     service = module.get<ServiciosBarberoService>(ServiciosBarberoService);

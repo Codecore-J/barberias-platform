@@ -8,8 +8,11 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ServiciosBarberoService } from '../application/servicios-barbero.service.js';
 import { CreateServicioBarberoDto } from '../application/dto/create-servicio-barbero.dto.js';
 import { UpdateServicioBarberoDto } from '../application/dto/update-servicio-barbero.dto.js';
@@ -19,6 +22,10 @@ import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js'
 import { VinculoBarberiaGuard } from '../../iam/infrastructure/vinculo-barberia.guard.js';
 import { SoloBarberoGuard } from './solo-barbero.guard.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
+import {
+  TAMANO_MAXIMO_IMAGEN,
+  type ArchivoSubido,
+} from '../../shared/cloudinary/cloudinary.service.js';
 
 /**
  * V3 · Catálogo híbrido.
@@ -78,5 +85,26 @@ export class ServiciosBarberoController {
     @Body() dto: UpdateServicioBarberoDto,
   ) {
     return this.serviciosBarberoService.actualizar(barberiaId, user.id, id, dto);
+  }
+
+  /**
+   * T-24 · foto del servicio. El archivo viaja en el campo `archivo`
+   * (multipart/form-data). Multer lo mantiene en memoria y corta arriba de
+   * 2 MB; el servicio vuelve a validar tipo y tamaño porque la ruta no es el
+   * único camino posible a la lógica de negocio.
+   */
+  @Patch('mis-servicios/:id/imagen')
+  @Roles('BARBERO')
+  @UseGuards(SoloBarberoGuard, VinculoBarberiaGuard)
+  @UseInterceptors(
+    FileInterceptor('archivo', { limits: { fileSize: TAMANO_MAXIMO_IMAGEN } }),
+  )
+  actualizarImagen(
+    @CurrentBarberiaId() barberiaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() archivo: ArchivoSubido,
+  ) {
+    return this.serviciosBarberoService.actualizarImagen(barberiaId, user.id, id, archivo);
   }
 }

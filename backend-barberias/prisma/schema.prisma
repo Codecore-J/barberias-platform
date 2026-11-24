@@ -290,6 +290,9 @@ model ServicioBarbero {
   // T-23 (24 nov 2026): descripción opcional del servicio, 500 caracteres como
   // en `servicios`. Vacía se guarda como NULL (no como cadena en blanco).
   descripcion         String?  @db.VarChar(500)
+  // T-24 (24 nov 2026): URL pública de la foto del servicio en Cloudinary. El
+  // archivo no se guarda en la base; solo su URL (migración idempotente).
+  imagenUrl           String?  @map("imagen_url") @db.VarChar(500)
   precio              Decimal  @db.Decimal(10, 2)
   duracionMinutos     Int      @map("duracion_minutos")
   activo              Boolean  @default(true)

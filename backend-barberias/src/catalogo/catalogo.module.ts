@@ -10,6 +10,8 @@ import { ServiciosBarberoController } from './infrastructure/servicios-barbero.c
 import { ServiciosBarberoService } from './application/servicios-barbero.service.js';
 // T-17 · la lectura de categorías del ADMINISTRADOR global se audita.
 import { AuditoriaModule } from '../auditoria/infrastructure/auditoria.module.js';
+// T-24 · subida de la foto del servicio a Cloudinary.
+import { CloudinaryService } from '../shared/cloudinary/cloudinary.service.js';
 
 @Module({
   imports: [AuditoriaModule],
@@ -19,7 +21,13 @@ import { AuditoriaModule } from '../auditoria/infrastructure/auditoria.module.js
     CategoriasController,
     ServiciosBarberoController,
   ],
-  providers: [ServiciosService, CombosService, CategoriasService, ServiciosBarberoService],
+  providers: [
+    ServiciosService,
+    CombosService,
+    CategoriasService,
+    ServiciosBarberoService,
+    CloudinaryService,
+  ],
   exports: [ServiciosService, CombosService, CategoriasService, ServiciosBarberoService],
 })
 export class CatalogoModule {}

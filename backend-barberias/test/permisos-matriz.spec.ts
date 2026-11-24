@@ -414,6 +414,9 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /shops/:shopId/mis-servicios': [ROL_BARBERO],
   'GET /shops/:shopId/mis-servicios': [ROL_BARBERO],
   'PATCH /shops/:shopId/mis-servicios/:id': [ROL_BARBERO],
+  // T-24 · imagen del servicio: misma política que editarlo, solo el BARBERO
+  // dueño (el `barberoId` sale del JWT).
+  'PATCH /shops/:shopId/mis-servicios/:id/imagen': [ROL_BARBERO],
 
   // V3 · reasignar barbero. Es una decisión de la SEDE (D02), como aceptar o
   // reprogramar. La ruta NO lleva :shopId, así que el guard solo filtra el rol y
@@ -746,8 +749,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // suma las métricas de plataforma: 122 × 4 = 488 (T-17 añade
   // `GET /shops/:shopId/categorias/:id`, el detalle de categoría). QA2-02 suma
   // `POST /auth/logout`: 123 × 4 = 492. El borrado de categorías globales del
-  // backlog de catálogo (T-21, fase 2) suma la 124: 124 × 4 = 496.
-  expect(evaluaciones).toBe(496);
+  // backlog de catálogo (T-21, fase 2) suma la 124. T-24 suma la imagen del
+  // servicio: 125 × 4 = 500.
+  expect(evaluaciones).toBe(500);
 
     const resumen =
       desviaciones.length > 40
