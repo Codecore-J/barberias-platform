@@ -28,7 +28,7 @@ import {
 
 const RUTA_SPEC = fileURLToPath(new URL('./permisos-matriz.spec.ts', import.meta.url));
 
-/** Las 125 claves de `POLITICA_DECLARADA`, leídas de su literal. */
+/** Las 127 claves de `POLITICA_DECLARADA`, leídas de su literal. */
 function clavesDePoliticaDeclarada(): string[] {
   const fuente = readFileSync(RUTA_SPEC, 'utf8').replace(/\r/g, '');
   const inicio = fuente.indexOf('const POLITICA_DECLARADA');
@@ -96,10 +96,10 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     expect(malFormadas).toEqual([]);
   });
 
-  it('cubre exactamente las 125 rutas del inventario', () => {
+  it('cubre exactamente las 127 rutas del inventario', () => {
     const claves = clavesDePoliticaDeclarada();
 
-    expect(claves.length).toBe(125);
+    expect(claves.length).toBe(127);
     expect(RUTAS.length).toBe(new Set(RUTAS).size);
 
     const sinDecision = claves.filter((clave) => !(clave in RUTA_ACCION));
@@ -117,18 +117,18 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     ).toBe('');
   });
 
-  it('reparte 71 rutas con acción y 54 sin acción (42 fuera + 12 brechas)', () => {
+  it('reparte 72 rutas con acción y 55 sin acción (43 fuera + 12 brechas)', () => {
     const conAccion = RUTAS.filter((clave) => RUTA_ACCION[clave].length > 0);
     const sinAccion = RUTAS.filter((clave) => RUTA_ACCION[clave].length === 0);
 
-    expect(conAccion.length).toBe(71);
-    expect(sinAccion.length).toBe(54);
-    expect(conAccion.length + sinAccion.length).toBe(125);
+    expect(conAccion.length).toBe(72);
+    expect(sinAccion.length).toBe(55);
+    expect(conAccion.length + sinAccion.length).toBe(127);
 
-    // De las 54 sin acción, doce son brecha de la matriz y las otras 42 quedan
+    // De las 55 sin acción, doce son brecha de la matriz y las otras 43 quedan
     // fuera de su alcance (identidad, autoservicio, vitrina, integración).
     expect(RUTAS_BRECHA_MATRIZ.length).toBe(12);
-    expect(sinAccion.length - RUTAS_BRECHA_MATRIZ.length).toBe(42);
+    expect(sinAccion.length - RUTAS_BRECHA_MATRIZ.length).toBe(43);
   });
 
   it('las 12 brechas de §6 no tienen acción y son las del documento', () => {

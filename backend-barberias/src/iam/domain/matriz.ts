@@ -187,6 +187,10 @@ export const RUTA_ACCION: Readonly<Record<string, readonly Accion[]>> = {
   'PATCH /shops/:shopId/mis-servicios/:id': [],
   // T-24 · foto del servicio: la sube su barbero dueño, igual que lo edita.
   'PATCH /shops/:shopId/mis-servicios/:id/imagen': [],
+  // T-27/T-28 · solicitudes de servicio: pedir es autoservicio propio (sin
+  // acción); la bandeja y su resolución usan gestionar el catálogo.
+  'POST /shops/:shopId/solicitudes-servicio/': [],
+  'GET /shops/:shopId/solicitudes-servicio/': ['catalogo.servicios.gestionar'],
 };
 
 /**

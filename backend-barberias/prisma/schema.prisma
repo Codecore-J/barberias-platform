@@ -65,6 +65,9 @@ model Usuario {
   // V3 fase 6 · caja diaria: quién abrió el turno y quién lo selló.
   cierresCajaAbiertos    CierreCaja[]              @relation("CierreAbiertoPor")
   cierresCajaCerrados    CierreCaja[]              @relation("CierreCerradoPor")
+  // T-27 · solicitudes de servicio: quién las pidió y quién las resolvió.
+  solicitudesServicioPropias  SolicitudServicioBarbero[] @relation("SolicitudServicioDeBarbero")
+  solicitudesServicioResueltas SolicitudServicioBarbero[] @relation("SolicitudServicioResueltaPor")
 
   @@map("usuarios")
 }
@@ -186,6 +189,8 @@ model Barberia {
   cierresCaja           CierreCaja[]
   // E4-02/D22: clientes esperando un hueco liberado en esta sede y fecha.
   listaEsperas          ListaEspera[]
+  // T-27 · solicitudes de servicio de los barberos de esta sede.
+  solicitudesServicio   SolicitudServicioBarbero[]
 
   @@map("barberias")
 }
@@ -313,12 +318,57 @@ model ServicioBarbero {
   // V3 fase 4 · snapshot de las reservas creadas con este servicio: la otra
   // mitad del vínculo opcional de `participante_servicios`.
   participanteServicios ParticipanteServicio[]
+  // T-27 · solicitudes de desactivación que apuntan a este servicio.
+  solicitudesServicio   SolicitudServicioBarbero[]
 
   @@unique([barberoId, categoriaId, nombrePersonalizado], name: "uk_servicio_barbero_categoria_nombre", map: "uk_servicio_barbero_categoria_nombre")
   @@index([categoriaId, activo], name: "idx_servicios_barbero_categoria")
   @@index([barberoId, activo], name: "idx_servicios_barbero_barbero")
   @@index([barberiaId, activo], name: "idx_servicios_barbero_sede")
   @@map("servicios_barbero")
+}
+
+/// T-27 (24 nov 2026) · solicitud de servicio de un BARBERO.
+///
+/// El barbero pide publicar un servicio (`ALTA`) o retirar uno ya publicado
+/// (`DESACTIVACION`); el ADMIN_BARBERIA de la sede la resuelve. Nada se borra:
+/// el estado (`PENDIENTE`, `APROBADA`, `RECHAZADA`) y el motivo del rechazo
+/// quedan como historial de la petición.
+///
+/// Aprobar un alta crea el servicio en `Servicio` —el catálogo de la sede— y
+/// habilita al solicitante en `ServicioBarbero` con su precio (decisión del
+/// 23 nov). Por eso la solicitud guarda los datos del servicio y no solo una
+/// referencia.
+model SolicitudServicioBarbero {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId          String    @map("barberia_id") @db.Uuid
+  barberoId           String    @map("barbero_id") @db.Uuid
+  tipo                String    @db.VarChar(20)
+  estado              String    @default("PENDIENTE") @db.VarChar(20)
+  categoriaId         String?   @map("categoria_id") @db.Uuid
+  nombrePersonalizado String?   @map("nombre_personalizado") @db.VarChar(100)
+  descripcion         String?   @db.VarChar(500)
+  imagenUrl           String?   @map("imagen_url") @db.VarChar(500)
+  imagenPublicId      String?   @map("imagen_public_id") @db.VarChar(255)
+  precio              Decimal?  @db.Decimal(10, 2)
+  duracionMinutos     Int?      @map("duracion_minutos")
+  // Solo en `DESACTIVACION`: el servicio publicado que se pide retirar.
+  servicioId          String?   @map("servicio_id") @db.Uuid
+  motivoRechazo       String?   @map("motivo_rechazo") @db.VarChar(500)
+  resueltoPor         String?   @map("resuelto_por") @db.Uuid
+  resueltaAt          DateTime? @map("resuelta_at") @db.Timestamptz
+  creadoAt            DateTime  @default(now()) @map("creado_at") @db.Timestamptz
+  actualizadoAt       DateTime  @default(now()) @updatedAt @map("actualizado_at") @db.Timestamptz
+
+  barberia        Barberia        @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
+  barbero         Usuario         @relation("SolicitudServicioDeBarbero", fields: [barberoId], references: [id], onDelete: Cascade)
+  resolutor       Usuario?        @relation("SolicitudServicioResueltaPor", fields: [resueltoPor], references: [id], onDelete: SetNull)
+  servicioBarbero ServicioBarbero? @relation(fields: [servicioId], references: [id], onDelete: SetNull)
+
+  // Los CHECK de estado, tipo y motivo viven en la migración.
+  @@index([barberiaId, estado], name: "idx_solicitudes_servicio_sede_estado")
+  @@index([barberoId, estado], name: "idx_solicitudes_servicio_barbero")
+  @@map("solicitudes_servicio_barbero")
 }
 
 model Combo {
