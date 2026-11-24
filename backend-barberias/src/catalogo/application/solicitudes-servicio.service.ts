@@ -173,6 +173,28 @@ export class SolicitudesServicioService {
       );
     }
 
+    // Paridad con el alta directa que había antes: el mismo nombre en la misma
+    // categoría no se publica dos veces, ni por la vía de la solicitud.
+    const yaPublicado = await this.prisma.servicioBarbero.findFirst({
+      where: {
+        barberoId,
+        barberiaId: sede,
+        categoriaId: dto.categoriaId,
+        nombrePersonalizado: { equals: nombre, mode: 'insensitive' },
+      },
+      select: { id: true, nombrePersonalizado: true, activo: true },
+    });
+
+    if (yaPublicado) {
+      throw errorDeConflicto(
+        'SERVICIO_BARBERO_DUPLICADO',
+        yaPublicado.activo
+          ? `Ya tienes un servicio llamado «${yaPublicado.nombrePersonalizado}» en esa categoría.`
+          : `Ya tuviste un servicio llamado «${yaPublicado.nombrePersonalizado}» en esa categoría: reactívalo en lugar de pedir otro.`,
+        { servicioId: yaPublicado.id },
+      );
+    }
+
     await this.exigirSinPendiente({
       barberiaId: sede,
       barberoId,
@@ -310,6 +332,10 @@ export class SolicitudesServicioService {
           categoriaId: solicitud.categoriaId as string,
           nombrePersonalizado: nombre,
           descripcion: solicitud.descripcion,
+          // T-24 en el flujo de solicitud: la foto pedida viaja con el alta
+          // aprobada; sin foto, ambos campos quedan en NULL.
+          imagenUrl: solicitud.imagenUrl,
+          imagenPublicId: solicitud.imagenPublicId,
           precio: solicitud.precio ?? 0,
           duracionMinutos: solicitud.duracionMinutos ?? 0,
         },

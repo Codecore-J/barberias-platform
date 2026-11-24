@@ -5,6 +5,7 @@ import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { describe, expect, it, vi } from 'vitest';
 import { SolicitudesServicioService } from '../src/catalogo/application/solicitudes-servicio.service.js';
 import { SolicitudesServicioController } from '../src/catalogo/infrastructure/solicitudes-servicio.controller.js';
+import { ServiciosBarberoController } from '../src/catalogo/infrastructure/servicios-barbero.controller.js';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
 
 /**
@@ -170,6 +171,47 @@ describe('T-27 · solicitudes de servicio del barbero', () => {
           where: { barberiaId: SEDE, estado: 'PENDIENTE' },
         }),
       );
+    });
+  });
+
+  /**
+   * Decisión del 24 nov (cierra §5.10): el alta del barbero deja de publicar.
+   * `POST /mis-servicios` pasa a crear la SOLICITUD con el mismo cuerpo; el
+   * servicio nace solo cuando el ADMIN_BARBERIA la aprueba (T-28).
+   */
+  describe('POST /mis-servicios crea la solicitud', () => {
+    it('no publica el servicio: delega en la solicitud con tipo ALTA', async () => {
+      const solicitudes = { crear: vi.fn(async () => ({ id: 'sol-1', estado: 'PENDIENTE' })) };
+      const servicios = {
+        crear: vi.fn(),
+        listarMios: vi.fn(),
+        actualizar: vi.fn(),
+        actualizarImagen: vi.fn(),
+        catalogoAnidado: vi.fn(),
+      };
+      const controller = new ServiciosBarberoController(
+        servicios as never,
+        solicitudes as never,
+      );
+      const dto = {
+        nombre: 'Corte degradado',
+        precio: 500,
+        duracionMinutos: 30,
+        categoriaId: CATEGORIA,
+        descripcion: 'Con máquina',
+      };
+
+      await controller.crear(SEDE, { id: BARBERO } as never, dto as never);
+
+      expect(solicitudes.crear).toHaveBeenCalledWith(SEDE, BARBERO, {
+        tipo: 'ALTA',
+        nombre: dto.nombre,
+        categoriaId: dto.categoriaId,
+        descripcion: dto.descripcion,
+        precio: dto.precio,
+        duracionMinutos: dto.duracionMinutos,
+      });
+      expect(servicios.crear).not.toHaveBeenCalled();
     });
   });
 

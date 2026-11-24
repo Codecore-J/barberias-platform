@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ServiciosBarberoService } from '../application/servicios-barbero.service.js';
+import { SolicitudesServicioService } from '../application/solicitudes-servicio.service.js';
 import { CreateServicioBarberoDto } from '../application/dto/create-servicio-barbero.dto.js';
 import { UpdateServicioBarberoDto } from '../application/dto/update-servicio-barbero.dto.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
@@ -46,7 +47,10 @@ import { ImagenDemasiadoGrandeFilter } from '../../shared/cloudinary/imagen-dema
  */
 @Controller('shops/:shopId')
 export class ServiciosBarberoController {
-  constructor(private readonly serviciosBarberoService: ServiciosBarberoService) {}
+  constructor(
+    private readonly serviciosBarberoService: ServiciosBarberoService,
+    private readonly solicitudesService: SolicitudesServicioService,
+  ) {}
 
   @Get('servicios')
   @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
@@ -55,6 +59,14 @@ export class ServiciosBarberoController {
     return this.serviciosBarberoService.catalogoAnidado(barberiaId);
   }
 
+  /**
+   * Decisión del 24 nov: el barbero ya no publica.
+   *
+   * El mismo cuerpo crea una SOLICITUD `ALTA` en estado `PENDIENTE`; el servicio
+   * nace cuando el ADMIN_BARBERIA la aprueba (`PATCH .../solicitudes-servicio/:id`).
+   * Se conserva la ruta y el DTO para no romper a quien ya la usa: cambia el
+   * efecto, no el contrato de entrada. La respuesta pasa a ser la solicitud.
+   */
   @Post('mis-servicios')
   @Roles('BARBERO')
   @UseGuards(SoloBarberoGuard, VinculoBarberiaGuard)
@@ -64,7 +76,14 @@ export class ServiciosBarberoController {
     @CurrentUser() user: UsuarioAutenticado,
     @Body() dto: CreateServicioBarberoDto,
   ) {
-    return this.serviciosBarberoService.crear(barberiaId, user.id, dto);
+    return this.solicitudesService.crear(barberiaId, user.id, {
+      tipo: 'ALTA',
+      nombre: dto.nombre,
+      categoriaId: dto.categoriaId,
+      descripcion: dto.descripcion,
+      precio: dto.precio,
+      duracionMinutos: dto.duracionMinutos,
+    });
   }
 
   @Get('mis-servicios')

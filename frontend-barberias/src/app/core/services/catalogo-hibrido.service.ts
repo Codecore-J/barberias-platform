@@ -68,6 +68,19 @@ export interface CrearServicioBarberoDto {
   descripcion?: string;
 }
 
+/**
+ * El alta del barbero ya no publica: crea una solicitud que el ADMIN_BARBERIA
+ * de la sede aprueba o rechaza. El servicio aparece en el catálogo cuando se
+ * aprueba.
+ */
+export interface SolicitudServicioBarbero {
+  id: string;
+  tipo: 'ALTA' | 'DESACTIVACION';
+  estado: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
+  motivoRechazo?: string | null;
+  creadoAt?: string;
+}
+
 export interface ActualizarServicioBarberoDto {
   nombre?: string;
   precio?: number;
@@ -286,11 +299,13 @@ export class CatalogoHibridoService {
     );
   }
 
-  crearServicio(dto: CrearServicioBarberoDto): Observable<ServicioBarbero> {
+  crearServicio(dto: CrearServicioBarberoDto): Observable<SolicitudServicioBarbero> {
     this.guardandoServicio.set(true);
     this.errorMisServicios.set(null);
 
-    return this.http.post<ServicioBarbero>(this.misServiciosUrl, dto).pipe(
+    return this.http
+      .post<SolicitudServicioBarbero>(this.misServiciosUrl, { ...dto, tipo: 'ALTA' })
+      .pipe(
       tap(() => {
         this.guardandoServicio.set(false);
         this.cargarMisServicios().subscribe();
@@ -298,7 +313,10 @@ export class CatalogoHibridoService {
       catchError((error) => {
         this.guardandoServicio.set(false);
         this.errorMisServicios.set(
-          CatalogoHibridoService.mensajeDeError(error, 'No se pudo publicar el servicio.'),
+          CatalogoHibridoService.mensajeDeError(
+            error,
+            'No se pudo enviar la solicitud de servicio.',
+          ),
         );
         return throwError(() => error);
       }),

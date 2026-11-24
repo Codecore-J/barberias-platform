@@ -33,8 +33,8 @@ import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.
             Mis <span class="gold-gradient-text">Servicios</span>
           </h2>
           <p class="text-sm text-zinc-400">
-            Publica lo que ofreces en {{ tenantService.nombreBarberiaActiva() }} con tu propio precio y
-            duración.
+            Pide lo que ofreces en {{ tenantService.nombreBarberiaActiva() }} con tu propio precio y
+            duración; la sede lo aprueba y entonces aparece en el catálogo.
           </p>
         </div>
 
@@ -115,7 +115,7 @@ import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.
               (click)="abrirFormulario()"
               class="px-6 py-3 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-lg hover:scale-105 transition-transform inline-flex items-center gap-2"
             >
-              <i class="pi pi-plus"></i> Publicar mi primer servicio
+              <i class="pi pi-plus"></i> Pedir mi primer servicio
             </button>
           }
         </div>
@@ -358,7 +358,7 @@ import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.
                       <i class="pi pi-spin pi-spinner"></i> Guardando...
                     } @else {
                       <i class="pi pi-save"></i>
-                      {{ editandoId() ? 'Guardar Cambios' : 'Publicar Servicio' }}
+                      {{ editandoId() ? 'Guardar Cambios' : 'Enviar Solicitud' }}
                     }
                   </button>
                 </div>
@@ -486,51 +486,59 @@ export class BarberoServiciosComponent implements OnInit {
 
     const descripcion = (this.form.value.descripcion ?? '').trim();
 
-    const peticion$ = id
-      ? this.catalogoService.actualizarServicio(id, {
-          nombre,
-          descripcion,
-          precio,
-          duracionMinutos,
-          // La categoría solo viaja si cambió: enviar la misma que ya estaba
-          // desactivada haría fallar el guardado por una regla que no se tocó.
-          categoriaId:
-            categoriaId !== this.categoriaEnEdicion()?.id || this.categoriaEnEdicion()?.activa
-              ? categoriaId
-              : undefined,
-        })
-      : this.catalogoService.crearServicio({
-          nombre,
-          descripcion,
-          precio,
-          duracionMinutos,
-          categoriaId,
+    // El alta ya no publica: crea una solicitud que la sede resuelve. Por eso
+    // no hay foto que subir todavía —solo se adjunta a un servicio publicado—.
+    if (!id) {
+      this.catalogoService
+        .crearServicio({ nombre, descripcion, precio, duracionMinutos, categoriaId })
+        .subscribe({
+          next: () => {
+            const conFoto = this.archivoSeleccionado()
+              ? ' Guarda la foto cuando la sede apruebe el servicio.'
+              : '';
+            this.mostrarExito(`Solicitud enviada a la sede para su aprobación.${conFoto}`);
+            this.cerrarFormulario();
+          },
+          error: () => undefined,
         });
+      return;
+    }
 
-    peticion$.subscribe({
-      next: (servicio) => {
-        // T-25 · la foto es una segunda llamada: el archivo no cabe en el JSON.
-        const archivo = this.archivoSeleccionado();
-        const objetivo = id ?? servicio?.id;
+    this.catalogoService
+      .actualizarServicio(id, {
+        nombre,
+        descripcion,
+        precio,
+        duracionMinutos,
+        // La categoría solo viaja si cambió: enviar la misma que ya estaba
+        // desactivada haría fallar el guardado por una regla que no se tocó.
+        categoriaId:
+          categoriaId !== this.categoriaEnEdicion()?.id || this.categoriaEnEdicion()?.activa
+            ? categoriaId
+            : undefined,
+      })
+      .subscribe({
+        next: () => {
+          const archivo = this.archivoSeleccionado();
 
-        if (archivo && objetivo) {
-          this.catalogoService.subirImagenServicio(objetivo, archivo).subscribe({
-            next: () => {
-              this.mostrarExito('Servicio guardado con su foto.');
-              this.cerrarFormulario();
-            },
-            // El servicio ya quedó guardado: se deja el modal abierto para
-            // reintentar la foto sin volver a escribir todo.
-            error: () => undefined,
-          });
-          return;
-        }
+          if (archivo) {
+            this.catalogoService.subirImagenServicio(id, archivo).subscribe({
+              next: () => {
+                this.mostrarExito('Servicio guardado con su foto.');
+                this.cerrarFormulario();
+              },
+              // El servicio ya quedó guardado: se deja el modal abierto para
+              // reintentar la foto sin volver a escribir todo.
+              error: () => undefined,
+            });
+            return;
+          }
 
-        this.mostrarExito(id ? 'Servicio actualizado.' : 'Servicio publicado.');
-        this.cerrarFormulario();
-      },
-      error: () => undefined,
-    });
+          this.mostrarExito('Servicio actualizado.');
+          this.cerrarFormulario();
+        },
+        error: () => undefined,
+      });
   }
 
   /**

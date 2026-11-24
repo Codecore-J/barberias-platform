@@ -19,7 +19,6 @@ import {
   type ArchivoSubido,
 } from '../../shared/cloudinary/cloudinary.service.js';
 import { ROL_BARBERO } from '../../iam/domain/roles.js';
-import { CreateServicioBarberoDto } from './dto/create-servicio-barbero.dto.js';
 import { UpdateServicioBarberoDto } from './dto/update-servicio-barbero.dto.js';
 
 /**
@@ -176,32 +175,11 @@ export class ServiciosBarberoService {
     );
   }
 
-  async crear(barberiaId: string, barberoId: string, dto: CreateServicioBarberoDto) {
-    const sede = ServiciosBarberoService.exigirSede(barberiaId);
-    const nombre = ServiciosBarberoService.normalizarNombre(dto.nombre);
-
-    await this.exigirBarberoDeSede(sede, barberoId);
-    await this.exigirCategoriaGlobal(dto.categoriaId);
-    await this.exigirNombreLibre(barberoId, dto.categoriaId, nombre);
-
-    const servicio = await this.prisma.servicioBarbero.create({
-      data: {
-        barberoId,
-        barberiaId: sede,
-        categoriaId: dto.categoriaId,
-        nombrePersonalizado: nombre,
-        descripcion: ServiciosBarberoService.normalizarDescripcion(dto.descripcion),
-        precio: dto.precio,
-        duracionMinutos: dto.duracionMinutos,
-      },
-      include: { categoria: { select: { id: true, nombre: true } } },
-    });
-
-    this.logger.log(
-      `Servicio de barbero creado: ${servicio.id} (barbero: ${barberoId}, sede: ${sede})`,
-    );
-    return servicio;
-  }
+  /**
+   * El alta directa ya no existe: la decisión del 24 nov la convierte en una
+   * solicitud que el ADMIN_BARBERIA resuelve (`SolicitudesServicioService`).
+   * Este servicio conserva la lectura, la edición y la foto de lo ya publicado.
+   */
 
   /**
    * Los servicios del barbero que inicia sesión en esa sede. Devuelve también los

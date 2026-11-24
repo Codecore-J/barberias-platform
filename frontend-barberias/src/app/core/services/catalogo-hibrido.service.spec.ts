@@ -64,7 +64,8 @@ describe('CatalogoHibridoService · descripción y foto del servicio (T-25)', ()
 
     const peticion = http.expectOne(MIS_SERVICIOS);
     expect(peticion.request.method).toBe('POST');
-    expect(peticion.request.body).toMatchObject({ descripcion: 'Con máquina' });
+    // El alta ya no publica: el backend crea una solicitud ALTA.
+    expect(peticion.request.body).toMatchObject({ descripcion: 'Con máquina', tipo: 'ALTA' });
     peticion.flush({ id: SERVICIO });
     http.expectOne(MIS_SERVICIOS).flush([]);
   });
