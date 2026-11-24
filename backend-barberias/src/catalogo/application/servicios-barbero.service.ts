@@ -344,7 +344,7 @@ export class ServiciosBarberoService {
 
     const actual = await this.prisma.servicioBarbero.findFirst({
       where: { id, barberoId, barberiaId: sede },
-      select: { id: true, imagenUrl: true },
+      select: { id: true, imagenUrl: true, imagenPublicId: true },
     });
 
     if (!actual) {
@@ -360,7 +360,10 @@ export class ServiciosBarberoService {
       });
     }
 
-    const publicIdAnterior = CloudinaryService.publicIdDe(actual.imagenUrl);
+    // El `public_id` guardado manda; la URL queda como respaldo para las filas
+    // anteriores a la columna. Nunca se manda a `destroy` algo sin identificar.
+    const publicIdAnterior =
+      actual.imagenPublicId ?? CloudinaryService.publicIdDe(actual.imagenUrl);
     if (publicIdAnterior) {
       await this.cloudinary.borrar(publicIdAnterior);
     }
@@ -369,8 +372,8 @@ export class ServiciosBarberoService {
 
     const actualizado = await this.prisma.servicioBarbero.update({
       where: { id: actual.id },
-      data: { imagenUrl: subida.url },
-      select: { id: true, imagenUrl: true },
+      data: { imagenUrl: subida.url, imagenPublicId: subida.publicId },
+      select: { id: true, imagenUrl: true, imagenPublicId: true },
     });
 
     this.logger.log(`Imagen del servicio actualizada: ${id} (sede: ${sede})`);

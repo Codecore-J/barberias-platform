@@ -261,6 +261,8 @@ describe('T-24 · imagen del servicio', () => {
           data: {
             imagenUrl:
               'https://res.cloudinary.com/demo/image/upload/v1700000001/servicios/sede/nueva.webp',
+            // 24 nov: el `public_id` también se persiste, en su columna.
+            imagenPublicId: 'servicios/sede/nueva',
           },
         }),
       );
