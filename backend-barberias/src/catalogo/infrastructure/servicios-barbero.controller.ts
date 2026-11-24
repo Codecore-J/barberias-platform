@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   UploadedFile,
+  UseFilters,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -26,6 +27,7 @@ import {
   TAMANO_MAXIMO_IMAGEN,
   type ArchivoSubido,
 } from '../../shared/cloudinary/cloudinary.service.js';
+import { ImagenDemasiadoGrandeFilter } from '../../shared/cloudinary/imagen-demasiado-grande.filter.js';
 
 /**
  * V3 · Catálogo híbrido.
@@ -96,6 +98,9 @@ export class ServiciosBarberoController {
   @Patch('mis-servicios/:id/imagen')
   @Roles('BARBERO')
   @UseGuards(SoloBarberoGuard, VinculoBarberiaGuard)
+  // El corte de Multer (> 2 MB) y la validación del servicio responden el mismo
+  // 400 `IMAGEN_DEMASIADO_GRANDE`.
+  @UseFilters(ImagenDemasiadoGrandeFilter)
   @UseInterceptors(
     FileInterceptor('archivo', { limits: { fileSize: TAMANO_MAXIMO_IMAGEN } }),
   )
