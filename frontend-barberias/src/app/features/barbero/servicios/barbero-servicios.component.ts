@@ -149,6 +149,21 @@ import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.
                 </div>
               </div>
 
+              <!-- T-25 · foto y descripción: el panel edita todo lo que el cliente ve -->
+              @if (servicio.imagenUrl) {
+                <img
+                  [src]="servicio.imagenUrl"
+                  [alt]="'Foto de ' + servicio.nombrePersonalizado"
+                  class="w-full h-36 object-cover rounded-xl border border-white/10"
+                  loading="lazy"
+                />
+              }
+              @if (servicio.descripcion) {
+                <p class="text-xs text-zinc-400 leading-relaxed line-clamp-2" [title]="servicio.descripcion">
+                  {{ servicio.descripcion }}
+                </p>
+              }
+
               <div class="flex items-center justify-between pt-3 mt-auto border-t border-white/5">
                 <!-- Interruptor de disponibilidad -->
                 <button
@@ -230,6 +245,63 @@ import { ModalShellComponent } from '../../../shared/ui/modal-shell/modal-shell.
                     <p class="text-[11px] text-rose-400 mt-1">
                       El nombre debe tener entre 2 y 100 caracteres.
                     </p>
+                  }
+                </div>
+
+                <!-- T-25 · descripción: opcional, 500 caracteres como en el backend -->
+                <div>
+                  <label class="block text-xs font-semibold text-zinc-400 uppercase mb-1.5">
+                    Descripción (opcional)
+                  </label>
+                  <textarea
+                    formControlName="descripcion"
+                    rows="3"
+                    maxlength="500"
+                    placeholder="Qué incluye el servicio"
+                    class="w-full bg-neutral-900 text-white border border-neutral-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-amber-500/60 transition-colors"
+                  ></textarea>
+                  <p class="text-[11px] text-zinc-500 mt-1">
+                    {{ (form.value.descripcion ?? '').length }}/500
+                  </p>
+                </div>
+
+                <!-- T-25 · foto: JPG, PNG o WEBP de hasta 2 MB (lo valida el backend) -->
+                <div>
+                  <label class="block text-xs font-semibold text-zinc-400 uppercase mb-1.5">
+                    Foto del servicio (opcional)
+                  </label>
+                  <div class="flex items-center gap-3">
+                    @if (previsualizacion() || fotoActual()) {
+                      <img
+                        [src]="previsualizacion() || fotoActual() || ''"
+                        alt="Vista previa de la foto"
+                        class="w-16 h-16 rounded-xl object-cover border border-white/10"
+                      />
+                    }
+                    <label
+                      class="px-4 py-2.5 rounded-xl text-xs font-bold text-zinc-300 bg-zinc-800 hover:bg-zinc-700 cursor-pointer transition-colors flex items-center gap-2"
+                    >
+                      <i class="pi pi-camera"></i>
+                      {{ fotoActual() ? 'Cambiar foto' : 'Elegir foto' }}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        class="hidden"
+                        (change)="elegirArchivo($event)"
+                      />
+                    </label>
+                    @if (archivoSeleccionado()) {
+                      <button
+                        type="button"
+                        (click)="quitarArchivo()"
+                        class="text-xs text-zinc-400 hover:text-white underline"
+                      >
+                        Quitar
+                      </button>
+                    }
+                  </div>
+                  @if (errorFoto()) {
+                    <p class="text-[11px] text-rose-400 mt-1">{{ errorFoto() }}</p>
                   }
                 </div>
 
@@ -331,9 +403,17 @@ export class BarberoServiciosComponent implements OnInit {
   readonly form = this.fb.group({
     categoriaId: ['', [Validators.required]],
     nombre: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(100)]],
+    descripcion: ['', [Validators.maxLength(500)]],
     precio: [0, [Validators.required, Validators.min(0)]],
     duracionMinutos: [30, [Validators.required, Validators.min(5), Validators.max(480)]],
   });
+
+  /** T-25 · la foto viaja aparte del JSON: se sube después de guardar el resto. */
+  readonly archivoSeleccionado = signal<File | null>(null);
+  readonly previsualizacion = signal<string | null>(null);
+  /** Foto que ya tenía el servicio, para pintarla mientras se edita. */
+  readonly fotoActual = signal<string | null>(null);
+  readonly errorFoto = signal<string | null>(null);
 
   ngOnInit(): void {
     this.recargar();
@@ -352,9 +432,11 @@ export class BarberoServiciosComponent implements OnInit {
           .categorias()
           .find((c) => c.id === servicio.categoriaId) ?? null;
       this.categoriaEnEdicion.set(categoria);
+      this.fotoActual.set(servicio.imagenUrl ?? null);
       this.form.setValue({
         categoriaId: servicio.categoriaId,
         nombre: servicio.nombrePersonalizado,
+        descripcion: servicio.descripcion ?? '',
         precio: servicio.precio,
         duracionMinutos: servicio.duracionMinutos,
       });
@@ -362,9 +444,11 @@ export class BarberoServiciosComponent implements OnInit {
       this.editandoId.set(null);
       this.categoriaEnEdicion.set(null);
       const primera = this.categoriasActivas()[0];
+      this.fotoActual.set(null);
       this.form.reset({
         categoriaId: primera?.id ?? '',
         nombre: '',
+        descripcion: '',
         precio: 0,
         duracionMinutos: 30,
       });
@@ -377,7 +461,15 @@ export class BarberoServiciosComponent implements OnInit {
     this.modalAbierto.set(false);
     this.editandoId.set(null);
     this.categoriaEnEdicion.set(null);
-    this.form.reset({ categoriaId: '', nombre: '', precio: 0, duracionMinutos: 30 });
+    this.quitarArchivo();
+    this.fotoActual.set(null);
+    this.form.reset({
+      categoriaId: '',
+      nombre: '',
+      descripcion: '',
+      precio: 0,
+      duracionMinutos: 30,
+    });
   }
 
   guardar(): void {
@@ -392,9 +484,12 @@ export class BarberoServiciosComponent implements OnInit {
     const duracionMinutos = Number(this.form.value.duracionMinutos ?? 0);
     const id = this.editandoId();
 
+    const descripcion = (this.form.value.descripcion ?? '').trim();
+
     const peticion$ = id
       ? this.catalogoService.actualizarServicio(id, {
           nombre,
+          descripcion,
           precio,
           duracionMinutos,
           // La categoría solo viaja si cambió: enviar la misma que ya estaba
@@ -404,15 +499,76 @@ export class BarberoServiciosComponent implements OnInit {
               ? categoriaId
               : undefined,
         })
-      : this.catalogoService.crearServicio({ nombre, precio, duracionMinutos, categoriaId });
+      : this.catalogoService.crearServicio({
+          nombre,
+          descripcion,
+          precio,
+          duracionMinutos,
+          categoriaId,
+        });
 
     peticion$.subscribe({
-      next: () => {
+      next: (servicio) => {
+        // T-25 · la foto es una segunda llamada: el archivo no cabe en el JSON.
+        const archivo = this.archivoSeleccionado();
+        const objetivo = id ?? servicio?.id;
+
+        if (archivo && objetivo) {
+          this.catalogoService.subirImagenServicio(objetivo, archivo).subscribe({
+            next: () => {
+              this.mostrarExito('Servicio guardado con su foto.');
+              this.cerrarFormulario();
+            },
+            // El servicio ya quedó guardado: se deja el modal abierto para
+            // reintentar la foto sin volver a escribir todo.
+            error: () => undefined,
+          });
+          return;
+        }
+
         this.mostrarExito(id ? 'Servicio actualizado.' : 'Servicio publicado.');
         this.cerrarFormulario();
       },
       error: () => undefined,
     });
+  }
+
+  /**
+   * T-25 · validación temprana de la foto. El backend vuelve a comprobar tipo y
+   * tamaño (400 D40), así que esto solo evita un viaje inútil.
+   */
+  elegirArchivo(evento: Event): void {
+    const entrada = evento.target as HTMLInputElement;
+    const archivo = entrada.files?.[0] ?? null;
+    this.errorFoto.set(null);
+
+    if (!archivo) {
+      this.quitarArchivo();
+      return;
+    }
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(archivo.type)) {
+      this.errorFoto.set('La foto debe ser JPG, PNG o WEBP.');
+      entrada.value = '';
+      return;
+    }
+
+    if (archivo.size > 2 * 1024 * 1024) {
+      this.errorFoto.set('La foto no puede superar los 2 MB.');
+      entrada.value = '';
+      return;
+    }
+
+    this.archivoSeleccionado.set(archivo);
+    this.previsualizacion.set(URL.createObjectURL(archivo));
+  }
+
+  quitarArchivo(): void {
+    const previa = this.previsualizacion();
+    if (previa) URL.revokeObjectURL(previa);
+    this.archivoSeleccionado.set(null);
+    this.previsualizacion.set(null);
+    this.errorFoto.set(null);
   }
 
   alternarActivo(servicio: ServicioBarbero): void {

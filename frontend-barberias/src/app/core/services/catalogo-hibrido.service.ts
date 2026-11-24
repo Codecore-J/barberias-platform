@@ -22,6 +22,10 @@ export interface ServicioBarbero {
   categoriaId: string;
   barberoId: string;
   nombrePersonalizado: string;
+  /** T-23 · descripción opcional del servicio (500 caracteres en el backend). */
+  descripcion?: string | null;
+  /** T-24 · URL de la foto en Cloudinary; `null` si el servicio no tiene. */
+  imagenUrl?: string | null;
   precio: number;
   duracionMinutos: number;
   activo: boolean;
@@ -61,6 +65,7 @@ export interface CrearServicioBarberoDto {
   precio: number;
   duracionMinutos: number;
   categoriaId: string;
+  descripcion?: string;
 }
 
 export interface ActualizarServicioBarberoDto {
@@ -69,6 +74,8 @@ export interface ActualizarServicioBarberoDto {
   duracionMinutos?: number;
   categoriaId?: string;
   activo?: boolean;
+  /** El vacío se manda como `''` y el backend lo guarda NULL. */
+  descripcion?: string | null;
 }
 
 /**
@@ -317,6 +324,33 @@ export class CatalogoHibridoService {
     );
   }
 
+  /**
+   * T-25 · foto del servicio. Viaja como `multipart/form-data` en el campo
+   * `archivo`, que es el que lee `FileInterceptor` en el backend; el 400
+   * `IMAGEN_DEMASIADO_GRANDE` o `IMAGEN_TIPO_INVALIDO` se muestra tal cual.
+   */
+  subirImagenServicio(id: string, archivo: File): Observable<ServicioBarbero> {
+    this.guardandoServicio.set(true);
+    this.errorMisServicios.set(null);
+
+    const cuerpo = new FormData();
+    cuerpo.append('archivo', archivo);
+
+    return this.http.patch<ServicioBarbero>(`${this.misServiciosUrl}/${id}/imagen`, cuerpo).pipe(
+      tap(() => {
+        this.guardandoServicio.set(false);
+        this.cargarMisServicios().subscribe();
+      }),
+      catchError((error) => {
+        this.guardandoServicio.set(false);
+        this.errorMisServicios.set(
+          CatalogoHibridoService.mensajeDeError(error, 'No se pudo subir la foto del servicio.'),
+        );
+        return throwError(() => error);
+      }),
+    );
+  }
+
   // ── Vitrina del cliente ─────────────────────────────────────────────────
 
   /**
@@ -369,6 +403,8 @@ export class CatalogoHibridoService {
       categoriaId: servicio.categoriaId,
       barberoId: servicio.barberoId,
       nombrePersonalizado: servicio.nombrePersonalizado,
+      descripcion: servicio.descripcion ?? null,
+      imagenUrl: servicio.imagenUrl ?? null,
       precio: Number(servicio.precio),
       duracionMinutos: Number(servicio.duracionMinutos),
       activo: servicio.activo !== false,
