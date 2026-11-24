@@ -266,7 +266,7 @@ import { ToastService } from '../../../shared/ui/toast/toast.service.js';
       <app-modal-shell
         [visible]="modalAbierto()"
         [titulo]="editandoId() ? 'Editar categoría' : 'Nueva categoría'"
-        subtitulo="Agrupa los servicios que ofrecen tus barberos en esta sede."
+        subtitulo="Agrupa los servicios que ofrecen los barberos en el catálogo global."
         icono="pi pi-tags"
         ancho="lg"
         [cerrarBloqueado]="catalogoService.guardandoCategoria()"
