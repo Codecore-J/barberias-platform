@@ -80,6 +80,10 @@ describe('ServiciosService', () => {
           duracionEstimada: dto.duracionEstimada,
           margenOperativo: dto.margenOperativo,
           destacado: dto.destacado,
+          // T-22 · el DTO ya no tiene descripción en este payload, pero el
+          // servicio la escribe explícitamente como NULL para no dejar el campo
+          // fuera del `create` (Prisma lo ignoraría y quedaría el default).
+          descripcion: null,
           estado: 'ACTIVO',
         },
       });

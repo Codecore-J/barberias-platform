@@ -5,17 +5,18 @@ import { CreateCategoriaServicioDto } from './dto/create-categoria-servicio.dto.
 import { UpdateCategoriaServicioDto } from './dto/update-categoria-servicio.dto.js';
 
 /**
- * V3 · Categorías de servicio de una sede.
+ * V3 · Categorías de servicio GLOBALES de la plataforma.
  *
- * El modelo de negocio es «categorización estricta con nomenclatura libre»: el
- * ADMIN_BARBERIA define las categorías de SU sede y los barberos publican dentro
- * de ellas (`ServiciosBarberoService`). La categoría nunca se borra (§9): se
+ * T-20 (23 nov 2026): la taxonomía dejó de pertenecer a una sede. El
+ * ADMINISTRADOR la define una vez (`barberia_id` NULL = global) y los barberos
+ * publican dentro de ella con su propio nombre, precio y duración
+ * (`ServiciosBarberoService`). Antes cada sede tenía su copia del mismo nombre y
+ * renombrar «Corte» en una no cambiaba las demás.
+ *
+ * La sede del path ya NO acota la consulta: `exigirSede` sigue validando que la
+ * ruta traiga una sede —es lo que autoriza `VinculoBarberiaGuard`—, pero el
+ * `where` filtra por `barberiaId: null`. La categoría nunca se borra (§9): se
  * desactiva con `activa = false` y deja de ofrecerse al cliente.
- *
- * Todas las consultas van acotadas por `barberiaId`. Sin ese filtro, el `where`
- * de Prisma ignora el campo y devuelve las categorías de TODAS las sedes —el
- * mismo fallo que E1-06 cerró en el catálogo—, así que la sede se exige aquí y no
- * se confía en que la ruta la traiga.
  */
 @Injectable()
 export class CategoriasService {
@@ -47,14 +48,16 @@ export class CategoriasService {
     return limpio;
   }
 
+  /**
+   * T-20 · el nombre es único en el catálogo GLOBAL. La comparación no lleva
+   * `barberiaId`: dos sedes ya no pueden tener cada una su «Corte».
+   */
   private async exigirNombreLibre(
-    barberiaId: string,
     nombre: string,
     excluirId?: string,
   ): Promise<void> {
     const existente = await this.prisma.categoriaServicio.findFirst({
       where: {
-        barberiaId,
         nombre: { equals: nombre, mode: 'insensitive' },
         ...(excluirId ? { id: { not: excluirId } } : {}),
       },
@@ -68,27 +71,29 @@ export class CategoriasService {
     throw errorDeConflicto(
       'CATEGORIA_DUPLICADA',
       existente.activa
-        ? `La sede ya tiene una categoría llamada «${existente.nombre}».`
-        : `La sede ya tuvo una categoría llamada «${existente.nombre}»: reactívala en lugar de crear otra.`,
+        ? `El catálogo ya tiene una categoría llamada «${existente.nombre}».`
+        : `El catálogo ya tuvo una categoría llamada «${existente.nombre}»: reactívala en lugar de crear otra.`,
       { categoriaId: existente.id },
     );
   }
 
   async crear(barberiaId: string, dto: CreateCategoriaServicioDto) {
-    const sede = CategoriasService.exigirSede(barberiaId);
+    // La sede solo valida el parámetro de la ruta; la fila nace global.
+    CategoriasService.exigirSede(barberiaId);
     const nombre = CategoriasService.normalizarNombre(dto.nombre);
 
-    await this.exigirNombreLibre(sede, nombre);
+    await this.exigirNombreLibre(nombre);
 
     const categoria = await this.prisma.categoriaServicio.create({
       data: {
-        barberiaId: sede,
+        barberiaId: null,
         nombre,
         descripcion: dto.descripcion?.trim() || null,
+        orden: 0,
       },
     });
 
-    this.logger.log(`Categoría creada: ${categoria.id} para barberia: ${sede}`);
+    this.logger.log(`Categoría global creada: ${categoria.id}`);
     return categoria;
   }
 
@@ -98,11 +103,11 @@ export class CategoriasService {
    * activos de cada una, que es lo que la pantalla muestra.
    */
   async listar(barberiaId: string) {
-    const sede = CategoriasService.exigirSede(barberiaId);
+    CategoriasService.exigirSede(barberiaId);
 
     const categorias = await this.prisma.categoriaServicio.findMany({
-      where: { barberiaId: sede },
-      orderBy: [{ activa: 'desc' }, { nombre: 'asc' }],
+      where: { barberiaId: null },
+      orderBy: [{ activa: 'desc' }, { orden: 'asc' }, { nombre: 'asc' }],
       include: {
         servicios: { where: { activo: true }, select: { id: true } },
       },
@@ -115,15 +120,15 @@ export class CategoriasService {
   }
 
   async obtener(barberiaId: string, id: string) {
-    const sede = CategoriasService.exigirSede(barberiaId);
+    CategoriasService.exigirSede(barberiaId);
 
     const categoria = await this.prisma.categoriaServicio.findFirst({
-      where: { id, barberiaId: sede },
+      where: { id, barberiaId: null },
       include: { servicios: { where: { activo: true }, select: { id: true } } },
     });
 
     if (!categoria) {
-      throw new NotFoundException(`Categoría con ID ${id} no encontrada en esta barbería`);
+      throw new NotFoundException(`Categoría con ID ${id} no encontrada en el catálogo global`);
     }
 
     const { servicios, ...resto } = categoria;
@@ -132,14 +137,13 @@ export class CategoriasService {
 
   async actualizar(barberiaId: string, id: string, dto: UpdateCategoriaServicioDto) {
     const actual = await this.obtener(barberiaId, id);
-    const sede = CategoriasService.exigirSede(barberiaId);
 
     const datos: { nombre?: string; descripcion?: string | null; activa?: boolean } = {};
 
     if (dto.nombre !== undefined) {
       const nombre = CategoriasService.normalizarNombre(dto.nombre);
       if (nombre !== actual.nombre) {
-        await this.exigirNombreLibre(sede, nombre, actual.id);
+        await this.exigirNombreLibre(nombre, actual.id);
         datos.nombre = nombre;
       }
     }
@@ -161,7 +165,47 @@ export class CategoriasService {
       data: datos,
     });
 
-    this.logger.log(`Categoría actualizada: ${id} (barberia: ${sede})`);
+    this.logger.log(`Categoría global actualizada: ${id}`);
     return actualizada;
+  }
+
+  /**
+   * T-21 · borrado REAL de una categoría global, con una única condición: que no
+   * la use ningún servicio de barbero.
+   *
+   * El camino normal sigue siendo desactivarla (`activa = false`), así que el
+   * borrado es la excepción para una categoría creada por error. La cuenta NO
+   * filtra por `activo`: un servicio desactivado sigue apuntando a la categoría y
+   * borrarla lo dejaría huérfano. El 409 devuelve `servicios` para que el panel
+   * pueda decir cuántos la bloquean.
+   */
+  async eliminar(barberiaId: string, id: string) {
+    CategoriasService.exigirSede(barberiaId);
+
+    const categoria = await this.prisma.categoriaServicio.findFirst({
+      where: { id, barberiaId: null },
+      select: { id: true, nombre: true },
+    });
+
+    if (!categoria) {
+      throw new NotFoundException(`Categoría con ID ${id} no encontrada en el catálogo global`);
+    }
+
+    const servicios = await this.prisma.servicioBarbero.count({
+      where: { categoriaId: id },
+    });
+
+    if (servicios > 0) {
+      throw errorDeConflicto(
+        'CATEGORIA_CON_SERVICIOS',
+        `No se puede eliminar la categoría «${categoria.nombre}» porque la usan ${servicios} servicio(s) de barbero. Desactívala en lugar de borrarla.`,
+        { servicios },
+      );
+    }
+
+    await this.prisma.categoriaServicio.delete({ where: { id } });
+
+    this.logger.log(`Categoría global eliminada: ${id}`);
+    return { id: categoria.id, nombre: categoria.nombre, eliminada: true };
   }
 }

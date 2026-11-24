@@ -158,10 +158,12 @@ describe('ServiciosService · catálogo de administración (E2-07)', () => {
   /**
    * BUG-ALTA-SERVICIOS · el panel tiene UN formulario para servicios y combos,
    * pero en la API son dos recursos con DTO distinto y
-   * `forbidNonWhitelisted` activo. `descripcion`, `esCombo` y
-   * `serviciosComboIds` no existen en `CreateServicioDto`, así que el POST
-   * devolvía 400 y el alta no se guardaba nunca: el formulario se rellenaba
-   * entero para nada.
+   * `forbidNonWhitelisted` activo. `esCombo` y `serviciosComboIds` no existen en
+   * `CreateServicioDto`, así que el POST devolvía 400 y el alta no se guardaba
+   * nunca: el formulario se rellenaba entero para nada.
+   *
+   * T-22 · `descripcion` sí forma parte del contrato del servicio, así que el
+   * cuerpo la reenvía (recortada) en vez de descartarla como hacía DEF-03.
    */
   it('BUG-ALTA-SERVICIOS: un servicio se envía solo con los campos de su contrato', () => {
     service
@@ -179,6 +181,7 @@ describe('ServiciosService · catálogo de administración (E2-07)', () => {
     expect(peticion.request.method).toBe('POST');
     expect(peticion.request.body).toEqual({
       nombre: 'Corte clásico',
+      descripcion: 'Tijera y máquina',
       precio: 15,
       duracionEstimada: 30,
     });

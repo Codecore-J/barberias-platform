@@ -392,6 +392,11 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /shops/:shopId/categorias/': [ROL_ADMINISTRADOR],
   'GET /shops/:shopId/categorias/': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
   'PATCH /shops/:shopId/categorias/:id': [ROL_ADMINISTRADOR],
+  // T-21 (backlog de catálogo, fase 2) · borrado de una categoría GLOBAL. La
+  // política es la misma que la escritura de la taxonomía y solo procede si
+  // ningún servicio de barbero la usa (409 `CATEGORIA_CON_SERVICIOS`). Ojo: este
+  // `T-21` es el del catálogo, no el `T-21` de OTP que suma otra ruta más abajo.
+  'DELETE /shops/:shopId/categorias/:id': [ROL_ADMINISTRADOR],
   // T-17 · detalle de categoría: misma política de lectura que el listado
   // (el ADMINISTRADOR global entra por la jerarquía de E1-04, en solo lectura).
   'GET /shops/:shopId/categorias/:id': [ROL_CLIENTE, ROL_BARBERO, ROL_ADMIN_BARBERIA, ROL_ADMINISTRADOR],
@@ -740,8 +745,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // suma el reenvío del OTP y la corrección del contacto: 120 × 4 = 480. T-15
   // suma las métricas de plataforma: 122 × 4 = 488 (T-17 añade
   // `GET /shops/:shopId/categorias/:id`, el detalle de categoría). QA2-02 suma
-  // `POST /auth/logout`: 123 × 4 = 492.
-  expect(evaluaciones).toBe(492);
+  // `POST /auth/logout`: 123 × 4 = 492. El borrado de categorías globales del
+  // backlog de catálogo (T-21, fase 2) suma la 124: 124 × 4 = 496.
+  expect(evaluaciones).toBe(496);
 
     const resumen =
       desviaciones.length > 40

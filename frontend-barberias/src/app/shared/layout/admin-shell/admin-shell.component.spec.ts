@@ -86,7 +86,7 @@ describe('AdminShellComponent · navegación por rol (T-14)', () => {
     expect(componente.configuracion().ruta).toBe('/barbero/horarios');
   });
 
-  it('ADMINISTRADOR global ve la plataforma y el catálogo marcado como solo lectura (T-17)', () => {
+  it('ADMINISTRADOR global ve la plataforma y las categorías sin candado falso', () => {
     const componente = montar(['ADMINISTRADOR']);
     const visibles = rutas(componente);
 
@@ -94,24 +94,18 @@ describe('AdminShellComponent · navegación por rol (T-14)', () => {
     expect(visibles).toContain('/admin/usuarios');
     expect(visibles).toContain('/admin/vinculaciones');
 
-    const categorias = componente
-      .grupos()
-      .flatMap((grupo) => grupo.items)
-      .find((item) => item.ruta === '/admin/categorias');
-    expect(categorias?.soloLectura).toBe(true);
+    // T-20/T-21 · el catálogo global lo gestiona el ADMINISTRADOR: el sidebar
+    // no debe anunciar «solo lectura» de una pantalla que ahora escribe.
+    const shell = componente as unknown as { esSoloObservador?: unknown; enSoloLectura?: unknown };
+    expect(shell.esSoloObservador).toBeUndefined();
+    expect(shell.enSoloLectura).toBeUndefined();
   });
 
-  it('cuenta dual ADMINISTRADOR + ADMIN_BARBERIA: gestiona la sede, no es solo lectura', () => {
+  it('cuenta dual ADMINISTRADOR + ADMIN_BARBERIA: gestiona la sede sin avisos de auditoría', () => {
     const componente = montar(['ADMINISTRADOR', 'ADMIN_BARBERIA']);
-    const categorias = componente
-      .grupos()
-      .flatMap((grupo) => grupo.items)
-      .find((item) => item.ruta === '/admin/categorias');
+    const shell = componente as unknown as { enSoloLectura?: unknown };
 
-    // La pantalla de categorías decide con `roles.includes('ADMIN_BARBERIA')`:
-    // el sidebar no puede anunciar un candado que la vista no aplica.
-    expect(categorias?.soloLectura).toBe(false);
-    expect(componente.enSoloLectura()).toBe(false);
+    expect(shell.enSoloLectura).toBeUndefined();
   });
 
   it('cuenta dual ADMIN_BARBERIA + BARBERO: dos insignias, sin duplicar texto', () => {

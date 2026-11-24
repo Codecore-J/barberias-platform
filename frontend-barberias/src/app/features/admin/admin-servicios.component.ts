@@ -189,6 +189,15 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
                 <input id="servicio-nombre" type="text" formControlName="nombre" class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 px-4 text-white focus:border-amber-500/50 outline-none">
               </div>
 
+              <!-- Descripción (T-22: opcional, máximo 500) -->
+              <div class="space-y-2 md:col-span-2">
+                <label for="servicio-descripcion" class="text-xs font-bold text-zinc-400 uppercase">Descripción (Opcional)</label>
+                <textarea id="servicio-descripcion" formControlName="descripcion" rows="3" maxlength="500"
+                          placeholder="Qué incluye el servicio, materiales, recomendaciones..."
+                          class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 px-4 text-white focus:border-amber-500/50 outline-none resize-y"></textarea>
+                <p class="text-[11px] text-zinc-500">Máximo 500 caracteres.</p>
+              </div>
+
               <!-- Precio -->
               <div class="space-y-2">
                 <label for="servicio-precio" class="text-xs font-bold text-zinc-400 uppercase">Precio ($)</label>
@@ -313,10 +322,12 @@ export class AdminServiciosComponent implements OnInit {
   // Computado para obtener solo los servicios regulares (no combos)
   serviciosRegulares = computed(() => this.serviciosService.servicios().filter(s => !s.esCombo));
 
-  // DEF-03 · el servicio no tiene descripción: el campo se retiró del
-  // formulario y del payload en vez de aceptarlo y descartarlo en silencio.
+  // T-22 · la descripción vuelve al formulario porque el contrato del servicio
+  // ya la guarda (DEF-03 la había retirado para no descartarla en silencio).
+  // Es opcional, con el mismo tope de 500 que la columna y el DTO.
   form: FormGroup = this.fb.group({
     nombre: ['', [Validators.required]],
+    descripcion: ['', [Validators.maxLength(500)]],
     precio: [0, [Validators.required, Validators.min(0)]],
     duracionMinutos: [30, [Validators.required, Validators.min(5)]],
     esCombo: [false],
@@ -342,6 +353,7 @@ export class AdminServiciosComponent implements OnInit {
       this.editingId.set(servicio.id);
       this.form.patchValue({
         nombre: servicio.nombre,
+        descripcion: servicio.descripcion ?? '',
         precio: servicio.precio,
         duracionMinutos: servicio.duracionMinutos,
         esCombo: servicio.esCombo,
@@ -350,7 +362,13 @@ export class AdminServiciosComponent implements OnInit {
     } else {
       this.isEditing.set(false);
       this.editingId.set(null);
-      this.form.reset({ precio: 0, duracionMinutos: 30, esCombo: false, serviciosComboIds: [] });
+      this.form.reset({
+        precio: 0,
+        duracionMinutos: 30,
+        esCombo: false,
+        descripcion: '',
+        serviciosComboIds: [],
+      });
     }
     this.showForm.set(true);
   }

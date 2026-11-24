@@ -351,21 +351,27 @@ async function main() {
 
   // 6) Catálogo aislado (legacy + V3 híbrido)
   await asegurarServicio(qaBarberiaId);
-  const categoria = await prisma.categoriaServicio.upsert({
-    where: {
-      uk_categoria_sede_nombre: {
-        barberiaId: qaBarberiaId,
-        nombre: QA.categoria.nombre,
-      },
-    },
-    update: { descripcion: QA.categoria.descripcion, activa: true },
-    create: {
-      barberiaId: qaBarberiaId,
-      nombre: QA.categoria.nombre,
-      descripcion: QA.categoria.descripcion,
-      activa: true,
-    },
+  // T-20 · la categoría es GLOBAL (barberia_id NULL); la sede del servicio vive
+  // en `servicios_barbero.barberia_id`.
+  // T-20 · la unicidad del nombre es un índice de EXPRESIÓN, que Prisma no
+  // puede modelar: no hay `upsert` por nombre. Se resuelve con `findFirst`.
+  const categoriaExistente = await prisma.categoriaServicio.findFirst({
+    where: { nombre: QA.categoria.nombre },
+    select: { id: true },
   });
+  const categoria = categoriaExistente
+    ? await prisma.categoriaServicio.update({
+        where: { id: categoriaExistente.id },
+        data: { descripcion: QA.categoria.descripcion, activa: true },
+      })
+    : await prisma.categoriaServicio.create({
+        data: {
+          barberiaId: null,
+          nombre: QA.categoria.nombre,
+          descripcion: QA.categoria.descripcion,
+          activa: true,
+        },
+      });
   await prisma.servicioBarbero.upsert({
     where: {
       uk_servicio_barbero_categoria_nombre: {
@@ -382,6 +388,7 @@ async function main() {
     create: {
       categoriaId: categoria.id,
       barberoId,
+      barberiaId: qaBarberiaId,
       nombrePersonalizado: QA.servicioBarbero.nombrePersonalizado,
       precio: QA.servicioBarbero.precio as any,
       duracionMinutos: QA.servicioBarbero.duracionMinutos,

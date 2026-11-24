@@ -32,12 +32,23 @@ export class ServiciosService {
     return barberiaId.trim();
   }
 
+  /**
+   * T-22 · la descripción es OPCIONAL: se recorta y el vacío se guarda como NULL,
+   * no como cadena vacía. Así el panel distingue «sin descripción» de un texto
+   * que el usuario dejó en blanco, y la vitrina puede decidir si pinta el bloque.
+   */
+  private static normalizarDescripcion(descripcion: string | undefined | null): string | null {
+    const limpio = (descripcion ?? '').trim();
+    return limpio === '' ? null : limpio;
+  }
+
   async create(barberiaId: string, dto: CreateServicioDto) {
     const duracion = dto.duracionEstimada ?? dto.duracionMinutos ?? 30;
     const servicio = await this.prisma.servicio.create({
       data: {
         barberiaId,
         nombre: dto.nombre,
+        descripcion: ServiciosService.normalizarDescripcion(dto.descripcion),
         precio: dto.precio,
         duracionEstimada: duracion,
         margenOperativo: dto.margenOperativo ?? 0,
@@ -89,9 +100,16 @@ export class ServiciosService {
   async update(barberiaId: string, id: string, dto: UpdateServicioDto) {
     const servicio = await this.findOne(barberiaId, id);
 
+    // T-22 · solo se toca `descripcion` cuando llega en el cuerpo: un PATCH sin
+    // ella no debe vaciar el texto que ya tenía el servicio.
+    const data: Record<string, unknown> = { ...dto };
+    if (dto.descripcion !== undefined) {
+      data['descripcion'] = ServiciosService.normalizarDescripcion(dto.descripcion);
+    }
+
     return this.prisma.servicio.update({
       where: { id: servicio.id },
-      data: dto,
+      data,
     });
   }
 

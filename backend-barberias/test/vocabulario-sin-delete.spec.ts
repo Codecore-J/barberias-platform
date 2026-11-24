@@ -21,7 +21,8 @@ import { describe, expect, it } from 'vitest';
  * quedaba fuera del radar aunque su vocabulario también es diseño. Ahora cubre
  * los tres niveles:
  *
- *   1. RUTAS      · ningún `@Delete` en los controladores.
+ *   1. RUTAS      · ningún `@Delete` en los controladores, salvo las excepciones
+ *                   documentadas de `RUTAS_DELETE_AUTORIZADAS`.
  *   2. DATOS      · ninguna llamada `prisma.*.delete/deleteMany` ni `DELETE` por
  *                   SQL crudo, salvo las cuatro excepciones de
  *                   `BORRADOS_AUTORIZADOS`, cada una con su porqué escrito.
@@ -56,6 +57,21 @@ const MOTIVO_MINIMO = 40;
  * (son claves de caché). Ninguno es la forma de «apagar» algo que debería
  * cambiar de estado.
  */
+/**
+ * Rutas `@Delete` autorizadas, con su porqué. La clave es
+ * `ruta/al/controlador.ts:decorador`, sin el número de línea (que cambia con
+ * cualquier edición y no dice nada del contrato).
+ *
+ * La regla de fondo sigue siendo la del §9: el estado se cambia con PATCH, no
+ * con un borrado. La única excepción es retirar del catálogo una categoría que
+ * nunca se usó y que se creó por error; el camino normal de una categoría en uso
+ * sigue siendo `activa = false`.
+ */
+const RUTAS_DELETE_AUTORIZADAS: Record<string, string> = {
+  "catalogo/infrastructure/categorias.controller.ts:@Delete(':id')":
+    'T-21 (backlog de catálogo) · la categoría GLOBAL solo se borra si ningún servicio de barbero la usa: el servicio responde 409 CATEGORIA_CON_SERVICIOS con la cuenta. No es un cambio de estado encubierto ni afecta a datos de negocio, porque desactivar (activa = false) sigue siendo el camino normal del §9 y el borrado solo retira una categoría creada por error.',
+};
+
 const BORRADOS_AUTORIZADOS: Record<string, string> = {
   'horario/application/horario.service.ts:horario.deleteMany':
     'La rejilla semanal de la sede se guarda como SUSTITUCIÓN completa: se borra la rejilla de esa sede y se insertan las filas nuevas dentro de la MISMA transacción, así que no se pierde ningún estado observable ni hay ventana en que la sede quede sin horario. No es el estado de una entidad, es el conjunto entero.',
@@ -65,8 +81,19 @@ const BORRADOS_AUTORIZADOS: Record<string, string> = {
     'Purga por RETENCIÓN (T8.2): el rastro de auditoría no se desactiva, CADUCA. Se eliminan los registros anteriores a la fecha de corte (365 días por defecto) desde un job cron. Es la única forma de que el log no crezca sin límite y no representa un cambio de estado de ninguna entidad.',
   'reserva/application/reserva.service.ts:antecedente.deleteMany':
     'Limpieza de NOTAS TEMPORALES (Punto 5.1A): las notas con `compartido: false` son el borrador que el barbero deja mientras atiende y se destruyen al llegar a NO_PRESENTADO; no son el estado de la entidad ni un registro que nadie vaya a consultar después. Desde la Fase 3 va dentro de la transacción, así que un rollback ya no las pierde mientras la reserva vuelve a su estado anterior.',
+  'catalogo/application/categorias.service.ts:categoriaServicio.delete':
+    'T-21 (backlog de catálogo) · borrado FÍSICO de una categoría global que no tiene ningún servicio de barbero vinculado (la cuenta incluye los inactivos). No representa un cambio de estado: una categoría en uso se desactiva con `activa = false`, y este borrado solo retira del catálogo global una fila creada por error. Si la categoría tuviera servicios, el servicio responde 409 y nunca llega aquí.',
   'barberia/application/solicitud-cambio.service.ts:usuarioRol.deleteMany':
     'El rol ADMIN_BARBERIA se MUEVE de un responsable al otro (E3-13): retirar el vínculo del anterior es la mitad del movimiento y va seguido del `upsert` del nuevo en la misma transacción. El filtro `usuarioId: { not: nuevo.id }` deja intacto al entrante, así que el vínculo nunca queda sin dueño.',
+};
+
+/**
+ * Peticiones HTTP `DELETE` del frontend autorizadas, con su porqué. La clave es
+ * `ruta/al/servicio.ts:http.delete`, relativa a `src/app/`.
+ */
+const PETICIONES_DELETE_FRONTEND_AUTORIZADAS: Record<string, string> = {
+  'core/services/catalogo-hibrido.service.ts:http.delete':
+    'T-21 (backlog de catálogo) · único borrado físico del panel: retira una categoría GLOBAL que ningún servicio de barbero usa. El backend responde 409 CATEGORIA_CON_SERVICIOS si alguno la usa y la pantalla ofrece desactivar, así que no sustituye al cambio de estado del §9: con servicios, la categoría se desactiva con PATCH.',
 };
 
 /**
@@ -74,6 +101,10 @@ const BORRADOS_AUTORIZADOS: Record<string, string> = {
  * `archivo.ts:identificador` relativo a `core/services/`.
  */
 const VOCABULARIO_FRONTEND_AUTORIZADO: Record<string, string> = {
+  'catalogo-hibrido.service.ts:delete':
+    'Es el verbo HTTP de `eliminarCategoria`, el mismo borrado autorizado de T-21: `DELETE /shops/:shopId/categorias/:id` solo retira una categoría que ningún servicio de barbero usa y el 409 CATEGORIA_CON_SERVICIOS manda a desactivar. No es un cambio de estado encubierto.',
+  'catalogo-hibrido.service.ts:eliminarCategoria':
+    'T-21 · `DELETE /shops/:shopId/categorias/:id` solo procede cuando ningún servicio de barbero usa la categoría; el 409 CATEGORIA_CON_SERVICIOS devuelve la cuenta y la pantalla ofrece desactivarla. El nombre es el del contrato, no un cambio de estado encubierto.',
   'servicios.service.ts:eliminarServicio':
     'Alias del nombre antiguo que delega en `desactivarServicio` (`PATCH .../desactivar`). No borra nada: conserva el nombre solo para no romper las llamadas que ya existen, y el backend responde 422 si la desactivación no procede.',
   'horarios.service.ts:eliminarBloqueo':
@@ -146,15 +177,18 @@ function lineasDeCodigo(archivo: string): Linea[] {
 }
 
 /** `@Delete(...)` declarados en los controladores, con archivo y línea. */
-function rutasDelete(): string[] {
-  const hallazgos: string[] = [];
+function rutasDelete(): Borrado[] {
+  const hallazgos: Borrado[] = [];
 
   for (const archivo of archivosFuente()) {
     const relativo = rutaRelativa(RAIZ_SRC, archivo);
 
     for (const { numero, texto } of lineasDeCodigo(archivo)) {
       if (!/@Delete\s*\(/.test(texto)) continue;
-      hallazgos.push(`${relativo}:${numero} · ${texto}`);
+      hallazgos.push({
+        clave: `${relativo}:${texto}`,
+        detalle: `${relativo}:${numero} · ${texto}`,
+      });
     }
   }
 
@@ -225,8 +259,8 @@ function fuenteCompleta(): string {
 /** Peticiones HTTP `DELETE` emitidas por el frontend, con archivo y línea. */
 const REGEX_HTTP_DELETE = /\bhttp\.delete\s*\(|\.delete\s*</;
 
-function peticionesDeleteDelFrontend(): string[] {
-  const hallazgos: string[] = [];
+function peticionesDeleteDelFrontend(): Borrado[] {
+  const hallazgos = new Map<string, string>();
 
   for (const archivo of archivosBajo(RAIZ_FRONTEND_APP, esCodigoDeProduccion)) {
     const relativo = rutaRelativa(RAIZ_FRONTEND_APP, archivo);
@@ -235,11 +269,12 @@ function peticionesDeleteDelFrontend(): string[] {
       // El verbo en mayúsculas también delata un `delete` montado a mano (por
       // ejemplo con `method: 'DELETE'` o en un interceptor).
       if (!REGEX_HTTP_DELETE.test(texto) && !/['"]DELETE['"]/.test(texto)) continue;
-      hallazgos.push(`${relativo}:${numero} · ${texto}`);
+      const clave = `${relativo}:http.delete`;
+      if (!hallazgos.has(clave)) hallazgos.set(clave, `${relativo}:${numero} · ${texto}`);
     }
   }
 
-  return hallazgos;
+  return [...hallazgos].map(([clave, detalle]) => ({ clave, detalle }));
 }
 
 /**
@@ -317,17 +352,13 @@ function desviacionesDeAllowlist(
 }
 
 describe('E2-07 · vocabulario del diseño en el backend', () => {
-  it('ninguna ruta se declara `@Delete`', () => {
+  it('ninguna ruta se declara `@Delete` salvo la excepción documentada', () => {
     const hallazgos = rutasDelete();
 
-    expect(
-      hallazgos.length === 0
-        ? ''
-        : `rutas @Delete que Spec 01 §9 prohíbe (usa PATCH :id/deactivate, PATCH :id/estado o POST :id/release):\n${hallazgos.join('\n')}`,
-    ).toBe('');
-    // La comprobación de que la allowlist no engorda sin control ya no es «está
-    // vacía» (dejó de estarlo al cubrir los borrados de datos de P-SD-5): ahora
-    // es la comparación exacta contra el código, en el test de abajo.
+    expect(desviacionesDeAllowlist(hallazgos, RUTAS_DELETE_AUTORIZADAS)).toBe('');
+    // La allowlist es exacta en los dos sentidos: una excepción que ya no
+    // corresponda a ninguna ruta del código también hace fallar este test.
+    expect(hallazgos.length).toBeGreaterThan(0);
   });
 
   it('los verbos que sustituyeron a `@Delete` siguen declarados', () => {
@@ -369,17 +400,14 @@ describe('E2-07 · vocabulario del diseño en el frontend', () => {
     ).toBe('');
   });
 
-  it('el frontend no emite ninguna petición HTTP DELETE', () => {
+  it('el frontend no emite peticiones HTTP DELETE salvo la excepción documentada', () => {
     const hallazgos = peticionesDeleteDelFrontend();
 
-    // Sin allowlist: en el vocabulario del diseño (Spec 01 §9) no existe ningún
-    // borrado por HTTP. Desactivar es `PATCH`, liberar es `POST`, y la sede se
-    // suspende con `PATCH :id/estado`.
-    expect(
-      hallazgos.length === 0
-        ? ''
-        : `peticiones HTTP DELETE en el frontend:\n${hallazgos.map((hallazgo) => `  ${hallazgo}`).join('\n')}`,
-    ).toBe('');
+    // El vocabulario del diseño (Spec 01 §9) no tiene borrado por HTTP:
+    // desactivar es `PATCH`, liberar es `POST` y la sede se suspende con
+    // `PATCH :id/estado`. La única excepción es el borrado de T-21.
+    expect(desviacionesDeAllowlist(hallazgos, PETICIONES_DELETE_FRONTEND_AUTORIZADAS)).toBe('');
+    expect(hallazgos.length).toBeGreaterThan(0);
   });
 
   it('los servicios de datos no usan el verbo eliminar salvo alias documentados', () => {

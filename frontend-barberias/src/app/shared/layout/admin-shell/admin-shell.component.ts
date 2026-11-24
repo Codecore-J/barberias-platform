@@ -1,8 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, HostListener, computed, inject, model, output, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
-import { filter, map } from 'rxjs';
+import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../../auth/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { TenantService } from '../../../core/services/tenant.service';
@@ -13,8 +11,6 @@ interface ItemNav {
   ruta: string;
   etiqueta: string;
   icono: string;
-  /** T-17 · pantalla que el ADMINISTRADOR global solo puede leer. */
-  soloLectura?: boolean;
 }
 
 interface GrupoNav {
@@ -168,15 +164,6 @@ interface GrupoNav {
               <i class="pi pi-arrow-right-arrow-left text-[9px]"></i>
               {{ haySedeActiva() ? 'Cambiar sede' : 'Elegir sede' }}
             </a>
-            @if (enSoloLectura()) {
-              <span
-                class="mt-2 flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-1 text-[9px] font-semibold uppercase tracking-wide text-amber-300"
-                title="Estás auditando esta sede: la vista es de solo lectura."
-              >
-                <i class="pi pi-eye text-[9px]"></i>
-                Modo auditoría · solo lectura
-              </span>
-            }
           </div>
         }
       </div>
@@ -206,13 +193,6 @@ interface GrupoNav {
                     <i [class]="item.icono"></i>
                     @if (!compacto()) {
                       <span class="min-w-0 flex-1 truncate">{{ item.etiqueta }}</span>
-                      @if (item.soloLectura) {
-                        <span
-                          class="shrink-0 rounded border border-amber-500/30 bg-amber-500/10 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-300"
-                        >
-                          Solo lectura
-                        </span>
-                      }
                     }
                   </a>
                 </li>
@@ -388,7 +368,6 @@ export class AdminShellComponent {
   protected readonly authService = inject(AuthService);
   protected readonly tenantService = inject(TenantService);
   protected readonly notificacionService = inject(NotificationService);
-  private readonly router = inject(Router);
 
   /** Colapso compartido con `app-layout`, que ajusta el margen del contenido. */
   readonly colapsado = model(false);
@@ -398,14 +377,6 @@ export class AdminShellComponent {
 
   /** En móvil el drawer siempre se abre expandido, aunque el escritorio esté colapsado. */
   readonly compacto = computed(() => this.colapsado() && !this.drawerAbierto());
-
-  private readonly urlActual = toSignal(
-    this.router.events.pipe(
-      filter((evento): evento is NavigationEnd => evento instanceof NavigationEnd),
-      map((evento) => evento.urlAfterRedirects),
-    ),
-    { initialValue: this.router.url },
-  );
 
   readonly rol = computed<RolSesion>(() => rolEfectivo(this.authService.authState().user?.roles));
 
@@ -422,26 +393,6 @@ export class AdminShellComponent {
   );
 
   readonly correoUsuario = computed(() => this.authService.authState().user?.correo ?? '');
-
-  /**
-   * T-17 · solo AUDITA quien es ADMINISTRADOR global y NO administra la sede.
-   *
-   * La cuenta dual (`ADMINISTRADOR` + `ADMIN_BARBERIA`) sí escribe: la propia
-   * pantalla de categorías decide con `roles.includes('ADMIN_BARBERIA')`. Marcar
-   * «solo lectura» por el rol efectivo le anunciaría un candado que no existe.
-   */
-  readonly esSoloObservador = computed(() => {
-    const roles = this.authService.authState().user?.roles ?? [];
-    return this.rol() === 'ADMINISTRADOR' && !roles.includes('ADMIN_BARBERIA');
-  });
-
-  /**
-   * El aviso es contextual, no un candado de UI: el candado real sigue en el
-   * guard y en el 403 de la API.
-   */
-  readonly enSoloLectura = computed(
-    () => this.esSoloObservador() && this.urlActual().startsWith('/admin/categorias'),
-  );
 
   /**
    * Insignias de rol de la cuenta. Se recorren TODOS los roles del token para
@@ -480,7 +431,6 @@ export class AdminShellComponent {
               ruta: '/admin/categorias',
               etiqueta: 'Categorías',
               icono: 'pi pi-tags',
-              soloLectura: this.esSoloObservador(),
             },
             { ruta: '/admin/analiticas', etiqueta: 'Analíticas', icono: 'pi pi-chart-bar' },
           ],

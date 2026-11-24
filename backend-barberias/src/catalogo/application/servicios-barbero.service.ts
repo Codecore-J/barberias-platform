@@ -43,16 +43,20 @@ export class ServiciosBarberoService {
     return limpio;
   }
 
-  /** La categoría tiene que existir en ESA sede y estar activa. */
-  private async exigirCategoriaDeSede(barberiaId: string, categoriaId: string) {
+  /**
+   * T-20 · la categoría tiene que existir en el catálogo GLOBAL y estar activa.
+   * Antes se buscaba con `barberiaId` porque cada sede tenía sus copias; ahora
+   * `barberia_id` es NULL para todas las categorías vivas.
+   */
+  private async exigirCategoriaGlobal(categoriaId: string) {
     const categoria = await this.prisma.categoriaServicio.findFirst({
-      where: { id: categoriaId, barberiaId },
+      where: { id: categoriaId, barberiaId: null },
       select: { id: true, nombre: true, activa: true },
     });
 
     if (!categoria) {
       throw new NotFoundException(
-        'La categoría indicada no existe en esta barbería.',
+        'La categoría indicada no existe en el catálogo global.',
       );
     }
 
@@ -131,12 +135,13 @@ export class ServiciosBarberoService {
     const nombre = ServiciosBarberoService.normalizarNombre(dto.nombre);
 
     await this.exigirBarberoDeSede(sede, barberoId);
-    await this.exigirCategoriaDeSede(sede, dto.categoriaId);
+    await this.exigirCategoriaGlobal(dto.categoriaId);
     await this.exigirNombreLibre(barberoId, dto.categoriaId, nombre);
 
     const servicio = await this.prisma.servicioBarbero.create({
       data: {
         barberoId,
+        barberiaId: sede,
         categoriaId: dto.categoriaId,
         nombrePersonalizado: nombre,
         precio: dto.precio,
@@ -159,7 +164,7 @@ export class ServiciosBarberoService {
     const sede = ServiciosBarberoService.exigirSede(barberiaId);
 
     return this.prisma.servicioBarbero.findMany({
-      where: { barberoId, categoria: { barberiaId: sede } },
+      where: { barberoId, barberiaId: sede },
       orderBy: [{ activo: 'desc' }, { nombrePersonalizado: 'asc' }],
       include: { categoria: { select: { id: true, nombre: true, activa: true } } },
     });
@@ -178,7 +183,7 @@ export class ServiciosBarberoService {
     const sede = ServiciosBarberoService.exigirSede(barberiaId);
 
     const actual = await this.prisma.servicioBarbero.findFirst({
-      where: { id, barberoId, categoria: { barberiaId: sede } },
+      where: { id, barberoId, barberiaId: sede },
       select: {
         id: true,
         categoriaId: true,
@@ -206,7 +211,7 @@ export class ServiciosBarberoService {
     const categoriaDestino = dto.categoriaId ?? actual.categoriaId;
 
     if (dto.categoriaId !== undefined && dto.categoriaId !== actual.categoriaId) {
-      await this.exigirCategoriaDeSede(sede, dto.categoriaId);
+      await this.exigirCategoriaGlobal(dto.categoriaId);
       datos.categoriaId = dto.categoriaId;
     }
 
@@ -261,11 +266,11 @@ export class ServiciosBarberoService {
     const sede = ServiciosBarberoService.exigirSede(barberiaId);
 
     const categorias = await this.prisma.categoriaServicio.findMany({
-      where: { barberiaId: sede, activa: true },
-      orderBy: { nombre: 'asc' },
+      where: { barberiaId: null, activa: true },
+      orderBy: [{ orden: 'asc' }, { nombre: 'asc' }],
       include: {
         servicios: {
-          where: { activo: true },
+          where: { activo: true, barberiaId: sede },
           orderBy: { nombrePersonalizado: 'asc' },
           include: { barbero: { select: { id: true, nombreCompleto: true } } },
         },

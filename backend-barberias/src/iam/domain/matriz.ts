@@ -177,6 +177,9 @@ export const RUTA_ACCION: Readonly<Record<string, readonly Accion[]>> = {
   'POST /shops/:shopId/categorias/': ['catalogo.categorias.gestionar'],
   'GET /shops/:shopId/categorias/': ['catalogo.categorias.ver'],
   'PATCH /shops/:shopId/categorias/:id': ['catalogo.categorias.gestionar'],
+  // T-21 (backlog de catálogo) · retirar una categoría global sin servicios.
+  // La acción es la misma que crearla y editarla: gestionar la taxonomía.
+  'DELETE /shops/:shopId/categorias/:id': ['catalogo.categorias.gestionar'],
   'GET /shops/:shopId/categorias/:id': ['catalogo.categorias.ver'],
   'GET /shops/:shopId/servicios': [],
   'POST /shops/:shopId/mis-servicios': [],
