@@ -2,6 +2,7 @@ import {
   IsInt,
   IsNotEmpty,
   IsNumber,
+  IsOptional,
   IsString,
   IsUUID,
   Max,
@@ -36,4 +37,11 @@ export class CreateServicioBarberoDto {
 
   @IsUUID('4', { message: 'La categoría indicada no es válida.' })
   categoriaId: string;
+
+  // T-23 · opcional y de 500 como máximo, igual que `servicios.descripcion`.
+  // El servicio la recorta y guarda NULL cuando queda vacía.
+  @IsString({ message: 'La descripción debe ser texto.' })
+  @IsOptional()
+  @MaxLength(500, { message: 'La descripción no puede superar los 500 caracteres.' })
+  descripcion?: string;
 }

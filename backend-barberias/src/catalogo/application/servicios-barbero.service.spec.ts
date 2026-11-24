@@ -81,6 +81,8 @@ describe('ServiciosBarberoService', () => {
           barberiaId: SEDE,
           categoriaId: CATEGORIA,
           nombrePersonalizado: 'Corte degradado',
+          // T-23 · sin descripción se guarda NULL explícito.
+          descripcion: null,
           precio: 25.5,
           duracionMinutos: 30,
         },
@@ -130,15 +132,19 @@ describe('ServiciosBarberoService', () => {
 
     // T-20 · Antes: la categoría se buscaba con `barberiaId: OTRA_SEDE`, así que
     // «la de otra sede» no existía aquí. Ahora: se busca en el catálogo GLOBAL
-    // (`barberiaId: null`); lo que da 404 es un id que no está en ese catálogo.
-    // Por qué: la categoría dejó de pertenecer a una sede.
-    it('una categoría fuera del catálogo global no existe para este barbero (404)', async () => {
+    // (`barberiaId: null`).
+    // T-23 · Antes respondía 404; ahora 422 `CATEGORIA_INVALIDA`. Por qué: la
+    // petición es válida, lo que impide publicar es el estado del catálogo.
+    it('una categoría fuera del catálogo global responde 422 CATEGORIA_INVALIDA', async () => {
       conRolBarbero();
       conCategoria(null);
 
-      await expect(service.crear(OTRA_SEDE, BARBERO, dto)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      const error = await service.crear(OTRA_SEDE, BARBERO, dto).catch((e) => e);
+
+      expect(error).toMatchObject({
+        status: 422,
+        response: { statusCode: 422, codigo: 'CATEGORIA_INVALIDA' },
+      });
       expect(prisma.categoriaServicio.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: CATEGORIA, barberiaId: null } }),
       );
@@ -304,6 +310,7 @@ describe('ServiciosBarberoService', () => {
             {
               id: SERVICIO,
               nombrePersonalizado: 'Corte degradado',
+              descripcion: null,
               precio: 25,
               duracionMinutos: 30,
               barbero: { id: BARBERO, nombreCompleto: 'Carlos' },
@@ -338,6 +345,7 @@ describe('ServiciosBarberoService', () => {
           {
             id: SERVICIO,
             nombre: 'Corte degradado',
+            descripcion: null,
             precio: 25,
             duracionMinutos: 30,
             barbero: { id: BARBERO, nombre: 'Carlos' },

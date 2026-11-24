@@ -43,10 +43,25 @@ export class ServiciosBarberoService {
     return limpio;
   }
 
+  /** T-23 · opcional: se recorta y el vacío se guarda como NULL, no como "". */
+  private static normalizarDescripcion(
+    descripcion: string | undefined | null,
+  ): string | null {
+    if (descripcion === undefined || descripcion === null) {
+      return null;
+    }
+    const limpia = descripcion.trim();
+    return limpia === '' ? null : limpia;
+  }
+
   /**
    * T-20 · la categoría tiene que existir en el catálogo GLOBAL y estar activa.
    * Antes se buscaba con `barberiaId` porque cada sede tenía sus copias; ahora
    * `barberia_id` es NULL para todas las categorías vivas.
+   *
+   * T-23 · si la categoría no existe o quedó como fila heredada de una sede
+   * (`barberia_id` no NULL), la respuesta es 422 `CATEGORIA_INVALIDA` y no 404:
+   * la petición es válida, lo que impide publicar es el estado del catálogo.
    */
   private async exigirCategoriaGlobal(categoriaId: string) {
     const categoria = await this.prisma.categoriaServicio.findFirst({
@@ -55,8 +70,19 @@ export class ServiciosBarberoService {
     });
 
     if (!categoria) {
-      throw new NotFoundException(
-        'La categoría indicada no existe en el catálogo global.',
+      // Segunda búsqueda solo para distinguir el mensaje: un id que no existe
+      // en ninguna tabla no es lo mismo que una fila antigua atada a una sede.
+      const heredada = await this.prisma.categoriaServicio.findFirst({
+        where: { id: categoriaId, barberiaId: { not: null } },
+        select: { id: true },
+      });
+
+      throw reglaDeNegocio(
+        'CATEGORIA_INVALIDA',
+        heredada
+          ? 'La categoría indicada pertenece a una sede y no al catálogo global: elige una categoría global para publicar el servicio.'
+          : 'La categoría indicada no existe en el catálogo global: elige una categoría válida para publicar el servicio.',
+        { categoriaId },
       );
     }
 
@@ -144,6 +170,7 @@ export class ServiciosBarberoService {
         barberiaId: sede,
         categoriaId: dto.categoriaId,
         nombrePersonalizado: nombre,
+        descripcion: ServiciosBarberoService.normalizarDescripcion(dto.descripcion),
         precio: dto.precio,
         duracionMinutos: dto.duracionMinutos,
       },
@@ -203,6 +230,7 @@ export class ServiciosBarberoService {
     const datos: {
       categoriaId?: string;
       nombrePersonalizado?: string;
+      descripcion?: string | null;
       precio?: number;
       duracionMinutos?: number;
       activo?: boolean;
@@ -225,6 +253,10 @@ export class ServiciosBarberoService {
       // Cambiar de categoría sin cambiar de nombre también tiene que respetar la
       // unicidad (barbero + categoría + nombre).
       await this.exigirNombreLibre(barberoId, categoriaDestino, actual.nombrePersonalizado, actual.id);
+    }
+
+    if (dto.descripcion !== undefined) {
+      datos.descripcion = ServiciosBarberoService.normalizarDescripcion(dto.descripcion);
     }
 
     if (dto.precio !== undefined) {
@@ -286,6 +318,7 @@ export class ServiciosBarberoService {
         servicios: categoria.servicios.map((servicio) => ({
           id: servicio.id,
           nombre: servicio.nombrePersonalizado,
+          descripcion: servicio.descripcion,
           precio: servicio.precio,
           duracionMinutos: servicio.duracionMinutos,
           barbero: {

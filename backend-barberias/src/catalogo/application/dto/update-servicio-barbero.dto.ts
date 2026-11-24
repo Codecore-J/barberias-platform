@@ -40,6 +40,12 @@ export class UpdateServicioBarberoDto {
   @IsOptional()
   categoriaId?: string;
 
+  // T-23 · vaciarla (`""` o solo espacios) la guarda como NULL.
+  @IsString({ message: 'La descripción debe ser texto.' })
+  @MaxLength(500, { message: 'La descripción no puede superar los 500 caracteres.' })
+  @IsOptional()
+  descripcion?: string;
+
   @BooleanoEstricto()
   @IsOptional()
   activo?: boolean;

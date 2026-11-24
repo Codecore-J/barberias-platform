@@ -287,6 +287,9 @@ model ServicioBarbero {
   // esta columna, el catálogo de un barbero con rol en dos sedes se mezclaría.
   barberiaId          String   @map("barberia_id") @db.Uuid
   nombrePersonalizado String   @map("nombre_personalizado") @db.VarChar(100)
+  // T-23 (24 nov 2026): descripción opcional del servicio, 500 caracteres como
+  // en `servicios`. Vacía se guarda como NULL (no como cadena en blanco).
+  descripcion         String?  @db.VarChar(500)
   precio              Decimal  @db.Decimal(10, 2)
   duracionMinutos     Int      @map("duracion_minutos")
   activo              Boolean  @default(true)
