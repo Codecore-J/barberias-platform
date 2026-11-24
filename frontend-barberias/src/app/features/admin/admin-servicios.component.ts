@@ -5,7 +5,7 @@ import { Observable } from 'rxjs';
 import { ServiciosService, Servicio } from '../../core/services/servicios.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
-import { rolEfectivo, type RolSesion } from '../../core/utils/rol';
+import { esAdminDeSede, rolEfectivo, type RolSesion } from '../../core/utils/rol';
 import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
 
 @Component({
@@ -210,11 +210,13 @@ import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dia
                 <input id="servicio-duracion" type="number" formControlName="duracionMinutos" class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 px-4 text-white focus:border-amber-500/50 outline-none">
               </div>
 
-              <!-- Es Combo -->
+              <!-- Es Combo · T-30: solo el ADMIN_BARBERIA lo gestiona -->
+              @if (puedeGestionarCombos()) {
               <div class="space-y-2 md:col-span-2 flex items-center gap-3 bg-zinc-900/50 p-4 rounded-xl border border-zinc-800">
                 <input type="checkbox" formControlName="esCombo" id="esCombo" class="w-5 h-5 accent-amber-500 rounded cursor-pointer">
                 <label for="esCombo" class="text-sm font-bold text-zinc-300 cursor-pointer">Es un Combo (agrupación de servicios)</label>
               </div>
+              }
 
               <!-- Selección de Servicios para Combo -->
               @if (form.get('esCombo')?.value) {
@@ -287,6 +289,13 @@ export class AdminServiciosComponent implements OnInit {
     return rol === 'BARBERO' || rol === 'ADMIN_BARBERIA' || rol === 'ADMINISTRADOR';
   });
 
+  /**
+   * T-30 · los combos son SOLO del ADMIN_BARBERIA. El backend responde 403 a
+   * cualquier otro rol (`@Roles('ADMIN_BARBERIA')` + `OperadorBarberiaGuard`);
+   * el panel deja de ofrecer el alta y la edición de combos a quien no puede.
+   */
+  readonly puedeGestionarCombos = computed(() => esAdminDeSede(this.userRole()));
+
   showForm = signal(false);
   isEditing = signal(false);
   editingId = signal<string | null>(null);
@@ -348,6 +357,8 @@ export class AdminServiciosComponent implements OnInit {
 
   openForm(servicio?: Servicio) {
     if (!this.puedeGestionar()) return;
+    // T-30 · un combo ajeno al ADMIN_BARBERIA no se abre ni en modo lectura.
+    if (servicio?.esCombo && !this.puedeGestionarCombos()) return;
     if (servicio) {
       this.isEditing.set(true);
       this.editingId.set(servicio.id);
@@ -380,6 +391,15 @@ export class AdminServiciosComponent implements OnInit {
 
   onSubmit() {
     if (this.form.invalid) return;
+
+    // T-30 · la comprobación del backend no se duplica en la pantalla: se evita
+    // mandar la escritura que se sabe denegada.
+    if (this.form.value.esCombo && !this.puedeGestionarCombos()) {
+      this.serviciosService.error.set(
+        'Solo el administrador de la barbería gestiona los combos.',
+      );
+      return;
+    }
 
     const dto = this.form.value;
 

@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { ETIQUETA_ROL, rolEfectivo } from './rol.js';
+import { ETIQUETA_ROL, esAdminDeSede, rolEfectivo } from './rol.js';
+
+/**
+ * T-30 · los combos son solo del ADMIN_BARBERIA.
+ *
+ * El backend ya lo exige (`@Roles('ADMIN_BARBERIA')` + `OperadorBarberiaGuard`),
+ * pero el panel ofrecía crear y editar combos al BARBERO y al ADMINISTRADOR
+ * global: la pantalla prometía una escritura que la API deniega con 403.
+ */
+describe('esAdminDeSede', () => {
+  it('solo el ADMIN_BARBERIA gestiona los combos', () => {
+    expect(esAdminDeSede('ADMIN_BARBERIA')).toBe(true);
+    expect(esAdminDeSede('ADMINISTRADOR')).toBe(false);
+    expect(esAdminDeSede('BARBERO')).toBe(false);
+    expect(esAdminDeSede('CLIENTE')).toBe(false);
+    expect(esAdminDeSede('SIN_ROL')).toBe(false);
+  });
+});
 
 describe('rolEfectivo', () => {
   it('devuelve el rol del token cuando existe', () => {
