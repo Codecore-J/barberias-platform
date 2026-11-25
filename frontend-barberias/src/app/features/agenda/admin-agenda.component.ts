@@ -26,6 +26,7 @@ import { CobroModalComponent } from './components/cobro-modal/cobro-modal.compon
 import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.component';
 import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
 import { rolEfectivo } from '../../core/utils/rol';
+import { puedeAbrirFichaDeCliente } from './agenda-ficha';
 
 @Component({
   selector: 'app-admin-agenda',
@@ -272,9 +273,11 @@ import { rolEfectivo } from '../../core/utils/rol';
                             <span class="text-[9px] bg-red-500 text-white px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Bloqueado</span>
                           }
                         </div>
-                        <button (click)="abrirFicha(turno.cliente)" class="text-amber-500 hover:text-amber-400 transition-colors" title="Ficha del Cliente">
-                          <i class="pi pi-id-card text-lg"></i>
-                        </button>
+                        @if (puedeAbrirFicha(turno)) {
+                          <button (click)="abrirFicha(turno)" class="text-amber-500 hover:text-amber-400 transition-colors" title="Ficha del Cliente">
+                            <i class="pi pi-id-card text-lg"></i>
+                          </button>
+                        }
                       </div>
                       <div class="text-xs text-zinc-500 mt-1 flex flex-col gap-1">
                         @for (detalle of turno.detalles; track detalle.id) {
@@ -963,9 +966,17 @@ export class AdminAgendaComponent {
     this.recargar();
   }
 
-  abrirFicha(cliente: { id: string; nombre: string } | null | undefined) {
-    if (!cliente) return;
-    this.clienteSeleccionado.set(cliente);
+  /**
+   * F3-05 · en un walk-in el `cliente.id` es el operador, no el atendido. La
+   * regla vive en un helper para que la plantilla y el handler no se separen.
+   */
+  puedeAbrirFicha(turno: Turno | null | undefined): boolean {
+    return puedeAbrirFichaDeCliente(turno);
+  }
+
+  abrirFicha(turno: Turno | null | undefined) {
+    if (!turno || !puedeAbrirFichaDeCliente(turno)) return;
+    this.clienteSeleccionado.set(turno.cliente);
   }
 
   onWalkInCreado() {
