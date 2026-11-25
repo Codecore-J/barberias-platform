@@ -25,6 +25,9 @@
 > Las rutas `records` 93–96 se conservan como compatibilidad; la vía nueva de
 > alta y resolución es la de esta tabla. La antigua `PATCH …/records/:id/evaluate`
 > sigue siendo exclusiva del ADMINISTRADOR (brecha 94 ya cerrada en T-11).
+> `POST /shops/:shopId/clients/:id/notes` conserva su ruta, pero desde F5 encola
+> una solicitud `PENDIENTE` (motivo = nota) y ya no crea un antecedente `APROBADO`
+> directo.
 
 ## 1 · Cómo se construyó
 

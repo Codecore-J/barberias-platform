@@ -122,22 +122,23 @@ export class ClienteService {
       }
     }
 
-    const antecedente = await this.prisma.antecedente.create({
+    // Fase 5: una nota ya no nace APROBADA. Entra como solicitud PENDIENTE y
+    // la plataforma la resuelve por el mismo flujo que el resto de antecedentes.
+    const solicitud = await this.prisma.solicitudAntecedente.create({
       data: {
-        usuarioId: clienteId,
-        barberiaOrigenId: barberiaId,
-        categoria: 'NOTA_GENERAL',
-        contenido,
-        origen: 'BARBERO',
-        estadoValidacion: 'APROBADO',
-        compartido: false,
+        barberiaId,
+        solicitanteId: user.id,
+        clienteId,
+        motivo: contenido,
+        estado: 'PENDIENTE',
       },
     });
 
     return {
-      id: antecedente.id,
-      contenido: antecedente.contenido,
-      fechaCreacion: antecedente.creadoAt?.toISOString() || new Date().toISOString(),
+      id: solicitud.id,
+      contenido: solicitud.motivo,
+      fechaCreacion: solicitud.creadoAt?.toISOString() || new Date().toISOString(),
+      estado: solicitud.estado,
     };
   }
 }

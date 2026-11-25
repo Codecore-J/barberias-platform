@@ -10,6 +10,7 @@ export interface NotaCliente {
   id: string;
   contenido: string;
   fechaCreacion: string;
+  estado?: string;
 }
 
 export interface FichaCliente {

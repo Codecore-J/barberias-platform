@@ -193,9 +193,12 @@ describe('Cliente · ficha y notas: qué rol entra de verdad', () => {
     expect(res.status).toBe(201);
     expect(res.body.contenido).toBe('Nota escrita por el ADMIN_BARBERIA');
 
-    // La nota existe de verdad, con la sede que envió la petición.
-    const nota = await prisma.antecedente.findUnique({ where: { id: res.body.id } });
-    expect(nota?.barberiaOrigenId).toBe(barberiaA);
+    // Fase 5: la nota entra como solicitud pendiente de la sede que la envió,
+    // no como antecedente aprobado.
+    const nota = await prisma.solicitudAntecedente.findUnique({ where: { id: res.body.id } });
+    expect(nota?.barberiaId).toBe(barberiaA);
+    expect(nota?.estado).toBe('PENDIENTE');
+    expect(nota?.motivo).toBe('Nota escrita por el ADMIN_BARBERIA');
   });
 
   it('el BARBERO sin cita con ese cliente NO entra: 403 en ficha y en notas (MAPA-1)', async () => {
@@ -238,6 +241,12 @@ describe('Cliente · ficha y notas: qué rol entra de verdad', () => {
       .set('x-barberia-id', barberiaA);
     expect(ficha.status).toBe(200);
     expect(ficha.body.id).toBe(clienteId);
+
+    // La nota anterior dejó una solicitud PENDIENTE y solo se admite una por
+    // cliente y sede: se retira para medir el alta del BARBERO.
+    await prisma.solicitudAntecedente.deleteMany({
+      where: { clienteId, barberiaId: barberiaA, estado: 'PENDIENTE' },
+    });
 
     const nota = await request(app.getHttpServer())
       .post(`${api}/shops/${barberiaA}/clients/${clienteId}/notes`)
