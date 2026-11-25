@@ -1,7 +1,18 @@
-import { Controller, Get, Post, Body, Param, Query, ParseUUIDPipe, ParseArrayPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  Param,
+  Query,
+  ParseUUIDPipe,
+  ParseArrayPipe,
+} from '@nestjs/common';
 import { HorarioService } from '../application/horario.service.js';
 import { CreateHorarioDto } from '../application/dto/create-horario.dto.js';
 import { CreateExcepcionHorarioDto } from '../application/dto/create-excepcion-horario.dto.js';
+import { ResolverPropuestaBaseDto } from '../application/dto/resolver-propuesta-base.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
@@ -127,5 +138,29 @@ export class HorarioController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.horarioService.addBarberException(user.id, barberiaId, barberoId, dto);
+  }
+
+  /**
+   * PATCH /barberias/:barberiaId/horarios/barberos/:barberoId/base
+   * F4-04 · resuelve la propuesta de horario base de ese barbero.
+   *
+   * Es la única ruta nueva de la fase 4 (§8 de `docs/MATRIZ_RUTAS_ACCIONES.md`).
+   * Cuelga de `/hours/barbers/:barberoId/...`, que ya existe para las
+   * excepciones, y una sola ruta resuelve aprobar y rechazar porque la matriz
+   * tiene una acción para la decisión (`horario.base.aprobar`). El rechazo exige
+   * motivo: el servicio responde 422 `MOTIVO_RECHAZO_REQUERIDO`.
+   *
+   * Solo el ADMIN_BARBERIA de la sede: el ADMINISTRADOR global no gobierna la
+   * plantilla de un barbero y la matriz no le da esta acción.
+   */
+  @Roles('ADMIN_BARBERIA')
+  @Patch('barbers/:barberoId/base')
+  resolverPropuestaBase(
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
+    @Param('barberoId', ParseUUIDPipe) barberoId: string,
+    @Body() dto: ResolverPropuestaBaseDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.horarioService.resolverPropuestaBase(user.id, barberiaId, barberoId, dto);
   }
 }

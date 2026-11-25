@@ -14,6 +14,7 @@ import {
   type PlantillaBaseBarberoResponse,
 } from './dto/plantilla-base-barbero.dto.js';
 import { OrigenModificacionHorario, Prisma } from '@prisma/client';
+import { reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 import { validateTimeRange } from "../domain/time.utils.js";
 import { esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
 import { horaRelojHHMM } from '../../shared/time/tiempo.service.js';
@@ -743,5 +744,91 @@ export class HorarioService {
     }
 
     return this.obtenerPlantillaBase(usuarioId, barberiaId);
+  }
+
+  /**
+   * F4-04 · el ADMIN_BARBERIA resuelve la propuesta pendiente del barbero.
+   *
+   * Aprobar APLICA la semana propuesta a `horarios_base_barbero` dentro de una
+   * transacción —el motor sigue leyendo esa tabla, no la propuesta— y deja la
+   * fila `APROBADA` con quién y cuándo. Rechazar exige motivo (422
+   * `MOTIVO_RECHAZO_REQUERIDO`) y no toca la plantilla vigente.
+   *
+   * Sin propuesta pendiente es 404, no un 200 vacío: la ruta decide sobre algo
+   * que existe. El historial no se borra, así que una propuesta ya resuelta no se
+   * vuelve a resolver (deja de estar `PENDIENTE` y cae en el mismo 404).
+   */
+  async resolverPropuestaBase(
+    adminId: string,
+    barberiaId: string,
+    barberoId: string,
+    dto: { aprobar: boolean; motivoRechazo?: string },
+  ) {
+    await this.validateAccess(adminId, barberiaId);
+
+    const propuesta = await this.prisma.propuestaHorarioBase.findFirst({
+      where: { barberoId, barberiaId, estado: 'PENDIENTE' },
+      orderBy: { creadoAt: 'desc' },
+    });
+
+    if (!propuesta) {
+      throw new NotFoundException(
+        'No hay una propuesta de horario base pendiente para ese barbero en esta barbería.',
+      );
+    }
+
+    if (!dto.aprobar) {
+      const motivo = (dto.motivoRechazo ?? '').trim();
+
+      if (motivo === '') {
+        throw reglaDeNegocio(
+          'MOTIVO_RECHAZO_REQUERIDO',
+          'Explica por qué rechazas la propuesta: el barbero necesita saber qué corregir.',
+        );
+      }
+
+      return this.prisma.propuestaHorarioBase.update({
+        where: { id: propuesta.id },
+        data: {
+          estado: 'RECHAZADA',
+          motivoRechazo: motivo,
+          resueltoPor: adminId,
+          resueltaAt: new Date(),
+        },
+      });
+    }
+
+    const dias = this.leerDiasDePropuesta(propuesta.dias);
+
+    return this.prisma.$transaction(async (tx) => {
+      for (const dia of dias) {
+        if (!dia.horaInicio || !dia.horaFin) {
+          // Día apagado: si existía, se apaga sin perder sus horas. Si nunca
+          // existió no se crea una fila con horas falsas (son NOT NULL).
+          await tx.horarioBaseBarbero.updateMany({
+            where: { barberoId, diaSemana: dia.diaSemana },
+            data: { activo: false },
+          });
+          continue;
+        }
+
+        await tx.horarioBaseBarbero.upsert({
+          where: { barberoId_diaSemana: { barberoId, diaSemana: dia.diaSemana } },
+          update: { horaInicio: dia.horaInicio, horaFin: dia.horaFin, activo: dia.activo },
+          create: {
+            barberoId,
+            diaSemana: dia.diaSemana,
+            horaInicio: dia.horaInicio,
+            horaFin: dia.horaFin,
+            activo: dia.activo,
+          },
+        });
+      }
+
+      return tx.propuestaHorarioBase.update({
+        where: { id: propuesta.id },
+        data: { estado: 'APROBADA', resueltoPor: adminId, resueltaAt: new Date() },
+      });
+    });
   }
 }

@@ -104,6 +104,9 @@ const CASOS: Caso[] = [
   // cuerpo vacío la respuesta es 400 de validación, que cuenta como permitida.
   // La excepción de un COMPAÑERO sigue siendo 403, pero lo decide el servicio.
   { verbo: 'post', ruta: '/shops/{A}/hours/barbers/{BARBERO}/exceptions', permitidos: ['ADMIN_BARBERIA', 'BARBERO'], cuerpo: {} },
+  // F4-04: la propuesta de horario base la resuelve solo la sede. Sin propuesta
+  // pendiente el servicio responde 404, que aqui cuenta como ruta permitida.
+  { verbo: 'patch', ruta: '/shops/{A}/hours/barbers/{BARBERO}/base', permitidos: ['ADMIN_BARBERIA'], cuerpo: { aprobar: true } },
 
   // ── pagos ────────────────────────────────────────────────────────────────
   { verbo: 'get', ruta: '/shops/{A}/payments/audit', permitidos: ['ADMIN_BARBERIA'] },

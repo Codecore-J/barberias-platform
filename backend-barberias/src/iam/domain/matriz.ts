@@ -150,6 +150,9 @@ export const RUTA_ACCION: Readonly<Record<string, readonly Accion[]>> = {
   'GET /shops/:shopId/hours/exceptions': ['excepciones.ajenas.gestionar'],
   'POST /shops/:shopId/hours/exceptions': ['excepciones.ajenas.gestionar'],
   'POST /shops/:shopId/hours/barbers/:barberoId/exceptions': ['excepciones.ajenas.gestionar'],
+  // F4-04: la decisión sobre la propuesta de horario base. Es la única acción de
+  // T-12 que tenía endpoint pendiente; con esta ruta deja de estar huérfana.
+  'PATCH /shops/:shopId/hours/barbers/:barberoId/base': ['horario.base.aprobar'],
   'POST /lista-espera/': [],
   'POST /shops/:shopId/records/': ['antecedentes.solicitar'],
   'PATCH /shops/:shopId/records/:id/evaluate': ['antecedentes.resolver'],

@@ -28,7 +28,7 @@ import {
 
 const RUTA_SPEC = fileURLToPath(new URL('./permisos-matriz.spec.ts', import.meta.url));
 
-/** Las 129 claves de `POLITICA_DECLARADA`, leídas de su literal. */
+/** Las 130 claves de `POLITICA_DECLARADA`, leídas de su literal. */
 function clavesDePoliticaDeclarada(): string[] {
   const fuente = readFileSync(RUTA_SPEC, 'utf8').replace(/\r/g, '');
   const inicio = fuente.indexOf('const POLITICA_DECLARADA');
@@ -77,7 +77,6 @@ const SIN_RUTA_TODAVIA = [
   'cita.propia.proponer_horario',
   'configuracion.sede.gestionar',
   'configuracion.sede.ver',
-  'horario.base.aprobar',
   'pagos.cobrar',
   'plataforma.solicitudes_cambio.gestionar',
   'plataforma.vinculaciones.gestionar',
@@ -96,10 +95,10 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     expect(malFormadas).toEqual([]);
   });
 
-  it('cubre exactamente las 129 rutas del inventario', () => {
+  it('cubre exactamente las 130 rutas del inventario', () => {
     const claves = clavesDePoliticaDeclarada();
 
-    expect(claves.length).toBe(129);
+    expect(claves.length).toBe(130);
     expect(RUTAS.length).toBe(new Set(RUTAS).size);
 
     const sinDecision = claves.filter((clave) => !(clave in RUTA_ACCION));
@@ -117,13 +116,14 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     ).toBe('');
   });
 
-  it('reparte 73 rutas con acción y 56 sin acción (44 fuera + 12 brechas)', () => {
+  it('reparte 74 rutas con acción y 56 sin acción (44 fuera + 12 brechas)', () => {
     const conAccion = RUTAS.filter((clave) => RUTA_ACCION[clave].length > 0);
     const sinAccion = RUTAS.filter((clave) => RUTA_ACCION[clave].length === 0);
 
-    expect(conAccion.length).toBe(73);
+    // F4-04 sumó la ruta de `horario.base.aprobar` al inventario (129 → 130).
+    expect(conAccion.length).toBe(74);
     expect(sinAccion.length).toBe(56);
-    expect(conAccion.length + sinAccion.length).toBe(129);
+    expect(conAccion.length + sinAccion.length).toBe(130);
 
     // De las 56 sin acción, doce son brecha de la matriz y las otras 44 quedan
     // fuera de su alcance (identidad, autoservicio, vitrina, integración).
@@ -151,7 +151,7 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     ).toBe('');
   });
 
-  it('solo las nueve acciones aprobadas sin endpoint quedan sin ruta', () => {
+  it('solo las ocho acciones aprobadas sin endpoint quedan sin ruta', () => {
     const referenciadas = new Set(RUTAS.flatMap((clave) => RUTA_ACCION[clave]));
     const desconocidas = [...referenciadas].filter(
       (accion) => !(ACCIONES as readonly string[]).includes(accion),
