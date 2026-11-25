@@ -83,6 +83,12 @@ export interface Turno {
   estado: EstadoReserva;
   fechaHoraInicio: string;
   precioTotalHist: number | string;
+  /**
+   * F3-01 · el turno se tecleó en el mostrador sobre alguien sin cuenta. El
+   * `cliente.nombre` ya trae el nombre invitado; este flag sirve para no abrir
+   * la ficha del OPERADOR, que es el `cliente.id` de la reserva.
+   */
+  esWalkIn?: boolean;
   cliente: TurnoCliente;
   barbero: TurnoBarbero | null;
   detalles: TurnoDetalle[];

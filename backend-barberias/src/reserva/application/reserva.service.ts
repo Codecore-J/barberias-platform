@@ -1036,11 +1036,19 @@ export class ReservaService {
         modoConfirmacion === 'AUTOMATICA' ? ESTADOS.CONFIRMADA : ESTADOS.PENDIENTE;
       ReservaStateMachine.assertTransition(null, estadoInicial, ACTORES.CLIENTE);
 
+      // F3-01 · el walk-in se teclea sobre alguien sin cuenta: el nombre visible
+      // de la cita viaja con la reserva. Un nombre vacío o de solo espacios se
+      // guarda NULL, nunca como cadena en blanco.
+      const nombreInvitado = opciones.operadorDeSede
+        ? dto.nombreInvitado?.trim() || null
+        : null;
+
       // 3. Crear reserva con snapshot financiero inmutable congelado
       const reserva = await tx.reserva.create({
         data: {
           barberiaId,
           clienteId,
+          nombreInvitado,
           barberoId: dto.barberoId || null,
           tipoReserva: esGrupal ? 'GRUPAL' : 'INDIVIDUAL',
           fechaCita: fecha,
@@ -1560,14 +1568,19 @@ export class ReservaService {
       const fechaPart = r.fechaCita instanceof Date ? fechaCalendarioISO(r.fechaCita) : fechaLocal;
       const horaPart = r.horaInicio instanceof Date ? horaRelojHHMM(r.horaInicio) : '00:00';
 
+      // F3-01 · en un walk-in el nombre tecleado manda sobre la cuenta del
+      // operador. `esWalkIn` evita que la UI abra la ficha del staff.
+      const nombreInvitado = r.nombreInvitado?.trim() || null;
+
       return {
         id: r.id,
         estado: r.estado,
         fechaHoraInicio: `${fechaPart}T${horaPart}:00`,
         precioTotalHist: Number(r.totalPagar),
+        esWalkIn: Boolean(nombreInvitado),
         cliente: {
           id: r.cliente?.id,
-          nombre: r.cliente?.nombreCompleto || 'Cliente',
+          nombre: nombreInvitado || r.cliente?.nombreCompleto || 'Cliente',
           correo: r.cliente?.correo || '',
           telefono: r.cliente?.telefono || 'Sin teléfono',
           contadorNoPresentado: r.cliente?.clienteBarberias?.[0]?.contadorNoPresentado || 0,
