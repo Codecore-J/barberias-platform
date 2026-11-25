@@ -89,8 +89,10 @@ const PLANTILLA_POR_DEFECTO: DiaPlantillaBase[] = [1, 2, 3, 4, 5, 6].map((diaSem
         </div>
       }
 
-      <!-- Estado de la plantilla -->
-      @if (sinPlantilla() && !cargando()) {
+      <!-- Estado de la plantilla. Con una propuesta pendiente, el aviso de
+           «todavía no guardaste» sobra: el barbero ya envió algo y lo que espera
+           es la decisión de la sede, no volver a empezar. -->
+      @if (sinPlantilla() && !propuestaPendiente() && !cargando()) {
         <div
           class="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 flex items-start gap-3"
           role="status"
