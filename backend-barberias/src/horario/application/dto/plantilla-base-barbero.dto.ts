@@ -76,13 +76,35 @@ export interface DiaPlantillaBarberoResponse {
   activo: boolean;
 }
 
+/**
+ * F4-03 · la propuesta que espera la decisión del ADMIN_BARBERIA.
+ *
+ * `dias` es la semana COMPLETA que se aplicaría al aprobarla, no solo los días
+ * del último envío. La pantalla la usa para enseñar «esto es lo que pediste y
+ * todavía no está vigente» sin confundirla con `dias`, que es lo que el motor
+ * lee hoy.
+ */
+export interface PropuestaPendienteBaseResponse {
+  id: string;
+  /** Siempre `PENDIENTE`: esta lectura solo devuelve la que no se resolvió. */
+  estado: string;
+  /** Instante (UTC) del envío, en ISO 8601. */
+  creadoAt: string;
+  dias: DiaPlantillaBarberoResponse[];
+}
+
 export interface PlantillaBaseBarberoResponse {
   barberoId: string;
   /**
-   * `true` cuando el barbero todavía no guardó ninguna plantilla. La pantalla lo
-   * usa para explicar que sus sedes siguen con el horario de la sede.
+   * `true` cuando el barbero todavía no tiene ninguna plantilla VIGENTE. La
+   * pantalla lo usa para explicar que sus sedes siguen con el horario de la sede.
    */
   sinPlantilla: boolean;
-  /** Los siete días, con los no configurados en `null`. */
+  /** Los siete días VIGENTES (los que lee el motor), con los vacíos en `null`. */
   dias: DiaPlantillaBarberoResponse[];
+  /**
+   * F4-03: la propuesta pendiente de esa sede, o `null` si no hay ninguna.
+   * Es aditiva: quien no la mire sigue viendo la plantilla vigente de siempre.
+   */
+  propuestaPendiente: PropuestaPendienteBaseResponse | null;
 }

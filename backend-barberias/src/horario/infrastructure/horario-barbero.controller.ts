@@ -71,14 +71,20 @@ export class HorarioBarberoController {
   @Roles('BARBERO', 'ADMIN_BARBERIA')
   @UseGuards(VinculoBarberiaGuard)
   @Get('base')
-  obtenerPlantilla(@CurrentUser() user: UsuarioAutenticado) {
-    return this.horarioService.obtenerPlantillaBase(user.id);
+  obtenerPlantilla(
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.horarioService.obtenerPlantillaBase(user.id, barberiaId);
   }
 
   /**
-   * PUT · guarda la plantilla base con un upsert MASIVO (solo los días
-   * enviados). Un día puede apagarse con `activo: false` sin perder sus horas,
-   * que es lo que evita tener que reescribir la semana entera.
+   * PUT · F4-03: PROPONE la plantilla base, ya no la escribe.
+   *
+   * La decisión 9 del dueño separó proponer de aplicar: el cuerpo sigue siendo
+   * el mismo (solo los días que cambian, un día puede apagarse con `activo:
+   * false` sin perder sus horas), pero ahora deja una propuesta `PENDIENTE` de
+   * ESA sede que el ADMIN_BARBERIA resuelve. La plantilla vigente no cambia.
    */
   @Roles('BARBERO', 'ADMIN_BARBERIA')
   @UseGuards(VinculoBarberiaGuard)

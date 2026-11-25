@@ -13,7 +13,7 @@ import {
   type DiaPlantillaBarberoResponse,
   type PlantillaBaseBarberoResponse,
 } from './dto/plantilla-base-barbero.dto.js';
-import { OrigenModificacionHorario } from '@prisma/client';
+import { OrigenModificacionHorario, Prisma } from '@prisma/client';
 import { validateTimeRange } from "../domain/time.utils.js";
 import { esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
 import { horaRelojHHMM } from '../../shared/time/tiempo.service.js';
@@ -544,11 +544,22 @@ export class HorarioService {
    * filtra la lectura. La sede del path solo sirve para autorizar (el barbero
    * tiene que tener rol en ella, `exigirBarberoDeSede`).
    */
-  async obtenerPlantillaBase(usuarioId: string): Promise<PlantillaBaseBarberoResponse> {
-    const filas = await this.prisma.horarioBaseBarbero.findMany({
-      where: { barberoId: usuarioId },
-      orderBy: { diaSemana: 'asc' },
-    });
+  async obtenerPlantillaBase(
+    usuarioId: string,
+    barberiaId: string,
+  ): Promise<PlantillaBaseBarberoResponse> {
+    const [filas, propuesta] = await Promise.all([
+      this.prisma.horarioBaseBarbero.findMany({
+        where: { barberoId: usuarioId },
+        orderBy: { diaSemana: 'asc' },
+      }),
+      // F4-03: la propuesta es POR SEDE (la plantilla vigente es global). El
+      // `barberoId` es el del token: nadie lee la propuesta de un compañero.
+      this.prisma.propuestaHorarioBase.findFirst({
+        where: { barberoId: usuarioId, barberiaId, estado: 'PENDIENTE' },
+        orderBy: { creadoAt: 'desc' },
+      }),
+    ]);
 
     return {
       barberoId: usuarioId,
@@ -564,20 +575,109 @@ export class HorarioService {
           activo: fila?.activo ?? false,
         };
       }),
+      propuestaPendiente: propuesta
+        ? {
+            id: propuesta.id,
+            estado: propuesta.estado,
+            creadoAt: propuesta.creadoAt.toISOString(),
+            dias: this.leerDiasDePropuesta(propuesta.dias),
+          }
+        : null,
     };
   }
 
   /**
-   * Guarda la plantilla con un UPSERT MASIVO: solo se tocan los días enviados.
+   * Los días de una propuesta tal y como los devuelve la API, con la semana
+   * completa y en orden ISO aunque el JSON guardado viniera desordenado.
+   */
+  private leerDiasDePropuesta(dias: Prisma.JsonValue): DiaPlantillaBarberoResponse[] {
+    const filas = Array.isArray(dias)
+      ? (dias as { diaSemana?: number; horaInicio?: string | null; horaFin?: string | null; activo?: boolean }[])
+      : [];
+
+    return DIAS_SEMANA.map((diaSemana): DiaPlantillaBarberoResponse => {
+      const fila = filas.find((candidata) => candidata.diaSemana === diaSemana);
+
+      return {
+        diaSemana,
+        horaInicio: fila?.horaInicio ?? null,
+        horaFin: fila?.horaFin ?? null,
+        activo: fila?.activo ?? false,
+      };
+    });
+  }
+
+  /**
+   * La semana que resultaría de aplicar los días enviados sobre la VIGENTE.
    *
-   * No reemplaza la semana como `configurarMiHorario` porque la plantilla se
-   * edita bloque a bloque desde otra pantalla: borrar lo no enviado convertiría
-   * un envío parcial en una pérdida silenciosa. Tampoco borra filas —el campo
-   * `activo` existe justo para apagar un bloque sin perder sus horas—, así que
-   * el vocabulario del proyecto (E2-07) se mantiene intacto.
+   * Es la razón de guardar la propuesta COMPLETA: aprobar la aplica entera, y un
+   * día que el barbero no envió conserva su estado vigente. Un día apagado sin
+   * horas mantiene las horas que ya tenía (apagar no borra el bloque), que es la
+   * misma regla del upsert anterior.
    *
-   * Las validaciones corren ANTES de abrir la transacción: un día inválido no
-   * debe dejar media plantilla escrita.
+   * Se combina con la vigente y NO con la propuesta anterior a propósito: cada
+   * envío describe «lo aprobado + lo que pido ahora», así una petición que el
+   * barbero dejó de reenviar no se cuela en la siguiente propuesta.
+   */
+  private combinarSemanaDePropuesta(
+    vigente: { diaSemana: number; horaInicio: string; horaFin: string; activo: boolean }[],
+    propuestos: {
+      diaSemana: number;
+      horaInicio: string | null;
+      horaFin: string | null;
+      activo: boolean;
+    }[],
+  ): DiaPlantillaBarberoResponse[] {
+    return DIAS_SEMANA.map((diaSemana): DiaPlantillaBarberoResponse => {
+      const actual = vigente.find((fila) => fila.diaSemana === diaSemana);
+      const propuesto = propuestos.find((dia) => dia.diaSemana === diaSemana);
+
+      if (!propuesto) {
+        return {
+          diaSemana,
+          horaInicio: actual?.horaInicio ?? null,
+          horaFin: actual?.horaFin ?? null,
+          activo: actual?.activo ?? false,
+        };
+      }
+
+      if (!propuesto.horaInicio || !propuesto.horaFin) {
+        return {
+          diaSemana,
+          horaInicio: actual?.horaInicio ?? null,
+          horaFin: actual?.horaFin ?? null,
+          activo: false,
+        };
+      }
+
+      return {
+        diaSemana,
+        horaInicio: propuesto.horaInicio,
+        horaFin: propuesto.horaFin,
+        activo: propuesto.activo,
+      };
+    });
+  }
+
+  /**
+   * F4-03 · PROPONE la plantilla, no la escribe.
+   *
+   * La decisión 9 del dueño separó proponer de aplicar: el `PUT` deja una
+   * propuesta `PENDIENTE` y el ADMIN_BARBERIA la resuelve (ruta de F4-04). La
+   * plantilla vigente (`horarios_base_barbero`) no se toca aquí, así que el motor
+   * de disponibilidad sigue leyendo lo último aprobado.
+   *
+   * El envío sigue siendo parcial: la propuesta se guarda con la semana
+   * COMPLETA que resultaría de aplicarla, porque aprobar es aplicarla entera.
+   * Un día apagado sin horas conserva las horas que ya tenía, igual que hacía el
+   * upsert anterior.
+   *
+   * La propuesta es POR SEDE: un barbero que trabaja en dos sedes propone a cada
+   * una por separado. Un segundo envío reemplaza la pendiente de esa sede (el
+   * índice único parcial de la migración lo garantiza también en la base).
+   *
+   * Las validaciones corren ANTES de escribir: un día inválido no debe dejar una
+   * propuesta a medias.
    */
   async guardarPlantillaBase(
     usuarioId: string,
@@ -599,39 +699,49 @@ export class HorarioService {
       return this.validarDiaDePlantilla(dia);
     });
 
-    await this.prisma.$transaction(async (tx) => {
-      for (const dia of dias) {
-        if (!dia.horaInicio || !dia.horaFin) {
-          // Día apagado y sin horas: no hay bloque que crear. Si ya existía, se
-          // apaga; si no, `updateMany` no toca ninguna fila y no se inventa una
-          // con horas falsas (las columnas son NOT NULL).
-          await tx.horarioBaseBarbero.updateMany({
-            where: { barberoId: usuarioId, diaSemana: dia.diaSemana },
-            data: { activo: false },
-          });
-          continue;
-        }
-
-        await tx.horarioBaseBarbero.upsert({
-          where: {
-            barberoId_diaSemana: { barberoId: usuarioId, diaSemana: dia.diaSemana },
-          },
-          update: {
-            horaInicio: dia.horaInicio,
-            horaFin: dia.horaFin,
-            activo: dia.activo,
-          },
-          create: {
-            barberoId: usuarioId,
-            diaSemana: dia.diaSemana,
-            horaInicio: dia.horaInicio,
-            horaFin: dia.horaFin,
-            activo: dia.activo,
-          },
-        });
-      }
+    const vigente = await this.prisma.horarioBaseBarbero.findMany({
+      where: { barberoId: usuarioId },
+      orderBy: { diaSemana: 'asc' },
     });
 
-    return this.obtenerPlantillaBase(usuarioId);
+    const semana = this.combinarSemanaDePropuesta(vigente, dias);
+    const datos = { dias: semana as unknown as Prisma.InputJsonValue, estado: 'PENDIENTE' };
+
+    const pendiente = await this.prisma.propuestaHorarioBase.findFirst({
+      where: { barberoId: usuarioId, barberiaId, estado: 'PENDIENTE' },
+      select: { id: true },
+    });
+
+    if (pendiente) {
+      // El segundo envío REEMPLAZA la pendiente: dos propuestas vivas de la misma
+      // semana obligarían al administrador a elegir entre versiones.
+      await this.prisma.propuestaHorarioBase.update({
+        where: { id: pendiente.id },
+        data: datos,
+      });
+    } else {
+      try {
+        await this.prisma.propuestaHorarioBase.create({
+          data: { barberoId: usuarioId, barberiaId, ...datos },
+        });
+      } catch (error) {
+        // Dos envíos simultáneos pueden pasar el `findFirst` a la vez; el índice
+        // único parcial rechaza el segundo `create`. Se resuelve como el segundo
+        // envío normal: actualizar la pendiente que acaba de crear el otro.
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          await this.prisma.propuestaHorarioBase.updateMany({
+            where: { barberoId: usuarioId, barberiaId, estado: 'PENDIENTE' },
+            data: datos,
+          });
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    return this.obtenerPlantillaBase(usuarioId, barberiaId);
   }
 }
