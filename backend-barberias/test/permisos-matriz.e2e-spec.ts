@@ -97,9 +97,16 @@ const CASOS: Caso[] = [
   // T-11: la lectura del horario propio acompaña a su escritura.
   { verbo: 'get', ruta: '/shops/{A}/hours/mine', permitidos: ['BARBERO', 'ADMIN_BARBERIA'] },
   { verbo: 'post', ruta: '/shops/{A}/hours/mine', permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: [] },
-  { verbo: 'get', ruta: '/shops/{A}/hours/exceptions', permitidos: ['ADMIN_BARBERIA'] },
+  // F4-02: la lectura acompaña al barbero (ve la sede y las suyas).
+  { verbo: 'get', ruta: '/shops/{A}/hours/exceptions', permitidos: ['ADMIN_BARBERIA', 'BARBERO'] },
   { verbo: 'post', ruta: '/shops/{A}/hours/exceptions', permitidos: ['ADMIN_BARBERIA'], cuerpo: {} },
-  { verbo: 'post', ruta: '/shops/{A}/hours/barbers/{BARBERO}/exceptions', permitidos: ['ADMIN_BARBERIA'], cuerpo: {} },
+  // F4-01: el barbero entra por su propia ruta; con `{BARBERO}` (su id) y un
+  // cuerpo vacío la respuesta es 400 de validación, que cuenta como permitida.
+  // La excepción de un COMPAÑERO sigue siendo 403, pero lo decide el servicio.
+  { verbo: 'post', ruta: '/shops/{A}/hours/barbers/{BARBERO}/exceptions', permitidos: ['ADMIN_BARBERIA', 'BARBERO'], cuerpo: {} },
+  // F4-04: la propuesta de horario base la resuelve solo la sede. Sin propuesta
+  // pendiente el servicio responde 404, que aqui cuenta como ruta permitida.
+  { verbo: 'patch', ruta: '/shops/{A}/hours/barbers/{BARBERO}/base', permitidos: ['ADMIN_BARBERIA'], cuerpo: { aprobar: true } },
 
   // ── pagos ────────────────────────────────────────────────────────────────
   { verbo: 'get', ruta: '/shops/{A}/payments/audit', permitidos: ['ADMIN_BARBERIA'] },

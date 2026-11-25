@@ -335,11 +335,14 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
     // ajenos: el usuario pide SU propia sede y un 200 es legitimo. Lo que hay
     // que probar no es el estado sino QUE sede se leyo: `params` debe ganar a la
     // cabecera. A tiene diaSemana=1, B tiene diaSemana=7.
+    // F4-05: la respuesta pasó de `Horario[]` a `{ horarios, propuestasBasePendientes }`.
     const rutaAconCabeceraB = await request(app.getHttpServer())
       .get(`${api}/shops/${barberiaA}/hours`)
       .set('Authorization', jwt(tokenAdminA))
       .set('x-barberia-id', barberiaB);
-    const diasDevueltos = (rutaAconCabeceraB.body as { diaSemana: number }[]).map((h) => h.diaSemana);
+    const diasDevueltos = (
+      rutaAconCabeceraB.body.horarios as { diaSemana: number }[]
+    ).map((h) => h.diaSemana);
     expect(rutaAconCabeceraB.status, 'ruta A con cabecera B: lee su propia sede').toBe(200);
     expect(diasDevueltos, 'la cabecera B no se cuela: no aparece el diaSemana de B (7)').not.toContain(7);
     expect(diasDevueltos, 'devuelve la sede de la ruta (A, diaSemana 1)').toContain(1);

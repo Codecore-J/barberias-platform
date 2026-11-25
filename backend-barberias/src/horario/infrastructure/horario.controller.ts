@@ -1,7 +1,18 @@
-import { Controller, Get, Post, Body, Param, Query, ParseUUIDPipe, ParseArrayPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  Param,
+  Query,
+  ParseUUIDPipe,
+  ParseArrayPipe,
+} from '@nestjs/common';
 import { HorarioService } from '../application/horario.service.js';
 import { CreateHorarioDto } from '../application/dto/create-horario.dto.js';
 import { CreateExcepcionHorarioDto } from '../application/dto/create-excepcion-horario.dto.js';
+import { ResolverPropuestaBaseDto } from '../application/dto/resolver-propuesta-base.dto.js';
 import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
@@ -40,17 +51,23 @@ export class HorarioController {
    * GET /barberias/:barberiaId/horarios/excepciones
    * Lectura de excepciones, misma política que la lectura de horarios
    * (decisión 8).
+   *
+   * F4-02: el BARBERO entra a leer su calendario. El servicio le devuelve las
+   * excepciones de la sede y las SUYAS (jamás las de un compañero, porque el
+   * `barberoId` del filtro es su id del token); el ADMIN_BARBERIA sigue viendo
+   * el calendario de la sede.
    */
-  @Roles('ADMIN_BARBERIA')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @Get('exceptions')
   findExceptions(
     @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @Query('from') from: string,
     @Query('to') to: string,
+    @CurrentUser() user: UsuarioAutenticado,
   ) {
     const fromDate = from ? new Date(from) : new Date();
     const toDate = to ? new Date(to) : new Date(new Date().setMonth(new Date().getMonth() + 1));
-    return this.horarioService.getExceptions(barberiaId, fromDate, toDate);
+    return this.horarioService.getExceptionsParaUsuario(user.id, barberiaId, fromDate, toDate);
   }
 
   /**
@@ -104,8 +121,15 @@ export class HorarioController {
    * POST /barberias/:barberiaId/horarios/barberos/:barberoId/excepciones
    * Excepción puntual de un barbero concreto: la puede pedir el propio barbero
    * o su responsable.
+   *
+   * F4-01: el decorador declaraba solo al ADMIN_BARBERIA, así que el BARBERO
+   * recibía 403 del guard antes de llegar a la regla que ya vive en el servicio
+   * (`resolverOrigenDeModificacion`: el propio barbero es origen `BARBERO` y la
+   * agenda de un compañero la gestiona la sede). Ahora el barbero entra y es el
+   * servicio quien exige que `barberoId` sea el suyo; el ADMIN_BARBERIA se
+   * queda como estaba y el ADMINISTRADOR no gana la ruta.
    */
-  @Roles('ADMIN_BARBERIA')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @Post('barbers/:barberoId/exceptions')
   addBarberException(
     @Param('shopId', ParseUUIDPipe) barberiaId: string,
@@ -114,5 +138,29 @@ export class HorarioController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.horarioService.addBarberException(user.id, barberiaId, barberoId, dto);
+  }
+
+  /**
+   * PATCH /barberias/:barberiaId/horarios/barberos/:barberoId/base
+   * F4-04 · resuelve la propuesta de horario base de ese barbero.
+   *
+   * Es la única ruta nueva de la fase 4 (§8 de `docs/MATRIZ_RUTAS_ACCIONES.md`).
+   * Cuelga de `/hours/barbers/:barberoId/...`, que ya existe para las
+   * excepciones, y una sola ruta resuelve aprobar y rechazar porque la matriz
+   * tiene una acción para la decisión (`horario.base.aprobar`). El rechazo exige
+   * motivo: el servicio responde 422 `MOTIVO_RECHAZO_REQUERIDO`.
+   *
+   * Solo el ADMIN_BARBERIA de la sede: el ADMINISTRADOR global no gobierna la
+   * plantilla de un barbero y la matriz no le da esta acción.
+   */
+  @Roles('ADMIN_BARBERIA')
+  @Patch('barbers/:barberoId/base')
+  resolverPropuestaBase(
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
+    @Param('barberoId', ParseUUIDPipe) barberoId: string,
+    @Body() dto: ResolverPropuestaBaseDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.horarioService.resolverPropuestaBase(user.id, barberiaId, barberoId, dto);
   }
 }

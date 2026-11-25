@@ -243,8 +243,9 @@ porque la 44 tiene ya acción al determinarse la audiencia por la ruta (decisió
    la apruebe; hasta entonces la ruta queda como está.
 2. **Horario base (la acción sin ruta).** Se propone la ruta de §8:
    `PATCH /shops/:shopId/hours/barbers/:barberoId/base`, con `{ aprobar, motivoRechazo? }`.
-   Hoy no existe ningún flujo de propuesta: `PUT …/mi-horario/base` escribe la plantilla
-   directamente, así que `horario.base.aprobar` no tiene sobre qué actuar.
+   **Implementado en F4-03/F4-04:** `PUT …/mi-horario/base` ya crea la propuesta
+   `PENDIENTE` y la ruta de §8 la resuelve, así que `horario.base.aprobar` tiene sobre
+   qué actuar.
 3. **Las brechas actuales de rol** (33, 36, 79, 94, 105, 107, 111, 113, 114, 115, 116 y 118:
    doce) se corrigen en T-11, sin tocar la matriz: el código es el que se adapta.
 4. **Las 18 rutas `sin acción` quedan revisadas.** Después de leer los controladores y
@@ -283,9 +284,9 @@ porque la 44 tiene ya acción al determinarse la audiencia por la ruta (decisió
    `configuracion.sede.gestionar` / `restringidos_locales.gestionar` quedan solo para
    ADMIN_BARBERIA. Son cuatro acciones donde antes se proponían dos.
 9. **El horario base tiene estados PENDIENTE, APROBADA y RECHAZADA.** Confirma §8 y
-   convierte `PUT …/mi-horario/base` en una **propuesta** del barbero (hoy escribe la
-   plantilla vigente). La decisión la resuelve `horario.base.aprobar` con la ruta de §8; el
-   estado es cambio de modelo y va en T-12, no en T-11.
+   convierte `PUT …/mi-horario/base` en una **propuesta** del barbero. La decisión la resuelve
+   `horario.base.aprobar` con la ruta de §8. **Implementado en F4-03/F4-04**
+   (`propuestas_horario_base`).
 
 ### Tercera ronda (misma fecha)
 
@@ -434,7 +435,7 @@ estados.
 | `GET /shops/:shopId/solicitudes-servicio` (**nueva**) | ADMIN_BARBERIA | Bandeja de solicitudes `PENDIENTE` de la sede, de alta y de desactivación. | `catalogo.servicios.gestionar` |
 | `PATCH /shops/:shopId/solicitudes-servicio/:id` (**nueva**) | ADMIN_BARBERIA | Alta: `{aprobar:true}` crea el servicio en `Servicio` y habilita al solicitante en `ServicioBarbero` con su precio; desactivación: `{aprobar:true}` desactiva el servicio publicado. `{aprobar:false,motivoRechazo}` deja la solicitud `RECHAZADA` (422 `MOTIVO_RECHAZO_REQUERIDO`). | `catalogo.servicios.gestionar` |
 | `PUT /shops/:shopId/mi-horario/base` | BARBERO | Pasa a crear la **propuesta** `PENDIENTE` (hoy escribe la plantilla vigente). | `excepciones.propias.registrar` |
-| `PATCH /shops/:shopId/hours/barbers/:barberoId/base` (**nueva**, §8) | ADMIN_BARBERIA | Aprueba o rechaza la propuesta, con motivo en el rechazo. | `horario.base.aprobar` |
+| `PATCH /shops/:shopId/hours/barbers/:barberoId/base` (**F4-04**, §8) | ADMIN_BARBERIA | Aprueba o rechaza la propuesta, con motivo en el rechazo. | `horario.base.aprobar` |
 | `GET /plataforma/overview` (**nueva, aprobada el 23 nov 2026**, §5.15) | ADMINISTRADOR | Consolidado global de sedes; la audiencia de la 44 queda en la ruta de sede. | `plataforma.metricas.ver` |
 
 - Las propuestas de horario base pendientes se leen por la ruta que ya existe,
@@ -448,7 +449,8 @@ estados.
 
 ## 8 · Ruta propuesta para `horario.base.aprobar`
 
-`horario.base.aprobar` es la única de las 21 acciones sin endpoint. Propuesta:
+`horario.base.aprobar` era la única de las 21 acciones sin endpoint. **Implementada en
+F4-04** tal y como se propone aquí:
 
 ```
 PATCH /shops/:shopId/hours/barbers/:barberoId/base

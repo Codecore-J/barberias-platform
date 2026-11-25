@@ -8,7 +8,14 @@ import {
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms';
-import { HorariosService, Horario, ExcepcionHorario, BloqueoAgenda, CreateBloqueoDto } from '../../../core/services/horarios.service';
+import {
+  HorariosService,
+  Horario,
+  ExcepcionHorario,
+  BloqueoAgenda,
+  CreateBloqueoDto,
+  PropuestaBasePendiente,
+} from '../../../core/services/horarios.service';
 import { TenantService } from '../../../core/services/tenant.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { mensajeDeError } from '../../../core/utils/error-message';
@@ -204,6 +211,101 @@ import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-
 
       <!-- ================= TAB 1: HORARIOS SEMANALES ================= -->
       @if (tabActiva() === 'semanal') {
+        <!-- F4-05 · bandeja: la plantilla del barbero se propone y la sede la resuelve -->
+        @if (propuestasBase().length > 0) {
+          <div class="glass-panel p-5 sm:p-6 rounded-3xl border border-sky-500/25 space-y-4 mb-6">
+            <div class="flex items-start justify-between gap-3 pb-3 border-b border-white/5">
+              <div>
+                <h3 class="text-base font-semibold text-white flex items-center gap-2">
+                  <i class="pi pi-inbox text-sky-400"></i>
+                  <span>Propuestas de horario base</span>
+                  <span class="text-[11px] font-bold text-sky-300 bg-sky-500/10 border border-sky-500/30 px-2 py-0.5 rounded-full">
+                    {{ propuestasBase().length }}
+                  </span>
+                </h3>
+                <p class="text-xs text-zinc-400">
+                  El barbero propone su semana; hasta que la apruebes, el motor sigue leyendo la
+                  plantilla vigente. Al aprobarla, se aplica tal cual.
+                </p>
+              </div>
+            </div>
+
+            @for (propuesta of propuestasBase(); track propuesta.id) {
+              <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="font-semibold text-white text-sm">{{ propuesta.barberoNombre }}</p>
+                    <p class="text-[11px] text-zinc-500">
+                      Enviada el {{ propuesta.creadoAt | date: 'dd/MM/yyyy HH:mm' }}
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      (click)="aprobarPropuesta(propuesta)"
+                      [disabled]="resolviendoPropuestaId() === propuesta.id"
+                      class="px-4 py-2 rounded-xl text-xs font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                    >
+                      <i class="pi" [ngClass]="resolviendoPropuestaId() === propuesta.id ? 'pi-spin pi-spinner' : 'pi-check'"></i>
+                      <span>Aprobar</span>
+                    </button>
+                    <button
+                      type="button"
+                      (click)="abrirRechazo(propuesta)"
+                      [disabled]="resolviendoPropuestaId() === propuesta.id"
+                      class="px-4 py-2 rounded-xl text-xs font-bold text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                    >
+                      <i class="pi pi-times"></i>
+                      <span>Rechazar</span>
+                    </button>
+                  </div>
+                </div>
+
+                <p class="text-xs text-zinc-300 font-mono break-words">
+                  {{ resumenPropuesta(propuesta) }}
+                </p>
+
+                @if (rechazandoId() === propuesta.id) {
+                  <div class="space-y-2 pt-2 border-t border-white/5">
+                    <label
+                      class="block text-[11px] uppercase tracking-wider text-zinc-500 font-semibold"
+                      [for]="'motivo-rechazo-' + propuesta.id"
+                    >
+                      Motivo del rechazo (obligatorio)
+                    </label>
+                    <textarea
+                      [id]="'motivo-rechazo-' + propuesta.id"
+                      rows="2"
+                      maxlength="500"
+                      [value]="motivoDe(propuesta)"
+                      (input)="cambiarMotivo(propuesta, $any($event.target).value)"
+                      placeholder="Ej. La sede abre a las 10:00: ajusta el martes."
+                      class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-rose-500 transition-colors"
+                    ></textarea>
+                    <div class="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        (click)="abrirRechazo(propuesta)"
+                        class="px-3 py-2 rounded-lg text-xs text-zinc-400 hover:text-white transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        (click)="confirmarRechazo(propuesta)"
+                        [disabled]="resolviendoPropuestaId() === propuesta.id"
+                        class="px-4 py-2 rounded-xl text-xs font-bold text-rose-200 bg-rose-500/20 border border-rose-500/40 hover:bg-rose-500/30 disabled:opacity-40 transition-colors"
+                      >
+                        Confirmar rechazo
+                      </button>
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+
         <div class="glass-panel p-5 sm:p-6 rounded-3xl border border-white/5 space-y-4">
           <!-- Alcance + resumen en vivo -->
           <div class="flex flex-wrap items-start justify-between gap-3 pb-3 border-b border-white/5">
@@ -718,6 +820,14 @@ export class AdminHorariosComponent implements OnInit {
     motivo: ''
   };
 
+  // F4-05 · bandeja de propuestas de horario base de los barberos de la sede.
+  // No hay ruta aparte: viaja con la lectura de horarios de la sede.
+  propuestasBase = signal<PropuestaBasePendiente[]>([]);
+  resolviendoPropuestaId = signal<string | null>(null);
+  /** Id de la propuesta cuyo motivo de rechazo se está escribiendo. */
+  rechazandoId = signal<string | null>(null);
+  motivosRechazo = signal<Record<string, string>>({});
+
   // Tab 3: Bloqueos
   bloqueos = signal<BloqueoAgenda[]>([]);
   cargandoBloqueos = signal(false);
@@ -752,7 +862,10 @@ export class AdminHorariosComponent implements OnInit {
     }
 
     this.horariosService.obtenerHorarios(barberia.id).subscribe({
-      next: (horarios) => this.aplicarSemana(horarios ?? []),
+      next: (respuesta) => {
+        this.aplicarSemana(respuesta?.horarios ?? []);
+        this.propuestasBase.set(respuesta?.propuestasBasePendientes ?? []);
+      },
       error: (err) => {
         // La propuesta por defecto deja la pantalla usable aunque falle el GET;
         // el aviso evita que se guarde creyendo que se vio lo que hay en la base.
@@ -1148,6 +1261,80 @@ export class AdminHorariosComponent implements OnInit {
       error: (err) => {
         this.mostrarError(mensajeDeError(err, 'Error al eliminar el bloqueo'));
       }
+    });
+  }
+
+  // --- F4-05 · propuestas de horario base ---
+
+  /** «Lun 10:00–18:00 · Mar 11:00–19:00», lo que la sede aprobaría. */
+  resumenPropuesta(propuesta: PropuestaBasePendiente): string {
+    const dias = (propuesta.dias ?? []).filter((d) => d.activo && d.horaInicio && d.horaFin);
+
+    if (dias.length === 0) {
+      return 'Sin días activos: la propuesta cierra la semana entera.';
+    }
+
+    return dias
+      .map((d) => `${(NOMBRES_DIA[d.diaSemana] ?? '').slice(0, 3)} ${d.horaInicio}–${d.horaFin}`)
+      .join(' · ');
+  }
+
+  aprobarPropuesta(propuesta: PropuestaBasePendiente): void {
+    this.resolverPropuesta(propuesta, { aprobar: true });
+  }
+
+  abrirRechazo(propuesta: PropuestaBasePendiente): void {
+    this.rechazandoId.set(this.rechazandoId() === propuesta.id ? null : propuesta.id);
+  }
+
+  motivoDe(propuesta: PropuestaBasePendiente): string {
+    return this.motivosRechazo()[propuesta.id] ?? '';
+  }
+
+  cambiarMotivo(propuesta: PropuestaBasePendiente, valor: string): void {
+    this.motivosRechazo.set({ ...this.motivosRechazo(), [propuesta.id]: valor });
+  }
+
+  confirmarRechazo(propuesta: PropuestaBasePendiente): void {
+    const motivo = this.motivoDe(propuesta).trim();
+
+    // El backend responde 422 MOTIVO_RECHAZO_REQUERIDO; se avisa aquí para no
+    // gastar una petición en algo que la pantalla ya sabe.
+    if (!motivo) {
+      this.mostrarError('Explica el motivo del rechazo: el barbero necesita saber qué corregir.');
+      return;
+    }
+
+    this.resolverPropuesta(propuesta, { aprobar: false, motivoRechazo: motivo });
+  }
+
+  private resolverPropuesta(
+    propuesta: PropuestaBasePendiente,
+    resolucion: { aprobar: boolean; motivoRechazo?: string },
+  ): void {
+    const barberia = this.tenantService.barberiaActiva();
+    if (!barberia || this.resolviendoPropuestaId()) return;
+
+    this.resolviendoPropuestaId.set(propuesta.id);
+
+    this.horariosService.resolverPropuestaBase(barberia.id, propuesta.barberoId, resolucion).subscribe({
+      next: () => {
+        this.resolviendoPropuestaId.set(null);
+        this.rechazandoId.set(null);
+        this.motivosRechazo.set({ ...this.motivosRechazo(), [propuesta.id]: '' });
+        this.mostrarExito(
+          resolucion.aprobar
+            ? `Plantilla semanal de ${propuesta.barberoNombre} aprobada.`
+            : `Propuesta de ${propuesta.barberoNombre} rechazada.`,
+        );
+        // El backend ya reescribió la bandeja y la plantilla del barbero: se
+        // recarga para no pintar una propuesta que ya se resolvió.
+        this.cargarHorariosActuales();
+      },
+      error: (err) => {
+        this.resolviendoPropuestaId.set(null);
+        this.mostrarError(this.mensajeDeError(err, 'No se pudo resolver la propuesta.'));
+      },
     });
   }
 

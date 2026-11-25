@@ -267,9 +267,17 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // puede guardar su plantilla puede leerla.
   'GET /shops/:shopId/mi-horario/base': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   'PUT /shops/:shopId/mi-horario/base': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
-  'GET /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA],
+  // F4-02: el barbero lee las de la sede y las suyas; el filtro por barbero sale
+  // del token, así que la ruta no le abre las de un compañero.
+  'GET /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
   'POST /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA],
-  'POST /shops/:shopId/hours/barbers/:barberoId/exceptions': [ROL_ADMIN_BARBERIA],
+  // F4-01: el barbero registra su propia excepción; el servicio rechaza la de
+  // un compañero (403 «tu propia agenda»), así que la lista incluye los dos.
+  'POST /shops/:shopId/hours/barbers/:barberoId/exceptions': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
+  // F4-04: resolver la propuesta de horario base es `horario.base.aprobar`, que
+  // la matriz da solo al ADMIN_BARBERIA. El barbero PROPONE (PUT …/mi-horario/base)
+  // y el ADMINISTRADOR global no gobierna la plantilla de nadie.
+  'PATCH /shops/:shopId/hours/barbers/:barberoId/base': [ROL_ADMIN_BARBERIA],
 
   'GET /shops/:shopId/payments/audit': [ROL_ADMIN_BARBERIA],
   // E3-09 (2026-10): el guard admite al BARBERO y al ADMIN_BARBERIA en
@@ -672,6 +680,14 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
     expect(lectura).not.toContain(ROL_CLIENTE);
   });
 
+  it('la propuesta de horario base la resuelve solo el ADMIN_BARBERIA de la sede', () => {
+    const resolucion = POLITICA_DECLARADA['PATCH /shops/:shopId/hours/barbers/:barberoId/base'];
+
+    // Quien propone (PUT …/mi-horario/base: BARBERO y ADMIN_BARBERIA) no puede
+    // aprobar lo que propone; el barbero necesita que otro firme su semana.
+    expect(resolucion).toEqual([ROL_ADMIN_BARBERIA]);
+  });
+
   it('quien puede escribir su horario propio también puede leerlo (GET y POST /hours/mine)', () => {
     const lectura = POLITICA_DECLARADA['GET /shops/:shopId/hours/mine'];
     const escritura = POLITICA_DECLARADA['POST /shops/:shopId/hours/mine'];
@@ -762,8 +778,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // backlog de catálogo (T-21, fase 2) suma la 124. T-24 suma la imagen del
   // servicio: 125 × 4 = 500. T-27/T-28 suman las tres rutas de la solicitud de
   // servicio (alta, bandeja y resolución): 128 × 4 = 512. La foto de la
-  // solicitud pendiente (T-28) suma la 129: 129 × 4 = 516.
-  expect(evaluaciones).toBe(516);
+  // solicitud pendiente (T-28) suma la 129: 129 × 4 = 516. F4-04 suma la
+  // resolución de la propuesta de horario base: 130 × 4 = 520.
+  expect(evaluaciones).toBe(520);
 
     const resumen =
       desviaciones.length > 40

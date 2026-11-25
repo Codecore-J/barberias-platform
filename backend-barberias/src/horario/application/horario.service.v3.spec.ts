@@ -16,6 +16,8 @@ describe('HorarioService · plantilla base y autoría (V3)', () => {
   let service: HorarioService;
   let prisma: any;
   let filasDePlantilla: Map<number, any>;
+  /** F4-03: la propuesta pendiente que el `PUT` mantiene por (barbero, sede). */
+  let propuestaPendiente: any;
 
   const tiempo = {
     fechaDeCalendario: (fecha: string) => new Date(`${fecha}T00:00:00Z`),
@@ -38,6 +40,7 @@ describe('HorarioService · plantilla base y autoría (V3)', () => {
 
   beforeEach(() => {
     filasDePlantilla = new Map();
+    propuestaPendiente = null;
 
     prisma = {
       barberia: { findUnique: vi.fn(async () => ({ responsableId: null })) },
@@ -64,6 +67,22 @@ describe('HorarioService · plantilla base y autoría (V3)', () => {
           return { count: 1 };
         }),
       },
+      propuestaHorarioBase: {
+        findFirst: vi.fn(async () => propuestaPendiente),
+        create: vi.fn(async ({ data }: any) => {
+          propuestaPendiente = { id: 'propuesta-1', creadoAt: new Date(), ...data };
+          return propuestaPendiente;
+        }),
+        update: vi.fn(async ({ data }: any) => {
+          propuestaPendiente = { ...propuestaPendiente, ...data };
+          return propuestaPendiente;
+        }),
+        updateMany: vi.fn(async ({ data }: any) => {
+          if (!propuestaPendiente) return { count: 0 };
+          propuestaPendiente = { ...propuestaPendiente, ...data };
+          return { count: 1 };
+        }),
+      },
       $transaction: vi.fn(async (cb: any) => cb(prisma)),
     };
 
@@ -73,14 +92,15 @@ describe('HorarioService · plantilla base y autoría (V3)', () => {
   // ── plantilla base ───────────────────────────────────────────────────────
 
   it('la plantilla vacía devuelve los siete días ISO y avisa de que no hay ninguna', async () => {
-    const plantilla = await service.obtenerPlantillaBase('barbero-1');
+    const plantilla = await service.obtenerPlantillaBase('barbero-1', 'sede-1');
 
     expect(plantilla.dias.map((d) => d.diaSemana)).toEqual([1, 2, 3, 4, 5, 6, 7]);
     expect(plantilla.sinPlantilla).toBe(true);
     expect(plantilla.dias.every((d) => d.horaInicio === null && d.activo === false)).toBe(true);
+    expect(plantilla.propuestaPendiente).toBeNull();
   });
 
-  it('el upsert masivo escribe SOLO los días enviados y deja el resto intacto', async () => {
+  it('F4-03 · el envío crea una propuesta PENDIENTE y NO escribe la plantilla vigente', async () => {
     filasDePlantilla.set(3, {
       barberoId: 'barbero-1',
       diaSemana: 3,
@@ -96,20 +116,46 @@ describe('HorarioService · plantilla base y autoría (V3)', () => {
       ],
     });
 
-    const upserts = prisma.horarioBaseBarbero.upsert.mock.calls.map(
-      ([args]: any[]) => args.where.barberoId_diaSemana.diaSemana,
-    );
-    expect(upserts).toEqual([1, 7]);
+    expect(prisma.horarioBaseBarbero.upsert).not.toHaveBeenCalled();
+    expect(propuestaPendiente).toMatchObject({ barberoId: 'barbero-1', estado: 'PENDIENTE' });
 
-    const miercoles = plantilla.dias.find((d) => d.diaSemana === 3);
-    expect(miercoles).toMatchObject({ horaInicio: '10:00', horaFin: '19:00', activo: true });
+    const dias = propuestaPendiente.dias;
+    expect(dias).toHaveLength(7);
+    // La propuesta guarda la semana RESULTANTE: lo enviado y lo que sigue vigente.
+    expect(dias.find((d: any) => d.diaSemana === 3)).toMatchObject({
+      horaInicio: '10:00',
+      horaFin: '19:00',
+      activo: true,
+    });
+    expect(dias.find((d: any) => d.diaSemana === 1)).toMatchObject({
+      horaInicio: '09:00',
+      horaFin: '18:00',
+      activo: true,
+    });
 
-    const lunes = plantilla.dias.find((d) => d.diaSemana === 1);
-    expect(lunes).toMatchObject({ horaInicio: '09:00', horaFin: '18:00', activo: true });
-    expect(plantilla.sinPlantilla).toBe(false);
+    // La lectura sigue devolviendo la VIGENTE en `dias` y la propuesta aparte.
+    expect(plantilla.dias.find((d) => d.diaSemana === 3)).toMatchObject({ horaInicio: '10:00' });
+    expect(plantilla.dias.find((d) => d.diaSemana === 1)?.horaInicio).toBeNull();
+    expect(plantilla.propuestaPendiente?.estado).toBe('PENDIENTE');
   });
 
-  it('un día apagado sin horas solo apaga el bloque existente, no lo crea', async () => {
+  it('un segundo envío reemplaza la propuesta pendiente, no crea otra', async () => {
+    await service.guardarPlantillaBase('barbero-1', 'sede-1', {
+      dias: [{ diaSemana: 1, horaInicio: '09:00', horaFin: '18:00' }],
+    });
+    await service.guardarPlantillaBase('barbero-1', 'sede-1', {
+      dias: [{ diaSemana: 1, horaInicio: '11:00', horaFin: '20:00' }],
+    });
+
+    expect(prisma.propuestaHorarioBase.create).toHaveBeenCalledTimes(1);
+    expect(prisma.propuestaHorarioBase.update).toHaveBeenCalledTimes(1);
+    expect(propuestaPendiente.dias.find((d: any) => d.diaSemana === 1)).toMatchObject({
+      horaInicio: '11:00',
+      horaFin: '20:00',
+    });
+  });
+
+  it('un día apagado sin horas solo apaga el bloque en la propuesta, no lo crea', async () => {
     filasDePlantilla.set(2, {
       barberoId: 'barbero-1',
       diaSemana: 2,
@@ -124,20 +170,30 @@ describe('HorarioService · plantilla base y autoría (V3)', () => {
 
     expect(prisma.horarioBaseBarbero.upsert).not.toHaveBeenCalled();
     expect(filasDePlantilla.has(5)).toBe(false);
-    expect(plantilla.dias.find((d) => d.diaSemana === 2)).toMatchObject({
+
+    const dias = propuestaPendiente.dias;
+    // El 2 conserva sus horas (apagar no borra el bloque) y el 5 nace vacío.
+    expect(dias.find((d: any) => d.diaSemana === 2)).toMatchObject({
       horaInicio: '09:00',
+      horaFin: '18:00',
       activo: false,
     });
+    expect(dias.find((d: any) => d.diaSemana === 5)).toMatchObject({
+      horaInicio: null,
+      activo: false,
+    });
+    expect(plantilla.propuestaPendiente).toBeTruthy();
   });
 
-  it('un día ACTIVO sin horas es 400 y no abre la transacción', async () => {
+  it('un día ACTIVO sin horas es 400 y no escribe ninguna propuesta', async () => {
     await expect(
       service.guardarPlantillaBase('barbero-1', 'sede-1', {
         dias: [{ diaSemana: 1 }],
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.propuestaHorarioBase.create).not.toHaveBeenCalled();
+    expect(prisma.propuestaHorarioBase.update).not.toHaveBeenCalled();
   });
 
   it('rechaza una jornada invertida', async () => {

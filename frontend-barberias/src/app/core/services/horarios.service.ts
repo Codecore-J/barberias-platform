@@ -58,12 +58,45 @@ export interface DiaPlantillaBase {
   activo: boolean;
 }
 
+/**
+ * F4-03/F4-05 · propuesta de plantilla que espera la decisión de la sede.
+ *
+ * `dias` es la semana COMPLETA que se aplicaría al aprobarla; `dias` de
+ * `PlantillaBaseSemana` sigue siendo la plantilla VIGENTE, la que lee el motor.
+ */
+export interface PropuestaPendienteBase {
+  id: string;
+  estado: string;
+  /** ISO 8601 del envío. */
+  creadoAt: string;
+  dias: DiaPlantillaBase[];
+}
+
 export interface PlantillaBaseSemana {
   barberoId: string;
-  /** `true` si el barbero todavía no guardó ninguna plantilla. */
+  /** `true` si el barbero todavía no tiene ninguna plantilla VIGENTE. */
   sinPlantilla: boolean;
-  /** Los siete días, con los no configurados en `null`. */
+  /** Los siete días VIGENTES, con los no configurados en `null`. */
   dias: DiaPlantillaBase[];
+  /** F4-03: la propuesta pendiente de esa sede, o `null`. */
+  propuestaPendiente?: PropuestaPendienteBase | null;
+}
+
+/**
+ * F4-05 · una propuesta vista por el ADMIN_BARBERIA en la bandeja de la sede.
+ * Viaja con `GET /shops/:shopId/hours` (no hay ruta de bandeja aparte).
+ */
+export interface PropuestaBasePendiente {
+  id: string;
+  barberoId: string;
+  barberoNombre: string;
+  creadoAt: string;
+  dias: DiaPlantillaBase[];
+}
+
+export interface HorariosDeSede {
+  horarios: Horario[];
+  propuestasBasePendientes: PropuestaBasePendiente[];
 }
 
 /**
@@ -107,8 +140,12 @@ export interface CreateBloqueoDto {
 export class HorariosService {
   private http = inject(HttpClient);
 
-  obtenerHorarios(barberiaId: string): Observable<Horario[]> {
-    return this.http.get<Horario[]>(`${API_URL}/shops/${barberiaId}/hours`);
+  /**
+   * F4-05: además de la semana de la sede, la bandeja de propuestas de horario
+   * base pendientes. La respuesta pasó de `Horario[]` a `HorariosDeSede`.
+   */
+  obtenerHorarios(barberiaId: string): Observable<HorariosDeSede> {
+    return this.http.get<HorariosDeSede>(`${API_URL}/shops/${barberiaId}/hours`);
   }
 
   configurarHorarios(barberiaId: string, horarios: Omit<Horario, 'id'>[]): Observable<Horario[]> {
@@ -142,10 +179,25 @@ export class HorariosService {
   }
 
   /**
-   * Guardado MASIVO de la plantilla: solo se envían los días que cambian.
-   *
-   * Es un upsert por día, no un reemplazo: el backend conserva los días que no
-   * viajan en el cuerpo (y las horas de un día que se apaga).
+   * F4-05 · resuelve la propuesta de horario base de un barbero.
+   * Aprobar aplica la semana propuesta a su plantilla vigente; rechazar exige
+   * motivo (422 `MOTIVO_RECHAZO_REQUERIDO`).
+   */
+  resolverPropuestaBase(
+    barberiaId: string,
+    barberoId: string,
+    resolucion: { aprobar: boolean; motivoRechazo?: string },
+  ): Observable<unknown> {
+    return this.http.patch(
+      `${API_URL}/shops/${barberiaId}/hours/barbers/${barberoId}/base`,
+      resolucion,
+    );
+  }
+
+  /**
+   * F4-03: envía la plantilla como PROPUESTA de esa sede (solo los días que
+   * cambian). El backend la guarda `PENDIENTE` con la semana completa resultante
+   * y la plantilla vigente no cambia hasta que la sede la apruebe.
    */
   guardarPlantillaBase(
     barberiaId: string,
