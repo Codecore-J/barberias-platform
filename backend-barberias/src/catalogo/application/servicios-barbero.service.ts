@@ -1,8 +1,24 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
-import { errorDeConflicto, errorDePermiso, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
+import {
+  errorDeConflicto,
+  errorDePermiso,
+  errorDeSolicitud,
+  reglaDeNegocio,
+} from '../../shared/errors/d40.errors.js';
+import {
+  CloudinaryService,
+  TAMANO_MAXIMO_IMAGEN,
+  TIPOS_IMAGEN_PERMITIDOS,
+  type ArchivoSubido,
+} from '../../shared/cloudinary/cloudinary.service.js';
 import { ROL_BARBERO } from '../../iam/domain/roles.js';
-import { CreateServicioBarberoDto } from './dto/create-servicio-barbero.dto.js';
 import { UpdateServicioBarberoDto } from './dto/update-servicio-barbero.dto.js';
 
 /**
@@ -23,7 +39,10 @@ import { UpdateServicioBarberoDto } from './dto/update-servicio-barbero.dto.js';
 export class ServiciosBarberoService {
   private readonly logger = new Logger(ServiciosBarberoService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cloudinary: CloudinaryService,
+  ) {}
 
   /** Sin sede no hay consulta: un `where` sin la sede es una fuga de tenant. */
   private static exigirSede(barberiaId: string | undefined | null): string {
@@ -43,10 +62,25 @@ export class ServiciosBarberoService {
     return limpio;
   }
 
+  /** T-23 · opcional: se recorta y el vacío se guarda como NULL, no como "". */
+  private static normalizarDescripcion(
+    descripcion: string | undefined | null,
+  ): string | null {
+    if (descripcion === undefined || descripcion === null) {
+      return null;
+    }
+    const limpia = descripcion.trim();
+    return limpia === '' ? null : limpia;
+  }
+
   /**
    * T-20 · la categoría tiene que existir en el catálogo GLOBAL y estar activa.
    * Antes se buscaba con `barberiaId` porque cada sede tenía sus copias; ahora
    * `barberia_id` es NULL para todas las categorías vivas.
+   *
+   * T-23 · si la categoría no existe o quedó como fila heredada de una sede
+   * (`barberia_id` no NULL), la respuesta es 422 `CATEGORIA_INVALIDA` y no 404:
+   * la petición es válida, lo que impide publicar es el estado del catálogo.
    */
   private async exigirCategoriaGlobal(categoriaId: string) {
     const categoria = await this.prisma.categoriaServicio.findFirst({
@@ -55,8 +89,19 @@ export class ServiciosBarberoService {
     });
 
     if (!categoria) {
-      throw new NotFoundException(
-        'La categoría indicada no existe en el catálogo global.',
+      // Segunda búsqueda solo para distinguir el mensaje: un id que no existe
+      // en ninguna tabla no es lo mismo que una fila antigua atada a una sede.
+      const heredada = await this.prisma.categoriaServicio.findFirst({
+        where: { id: categoriaId, barberiaId: { not: null } },
+        select: { id: true },
+      });
+
+      throw reglaDeNegocio(
+        'CATEGORIA_INVALIDA',
+        heredada
+          ? 'La categoría indicada pertenece a una sede y no al catálogo global: elige una categoría global para publicar el servicio.'
+          : 'La categoría indicada no existe en el catálogo global: elige una categoría válida para publicar el servicio.',
+        { categoriaId },
       );
     }
 
@@ -130,31 +175,11 @@ export class ServiciosBarberoService {
     );
   }
 
-  async crear(barberiaId: string, barberoId: string, dto: CreateServicioBarberoDto) {
-    const sede = ServiciosBarberoService.exigirSede(barberiaId);
-    const nombre = ServiciosBarberoService.normalizarNombre(dto.nombre);
-
-    await this.exigirBarberoDeSede(sede, barberoId);
-    await this.exigirCategoriaGlobal(dto.categoriaId);
-    await this.exigirNombreLibre(barberoId, dto.categoriaId, nombre);
-
-    const servicio = await this.prisma.servicioBarbero.create({
-      data: {
-        barberoId,
-        barberiaId: sede,
-        categoriaId: dto.categoriaId,
-        nombrePersonalizado: nombre,
-        precio: dto.precio,
-        duracionMinutos: dto.duracionMinutos,
-      },
-      include: { categoria: { select: { id: true, nombre: true } } },
-    });
-
-    this.logger.log(
-      `Servicio de barbero creado: ${servicio.id} (barbero: ${barberoId}, sede: ${sede})`,
-    );
-    return servicio;
-  }
+  /**
+   * El alta directa ya no existe: la decisión del 24 nov la convierte en una
+   * solicitud que el ADMIN_BARBERIA resuelve (`SolicitudesServicioService`).
+   * Este servicio conserva la lectura, la edición y la foto de lo ya publicado.
+   */
 
   /**
    * Los servicios del barbero que inicia sesión en esa sede. Devuelve también los
@@ -203,6 +228,7 @@ export class ServiciosBarberoService {
     const datos: {
       categoriaId?: string;
       nombrePersonalizado?: string;
+      descripcion?: string | null;
       precio?: number;
       duracionMinutos?: number;
       activo?: boolean;
@@ -225,6 +251,10 @@ export class ServiciosBarberoService {
       // Cambiar de categoría sin cambiar de nombre también tiene que respetar la
       // unicidad (barbero + categoría + nombre).
       await this.exigirNombreLibre(barberoId, categoriaDestino, actual.nombrePersonalizado, actual.id);
+    }
+
+    if (dto.descripcion !== undefined) {
+      datos.descripcion = ServiciosBarberoService.normalizarDescripcion(dto.descripcion);
     }
 
     if (dto.precio !== undefined) {
@@ -250,6 +280,81 @@ export class ServiciosBarberoService {
     });
 
     this.logger.log(`Servicio de barbero actualizado: ${id} (sede: ${sede})`);
+    return actualizado;
+  }
+
+  /**
+   * T-24 · imagen del servicio propio.
+   *
+   * El archivo no toca el disco ni la base: se valida (tipo y 2 MB), se borra
+   * la imagen anterior en Cloudinary —el usuario pidió reemplazar, no acumular—
+   * y se sube la nueva. Solo la URL queda en `servicios_barbero.imagen_url`.
+   *
+   * Sin `CLOUDINARY_URL` responde 503 con un mensaje que dice qué falta: una
+   * subida «silenciosa» que no guarda nada es peor que un error explícito.
+   */
+  async actualizarImagen(
+    barberiaId: string,
+    barberoId: string,
+    id: string,
+    archivo: ArchivoSubido | undefined,
+  ) {
+    const sede = ServiciosBarberoService.exigirSede(barberiaId);
+
+    if (!archivo?.buffer || archivo.buffer.length === 0) {
+      throw errorDeSolicitud(
+        'IMAGEN_REQUERIDA',
+        'Adjunta la imagen del servicio en el campo «archivo».',
+      );
+    }
+
+    if (!TIPOS_IMAGEN_PERMITIDOS.includes(archivo.mimetype as (typeof TIPOS_IMAGEN_PERMITIDOS)[number])) {
+      throw errorDeSolicitud(
+        'IMAGEN_TIPO_INVALIDO',
+        'La imagen debe ser JPG, PNG o WEBP.',
+      );
+    }
+
+    const tamano = archivo.size || archivo.buffer.length;
+    if (tamano > TAMANO_MAXIMO_IMAGEN) {
+      throw errorDeSolicitud('IMAGEN_DEMASIADO_GRANDE', 'La imagen no puede superar los 2 MB.');
+    }
+
+    const actual = await this.prisma.servicioBarbero.findFirst({
+      where: { id, barberoId, barberiaId: sede },
+      select: { id: true, imagenUrl: true, imagenPublicId: true },
+    });
+
+    if (!actual) {
+      throw new NotFoundException('Servicio no encontrado entre los tuyos en esta barbería.');
+    }
+
+    if (!this.cloudinary.configurado()) {
+      throw new ServiceUnavailableException({
+        statusCode: 503,
+        codigo: 'IMAGEN_NO_CONFIGURADA',
+        mensaje:
+          'La subida de imágenes no está disponible: falta CLOUDINARY_URL en el entorno del servidor.',
+      });
+    }
+
+    // El `public_id` guardado manda; la URL queda como respaldo para las filas
+    // anteriores a la columna. Nunca se manda a `destroy` algo sin identificar.
+    const publicIdAnterior =
+      actual.imagenPublicId ?? CloudinaryService.publicIdDe(actual.imagenUrl);
+    if (publicIdAnterior) {
+      await this.cloudinary.borrar(publicIdAnterior);
+    }
+
+    const subida = await this.cloudinary.subir(archivo.buffer, `servicios/${sede}`);
+
+    const actualizado = await this.prisma.servicioBarbero.update({
+      where: { id: actual.id },
+      data: { imagenUrl: subida.url, imagenPublicId: subida.publicId },
+      select: { id: true, imagenUrl: true, imagenPublicId: true },
+    });
+
+    this.logger.log(`Imagen del servicio actualizada: ${id} (sede: ${sede})`);
     return actualizado;
   }
 
@@ -286,6 +391,8 @@ export class ServiciosBarberoService {
         servicios: categoria.servicios.map((servicio) => ({
           id: servicio.id,
           nombre: servicio.nombrePersonalizado,
+          descripcion: servicio.descripcion,
+          imagenUrl: servicio.imagenUrl,
           precio: servicio.precio,
           duracionMinutos: servicio.duracionMinutos,
           barbero: {

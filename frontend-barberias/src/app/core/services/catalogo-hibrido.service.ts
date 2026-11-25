@@ -22,6 +22,10 @@ export interface ServicioBarbero {
   categoriaId: string;
   barberoId: string;
   nombrePersonalizado: string;
+  /** T-23 · descripción opcional del servicio (500 caracteres en el backend). */
+  descripcion?: string | null;
+  /** T-24 · URL de la foto en Cloudinary; `null` si el servicio no tiene. */
+  imagenUrl?: string | null;
   precio: number;
   duracionMinutos: number;
   activo: boolean;
@@ -61,6 +65,20 @@ export interface CrearServicioBarberoDto {
   precio: number;
   duracionMinutos: number;
   categoriaId: string;
+  descripcion?: string;
+}
+
+/**
+ * El alta del barbero ya no publica: crea una solicitud que el ADMIN_BARBERIA
+ * de la sede aprueba o rechaza. El servicio aparece en el catálogo cuando se
+ * aprueba.
+ */
+export interface SolicitudServicioBarbero {
+  id: string;
+  tipo: 'ALTA' | 'DESACTIVACION';
+  estado: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
+  motivoRechazo?: string | null;
+  creadoAt?: string;
 }
 
 export interface ActualizarServicioBarberoDto {
@@ -69,6 +87,8 @@ export interface ActualizarServicioBarberoDto {
   duracionMinutos?: number;
   categoriaId?: string;
   activo?: boolean;
+  /** El vacío se manda como `''` y el backend lo guarda NULL. */
+  descripcion?: string | null;
 }
 
 /**
@@ -106,6 +126,10 @@ export class CatalogoHibridoService {
 
   private get catalogoUrl(): string {
     return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/servicios`;
+  }
+
+  private get solicitudesUrl(): string {
+    return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/solicitudes-servicio`;
   }
 
   // ── Estado de las categorías (panel del ADMIN de la sede) ────────────────
@@ -279,11 +303,13 @@ export class CatalogoHibridoService {
     );
   }
 
-  crearServicio(dto: CrearServicioBarberoDto): Observable<ServicioBarbero> {
+  crearServicio(dto: CrearServicioBarberoDto): Observable<SolicitudServicioBarbero> {
     this.guardandoServicio.set(true);
     this.errorMisServicios.set(null);
 
-    return this.http.post<ServicioBarbero>(this.misServiciosUrl, dto).pipe(
+    return this.http
+      .post<SolicitudServicioBarbero>(this.misServiciosUrl, { ...dto, tipo: 'ALTA' })
+      .pipe(
       tap(() => {
         this.guardandoServicio.set(false);
         this.cargarMisServicios().subscribe();
@@ -291,7 +317,10 @@ export class CatalogoHibridoService {
       catchError((error) => {
         this.guardandoServicio.set(false);
         this.errorMisServicios.set(
-          CatalogoHibridoService.mensajeDeError(error, 'No se pudo publicar el servicio.'),
+          CatalogoHibridoService.mensajeDeError(
+            error,
+            'No se pudo enviar la solicitud de servicio.',
+          ),
         );
         return throwError(() => error);
       }),
@@ -315,6 +344,70 @@ export class CatalogoHibridoService {
         return throwError(() => error);
       }),
     );
+  }
+
+  /**
+   * T-25 · foto del servicio. Viaja como `multipart/form-data` en el campo
+   * `archivo`, que es el que lee `FileInterceptor` en el backend; el 400
+   * `IMAGEN_DEMASIADO_GRANDE` o `IMAGEN_TIPO_INVALIDO` se muestra tal cual.
+   */
+  subirImagenServicio(id: string, archivo: File): Observable<ServicioBarbero> {
+    this.guardandoServicio.set(true);
+    this.errorMisServicios.set(null);
+
+    const cuerpo = new FormData();
+    cuerpo.append('archivo', archivo);
+
+    return this.http.patch<ServicioBarbero>(`${this.misServiciosUrl}/${id}/imagen`, cuerpo).pipe(
+      tap(() => {
+        this.guardandoServicio.set(false);
+        this.cargarMisServicios().subscribe();
+      }),
+      catchError((error) => {
+        this.guardandoServicio.set(false);
+        this.errorMisServicios.set(
+          CatalogoHibridoService.mensajeDeError(error, 'No se pudo subir la foto del servicio.'),
+        );
+        return throwError(() => error);
+      }),
+    );
+  }
+
+  /**
+   * T-28 · foto de la solicitud PENDIENTE.
+   *
+   * El alta ya no publica el servicio, así que la foto no puede subirse contra
+   * `/mis-servicios/:id/imagen` (ese id todavía no existe). Esta ruta adjunta la
+   * imagen a la solicitud y la aprobación la copia al servicio publicado.
+   */
+  subirImagenSolicitud(
+    solicitudId: string,
+    archivo: File,
+  ): Observable<{ id: string; imagenUrl: string; imagenPublicId: string }> {
+    this.guardandoServicio.set(true);
+    this.errorMisServicios.set(null);
+
+    const cuerpo = new FormData();
+    cuerpo.append('archivo', archivo);
+
+    return this.http
+      .patch<{ id: string; imagenUrl: string; imagenPublicId: string }>(
+        `${this.solicitudesUrl}/${solicitudId}/imagen`,
+        cuerpo,
+      )
+      .pipe(
+        tap(() => this.guardandoServicio.set(false)),
+        catchError((error) => {
+          this.guardandoServicio.set(false);
+          this.errorMisServicios.set(
+            CatalogoHibridoService.mensajeDeError(
+              error,
+              'No se pudo subir la foto de la solicitud.',
+            ),
+          );
+          return throwError(() => error);
+        }),
+      );
   }
 
   // ── Vitrina del cliente ─────────────────────────────────────────────────
@@ -369,6 +462,8 @@ export class CatalogoHibridoService {
       categoriaId: servicio.categoriaId,
       barberoId: servicio.barberoId,
       nombrePersonalizado: servicio.nombrePersonalizado,
+      descripcion: servicio.descripcion ?? null,
+      imagenUrl: servicio.imagenUrl ?? null,
       precio: Number(servicio.precio),
       duracionMinutos: Number(servicio.duracionMinutos),
       activo: servicio.activo !== false,

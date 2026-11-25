@@ -8,9 +8,14 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  UploadedFile,
+  UseFilters,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ServiciosBarberoService } from '../application/servicios-barbero.service.js';
+import { SolicitudesServicioService } from '../application/solicitudes-servicio.service.js';
 import { CreateServicioBarberoDto } from '../application/dto/create-servicio-barbero.dto.js';
 import { UpdateServicioBarberoDto } from '../application/dto/update-servicio-barbero.dto.js';
 import { Roles } from '../../iam/infrastructure/roles.decorator.js';
@@ -19,6 +24,11 @@ import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js'
 import { VinculoBarberiaGuard } from '../../iam/infrastructure/vinculo-barberia.guard.js';
 import { SoloBarberoGuard } from './solo-barbero.guard.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
+import {
+  TAMANO_MAXIMO_IMAGEN,
+  type ArchivoSubido,
+} from '../../shared/cloudinary/cloudinary.service.js';
+import { ImagenDemasiadoGrandeFilter } from '../../shared/cloudinary/imagen-demasiado-grande.filter.js';
 
 /**
  * V3 · Catálogo híbrido.
@@ -37,7 +47,10 @@ import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
  */
 @Controller('shops/:shopId')
 export class ServiciosBarberoController {
-  constructor(private readonly serviciosBarberoService: ServiciosBarberoService) {}
+  constructor(
+    private readonly serviciosBarberoService: ServiciosBarberoService,
+    private readonly solicitudesService: SolicitudesServicioService,
+  ) {}
 
   @Get('servicios')
   @Roles('CLIENTE', 'BARBERO', 'ADMIN_BARBERIA', 'ADMINISTRADOR')
@@ -46,6 +59,14 @@ export class ServiciosBarberoController {
     return this.serviciosBarberoService.catalogoAnidado(barberiaId);
   }
 
+  /**
+   * Decisión del 24 nov: el barbero ya no publica.
+   *
+   * El mismo cuerpo crea una SOLICITUD `ALTA` en estado `PENDIENTE`; el servicio
+   * nace cuando el ADMIN_BARBERIA la aprueba (`PATCH .../solicitudes-servicio/:id`).
+   * Se conserva la ruta y el DTO para no romper a quien ya la usa: cambia el
+   * efecto, no el contrato de entrada. La respuesta pasa a ser la solicitud.
+   */
   @Post('mis-servicios')
   @Roles('BARBERO')
   @UseGuards(SoloBarberoGuard, VinculoBarberiaGuard)
@@ -55,7 +76,14 @@ export class ServiciosBarberoController {
     @CurrentUser() user: UsuarioAutenticado,
     @Body() dto: CreateServicioBarberoDto,
   ) {
-    return this.serviciosBarberoService.crear(barberiaId, user.id, dto);
+    return this.solicitudesService.crear(barberiaId, user.id, {
+      tipo: 'ALTA',
+      nombre: dto.nombre,
+      categoriaId: dto.categoriaId,
+      descripcion: dto.descripcion,
+      precio: dto.precio,
+      duracionMinutos: dto.duracionMinutos,
+    });
   }
 
   @Get('mis-servicios')
@@ -78,5 +106,29 @@ export class ServiciosBarberoController {
     @Body() dto: UpdateServicioBarberoDto,
   ) {
     return this.serviciosBarberoService.actualizar(barberiaId, user.id, id, dto);
+  }
+
+  /**
+   * T-24 · foto del servicio. El archivo viaja en el campo `archivo`
+   * (multipart/form-data). Multer lo mantiene en memoria y corta arriba de
+   * 2 MB; el servicio vuelve a validar tipo y tamaño porque la ruta no es el
+   * único camino posible a la lógica de negocio.
+   */
+  @Patch('mis-servicios/:id/imagen')
+  @Roles('BARBERO')
+  @UseGuards(SoloBarberoGuard, VinculoBarberiaGuard)
+  // El corte de Multer (> 2 MB) y la validación del servicio responden el mismo
+  // 400 `IMAGEN_DEMASIADO_GRANDE`.
+  @UseFilters(ImagenDemasiadoGrandeFilter)
+  @UseInterceptors(
+    FileInterceptor('archivo', { limits: { fileSize: TAMANO_MAXIMO_IMAGEN } }),
+  )
+  actualizarImagen(
+    @CurrentBarberiaId() barberiaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() archivo: ArchivoSubido,
+  ) {
+    return this.serviciosBarberoService.actualizarImagen(barberiaId, user.id, id, archivo);
   }
 }

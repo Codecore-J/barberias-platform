@@ -40,3 +40,15 @@ export function rolEfectivo(roles: readonly string[] | null | undefined): RolSes
   if (!roles || roles.length === 0) return 'SIN_ROL';
   return PRIORIDAD.find((rol) => roles.includes(rol)) ?? 'SIN_ROL';
 }
+
+/**
+ * T-30 · ¿puede este rol gestionar los COMBOS de la sede?
+ *
+ * Solo el ADMIN_BARBERIA. El backend lo exige con `@Roles('ADMIN_BARBERIA')`
+ * más `OperadorBarberiaGuard` en crear, editar, desactivar y reactivar; el
+ * BARBERO opera los servicios y el ADMINISTRADOR global supervisa. Esta función
+ * existe para que el panel no ofrezca una escritura que la API va a denegar.
+ */
+export function esAdminDeSede(rol: RolSesion): boolean {
+  return rol === 'ADMIN_BARBERIA';
+}

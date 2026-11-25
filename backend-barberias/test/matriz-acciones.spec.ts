@@ -13,7 +13,8 @@ import {
  *
  * `docs/MATRIZ_PERMISOS_OBJETIVO.md` tiene las 30 acciones y
  * `docs/MATRIZ_RUTAS_ACCIONES.md` (§3) decide qué acción le toca a cada una de
- * las 124 rutas (la última, el borrado de categorías globales de T-21). Este test comprueba que `src/iam/domain/matriz.ts` reproduce esa
+ * las rutas del inventario (la última suma de T-24: la imagen del servicio,
+ * sin acción propia porque la gobierna el rol BARBERO). Este test comprueba que `src/iam/domain/matriz.ts` reproduce esa
  * decisión sin inventar ni perder filas.
  *
  * El inventario de rutas es `POLITICA_DECLARADA`, en `permisos-matriz.spec.ts`,
@@ -27,7 +28,7 @@ import {
 
 const RUTA_SPEC = fileURLToPath(new URL('./permisos-matriz.spec.ts', import.meta.url));
 
-/** Las 124 claves de `POLITICA_DECLARADA`, leídas de su literal. */
+/** Las 129 claves de `POLITICA_DECLARADA`, leídas de su literal. */
 function clavesDePoliticaDeclarada(): string[] {
   const fuente = readFileSync(RUTA_SPEC, 'utf8').replace(/\r/g, '');
   const inicio = fuente.indexOf('const POLITICA_DECLARADA');
@@ -95,10 +96,10 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     expect(malFormadas).toEqual([]);
   });
 
-  it('cubre exactamente las 124 rutas del inventario', () => {
+  it('cubre exactamente las 129 rutas del inventario', () => {
     const claves = clavesDePoliticaDeclarada();
 
-    expect(claves.length).toBe(124);
+    expect(claves.length).toBe(129);
     expect(RUTAS.length).toBe(new Set(RUTAS).size);
 
     const sinDecision = claves.filter((clave) => !(clave in RUTA_ACCION));
@@ -116,18 +117,18 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     ).toBe('');
   });
 
-  it('reparte 71 rutas con acción y 53 sin acción (41 fuera + 12 brechas)', () => {
+  it('reparte 73 rutas con acción y 56 sin acción (44 fuera + 12 brechas)', () => {
     const conAccion = RUTAS.filter((clave) => RUTA_ACCION[clave].length > 0);
     const sinAccion = RUTAS.filter((clave) => RUTA_ACCION[clave].length === 0);
 
-    expect(conAccion.length).toBe(71);
-    expect(sinAccion.length).toBe(53);
-    expect(conAccion.length + sinAccion.length).toBe(124);
+    expect(conAccion.length).toBe(73);
+    expect(sinAccion.length).toBe(56);
+    expect(conAccion.length + sinAccion.length).toBe(129);
 
-    // De las 53 sin acción, doce son brecha de la matriz y las otras 41 quedan
+    // De las 56 sin acción, doce son brecha de la matriz y las otras 44 quedan
     // fuera de su alcance (identidad, autoservicio, vitrina, integración).
     expect(RUTAS_BRECHA_MATRIZ.length).toBe(12);
-    expect(sinAccion.length - RUTAS_BRECHA_MATRIZ.length).toBe(41);
+    expect(sinAccion.length - RUTAS_BRECHA_MATRIZ.length).toBe(44);
   });
 
   it('las 12 brechas de §6 no tienen acción y son las del documento', () => {

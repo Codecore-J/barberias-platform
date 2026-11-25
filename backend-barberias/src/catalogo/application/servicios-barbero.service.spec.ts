@@ -2,7 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { ServiciosBarberoService } from './servicios-barbero.service.js';
+import { SolicitudesServicioService } from './solicitudes-servicio.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { CloudinaryService } from '../../shared/cloudinary/cloudinary.service.js';
 
 /**
  * V3 · Servicios propios del barbero.
@@ -30,13 +32,23 @@ describe('ServiciosBarberoService', () => {
       findMany: vi.fn(),
       update: vi.fn(),
     },
+    // La solicitud es la nueva puerta de entrada del alta.
+    solicitudServicioBarbero: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn() },
   };
 
   beforeEach(async () => {
     vi.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ServiciosBarberoService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        ServiciosBarberoService,
+        { provide: PrismaService, useValue: prisma },
+        // T-24 · la imagen no es el eje de estas pruebas (ver t24-imagen-servicio).
+        {
+          provide: CloudinaryService,
+          useValue: { configurado: () => false, subir: vi.fn(), borrar: vi.fn() },
+        },
+      ],
     }).compile();
 
     service = module.get<ServiciosBarberoService>(ServiciosBarberoService);
@@ -52,61 +64,76 @@ describe('ServiciosBarberoService', () => {
     prisma.categoriaServicio.findFirst.mockResolvedValue(categoria);
   }
 
-  describe('crear', () => {
+  /**
+   * Decisión del 24 nov: el alta del barbero es una SOLICITUD. Las reglas de
+   * identidad y de catálogo que antes protegían `crear` siguen vigentes, ahora
+   * sobre la solicitud `PENDIENTE` que el ADMIN_BARBERIA resuelve.
+   */
+  describe('crear (solicitud de ALTA)', () => {
     const dto = {
       nombre: '  Corte  degradado ',
       precio: 25.5,
       duracionMinutos: 30,
       categoriaId: CATEGORIA,
+      tipo: 'ALTA' as const,
     };
 
-    it('publica el servicio con el barbero del JWT y el nombre normalizado', async () => {
+    function solicitudes() {
+      return new SolicitudesServicioService(prisma as unknown as PrismaService, {
+        configurado: () => true,
+        subir: async () => ({ url: 'https://res.cloudinary.com/demo/foto.png', publicId: 'demo' }),
+        borrar: async () => undefined,
+      } as never);
+    }
+
+    it('crea la solicitud PENDIENTE con el barbero del JWT y el nombre normalizado', async () => {
       conRolBarbero();
       conCategoria({ id: CATEGORIA, nombre: 'Corte', activa: true });
       prisma.servicioBarbero.findFirst.mockResolvedValue(null);
-      prisma.servicioBarbero.create.mockResolvedValue({
-        id: SERVICIO,
-        barberoId: BARBERO,
-        categoriaId: CATEGORIA,
-        nombrePersonalizado: 'Corte degradado',
-      });
+      prisma.solicitudServicioBarbero.findFirst.mockResolvedValue(null);
+      prisma.solicitudServicioBarbero.create.mockResolvedValue({ id: 'sol-1' });
 
-      const resultado = await service.crear(SEDE, BARBERO, dto);
+      const resultado = await solicitudes().crear(SEDE, BARBERO, dto);
 
-      // T-20 · el servicio guarda su sede: la categoría es global y ya no la
-      // identifica (antes la sede se deducía de `categoria.barberiaId`).
-      expect(prisma.servicioBarbero.create).toHaveBeenCalledWith({
+      expect(prisma.solicitudServicioBarbero.create).toHaveBeenCalledWith({
         data: {
-          barberoId: BARBERO,
           barberiaId: SEDE,
+          barberoId: BARBERO,
+          tipo: 'ALTA',
+          estado: 'PENDIENTE',
           categoriaId: CATEGORIA,
           nombrePersonalizado: 'Corte degradado',
+          descripcion: null,
           precio: 25.5,
           duracionMinutos: 30,
         },
-        include: { categoria: { select: { id: true, nombre: true } } },
       });
-      expect(resultado.id).toBe(SERVICIO);
+      // El servicio NO se publica hasta que la sede apruebe.
+      expect(prisma.servicioBarbero.create).not.toHaveBeenCalled();
+      expect(resultado).toMatchObject({ id: 'sol-1' });
     });
 
     it('exige el rol BARBERO en esa sede (403 BARBERO_NO_PERTENECE_A_SEDE)', async () => {
       prisma.usuarioRol.findFirst.mockResolvedValue(null);
 
-      const error = await service.crear(SEDE, BARBERO, dto).catch((e) => e);
+      const error = await solicitudes()
+        .crear(SEDE, BARBERO, dto)
+        .catch((e) => e);
 
       expect(error).toMatchObject({
         response: { codigo: 'BARBERO_NO_PERTENECE_A_SEDE' },
       });
-      expect(prisma.servicioBarbero.create).not.toHaveBeenCalled();
+      expect(prisma.solicitudServicioBarbero.create).not.toHaveBeenCalled();
     });
 
     it('la pertenencia se consulta contra la sede de la ruta', async () => {
       conRolBarbero();
       conCategoria({ id: CATEGORIA, nombre: 'Corte', activa: true });
       prisma.servicioBarbero.findFirst.mockResolvedValue(null);
-      prisma.servicioBarbero.create.mockResolvedValue({ id: SERVICIO });
+      prisma.solicitudServicioBarbero.findFirst.mockResolvedValue(null);
+      prisma.solicitudServicioBarbero.create.mockResolvedValue({ id: 'sol-1' });
 
-      await service.crear(SEDE, BARBERO, dto);
+      await solicitudes().crear(SEDE, BARBERO, dto);
 
       expect(prisma.usuarioRol.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -119,42 +146,47 @@ describe('ServiciosBarberoService', () => {
       );
     });
 
-    it('una cuenta suspendida no publica servicios (422 BARBERO_INACTIVO)', async () => {
+    it('una cuenta suspendida no pide servicios (422 BARBERO_INACTIVO)', async () => {
       conRolBarbero('SUSPENDIDO');
 
-      const error = await service.crear(SEDE, BARBERO, dto).catch((e) => e);
+      const error = await solicitudes()
+        .crear(SEDE, BARBERO, dto)
+        .catch((e) => e);
 
       expect(error).toMatchObject({ response: { codigo: 'BARBERO_INACTIVO' } });
-      expect(prisma.servicioBarbero.create).not.toHaveBeenCalled();
+      expect(prisma.solicitudServicioBarbero.create).not.toHaveBeenCalled();
     });
 
-    // T-20 · Antes: la categoría se buscaba con `barberiaId: OTRA_SEDE`, así que
-    // «la de otra sede» no existía aquí. Ahora: se busca en el catálogo GLOBAL
-    // (`barberiaId: null`); lo que da 404 es un id que no está en ese catálogo.
-    // Por qué: la categoría dejó de pertenecer a una sede.
-    it('una categoría fuera del catálogo global no existe para este barbero (404)', async () => {
+    it('una categoría fuera del catálogo global responde 422 CATEGORIA_INVALIDA', async () => {
       conRolBarbero();
       conCategoria(null);
 
-      await expect(service.crear(OTRA_SEDE, BARBERO, dto)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      const error = await solicitudes()
+        .crear(OTRA_SEDE, BARBERO, dto)
+        .catch((e) => e);
+
+      expect(error).toMatchObject({
+        status: 422,
+        response: { statusCode: 422, codigo: 'CATEGORIA_INVALIDA' },
+      });
       expect(prisma.categoriaServicio.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: CATEGORIA, barberiaId: null } }),
       );
     });
 
-    it('una categoría desactivada no admite servicios nuevos (422 CATEGORIA_INACTIVA)', async () => {
+    it('una categoría desactivada no admite solicitudes (422 CATEGORIA_INACTIVA)', async () => {
       conRolBarbero();
       conCategoria({ id: CATEGORIA, nombre: 'Corte', activa: false });
 
-      const error = await service.crear(SEDE, BARBERO, dto).catch((e) => e);
+      const error = await solicitudes()
+        .crear(SEDE, BARBERO, dto)
+        .catch((e) => e);
 
       expect(error).toMatchObject({ response: { codigo: 'CATEGORIA_INACTIVA' } });
-      expect(prisma.servicioBarbero.create).not.toHaveBeenCalled();
+      expect(prisma.solicitudServicioBarbero.create).not.toHaveBeenCalled();
     });
 
-    it('no permite dos servicios con el mismo nombre en la misma categoría', async () => {
+    it('no permite pedir dos veces el mismo nombre en la misma categoría', async () => {
       conRolBarbero();
       conCategoria({ id: CATEGORIA, nombre: 'Corte', activa: true });
       prisma.servicioBarbero.findFirst.mockResolvedValue({
@@ -163,16 +195,18 @@ describe('ServiciosBarberoService', () => {
         activo: true,
       });
 
-      const error = await service.crear(SEDE, BARBERO, dto).catch((e) => e);
+      const error = await solicitudes()
+        .crear(SEDE, BARBERO, dto)
+        .catch((e) => e);
 
       expect(error).toMatchObject({ response: { codigo: 'SERVICIO_BARBERO_DUPLICADO' } });
-      expect(prisma.servicioBarbero.create).not.toHaveBeenCalled();
+      expect(prisma.solicitudServicioBarbero.create).not.toHaveBeenCalled();
     });
 
     it('sin sede responde 400', async () => {
-      await expect(service.crear('', BARBERO, dto)).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        solicitudes().crear('', BARBERO, dto),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
@@ -304,6 +338,7 @@ describe('ServiciosBarberoService', () => {
             {
               id: SERVICIO,
               nombrePersonalizado: 'Corte degradado',
+              descripcion: null,
               precio: 25,
               duracionMinutos: 30,
               barbero: { id: BARBERO, nombreCompleto: 'Carlos' },
@@ -338,6 +373,7 @@ describe('ServiciosBarberoService', () => {
           {
             id: SERVICIO,
             nombre: 'Corte degradado',
+            descripcion: null,
             precio: 25,
             duracionMinutos: 30,
             barbero: { id: BARBERO, nombre: 'Carlos' },

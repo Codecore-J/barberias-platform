@@ -5,6 +5,8 @@ import { firstValueFrom } from 'rxjs';
 import { TenantService } from '../../../core/services/tenant.service';
 import { ReservasService } from '../../../core/services/reservas.service';
 import { PagosService } from '../../../core/services/pagos.service';
+import { AuthService } from '../../../auth/auth.service';
+import { rolEfectivo } from '../../../core/utils/rol';
 import { haySede } from '../../../core/utils/sede';
 
 /**
@@ -33,6 +35,20 @@ export class DashboardSedeComponent {
   private readonly tenantService = inject(TenantService);
   private readonly reservasService = inject(ReservasService);
   private readonly pagosService = inject(PagosService);
+  private readonly authService = inject(AuthService);
+
+  /**
+   * T-26 · `GET /shops/:shopId/payments/history` es solo del ADMIN_BARBERIA.
+   *
+   * `vistaActual` del home manda a este dashboard también al ADMINISTRADOR
+   * global cuando elige una sede, y esa pantalla pedía el historial igual: una
+   * petición que el backend deniega siempre deja un error en la consola del
+   * navegador (y, con él, la sensación de que la sede está rota). El rol que no
+   * puede leer la caja no la pide.
+   */
+  readonly puedeVerCaja = computed(
+    () => rolEfectivo(this.authService.authState().user?.roles) === 'ADMIN_BARBERIA',
+  );
 
   /** ¿Hay una sede elegida? Con `false` no se pide nada y se muestra el vacío. */
   readonly haySedeActiva = computed(() => haySede(this.tenantService.barberiaActivaId()));
@@ -43,13 +59,18 @@ export class DashboardSedeComponent {
       // Dependencia REACTIVA: al cambiar de sede el dashboard vuelve a leer.
       sede: this.tenantService.barberiaActivaId(),
       hoy: new Date().toISOString().split('T')[0],
+      // El rol entra en las dependencias: si la sesión termina de cargar después,
+      // el recurso se vuelve a evaluar con el rol correcto.
+      verCaja: this.puedeVerCaja(),
     }),
     loader: async ({ params }) => {
       if (!haySede(params.sede)) return null;
 
       const [agenda, pagos] = await Promise.all([
         firstValueFrom(this.reservasService.obtenerAgendaDiaria(params.hoy)),
-        firstValueFrom(this.pagosService.obtenerHistorial()),
+        params.verCaja
+          ? firstValueFrom(this.pagosService.obtenerHistorial())
+          : Promise.resolve([]),
       ]);
       return { hoy: params.hoy, agenda, pagos };
     },

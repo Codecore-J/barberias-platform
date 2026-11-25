@@ -414,6 +414,19 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /shops/:shopId/mis-servicios': [ROL_BARBERO],
   'GET /shops/:shopId/mis-servicios': [ROL_BARBERO],
   'PATCH /shops/:shopId/mis-servicios/:id': [ROL_BARBERO],
+  // T-24 · imagen del servicio: misma política que editarlo, solo el BARBERO
+  // dueño (el `barberoId` sale del JWT).
+  'PATCH /shops/:shopId/mis-servicios/:id/imagen': [ROL_BARBERO],
+
+  // T-27/T-28 · solicitudes de servicio: el barbero pide (su barberoId sale del
+  // JWT) y el ADMIN_BARBERIA de la sede ve la bandeja y la resuelve; el
+  // ADMINISTRADOR global no entra por jerarquía (T-11).
+  'POST /shops/:shopId/solicitudes-servicio/': [ROL_BARBERO],
+  'GET /shops/:shopId/solicitudes-servicio/': [ROL_ADMIN_BARBERIA],
+  'PATCH /shops/:shopId/solicitudes-servicio/:id': [ROL_ADMIN_BARBERIA],
+  // T-28 · foto de la solicitud PENDIENTE: la sube su barbero dueño, igual que
+  // la manda; la sede no edita la foto de una solicitud, la resuelve.
+  'PATCH /shops/:shopId/solicitudes-servicio/:id/imagen': [ROL_BARBERO],
 
   // V3 · reasignar barbero. Es una decisión de la SEDE (D02), como aceptar o
   // reprogramar. La ruta NO lleva :shopId, así que el guard solo filtra el rol y
@@ -746,8 +759,11 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // suma las métricas de plataforma: 122 × 4 = 488 (T-17 añade
   // `GET /shops/:shopId/categorias/:id`, el detalle de categoría). QA2-02 suma
   // `POST /auth/logout`: 123 × 4 = 492. El borrado de categorías globales del
-  // backlog de catálogo (T-21, fase 2) suma la 124: 124 × 4 = 496.
-  expect(evaluaciones).toBe(496);
+  // backlog de catálogo (T-21, fase 2) suma la 124. T-24 suma la imagen del
+  // servicio: 125 × 4 = 500. T-27/T-28 suman las tres rutas de la solicitud de
+  // servicio (alta, bandeja y resolución): 128 × 4 = 512. La foto de la
+  // solicitud pendiente (T-28) suma la 129: 129 × 4 = 516.
+  expect(evaluaciones).toBe(516);
 
     const resumen =
       desviaciones.length > 40

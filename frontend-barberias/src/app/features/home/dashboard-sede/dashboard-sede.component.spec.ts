@@ -9,6 +9,7 @@ import { DashboardSedeComponent } from './dashboard-sede.component';
 import { TenantService } from '../../../core/services/tenant.service';
 import { ReservasService } from '../../../core/services/reservas.service';
 import { PagosService } from '../../../core/services/pagos.service';
+import { AuthService } from '../../../auth/auth.service';
 
 /**
  * T-15 · dashboard de sede.
@@ -25,11 +26,17 @@ describe('DashboardSedeComponent (T-15)', () => {
 
   const texto = (): string => (fixture.nativeElement as HTMLElement).textContent ?? '';
 
-  function configurar(sede: { id: string; nombre: string } | null): void {
+  function configurar(
+    sede: { id: string; nombre: string } | null,
+    rol = 'ADMIN_BARBERIA',
+  ): void {
     const activa = signal(sede);
     const tenant = {
       barberiaActiva: activa,
       barberiaActivaId: computed(() => activa()?.id ?? null),
+    };
+    const auth = {
+      authState: () => ({ user: { roles: [rol] }, isAuthenticated: true }),
     };
 
     TestBed.resetTestingModule();
@@ -40,6 +47,7 @@ describe('DashboardSedeComponent (T-15)', () => {
         provideHttpClientTesting(),
         provideRouter([]),
         { provide: TenantService, useValue: tenant },
+        { provide: AuthService, useValue: auth },
         { provide: ReservasService, useValue: reservas },
         { provide: PagosService, useValue: pagos },
       ],
@@ -98,5 +106,22 @@ describe('DashboardSedeComponent (T-15)', () => {
     expect(contenido).toContain('Imperial Barbers');
     expect(contenido).toContain('Luis Medina');
     expect(reservas.obtenerAgendaDiaria).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * T-26 · el ADMINISTRADOR global también llega a este dashboard cuando elige
+   * una sede, pero `payments/history` es solo del ADMIN_BARBERIA: pedirla deja
+   * un error en la consola y tumbaba las métricas de la sede. La agenda se
+   * sigue cargando; la caja no se pide.
+   */
+  it('el ADMINISTRADOR global con sede no pide el historial de caja', async () => {
+    configurar({ id: 'sede-1', nombre: 'Imperial Barbers' }, 'ADMINISTRADOR');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(pagos.obtenerHistorial).not.toHaveBeenCalled();
+    expect(reservas.obtenerAgendaDiaria).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.ingresosHoy()).toBe(0);
   });
 });
