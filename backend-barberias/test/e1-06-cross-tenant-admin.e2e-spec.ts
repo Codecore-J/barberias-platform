@@ -317,8 +317,8 @@ describe('E1-06 · cross-tenant: el admin de A no alcanza los recursos de B', ()
       .get(`${api}/auditoria?barberiaId=${barberiaB}`)
       .set('Authorization', jwt(tokenAdminA)));
 
-    await registrar('GET /shops/:shopId/records/pending', 'antecedentes de B', request(app.getHttpServer())
-      .get(`${api}/shops/${barberiaB}/records/pending`)
+    await registrar('GET /shops/:shopId/antecedentes/solicitudes', 'antecedentes de B', request(app.getHttpServer())
+      .get(`${api}/shops/${barberiaB}/antecedentes/solicitudes`)
       .set('Authorization', jwt(tokenAdminA)));
 
     await registrar('GET /auditoria/estadisticas', 'estadísticas globales sin ser ADMINISTRADOR', request(app.getHttpServer())

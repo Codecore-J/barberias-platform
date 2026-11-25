@@ -243,18 +243,15 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
     ROL_ADMINISTRADOR,
   ],
 
-  'POST /shops/:shopId/records/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   // F5 · solicitar es de la sede (ADMIN_BARBERIA y BARBERO); resolver sigue
-  // siendo solo de la plataforma.
+  // siendo solo de la plataforma. Las cuatro rutas `records` del flujo viejo
+  // se eliminaron: la sede pide y la plataforma decide.
   'POST /shops/:shopId/antecedentes/solicitudes/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   'GET /shops/:shopId/antecedentes/solicitudes/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   // F5-03 · la bandeja global y la decisión son de la plataforma.
   'GET /antecedentes/solicitudes/': [ROL_ADMINISTRADOR],
   'PATCH /antecedentes/solicitudes/:id': [ROL_ADMINISTRADOR],
   'GET /shops/:shopId/antecedentes/clientes/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
-  'PATCH /shops/:shopId/records/:id/evaluate': [ROL_ADMINISTRADOR],
-  'GET /shops/:shopId/records/client/:clientId': [ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA, ROL_BARBERO],
-  'GET /shops/:shopId/records/pending': [ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA, ROL_BARBERO],
 
   'GET /shops/:shopId/hours/': [ROL_ADMIN_BARBERIA],
   'POST /shops/:shopId/hours/': [ROL_ADMIN_BARBERIA],
@@ -790,8 +787,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // resolución de la propuesta de horario base: 130 × 4 = 520. F5-02 suma la
   // creación y la lectura de solicitudes de antecedente: 132 × 4 = 528. F5-03
   // suma la bandeja global y su resolución: 134 × 4 = 536. F5-05 suma el
-  // selector de clientes de la sede: 135 × 4 = 540.
-  expect(evaluaciones).toBe(540);
+  // selector de clientes de la sede: 135 × 4 = 540. Al eliminar las cuatro rutas
+  // `records` del flujo viejo quedan 131 × 4 = 524.
+  expect(evaluaciones).toBe(524);
 
     const resumen =
       desviaciones.length > 40

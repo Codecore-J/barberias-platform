@@ -3,7 +3,6 @@ import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import {
-  AntecedenteDeCliente,
   AntecedentesService,
   ClienteElegible,
   SolicitudAntecedente,
@@ -14,9 +13,9 @@ import { ToastService } from '../../../shared/ui/toast/toast.service';
 /**
  * F5 / T-55 · el barbero reporta un incidente.
  *
- * Solo ve sus propias solicitudes y los antecedentes de clientes que pasaron
- * por su agenda (C-5, aplicado en el backend). Si llega desde la ficha de un
- * cliente, `?clienteId=` deja el selector prellenado.
+ * Solo ve sus propias solicitudes y los clientes que pasaron por su agenda
+ * (C-5, aplicado en el backend). Si llega desde la ficha de un cliente,
+ * `?clienteId=` deja el selector prellenado.
  */
 @Component({
   selector: 'app-barbero-antecedentes',
@@ -51,7 +50,7 @@ import { ToastService } from '../../../shared/ui/toast/toast.service';
 
         <label class="space-y-1.5 block">
           <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Cliente</span>
-          <select id="barbero-cliente" [(ngModel)]="clienteId" (ngModelChange)="cargarAntecedentes($event)"
+          <select id="barbero-cliente" [(ngModel)]="clienteId"
                   class="w-full px-3 py-2.5 rounded-xl bg-zinc-900 border border-zinc-700 text-sm text-white">
             <option value="">Elige un cliente de tu agenda…</option>
             @for (cliente of clientes(); track cliente.id) {
@@ -84,18 +83,6 @@ import { ToastService } from '../../../shared/ui/toast/toast.service';
           </button>
         </div>
       </div>
-      }
-
-      @if (clienteId && antecedentesCliente().length > 0) {
-        <div class="glass-panel p-5 rounded-2xl border border-white/5 relative z-10 space-y-3">
-          <h3 class="text-sm font-bold text-amber-400 uppercase tracking-widest">Antecedentes del cliente</h3>
-          @for (antecedente of antecedentesCliente(); track antecedente.id) {
-            <div class="text-sm text-zinc-300 bg-black/30 rounded-xl p-3 border border-white/5">
-              <span class="text-[10px] uppercase text-zinc-500">{{ antecedente.estadoValidacion }} · {{ antecedente.creadoAt | date:'mediumDate' }}</span>
-              <p>{{ antecedente.contenido }}</p>
-            </div>
-          }
-        </div>
       }
 
       <div class="space-y-3 relative z-10">
@@ -139,7 +126,6 @@ export class BarberoAntecedentesComponent implements OnInit {
 
   readonly solicitudes = signal<SolicitudAntecedente[]>([]);
   readonly clientes = signal<ClienteElegible[]>([]);
-  readonly antecedentesCliente = signal<AntecedenteDeCliente[]>([]);
   readonly cargando = signal(true);
   readonly enviando = signal(false);
   readonly formularioAbierto = signal(false);
@@ -156,9 +142,6 @@ export class BarberoAntecedentesComponent implements OnInit {
     }
 
     this.cargar();
-    if (this.clienteId) {
-      this.cargarAntecedentes(this.clienteId);
-    }
   }
 
   cargar(): void {
@@ -177,19 +160,6 @@ export class BarberoAntecedentesComponent implements OnInit {
     this.antecedentes.listarClientesElegibles(barberiaId).subscribe({
       next: (data) => this.clientes.set(data || []),
       error: () => this.clientes.set([]),
-    });
-  }
-
-  cargarAntecedentes(clienteId: string): void {
-    const barberiaId = this.tenant.barberiaActivaId();
-    if (!barberiaId || !clienteId) {
-      this.antecedentesCliente.set([]);
-      return;
-    }
-
-    this.antecedentes.obtenerAntecedentesDeCliente(barberiaId, clienteId).subscribe({
-      next: (data) => this.antecedentesCliente.set(data || []),
-      error: () => this.antecedentesCliente.set([]),
     });
   }
 

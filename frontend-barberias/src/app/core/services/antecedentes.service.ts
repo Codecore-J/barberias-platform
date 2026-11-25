@@ -5,18 +5,6 @@ import { API_URL } from '../constants/api.constants.js';
 
 export type EstadoSolicitudAntecedente = 'PENDIENTE' | 'APROBADA' | 'DENEGADA';
 
-export interface Antecedente {
-  id: string;
-  clienteId: string;
-  barberoId: string;
-  descripcion: string;
-  severidad: string;
-  estado: string;
-  creadoAt: string;
-  cliente?: { nombreCompleto: string };
-  barbero?: { nombreCompleto: string };
-}
-
 /** F5 · cliente que el formulario puede ofrecer (ya pasó por la sede). */
 export interface ClienteElegible {
   id: string;
@@ -47,32 +35,11 @@ export interface CrearSolicitudAntecedentePayload {
   evidenciaTexto?: string;
 }
 
-export interface AntecedenteDeCliente {
-  id: string | null;
-  categoria: string;
-  contenido: string;
-  estadoValidacion: string;
-  creadoAt: string;
-  origenBarberia?: 'PROPIA' | 'EXTERNA';
-}
-
 @Injectable({
   providedIn: 'root'
 })
 export class AntecedentesService {
   private readonly http = inject(HttpClient);
-
-  // ── Flujo anterior (registros evaluados por la sede) ──────────────────────
-  obtenerPendientes(barberiaId: string): Observable<Antecedente[]> {
-    return this.http.get<Antecedente[]>(`${API_URL}/shops/${barberiaId}/records/pending`);
-  }
-
-  evaluar(barberiaId: string, antecedenteId: string, decision: 'APROBADO' | 'RECHAZADO', motivoRechazo?: string): Observable<any> {
-    return this.http.patch(`${API_URL}/shops/${barberiaId}/records/${antecedenteId}/evaluate`, {
-      decision,
-      motivoRechazo
-    });
-  }
 
   // ── F5 · solicitud → decisión de la plataforma ────────────────────────────
   crearSolicitud(barberiaId: string, payload: CrearSolicitudAntecedentePayload): Observable<SolicitudAntecedente> {
@@ -107,12 +74,6 @@ export class AntecedentesService {
     return this.http.patch<SolicitudAntecedente>(
       `${API_URL}/antecedentes/solicitudes/${solicitudId}`,
       { decision, motivo },
-    );
-  }
-
-  obtenerAntecedentesDeCliente(barberiaId: string, clienteId: string): Observable<AntecedenteDeCliente[]> {
-    return this.http.get<AntecedenteDeCliente[]>(
-      `${API_URL}/shops/${barberiaId}/records/client/${clienteId}`,
     );
   }
 }

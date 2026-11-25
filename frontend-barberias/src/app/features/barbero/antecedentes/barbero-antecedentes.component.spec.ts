@@ -16,7 +16,6 @@ describe('BarberoAntecedentesComponent (T-55)', () => {
   let antecedentes: {
     listarSolicitudes: ReturnType<typeof vi.fn>;
     listarClientesElegibles: ReturnType<typeof vi.fn>;
-    obtenerAntecedentesDeCliente: ReturnType<typeof vi.fn>;
     crearSolicitud: ReturnType<typeof vi.fn>;
   };
 
@@ -42,7 +41,6 @@ describe('BarberoAntecedentesComponent (T-55)', () => {
       listarClientesElegibles: vi.fn(() =>
         of([{ id: 'c1', nombreCompleto: 'Ana Pérez', correo: 'ana@test.com' }]),
       ),
-      obtenerAntecedentesDeCliente: vi.fn(() => of([])),
       crearSolicitud: vi.fn(() => of({ ...solicitud, id: 's5' })),
     };
 
@@ -79,7 +77,7 @@ describe('BarberoAntecedentesComponent (T-55)', () => {
 
   it('prellena el cliente cuando llega desde su ficha', () => {
     expect(fixture.componentInstance.clienteId).toBe('c1');
-    expect(antecedentes.obtenerAntecedentesDeCliente).toHaveBeenCalledWith('sede-1', 'c1');
+    expect(antecedentes.listarClientesElegibles).toHaveBeenCalledWith('sede-1');
   });
 
   it('solo lista las solicitudes propias y su estado', () => {

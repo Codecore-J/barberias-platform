@@ -10,8 +10,9 @@
 > `RUTAS_BRECHA_ROL = []` en `src/iam/domain/matriz.ts`, y `test/matriz-acciones.spec.ts` y
 > `test/permisos-matriz.spec.ts` fallan si alguna vuelve a desviarse.
 
-> **Actualización F5 (25 nov 2026).** Se suman **5 rutas** al inventario vivo
-> (`POLITICA_DECLARADA` pasa a **135 claves** y el test exige **540** evaluaciones).
+> **Actualización F5 (25 nov 2026).** Se suman **5 rutas** y se eliminan las **4**
+> del flujo viejo `records`: el inventario vivo queda en **131 claves** y el test exige
+> **524** evaluaciones.
 > Todas usan acciones ya existentes:
 >
 > | Ruta | Acción | Rol efectivo |
@@ -22,9 +23,9 @@
 > | `GET /antecedentes/solicitudes` | `antecedentes.ver` | ADMINISTRADOR (todas las sedes) |
 > | `PATCH /antecedentes/solicitudes/:id` | `antecedentes.resolver` | ADMINISTRADOR |
 >
-> Las rutas `records` 93–96 se conservan como compatibilidad; la vía nueva de
-> alta y resolución es la de esta tabla. La antigua `PATCH …/records/:id/evaluate`
-> sigue siendo exclusiva del ADMINISTRADOR (brecha 94 ya cerrada en T-11).
+> Las rutas `records` 93–96 **se eliminaron** en F5; la tabla de §3.6 se conserva
+> como registro histórico de la revisión. La vía de alta y resolución es la de esta
+> tabla; la antigua `PATCH …/records/:id/evaluate` ya no existe.
 > `POST /shops/:shopId/clients/:id/notes` conserva su ruta, pero desde F5 encola
 > una solicitud `PENDIENTE` (motivo = nota) y ya no crea un antecedente `APROBADO`
 > directo.
