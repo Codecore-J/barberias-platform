@@ -155,6 +155,13 @@ export const RUTA_ACCION: Readonly<Record<string, readonly Accion[]>> = {
   'PATCH /shops/:shopId/hours/barbers/:barberoId/base': ['horario.base.aprobar'],
   'POST /lista-espera/': [],
   'POST /shops/:shopId/records/': ['antecedentes.solicitar'],
+  // F5 · la petición del personal de la sede; la resolución sigue en la
+  // plataforma (T-53) y no en el responsable de la sede.
+  'POST /shops/:shopId/antecedentes/solicitudes/': ['antecedentes.solicitar'],
+  'GET /shops/:shopId/antecedentes/solicitudes/': ['antecedentes.ver'],
+  // La bandeja de la plataforma y su decisión: resolver es solo del global.
+  'GET /antecedentes/solicitudes/': ['antecedentes.ver'],
+  'PATCH /antecedentes/solicitudes/:id': ['antecedentes.resolver'],
   'PATCH /shops/:shopId/records/:id/evaluate': ['antecedentes.resolver'],
   'GET /shops/:shopId/records/client/:clientId': ['antecedentes.ver'],
   'GET /shops/:shopId/records/pending': ['antecedentes.ver'],
