@@ -269,7 +269,9 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'PUT /shops/:shopId/mi-horario/base': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   'GET /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA],
   'POST /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA],
-  'POST /shops/:shopId/hours/barbers/:barberoId/exceptions': [ROL_ADMIN_BARBERIA],
+  // F4-01: el barbero registra su propia excepción; el servicio rechaza la de
+  // un compañero (403 «tu propia agenda»), así que la lista incluye los dos.
+  'POST /shops/:shopId/hours/barbers/:barberoId/exceptions': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
 
   'GET /shops/:shopId/payments/audit': [ROL_ADMIN_BARBERIA],
   // E3-09 (2026-10): el guard admite al BARBERO y al ADMIN_BARBERIA en

@@ -104,8 +104,15 @@ export class HorarioController {
    * POST /barberias/:barberiaId/horarios/barberos/:barberoId/excepciones
    * Excepción puntual de un barbero concreto: la puede pedir el propio barbero
    * o su responsable.
+   *
+   * F4-01: el decorador declaraba solo al ADMIN_BARBERIA, así que el BARBERO
+   * recibía 403 del guard antes de llegar a la regla que ya vive en el servicio
+   * (`resolverOrigenDeModificacion`: el propio barbero es origen `BARBERO` y la
+   * agenda de un compañero la gestiona la sede). Ahora el barbero entra y es el
+   * servicio quien exige que `barberoId` sea el suyo; el ADMIN_BARBERIA se
+   * queda como estaba y el ADMINISTRADOR no gana la ruta.
    */
-  @Roles('ADMIN_BARBERIA')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @Post('barbers/:barberoId/exceptions')
   addBarberException(
     @Param('shopId', ParseUUIDPipe) barberiaId: string,

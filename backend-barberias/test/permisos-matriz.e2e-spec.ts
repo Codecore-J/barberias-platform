@@ -99,7 +99,10 @@ const CASOS: Caso[] = [
   { verbo: 'post', ruta: '/shops/{A}/hours/mine', permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: [] },
   { verbo: 'get', ruta: '/shops/{A}/hours/exceptions', permitidos: ['ADMIN_BARBERIA'] },
   { verbo: 'post', ruta: '/shops/{A}/hours/exceptions', permitidos: ['ADMIN_BARBERIA'], cuerpo: {} },
-  { verbo: 'post', ruta: '/shops/{A}/hours/barbers/{BARBERO}/exceptions', permitidos: ['ADMIN_BARBERIA'], cuerpo: {} },
+  // F4-01: el barbero entra por su propia ruta; con `{BARBERO}` (su id) y un
+  // cuerpo vacío la respuesta es 400 de validación, que cuenta como permitida.
+  // La excepción de un COMPAÑERO sigue siendo 403, pero lo decide el servicio.
+  { verbo: 'post', ruta: '/shops/{A}/hours/barbers/{BARBERO}/exceptions', permitidos: ['ADMIN_BARBERIA', 'BARBERO'], cuerpo: {} },
 
   // ── pagos ────────────────────────────────────────────────────────────────
   { verbo: 'get', ruta: '/shops/{A}/payments/audit', permitidos: ['ADMIN_BARBERIA'] },
