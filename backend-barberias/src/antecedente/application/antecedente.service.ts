@@ -9,6 +9,7 @@ import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { CreateAntecedenteDto } from './dto/create-antecedente.dto.js';
 import { EvaluarAntecedenteDto, DecisionAntecedente } from './dto/evaluar-antecedente.dto.js';
 import { esAdministradorGlobalPorId } from '../../iam/domain/roles.js';
+import { errorDePermiso } from '../../shared/errors/d40.errors.js';
 
 @Injectable()
 export class AntecedenteService {
@@ -30,12 +31,12 @@ export class AntecedenteService {
     }
 
     if (barberia.responsableId === usuarioId) {
-      return { isResponsable: true, isAdmin: true };
+      return { isResponsable: true, isAdmin: true, isBarbero: false };
     }
 
     // E1-04 (D05): el rol global es ADMINISTRADOR.
     if (await esAdministradorGlobalPorId(this.prisma, usuarioId)) {
-      return { isResponsable: false, isAdmin: true };
+      return { isResponsable: false, isAdmin: true, isBarbero: false };
     }
 
     const rolesUser = (await this.prisma.usuarioRol.findMany({
@@ -52,7 +53,7 @@ export class AntecedenteService {
       );
     }
 
-    return { isResponsable: false, isAdmin };
+    return { isResponsable: false, isAdmin, isBarbero };
   }
 
   /**
@@ -154,6 +155,21 @@ export class AntecedenteService {
    * Lista los antecedentes pendientes de validación en la barbería.
    */
   async listarPendientes(usuarioId: string, barberiaId: string) {
+    // F5 / T-54 · C-5: la supervisión del ADMINISTRADOR es transversal. Antes
+    // heredaba el filtro de la sede de la URL, así que nunca veía «todos».
+    if (await esAdministradorGlobalPorId(this.prisma, usuarioId)) {
+      return this.prisma.antecedente.findMany({
+        where: { estadoValidacion: 'PENDIENTE' },
+        include: {
+          usuario: {
+            select: { id: true, nombreCompleto: true, correo: true },
+          },
+          barberiaOrigen: { select: { id: true, nombre: true } },
+        },
+        orderBy: { creadoAt: 'desc' },
+      });
+    }
+
     await this.validateAdminAccess(usuarioId, barberiaId);
 
     return this.prisma.antecedente.findMany({
@@ -182,7 +198,26 @@ export class AntecedenteService {
    *   Los datos personales (nombre, correo, teléfono) se enmascaran de forma irreversible.
    */
   async listarPorCliente(usuarioId: string, barberiaId: string, clienteId: string) {
-    await this.validateBarberoOrAdminAccess(usuarioId, barberiaId);
+    const { isAdmin, isBarbero } = await this.validateBarberoOrAdminAccess(
+      usuarioId,
+      barberiaId,
+    );
+
+    // F5 / T-54 · C-5: el BARBERO solo lee a quien pasó por su agenda. La sede
+    // (ADMIN_BARBERIA o responsable) conserva la lectura completa de su sede.
+    if (!isAdmin && isBarbero) {
+      const relacion = await this.prisma.reserva.findFirst({
+        where: { clienteId, barberiaId, barberoId: usuarioId },
+        select: { id: true },
+      });
+
+      if (!relacion) {
+        throw errorDePermiso(
+          'SIN_RELACION_CON_CLIENTE',
+          'Solo puedes ver antecedentes de clientes que tienen o tuvieron una cita contigo.',
+        );
+      }
+    }
 
     const antecedentes = await this.prisma.antecedente.findMany({
       where: {
