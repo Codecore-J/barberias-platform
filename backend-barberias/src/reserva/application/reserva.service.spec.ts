@@ -437,6 +437,10 @@ describe('ReservaService', () => {
     // ADMIN_BARBERIA legítimo, así que el botón de la agenda nunca creaba nada.
     it('ACEPTA el alta del mostrador (operadorDeSede) sin vínculo de cliente', async () => {
       mockPrismaService.barberia.findUnique.mockResolvedValue({ estado: 'ACTIVO' });
+      // F3-03 · el walk-in lleva barbero activo de la sede.
+      mockPrismaService.usuarioRol.findFirst.mockResolvedValue({
+        usuario: { estadoCuenta: 'ACTIVO' },
+      });
       // Sin vínculo: la consulta no debe ni hacerse.
       mockPrismaService.clienteBarberia.findUnique.mockResolvedValue(null);
       mockPrismaService.configuracionBarberia.findUnique.mockResolvedValue({
@@ -465,6 +469,7 @@ describe('ReservaService', () => {
             horaFin: '09:30',
             serviciosIds: ['s1'],
             precioTotalEsperado: 15,
+            barberoId: 'uuid-barbero',
           },
           { operadorDeSede: true },
         ),

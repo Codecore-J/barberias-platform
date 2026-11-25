@@ -116,6 +116,10 @@ describe('ReservaService · nombre del walk-in (F3-01)', () => {
         { id: 's1', precio: 15, duracionEstimada: 30, margenOperativo: 5 },
       ]);
       mockPrisma.$queryRaw.mockResolvedValue([]);
+      // F3-03 · el walk-in exige un barbero activo de la sede.
+      mockPrisma.usuarioRol.findFirst.mockResolvedValue({
+        usuario: { estadoCuenta: 'ACTIVO' },
+      });
       // El bloque individual = ventana pedida (30) + margen de la sede (10).
       mockDisponibilidad.calcularDisponibilidad.mockResolvedValue([
         { inicio: enSede('2026-10-10', 9), fin: enSede('2026-10-10', 9, 40) },
@@ -135,6 +139,7 @@ describe('ReservaService · nombre del walk-in (F3-01)', () => {
           horaFin: '09:30',
           serviciosIds: ['s1'],
           precioTotalEsperado: 15,
+          barberoId: 'cccccccc-3333-4333-8333-333333333333',
           nombreInvitado,
         },
         { operadorDeSede: true },
