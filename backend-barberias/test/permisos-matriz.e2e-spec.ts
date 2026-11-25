@@ -89,7 +89,9 @@ const CASOS: Caso[] = [
   // El decorador declara también al BARBERO, pero la cola de evaluación exige
   // rol de sede en el servicio (`validateAdminAccess`): el 403 real se mantiene.
   { verbo: 'get', ruta: '/shops/{A}/records/pending', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
-  { verbo: 'get', ruta: `/shops/{A}/records/client/${randomUUID()}`, permitidos: ['ADMINISTRADOR', 'ADMIN_BARBERIA', 'BARBERO'] },
+  // C-5 (F5-04): el BARBERO solo lee antecedentes de clientes con relación en
+  // la sede, asi que se mide con el CLIENTE del fixture, que tiene una cita.
+  { verbo: 'get', ruta: '/shops/{A}/records/client/{CLIENTE}', permitidos: ['ADMINISTRADOR', 'ADMIN_BARBERIA', 'BARBERO'] },
 
   // ── horarios ─────────────────────────────────────────────────────────────
   { verbo: 'get', ruta: '/shops/{A}/hours', permitidos: ['ADMIN_BARBERIA'] },
@@ -171,7 +173,7 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
   const duenios = ['pm_duenio@matriz.test'];
   const tokens: Partial<Record<Rol, string>> = {};
   const barberia = { a: '', b: '' };
-  const usuarios: { barbero: string } = { barbero: '' };
+  const usuarios: { barbero: string; cliente: string } = { barbero: '', cliente: '' };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] })
@@ -273,6 +275,24 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
     const barberoId = await crearUsuario(correos.BARBERO, roles['BARBERO'].id, barberia.a);
     const clienteId = await crearUsuario(correos.CLIENTE, roles['CLIENTE'].id, null);
     usuarios.barbero = barberoId;
+    usuarios.cliente = clienteId;
+
+    // C-5 (F5-04): una cita ya ocurrida le da al BARBERO relación con el
+    // CLIENTE para leer sus antecedentes.
+    await prisma.reserva.create({
+      data: {
+        barberiaId: barberia.a,
+        clienteId,
+        barberoId,
+        tipoReserva: 'INDIVIDUAL',
+        estado: 'COMPLETADA',
+        modoConfirmacion: 'MANUAL',
+        fechaCita: new Date('2026-01-10T00:00:00.000Z'),
+        horaInicio: new Date('2026-01-10T10:00:00.000Z'),
+        horaFin: new Date('2026-01-10T10:30:00.000Z'),
+        totalPagar: 500,
+      },
+    });
 
     // El CLIENTE queda vinculado a la barbería A con vínculo activo.
     await prisma.clienteBarberia.create({
@@ -363,7 +383,8 @@ describe('Matriz de permisos rol × ruta sobre HTTP (E1-05)', () => {
     const ruta = caso.ruta
       .replace('{A}', barberia.a)
       .replace('{B}', barberia.b)
-      .replace('{BARBERO}', usuarios.barbero);
+      .replace('{BARBERO}', usuarios.barbero)
+      .replace('{CLIENTE}', usuarios.cliente);
     const peticion = request(app.getHttpServer())[caso.verbo](ruta)
       .set('Authorization', `Bearer ${tokens[rol]}`);
     if (caso.cuerpo !== undefined) {
