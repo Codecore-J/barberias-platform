@@ -5,6 +5,19 @@ import { mensajeDeError } from '../../../../core/utils/error-message';
 import { ModalShellComponent } from '../../../../shared/ui/modal-shell/modal-shell.component';
 import type { Personal } from '../../../../core/services/personal.service';
 import type { Servicio } from '../../../../core/services/servicios.service';
+import type { ServicioDeCatalogo } from '../../../../core/services/catalogo-hibrido.service';
+
+/**
+ * F3-04 · una opción del selector, venga del catálogo de la sede o del catálogo
+ * propio del barbero. `origen` decide en qué campo del DTO viaja al crear.
+ */
+export interface OpcionServicio {
+  id: string;
+  nombre: string;
+  precio: number;
+  duracionMinutos: number;
+  origen: 'SEDE' | 'BARBERO';
+}
 
 /**
  * E3-03 · alta manual de un cliente sin app («walk-in») desde la agenda.
@@ -94,10 +107,10 @@ import type { Servicio } from '../../../../core/services/servicios.service';
           <label for="walkin-servicio" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">
             Servicio
           </label>
-          @if (serviciosActivos().length === 0) {
+          @if (opciones().length === 0) {
             <p class="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
-              El catálogo de esta sede no tiene servicios activos. Crea uno en «Servicios» para poder
-              agendar un walk-in.
+              Ni la sede ni el barbero elegido tienen servicios activos. Elige otro barbero o crea un
+              servicio en «Servicios» para poder agendar un walk-in.
             </p>
           } @else {
             <select
@@ -108,11 +121,25 @@ import type { Servicio } from '../../../../core/services/servicios.service';
               class="w-full bg-zinc-900 border border-zinc-700 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors disabled:opacity-60"
             >
               <option value="">Selecciona un servicio</option>
-              @for (servicio of serviciosActivos(); track servicio.id) {
-                <option [value]="servicio.id">
-                  {{ servicio.nombre }} · {{ servicio.duracionMinutos }} min ·
-                  {{ servicio.precio | currency: 'USD' : 'symbol' : '1.2-2' }}
-                </option>
+              @if (opcionesBarbero().length > 0) {
+                <optgroup label="Del barbero">
+                  @for (opcion of opcionesBarbero(); track opcion.id) {
+                    <option [value]="opcion.id">
+                      {{ opcion.nombre }} · {{ opcion.duracionMinutos }} min ·
+                      {{ opcion.precio | currency: 'USD' : 'symbol' : '1.2-2' }}
+                    </option>
+                  }
+                </optgroup>
+              }
+              @if (opcionesSede().length > 0) {
+                <optgroup label="De la sede">
+                  @for (opcion of opcionesSede(); track opcion.id) {
+                    <option [value]="opcion.id">
+                      {{ opcion.nombre }} · {{ opcion.duracionMinutos }} min ·
+                      {{ opcion.precio | currency: 'USD' : 'symbol' : '1.2-2' }}
+                    </option>
+                  }
+                </optgroup>
               }
             </select>
           }
@@ -219,6 +246,11 @@ export class WalkInModalComponent {
   readonly staff = input<Personal[]>([]);
   /** Catálogo de la sede tal como lo entrega la API (puede traer INACTIVOS). */
   readonly servicios = input<Servicio[]>([]);
+  /**
+   * F3-04 · servicios del catálogo híbrido de TODA la sede. El modal se queda
+   * con los del barbero elegido; el `barberoId` sale de su propio selector.
+   */
+  readonly serviciosDeBarbero = input<ServicioDeCatalogo[]>([]);
 
   /**
    * F3-02 · QA2-04: el panel de administración recibe también los servicios
@@ -239,10 +271,42 @@ export class WalkInModalComponent {
   readonly enviando = signal(false);
   readonly error = signal<string | null>(null);
 
-  readonly servicioSeleccionado = computed<Servicio | null>(() => {
+  /** Servicios propios del barbero elegido, ya normalizados para el selector. */
+  readonly opcionesBarbero = computed<OpcionServicio[]>(() => {
+    const barberoId = this.barberoId();
+    if (!barberoId) return [];
+
+    return this.serviciosDeBarbero()
+      .filter((servicio) => servicio.barbero.id === barberoId)
+      .map((servicio) => ({
+        id: servicio.id,
+        nombre: servicio.nombre,
+        precio: Number(servicio.precio),
+        duracionMinutos: Number(servicio.duracionMinutos),
+        origen: 'BARBERO' as const,
+      }));
+  });
+
+  /** Servicios activos de la sede. Se ofrecen siempre, con o sin barbero. */
+  readonly opcionesSede = computed<OpcionServicio[]>(() =>
+    this.serviciosActivos().map((servicio) => ({
+      id: servicio.id,
+      nombre: servicio.nombre,
+      precio: Number(servicio.precio),
+      duracionMinutos: Number(servicio.duracionMinutos),
+      origen: 'SEDE' as const,
+    })),
+  );
+
+  readonly opciones = computed<OpcionServicio[]>(() => [
+    ...this.opcionesBarbero(),
+    ...this.opcionesSede(),
+  ]);
+
+  readonly servicioSeleccionado = computed<OpcionServicio | null>(() => {
     const id = this.servicioId();
     if (!id) return null;
-    return this.serviciosActivos().find((s) => s.id === id) ?? null;
+    return this.opciones().find((servicio) => servicio.id === id) ?? null;
   });
 
   readonly duracionMinutos = computed(() => this.servicioSeleccionado()?.duracionMinutos ?? 0);
@@ -295,7 +359,9 @@ export class WalkInModalComponent {
         fecha: this.fecha(),
         horaInicio: this.horaInicio(),
         horaFin,
-        serviciosIds: [servicio.id],
+        ...(servicio.origen === 'BARBERO'
+          ? { serviciosBarberoIds: [servicio.id] }
+          : { serviciosIds: [servicio.id] }),
         precioTotalEsperado: this.precio(),
         barberoId,
         nombreInvitado: this.nombre().trim(),

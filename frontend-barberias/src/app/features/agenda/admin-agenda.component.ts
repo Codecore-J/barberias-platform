@@ -14,6 +14,10 @@ import { FormsModule } from '@angular/forms';
 import { ReservasService } from '../../core/services/reservas.service';
 import { PersonalService, Personal } from '../../core/services/personal.service';
 import { ServiciosService, type Servicio } from '../../core/services/servicios.service';
+import {
+  CatalogoHibridoService,
+  type ServicioDeCatalogo,
+} from '../../core/services/catalogo-hibrido.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
 import { FichaClienteDrawerComponent } from '../clientes/components/ficha-cliente-drawer/ficha-cliente-drawer.component';
@@ -485,6 +489,7 @@ import { rolEfectivo } from '../../core/utils/rol';
           [fecha]="fechaFiltro()"
           [staff]="staffAsignable()"
           [servicios]="serviciosDisponibles()"
+          [serviciosDeBarbero]="serviciosDeBarbero()"
           (creado)="onWalkInCreado()"
           (cerrar)="mostrarModalWalkIn.set(false)"
         />
@@ -518,6 +523,7 @@ export class AdminAgendaComponent {
   protected readonly reservasService = inject(ReservasService);
   protected readonly personalService = inject(PersonalService);
   protected readonly serviciosService = inject(ServiciosService);
+  private readonly catalogoHibrido = inject(CatalogoHibridoService);
   protected readonly tenantService = inject(TenantService);
   protected readonly authService = inject(AuthService);
   private readonly confirmDialog = inject(ConfirmDialogService);
@@ -583,7 +589,25 @@ export class AdminAgendaComponent {
         : Promise.resolve([] as Servicio[]),
   });
 
+  /**
+   * F3-04 · servicios que cada barbero publica en el catálogo híbrido. La
+   * vitrina ya los devuelve agrupados por categoría y solo los ACTIVOS; aquí
+   * se aplanan y el modal se queda con los del barbero elegido.
+   */
+  private readonly catalogoHibridoResource = resource({
+    params: () => ({ barberiaId: this.tenantService.barberiaActivaId() }),
+    loader: ({ params }) =>
+      params.barberiaId
+        ? firstValueFrom(this.catalogoHibrido.cargarCatalogo()).then((categorias) =>
+            categorias.flatMap((categoria) => categoria.servicios),
+          )
+        : Promise.resolve([] as ServicioDeCatalogo[]),
+  });
+
   readonly serviciosDisponibles = computed<Servicio[]>(() => this.catalogoResource.value() ?? []);
+  readonly serviciosDeBarbero = computed<ServicioDeCatalogo[]>(
+    () => this.catalogoHibridoResource.value() ?? [],
+  );
 
   readonly turnos = computed<Turno[]>(() => this.agendaResource.value() ?? []);
 

@@ -6,6 +6,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { WalkInModalComponent } from './walk-in-modal.component';
 import { ReservasService } from '../../../../core/services/reservas.service';
 import type { Servicio } from '../../../../core/services/servicios.service';
+import type { ServicioDeCatalogo } from '../../../../core/services/catalogo-hibrido.service';
 import type { Personal } from '../../../../core/services/personal.service';
 
 /**
@@ -35,6 +36,22 @@ describe('WalkInModalComponent', () => {
     id: 's-2',
     nombre: 'Corte retirado',
     estado: 'INACTIVO',
+  };
+
+  /** F3-04 · servicios que publica el barbero en el catálogo híbrido. */
+  const HIBRIDO: ServicioDeCatalogo = {
+    id: 'sb-1',
+    nombre: 'Fade del barbero',
+    precio: 30,
+    duracionMinutos: 40,
+    barbero: { id: 'b-1', nombre: 'Barbero Demo' },
+  };
+
+  const HIBRIDO_AJENO: ServicioDeCatalogo = {
+    ...HIBRIDO,
+    id: 'sb-2',
+    nombre: 'Fade de otro',
+    barbero: { id: 'b-2', nombre: 'Otro Barbero' },
   };
 
   const BARBERO: Personal = {
@@ -75,6 +92,42 @@ describe('WalkInModalComponent', () => {
     fixture.componentRef.setInput('staff', [BARBERO]);
     fixture.componentRef.setInput('servicios', [SERVICIO]);
     fixture.detectChanges();
+  });
+
+  it('ROJO: ofrece el catálogo del barbero elegido y lo envía como serviciosBarberoIds', () => {
+    fixture.componentRef.setInput('serviciosDeBarbero', [HIBRIDO, HIBRIDO_AJENO]);
+    componente.barberoId.set(BARBERO.id);
+    fixture.detectChanges();
+
+    const ids = componente.opciones().map((opcion) => opcion.id);
+    expect(ids).toContain(HIBRIDO.id);
+    expect(ids).toContain(SERVICIO.id);
+    expect(ids).not.toContain(HIBRIDO_AJENO.id);
+
+    componente.nombre.set('Cliente Sin App');
+    componente.servicioId.set(HIBRIDO.id);
+    componente.horaInicio.set('10:00');
+
+    expect(componente.horaFin()).toBe('10:40');
+    expect(componente.precio()).toBe(30);
+
+    componente.crear();
+
+    expect(crearReservaWalkIn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        barberoId: BARBERO.id,
+        serviciosBarberoIds: [HIBRIDO.id],
+        precioTotalEsperado: 30,
+      }),
+    );
+    expect(crearReservaWalkIn.mock.calls[0][0]).not.toHaveProperty('serviciosIds');
+  });
+
+  it('ROJO: sin barbero elegido no ofrece el catálogo híbrido', () => {
+    fixture.componentRef.setInput('serviciosDeBarbero', [HIBRIDO]);
+    fixture.detectChanges();
+
+    expect(componente.opciones().map((opcion) => opcion.id)).not.toContain(HIBRIDO.id);
   });
 
   it('ROJO: solo ofrece servicios activos del catálogo', () => {
