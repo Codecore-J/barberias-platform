@@ -115,7 +115,7 @@ las crea T-12 junto con los estados.
 | `GET /shops/:shopId/solicitudes-servicio` (**nueva**) | ADMIN_BARBERIA | Bandeja de solicitudes `PENDIENTE` de la sede, de alta y de desactivación. | `catalogo.servicios.gestionar` |
 | `PATCH /shops/:shopId/solicitudes-servicio/:id` (**nueva**) | ADMIN_BARBERIA | Alta: `{aprobar:true}` crea el servicio en `Servicio` y habilita al solicitante en `ServicioBarbero` con su precio; desactivación: `{aprobar:true}` desactiva el servicio publicado. `{aprobar:false,motivoRechazo}` deja la solicitud `RECHAZADA` (422 `MOTIVO_RECHAZO_REQUERIDO`). | `catalogo.servicios.gestionar` |
 | `PUT /shops/:shopId/mi-horario/base` | BARBERO | Crea la propuesta `PENDIENTE` de esa sede (F4-03); ya no escribe la plantilla vigente. | `excepciones.propias.registrar` |
-| `GET /shops/:shopId/hours/` | ADMIN_BARBERIA | Es donde se leen las propuestas de horario pendientes; se le añade el estado, sin bandeja aparte. | `agenda.sede.ver` |
+| `GET /shops/:shopId/hours/` | ADMIN_BARBERIA | Es donde se leen las propuestas de horario pendientes, sin bandeja aparte: desde F4-05 devuelve `{ horarios, propuestasBasePendientes }`. | `agenda.sede.ver` |
 | `PATCH /shops/:shopId/hours/barbers/:barberoId/base` (**F4-04**) | ADMIN_BARBERIA | Aprueba o rechaza la propuesta; el rechazo exige motivo (422 `MOTIVO_RECHAZO_REQUERIDO`). | `horario.base.aprobar` |
 
 - El barbero no edita un servicio publicado: para un cambio manda una solicitud nueva; para

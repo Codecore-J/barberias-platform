@@ -96,11 +96,40 @@ export class HorarioService {
     });
   }
 
+  /**
+   * F4-04/F4-05 · horario de la sede y propuestas de plantilla pendientes.
+   *
+   * La bandeja de propuestas NO tiene ruta propia (§7.2 de
+   * `docs/MATRIZ_RUTAS_ACCIONES.md`: se leen por esta): viajan con la lectura de
+   * horarios de la sede, que ya es solo del ADMIN_BARBERIA. El `barberoNombre`
+   * ahorra a la pantalla una segunda consulta para saber de quién es cada una.
+   *
+   * La forma de la respuesta pasó de `Horario[]` a `{ horarios, propuestasBasePendientes }`
+   * cuando llegó la fase 4; el único consumidor es el panel de horarios de la sede.
+   */
   async getSchedules(barberiaId: string) {
-    return this.prisma.horario.findMany({
-      where: { barberiaId },
-      orderBy: { diaSemana: 'asc' },
-    });
+    const [horarios, propuestas] = await Promise.all([
+      this.prisma.horario.findMany({
+        where: { barberiaId },
+        orderBy: { diaSemana: 'asc' },
+      }),
+      this.prisma.propuestaHorarioBase.findMany({
+        where: { barberiaId, estado: 'PENDIENTE' },
+        orderBy: { creadoAt: 'asc' },
+        include: { barbero: { select: { nombreCompleto: true } } },
+      }),
+    ]);
+
+    return {
+      horarios,
+      propuestasBasePendientes: propuestas.map((propuesta) => ({
+        id: propuesta.id,
+        barberoId: propuesta.barberoId,
+        barberoNombre: propuesta.barbero.nombreCompleto,
+        creadoAt: propuesta.creadoAt.toISOString(),
+        dias: this.leerDiasDePropuesta(propuesta.dias),
+      })),
+    };
   }
 
   async addException(usuarioId: string, barberiaId: string, dto: CreateExcepcionHorarioDto) {

@@ -14,6 +14,7 @@ import {
   type DiaPlantillaBase,
   type NuevaExcepcionBarbero,
   type PlantillaBaseSemana,
+  type PropuestaPendienteBase,
   HorariosService,
 } from '../../../core/services/horarios.service';
 import { TenantService } from '../../../core/services/tenant.service';
@@ -68,6 +69,26 @@ const PLANTILLA_POR_DEFECTO: DiaPlantillaBase[] = [1, 2, 3, 4, 5, 6].map((diaSem
   imports: [CommonModule, ReactiveFormsModule, ModalShellComponent],
   template: `
     <section class="space-y-6">
+      <!-- F4-05 · propuesta enviada: la plantilla no cambia hasta que la sede la apruebe -->
+      @if (propuestaPendiente(); as propuesta) {
+        <div
+          class="rounded-2xl border border-sky-500/30 bg-sky-500/10 p-4 flex items-start gap-3"
+          role="status"
+        >
+          <i class="pi pi-send text-sky-400 mt-0.5"></i>
+          <div class="text-sm text-sky-100 space-y-1">
+            <p class="font-semibold">Tu propuesta está pendiente de aprobación.</p>
+            <p class="text-xs text-sky-200/80">
+              Enviada el {{ propuesta.creadoAt | date: 'dd/MM/yyyy HH:mm' }}. Hasta que el
+              administrador de la sede la apruebe, sigue vigente tu plantilla actual.
+            </p>
+            <p class="text-xs text-sky-200/70 font-mono break-words">
+              Propuesta: {{ resumenDias(propuesta.dias) }}
+            </p>
+          </div>
+        </div>
+      }
+
       <!-- Estado de la plantilla -->
       @if (sinPlantilla() && !cargando()) {
         <div
@@ -78,8 +99,9 @@ const PLANTILLA_POR_DEFECTO: DiaPlantillaBase[] = [1, 2, 3, 4, 5, 6].map((diaSem
           <div class="text-sm text-amber-200">
             <p class="font-semibold">Todavía no guardaste tu plantilla semanal.</p>
             <p class="text-amber-200/80 text-xs mt-1">
-              Lo de abajo es una propuesta (lunes a sábado de 09:00 a 19:00). Al guardar, el motor
-              la usará en las sedes donde no tengas un horario propio.
+              Lo de abajo es una propuesta (lunes a sábado de 09:00 a 19:00). Al enviarla, el
+              administrador de la sede la aprueba y el motor la usa en las sedes donde no tengas un
+              horario propio.
             </p>
           </div>
         </div>
@@ -238,10 +260,10 @@ const PLANTILLA_POR_DEFECTO: DiaPlantillaBase[] = [1, 2, 3, 4, 5, 6].map((diaSem
               >
                 @if (guardando()) {
                   <i class="pi pi-spin pi-spinner"></i>
-                  <span>Guardando...</span>
+                  <span>Enviando...</span>
                 } @else {
-                  <i class="pi pi-save"></i>
-                  <span>Guardar Plantilla Semanal</span>
+                  <i class="pi pi-send"></i>
+                  <span>Enviar propuesta semanal</span>
                 }
               </button>
             </div>
@@ -389,6 +411,8 @@ export class BarberoPlantillaBaseComponent implements OnInit {
   readonly cargando = signal(true);
   readonly guardando = signal(false);
   readonly sinPlantilla = signal(false);
+  /** F4-03/F4-05: lo que el barbero pidió y la sede todavía no resolvió. */
+  readonly propuestaPendiente = signal<PropuestaPendienteBase | null>(null);
   readonly errorCarga = signal<string | null>(null);
   readonly errorGuardado = signal<string | null>(null);
   /** Un mensaje por día, indexado por `diaSemana` (1–7). */
@@ -454,7 +478,7 @@ export class BarberoPlantillaBaseComponent implements OnInit {
         error: () => {
           // La propuesta por defecto deja la pantalla utilizable, pero el aviso
           // evita que el barbero guarde creyendo que vio lo que tenía.
-          this.aplicarPlantilla({ barberoId: '', sinPlantilla: true, dias: [] });
+          this.aplicarPlantilla({ barberoId: '', sinPlantilla: true, dias: [], propuestaPendiente: null });
           this.errorCarga.set('No se pudo cargar tu plantilla. Se muestra la propuesta por defecto.');
           this.cargando.set(false);
         },
@@ -521,9 +545,12 @@ export class BarberoPlantillaBaseComponent implements OnInit {
         next: (plantilla) => {
           this.guardando.set(false);
           // Se repinta con lo que devolvió el backend, no con el formulario: así
-          // la pantalla muestra exactamente lo guardado.
+          // la pantalla muestra exactamente lo que quedó pendiente.
           this.aplicarPlantilla(plantilla);
-          this.toast.success('Tu plantilla semanal se guardó correctamente.', 'Plantilla guardada');
+          this.toast.success(
+            'Tu propuesta se envió al administrador de la sede.',
+            'Propuesta enviada',
+          );
         },
         error: () => {
           // El interceptor global ya muestra el mensaje del backend (400/403);
@@ -613,8 +640,23 @@ export class BarberoPlantillaBaseComponent implements OnInit {
 
   // ── Internos ─────────────────────────────────────────────────────────────
 
+  /** «Lun 10:00–18:00 · Mar 11:00–19:00»; si no hay días activos, lo dice. */
+  resumenDias(dias: DiaPlantillaBase[]): string {
+    const activos = (dias ?? []).filter((dia) => dia.activo && dia.horaInicio && dia.horaFin);
+
+    if (activos.length === 0) return 'Sin días activos (cerrarías la semana entera).';
+
+    return activos
+      .map((dia) => `${(NOMBRES_DIA[dia.diaSemana] ?? '').slice(0, 3)} ${dia.horaInicio}–${dia.horaFin}`)
+      .join(' · ');
+  }
+
   private aplicarPlantilla(plantilla: PlantillaBaseSemana): void {
-    const porDia = new Map((plantilla?.dias ?? []).map((dia) => [dia.diaSemana, dia]));
+    // F4-05: si hay propuesta pendiente, el formulario muestra LA PROPUESTA (lo
+    // que el barbero pidió y puede seguir ajustando), no la plantilla vigente.
+    const pendiente = plantilla?.propuestaPendiente ?? null;
+    const diasAMostrar = pendiente?.dias?.length ? pendiente.dias : plantilla?.dias;
+    const porDia = new Map((diasAMostrar ?? []).map((dia) => [dia.diaSemana, dia]));
 
     this.dias.clear();
     for (const base of PLANTILLA_POR_DEFECTO) {
@@ -636,6 +678,7 @@ export class BarberoPlantillaBaseComponent implements OnInit {
     }
 
     this.sinPlantilla.set(plantilla?.sinPlantilla ?? true);
+    this.propuestaPendiente.set(pendiente);
     this.erroresDia.set({});
     this.errorGuardado.set(null);
   }
