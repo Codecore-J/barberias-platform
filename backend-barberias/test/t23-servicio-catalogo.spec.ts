@@ -208,7 +208,11 @@ describe('T-23 · servicio del catálogo híbrido', () => {
       prisma.usuarioRol.findFirst.mockResolvedValue({
         usuario: { nombreCompleto: 'Carlos', estadoCuenta: 'ACTIVO' },
       });
-      return new SolicitudesServicioService(prisma as unknown as PrismaService);
+      return new SolicitudesServicioService(prisma as unknown as PrismaService, {
+        configurado: () => true,
+        subir: async () => ({ url: 'https://res.cloudinary.com/demo/foto.png', publicId: 'demo' }),
+        borrar: async () => undefined,
+      } as never);
     }
 
     function prismaSolicitud() {

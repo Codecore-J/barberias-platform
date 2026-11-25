@@ -128,6 +128,10 @@ export class CatalogoHibridoService {
     return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/servicios`;
   }
 
+  private get solicitudesUrl(): string {
+    return `${API_URL}/shops/${this.tenant.barberiaActivaId()}/solicitudes-servicio`;
+  }
+
   // ── Estado de las categorías (panel del ADMIN de la sede) ────────────────
   readonly categorias = signal<CategoriaServicio[]>([]);
   readonly cargandoCategorias = signal<boolean>(false);
@@ -367,6 +371,43 @@ export class CatalogoHibridoService {
         return throwError(() => error);
       }),
     );
+  }
+
+  /**
+   * T-28 · foto de la solicitud PENDIENTE.
+   *
+   * El alta ya no publica el servicio, así que la foto no puede subirse contra
+   * `/mis-servicios/:id/imagen` (ese id todavía no existe). Esta ruta adjunta la
+   * imagen a la solicitud y la aprobación la copia al servicio publicado.
+   */
+  subirImagenSolicitud(
+    solicitudId: string,
+    archivo: File,
+  ): Observable<{ id: string; imagenUrl: string; imagenPublicId: string }> {
+    this.guardandoServicio.set(true);
+    this.errorMisServicios.set(null);
+
+    const cuerpo = new FormData();
+    cuerpo.append('archivo', archivo);
+
+    return this.http
+      .patch<{ id: string; imagenUrl: string; imagenPublicId: string }>(
+        `${this.solicitudesUrl}/${solicitudId}/imagen`,
+        cuerpo,
+      )
+      .pipe(
+        tap(() => this.guardandoServicio.set(false)),
+        catchError((error) => {
+          this.guardandoServicio.set(false);
+          this.errorMisServicios.set(
+            CatalogoHibridoService.mensajeDeError(
+              error,
+              'No se pudo subir la foto de la solicitud.',
+            ),
+          );
+          return throwError(() => error);
+        }),
+      );
   }
 
   // ── Vitrina del cliente ─────────────────────────────────────────────────

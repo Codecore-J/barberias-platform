@@ -424,6 +424,9 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   'POST /shops/:shopId/solicitudes-servicio/': [ROL_BARBERO],
   'GET /shops/:shopId/solicitudes-servicio/': [ROL_ADMIN_BARBERIA],
   'PATCH /shops/:shopId/solicitudes-servicio/:id': [ROL_ADMIN_BARBERIA],
+  // T-28 · foto de la solicitud PENDIENTE: la sube su barbero dueño, igual que
+  // la manda; la sede no edita la foto de una solicitud, la resuelve.
+  'PATCH /shops/:shopId/solicitudes-servicio/:id/imagen': [ROL_BARBERO],
 
   // V3 · reasignar barbero. Es una decisión de la SEDE (D02), como aceptar o
   // reprogramar. La ruta NO lleva :shopId, así que el guard solo filtra el rol y
@@ -758,8 +761,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // `POST /auth/logout`: 123 × 4 = 492. El borrado de categorías globales del
   // backlog de catálogo (T-21, fase 2) suma la 124. T-24 suma la imagen del
   // servicio: 125 × 4 = 500. T-27/T-28 suman las tres rutas de la solicitud de
-  // servicio (alta, bandeja y resolución): 128 × 4 = 512.
-  expect(evaluaciones).toBe(512);
+  // servicio (alta, bandeja y resolución): 128 × 4 = 512. La foto de la
+  // solicitud pendiente (T-28) suma la 129: 129 × 4 = 516.
+  expect(evaluaciones).toBe(516);
 
     const resumen =
       desviaciones.length > 40

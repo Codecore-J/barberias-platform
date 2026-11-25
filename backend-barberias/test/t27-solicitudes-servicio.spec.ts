@@ -62,7 +62,15 @@ function preparar(prisma: ReturnType<typeof prismaFalso>) {
   prisma.usuarioRol.findFirst.mockResolvedValue({
     usuario: { estadoCuenta: 'ACTIVO' },
   });
-  return new SolicitudesServicioService(prisma as unknown as PrismaService);
+  const cloudinary = {
+    configurado: () => true,
+    subir: async () => ({ url: 'https://res.cloudinary.com/demo/foto.png', publicId: 'demo' }),
+    borrar: async () => undefined,
+  };
+  return new SolicitudesServicioService(
+    prisma as unknown as PrismaService,
+    cloudinary as never,
+  );
 }
 
 const altaBase = {

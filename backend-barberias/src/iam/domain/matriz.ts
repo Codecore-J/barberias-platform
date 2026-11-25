@@ -192,6 +192,9 @@ export const RUTA_ACCION: Readonly<Record<string, readonly Accion[]>> = {
   'POST /shops/:shopId/solicitudes-servicio/': [],
   'GET /shops/:shopId/solicitudes-servicio/': ['catalogo.servicios.gestionar'],
   'PATCH /shops/:shopId/solicitudes-servicio/:id': ['catalogo.servicios.gestionar'],
+  // T-28 (foto) · la adjunta el barbero dueño de la solicitud PENDIENTE: es
+  // autoservicio propio, como el alta, no una acción de gestión de la sede.
+  'PATCH /shops/:shopId/solicitudes-servicio/:id/imagen': [],
 };
 
 /**

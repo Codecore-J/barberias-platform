@@ -79,7 +79,11 @@ describe('ServiciosBarberoService', () => {
     };
 
     function solicitudes() {
-      return new SolicitudesServicioService(prisma as unknown as PrismaService);
+      return new SolicitudesServicioService(prisma as unknown as PrismaService, {
+        configurado: () => true,
+        subir: async () => ({ url: 'https://res.cloudinary.com/demo/foto.png', publicId: 'demo' }),
+        borrar: async () => undefined,
+      } as never);
     }
 
     it('crea la solicitud PENDIENTE con el barbero del JWT y el nombre normalizado', async () => {

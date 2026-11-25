@@ -1,5 +1,17 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import {
+  CloudinaryService,
+  TAMANO_MAXIMO_IMAGEN,
+  TIPOS_IMAGEN_PERMITIDOS,
+  type ArchivoSubido,
+} from '../../shared/cloudinary/cloudinary.service.js';
 import {
   errorDeConflicto,
   errorDePermiso,
@@ -25,7 +37,10 @@ import {
 export class SolicitudesServicioService {
   private readonly logger = new Logger(SolicitudesServicioService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cloudinary: CloudinaryService,
+  ) {}
 
   private static exigirSede(barberiaId: string | undefined | null): string {
     if (typeof barberiaId !== 'string' || barberiaId.trim() === '') {
@@ -219,6 +234,95 @@ export class SolicitudesServicioService {
 
     this.logger.log(`Solicitud de alta creada: ${solicitud.id} (sede: ${sede})`);
     return solicitud;
+  }
+
+  /**
+   * T-28 · foto de la solicitud pendiente.
+   *
+   * La tabla ya guarda `imagen_url` e `imagen_public_id` y la aprobación los
+   * copia al servicio publicado; lo que faltaba era poder adjuntarla ANTES de
+   * que la sede decida, para que el alta se revise con su foto a la vista.
+   *
+   * Solo el barbero dueño de una solicitud `ALTA` en estado `PENDIENTE` puede
+   * cambiarla: una solicitud resuelta es 409 y la foto se edita ya en el
+   * servicio publicado. Las validaciones (tipo, 2 MB, `CLOUDINARY_URL`) son las
+   * mismas que en el catálogo, porque el archivo llega por la misma puerta.
+   */
+  async actualizarImagen(
+    barberiaId: string,
+    barberoId: string,
+    id: string,
+    archivo: ArchivoSubido | undefined,
+  ) {
+    const sede = SolicitudesServicioService.exigirSede(barberiaId);
+
+    if (!archivo?.buffer || archivo.buffer.length === 0) {
+      throw errorDeSolicitud(
+        'IMAGEN_REQUERIDA',
+        'Adjunta la imagen del servicio en el campo «archivo».',
+      );
+    }
+
+    if (
+      !TIPOS_IMAGEN_PERMITIDOS.includes(
+        archivo.mimetype as (typeof TIPOS_IMAGEN_PERMITIDOS)[number],
+      )
+    ) {
+      throw errorDeSolicitud(
+        'IMAGEN_TIPO_INVALIDO',
+        'La imagen debe ser JPG, PNG o WEBP.',
+      );
+    }
+
+    const tamano = archivo.size || archivo.buffer.length;
+    if (tamano > TAMANO_MAXIMO_IMAGEN) {
+      throw errorDeSolicitud('IMAGEN_DEMASIADO_GRANDE', 'La imagen no puede superar los 2 MB.');
+    }
+
+    const solicitud = await this.prisma.solicitudServicioBarbero.findFirst({
+      where: { id, barberiaId: sede, barberoId, tipo: 'ALTA' },
+      select: { id: true, estado: true, imagenUrl: true, imagenPublicId: true },
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException(
+        'Solicitud no encontrada entre las tuyas en esta barbería.',
+      );
+    }
+
+    if (solicitud.estado !== 'PENDIENTE') {
+      throw errorDeConflicto(
+        'SOLICITUD_YA_RESUELTA',
+        'La solicitud ya fue resuelta: la foto se cambia en el servicio publicado.',
+        { estado: solicitud.estado },
+      );
+    }
+
+    if (!this.cloudinary.configurado()) {
+      throw new ServiceUnavailableException({
+        statusCode: 503,
+        codigo: 'IMAGEN_NO_CONFIGURADA',
+        mensaje:
+          'La subida de imágenes no está disponible: falta CLOUDINARY_URL en el entorno del servidor.',
+      });
+    }
+
+    const publicIdAnterior =
+      solicitud.imagenPublicId ?? CloudinaryService.publicIdDe(solicitud.imagenUrl);
+    if (publicIdAnterior) {
+      await this.cloudinary.borrar(publicIdAnterior);
+    }
+
+    const subida = await this.cloudinary.subir(archivo.buffer, `solicitudes/${sede}`);
+
+    const actualizada = await this.prisma.solicitudServicioBarbero.update({
+      where: { id: solicitud.id },
+      data: { imagenUrl: subida.url, imagenPublicId: subida.publicId },
+      select: { id: true, imagenUrl: true, imagenPublicId: true },
+    });
+
+    this.logger.log(`Foto de la solicitud actualizada: ${id} (sede: ${sede})`);
+    return actualizada;
   }
 
   /** Bandeja de la sede: por defecto solo lo que le toca resolver. */

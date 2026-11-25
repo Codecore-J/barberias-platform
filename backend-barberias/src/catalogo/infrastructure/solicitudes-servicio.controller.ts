@@ -9,8 +9,12 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseFilters,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { SolicitudesServicioService } from '../application/solicitudes-servicio.service.js';
 import {
   CrearSolicitudServicioDto,
@@ -22,6 +26,11 @@ import { CurrentUser } from '../../iam/infrastructure/current-user.decorator.js'
 import { VinculoBarberiaGuard } from '../../iam/infrastructure/vinculo-barberia.guard.js';
 import { SoloBarberoGuard } from './solo-barbero.guard.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
+import {
+  TAMANO_MAXIMO_IMAGEN,
+  type ArchivoSubido,
+} from '../../shared/cloudinary/cloudinary.service.js';
+import { ImagenDemasiadoGrandeFilter } from '../../shared/cloudinary/imagen-demasiado-grande.filter.js';
 
 /**
  * T-27 / T-28 · solicitudes de servicio de la sede.
@@ -55,6 +64,26 @@ export class SolicitudesServicioController {
   ) {
     return this.solicitudesService.listar(barberiaId, estado);
   }
+  /**
+   * T-28 · foto de la solicitud pendiente. El barbero la adjunta ANTES de que la
+   * sede resuelva, y la aprobación la copia al servicio publicado.
+   */
+  @Patch(':id/imagen')
+  @Roles('BARBERO')
+  @UseGuards(SoloBarberoGuard, VinculoBarberiaGuard)
+  @UseFilters(ImagenDemasiadoGrandeFilter)
+  @UseInterceptors(
+    FileInterceptor('archivo', { limits: { fileSize: TAMANO_MAXIMO_IMAGEN } }),
+  )
+  actualizarImagen(
+    @CurrentBarberiaId() barberiaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() archivo: ArchivoSubido,
+  ) {
+    return this.solicitudesService.actualizarImagen(barberiaId, user.id, id, archivo);
+  }
+
   @Patch(':id')
   @Roles('ADMIN_BARBERIA')
   @UseGuards(VinculoBarberiaGuard)

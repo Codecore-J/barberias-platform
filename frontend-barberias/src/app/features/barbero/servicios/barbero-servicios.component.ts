@@ -486,18 +486,33 @@ export class BarberoServiciosComponent implements OnInit {
 
     const descripcion = (this.form.value.descripcion ?? '').trim();
 
-    // El alta ya no publica: crea una solicitud que la sede resuelve. Por eso
-    // no hay foto que subir todavía —solo se adjunta a un servicio publicado—.
+    // El alta ya no publica: crea una solicitud que la sede resuelve. La foto
+    // viaja contra la solicitud (T-28), no contra un servicio que aún no existe.
     if (!id) {
       this.catalogoService
         .crearServicio({ nombre, descripcion, precio, duracionMinutos, categoriaId })
         .subscribe({
-          next: () => {
-            const conFoto = this.archivoSeleccionado()
-              ? ' Guarda la foto cuando la sede apruebe el servicio.'
-              : '';
-            this.mostrarExito(`Solicitud enviada a la sede para su aprobación.${conFoto}`);
-            this.cerrarFormulario();
+          next: (solicitud) => {
+            const archivo = this.archivoSeleccionado();
+
+            if (!archivo) {
+              this.mostrarExito('Solicitud enviada a la sede para su aprobación.');
+              this.cerrarFormulario();
+              return;
+            }
+
+            this.catalogoService.subirImagenSolicitud(solicitud.id, archivo).subscribe({
+              next: () => {
+                this.mostrarExito('Solicitud enviada con su foto; la sede la revisará.');
+                this.cerrarFormulario();
+              },
+              error: () => {
+                // La solicitud ya quedó creada: reintentar el formulario crearía
+                // otra (409). El panel muestra el motivo del fallo de la foto.
+                this.mostrarExito('Solicitud enviada a la sede para su aprobación.');
+                this.cerrarFormulario();
+              },
+            });
           },
           error: () => undefined,
         });

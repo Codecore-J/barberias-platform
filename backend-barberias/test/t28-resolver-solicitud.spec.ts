@@ -62,7 +62,11 @@ function preparar(solicitud: unknown, tx = txFalso()) {
     solicitudServicioBarbero: { findFirst: vi.fn(async () => solicitud), update: vi.fn() },
     $transaction: vi.fn(async (cb: (cliente: typeof tx) => unknown) => cb(tx)),
   };
-  const service = new SolicitudesServicioService(prisma as unknown as PrismaService);
+  const service = new SolicitudesServicioService(prisma as unknown as PrismaService, {
+    configurado: () => true,
+    subir: async () => ({ url: 'https://res.cloudinary.com/demo/foto.png', publicId: 'demo' }),
+    borrar: async () => undefined,
+  } as never);
   return { service, prisma, tx };
 }
 
