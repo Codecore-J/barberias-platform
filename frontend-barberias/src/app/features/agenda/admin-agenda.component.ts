@@ -14,6 +14,10 @@ import { FormsModule } from '@angular/forms';
 import { ReservasService } from '../../core/services/reservas.service';
 import { PersonalService, Personal } from '../../core/services/personal.service';
 import { ServiciosService, type Servicio } from '../../core/services/servicios.service';
+import {
+  CatalogoHibridoService,
+  type ServicioDeCatalogo,
+} from '../../core/services/catalogo-hibrido.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../auth/auth.service';
 import { FichaClienteDrawerComponent } from '../clientes/components/ficha-cliente-drawer/ficha-cliente-drawer.component';
@@ -22,6 +26,7 @@ import { CobroModalComponent } from './components/cobro-modal/cobro-modal.compon
 import { WalkInModalComponent } from './components/walk-in-modal/walk-in-modal.component';
 import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
 import { rolEfectivo } from '../../core/utils/rol';
+import { puedeAbrirFichaDeCliente } from './agenda-ficha';
 
 @Component({
   selector: 'app-admin-agenda',
@@ -268,9 +273,11 @@ import { rolEfectivo } from '../../core/utils/rol';
                             <span class="text-[9px] bg-red-500 text-white px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Bloqueado</span>
                           }
                         </div>
-                        <button (click)="abrirFicha(turno.cliente)" class="text-amber-500 hover:text-amber-400 transition-colors" title="Ficha del Cliente">
-                          <i class="pi pi-id-card text-lg"></i>
-                        </button>
+                        @if (puedeAbrirFicha(turno)) {
+                          <button (click)="abrirFicha(turno)" class="text-amber-500 hover:text-amber-400 transition-colors" title="Ficha del Cliente">
+                            <i class="pi pi-id-card text-lg"></i>
+                          </button>
+                        }
                       </div>
                       <div class="text-xs text-zinc-500 mt-1 flex flex-col gap-1">
                         @for (detalle of turno.detalles; track detalle.id) {
@@ -485,6 +492,7 @@ import { rolEfectivo } from '../../core/utils/rol';
           [fecha]="fechaFiltro()"
           [staff]="staffAsignable()"
           [servicios]="serviciosDisponibles()"
+          [serviciosDeBarbero]="serviciosDeBarbero()"
           (creado)="onWalkInCreado()"
           (cerrar)="mostrarModalWalkIn.set(false)"
         />
@@ -518,6 +526,7 @@ export class AdminAgendaComponent {
   protected readonly reservasService = inject(ReservasService);
   protected readonly personalService = inject(PersonalService);
   protected readonly serviciosService = inject(ServiciosService);
+  private readonly catalogoHibrido = inject(CatalogoHibridoService);
   protected readonly tenantService = inject(TenantService);
   protected readonly authService = inject(AuthService);
   private readonly confirmDialog = inject(ConfirmDialogService);
@@ -583,7 +592,25 @@ export class AdminAgendaComponent {
         : Promise.resolve([] as Servicio[]),
   });
 
+  /**
+   * F3-04 · servicios que cada barbero publica en el catálogo híbrido. La
+   * vitrina ya los devuelve agrupados por categoría y solo los ACTIVOS; aquí
+   * se aplanan y el modal se queda con los del barbero elegido.
+   */
+  private readonly catalogoHibridoResource = resource({
+    params: () => ({ barberiaId: this.tenantService.barberiaActivaId() }),
+    loader: ({ params }) =>
+      params.barberiaId
+        ? firstValueFrom(this.catalogoHibrido.cargarCatalogo()).then((categorias) =>
+            categorias.flatMap((categoria) => categoria.servicios),
+          )
+        : Promise.resolve([] as ServicioDeCatalogo[]),
+  });
+
   readonly serviciosDisponibles = computed<Servicio[]>(() => this.catalogoResource.value() ?? []);
+  readonly serviciosDeBarbero = computed<ServicioDeCatalogo[]>(
+    () => this.catalogoHibridoResource.value() ?? [],
+  );
 
   readonly turnos = computed<Turno[]>(() => this.agendaResource.value() ?? []);
 
@@ -939,9 +966,17 @@ export class AdminAgendaComponent {
     this.recargar();
   }
 
-  abrirFicha(cliente: { id: string; nombre: string } | null | undefined) {
-    if (!cliente) return;
-    this.clienteSeleccionado.set(cliente);
+  /**
+   * F3-05 · en un walk-in el `cliente.id` es el operador, no el atendido. La
+   * regla vive en un helper para que la plantilla y el handler no se separen.
+   */
+  puedeAbrirFicha(turno: Turno | null | undefined): boolean {
+    return puedeAbrirFichaDeCliente(turno);
+  }
+
+  abrirFicha(turno: Turno | null | undefined) {
+    if (!turno || !puedeAbrirFichaDeCliente(turno)) return;
+    this.clienteSeleccionado.set(turno.cliente);
   }
 
   onWalkInCreado() {

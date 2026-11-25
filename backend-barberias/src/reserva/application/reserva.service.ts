@@ -715,6 +715,14 @@ export class ReservaService {
       // abiertas de la sede siguen siendo operables por su staff.
       await exigirSedeActiva(tx, barberiaId);
 
+      // F3-03 · el walk-in se abre en una columna de la agenda, así que el
+      // barbero es obligatorio y tiene que ser un BARBERO activo de ESTA sede.
+      // El modal ya lo exige; la regla vive aquí para que una petición directa
+      // no pueda saltársela.
+      if (opciones.operadorDeSede) {
+        await this.exigirBarberoDeSedeParaWalkIn(tx, barberiaId, dto.barberoId);
+      }
+
       // T-05 · el walk-in lo teclea el operador sobre alguien sin cuenta: el
       // vínculo que se comprueba aquí es el del CLIENTE, así que con
       // `operadorDeSede` no aplica (una cuenta de staff no tiene fila en
@@ -1036,11 +1044,19 @@ export class ReservaService {
         modoConfirmacion === 'AUTOMATICA' ? ESTADOS.CONFIRMADA : ESTADOS.PENDIENTE;
       ReservaStateMachine.assertTransition(null, estadoInicial, ACTORES.CLIENTE);
 
+      // F3-01 · el walk-in se teclea sobre alguien sin cuenta: el nombre visible
+      // de la cita viaja con la reserva. Un nombre vacío o de solo espacios se
+      // guarda NULL, nunca como cadena en blanco.
+      const nombreInvitado = opciones.operadorDeSede
+        ? dto.nombreInvitado?.trim() || null
+        : null;
+
       // 3. Crear reserva con snapshot financiero inmutable congelado
       const reserva = await tx.reserva.create({
         data: {
           barberiaId,
           clienteId,
+          nombreInvitado,
           barberoId: dto.barberoId || null,
           tipoReserva: esGrupal ? 'GRUPAL' : 'INDIVIDUAL',
           fechaCita: fecha,
@@ -1560,14 +1576,19 @@ export class ReservaService {
       const fechaPart = r.fechaCita instanceof Date ? fechaCalendarioISO(r.fechaCita) : fechaLocal;
       const horaPart = r.horaInicio instanceof Date ? horaRelojHHMM(r.horaInicio) : '00:00';
 
+      // F3-01 · en un walk-in el nombre tecleado manda sobre la cuenta del
+      // operador. `esWalkIn` evita que la UI abra la ficha del staff.
+      const nombreInvitado = r.nombreInvitado?.trim() || null;
+
       return {
         id: r.id,
         estado: r.estado,
         fechaHoraInicio: `${fechaPart}T${horaPart}:00`,
         precioTotalHist: Number(r.totalPagar),
+        esWalkIn: Boolean(nombreInvitado),
         cliente: {
           id: r.cliente?.id,
-          nombre: r.cliente?.nombreCompleto || 'Cliente',
+          nombre: nombreInvitado || r.cliente?.nombreCompleto || 'Cliente',
           correo: r.cliente?.correo || '',
           telefono: r.cliente?.telefono || 'Sin teléfono',
           contadorNoPresentado: r.cliente?.clienteBarberias?.[0]?.contadorNoPresentado || 0,
@@ -3376,6 +3397,51 @@ export class ReservaService {
    * Se califica el esquema con `tablaCalificada` (H58): el nombre suelto depende
    * del `search_path` de la sesión cuando hay un pooler por delante.
    */
+  /**
+   * F3-03 · un turno de mostrador siempre cae en la columna de un barbero.
+   *
+   * Tres condiciones, en este orden: viene el id, la asignación es de ESTA sede
+   * y está ACTIVA, y la cuenta no está suspendida. Un usuario con rol BARBERO
+   * solo en otra sede, o un ADMIN_BARBERIA sin rol de barbero, no sirven: la
+   * agenda lo dejaría en una columna que no le corresponde.
+   */
+  private async exigirBarberoDeSedeParaWalkIn(
+    tx: Prisma.TransactionClient,
+    barberiaId: string,
+    barberoId?: string,
+  ): Promise<void> {
+    if (!barberoId) {
+      throw reglaDeNegocio(
+        'BARBERO_REQUERIDO',
+        'Un turno walk-in necesita un barbero asignado.',
+      );
+    }
+
+    const asignacion = await tx.usuarioRol.findFirst({
+      where: {
+        usuarioId: barberoId,
+        barberiaId,
+        estado: 'ACTIVO',
+        rol: { nombre: ROL_BARBERO },
+      },
+      select: { usuario: { select: { estadoCuenta: true } } },
+    });
+
+    if (!asignacion) {
+      throw reglaDeNegocio(
+        'BARBERO_NO_PERTENECE_A_SEDE',
+        'El barbero elegido no tiene el rol BARBERO activo en esta sede.',
+      );
+    }
+
+    if (asignacion.usuario?.estadoCuenta && asignacion.usuario.estadoCuenta !== 'ACTIVO') {
+      throw reglaDeNegocio(
+        'BARBERO_INACTIVO',
+        'La cuenta del barbero elegido no está activa.',
+      );
+    }
+  }
+
   private async bloquearBarberoParaEscritura(
     tx: Prisma.TransactionClient,
     barberoId: string,

@@ -548,6 +548,10 @@ model Reserva {
   id                         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   barberiaId                 String    @map("barberia_id") @db.Uuid
   clienteId                  String    @map("cliente_id") @db.Uuid
+  // F3-01 · nombre que teclea el operador en un walk-in (cliente sin cuenta).
+  // `cliente_id` sigue siendo el OPERADOR (T-05), así que el nombre visible de
+  // la cita vive aquí; NULL en las reservas del propio cliente.
+  nombreInvitado             String?   @map("nombre_invitado") @db.VarChar(150)
   barberoId                  String?   @map("barbero_id") @db.Uuid
   tipoReserva                String    @map("tipo_reserva") @db.VarChar(20)
   estado                     String    @default("PENDIENTE") @db.VarChar(30)

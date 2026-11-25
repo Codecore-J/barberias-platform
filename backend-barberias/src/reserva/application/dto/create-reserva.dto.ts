@@ -10,6 +10,7 @@ import {
   IsString,
   IsUUID,
   Matches,
+  MaxLength,
   Min,
   ValidateIf,
   ValidateNested,
@@ -97,6 +98,7 @@ export class CreateReservaDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(150, { message: 'El nombre del cliente no puede superar los 150 caracteres' })
   nombreInvitado?: string;
 
   /** E3-03/2: el tipo de reserva es obligatorio; nunca se asume en silencio. */
