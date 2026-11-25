@@ -47,6 +47,10 @@ model Usuario {
   // F4-03 · propuestas de esa plantilla y las que este usuario resolvió.
   propuestasBasePropias  PropuestaHorarioBase[]    @relation("PropuestaBaseDeBarbero")
   propuestasBaseResueltas PropuestaHorarioBase[]   @relation("PropuestaBaseResueltaPor")
+  // F5 · solicitudes de antecedente: quién la pide, sobre quién y quién decide.
+  solicitudesAntecedenteSolicitadas SolicitudAntecedente[] @relation("SolicitudAntecedenteSolicitante")
+  solicitudesAntecedenteCliente     SolicitudAntecedente[] @relation("SolicitudAntecedenteCliente")
+  solicitudesAntecedenteResueltas   SolicitudAntecedente[] @relation("SolicitudAntecedenteResolutor")
   // V3 · excepciones de horario que este usuario modificó (barbero o admin).
   excepcionesEditadas    ExcepcionHorarioBarbero[] @relation("ExcepcionModificadaPor")
   reservasBarbero        Reserva[]                 @relation("BarberoReserva")
@@ -196,6 +200,8 @@ model Barberia {
   solicitudesServicio   SolicitudServicioBarbero[]
   // F4-03 · propuestas de plantilla base que esta sede debe resolver.
   propuestasHorarioBase PropuestaHorarioBase[]
+  // F5 · solicitudes de antecedente de esta sede.
+  solicitudesAntecedente SolicitudAntecedente[]
 
   @@map("barberias")
 }
@@ -800,6 +806,43 @@ model Antecedente {
   barberiaOrigen Barberia? @relation("BarberiaOrigen", fields: [barberiaOrigenId], references: [id])
 
   @@map("antecedentes")
+}
+
+// F5 / T-51 · solicitud de antecedente.
+//
+// El personal de la sede (ADMIN_BARBERIA o BARBERO) ya no escribe directo en
+// `antecedentes`: pide, y el ADMINISTRADOR global decide. La fila de
+// `antecedentes` nace solo al aprobar, con `categoria = 'GENERAL'`,
+// `contenido = motivo + evidencia` y `compartido = false`.
+//
+// `estado` es el ciclo de la PETICIÓN (PENDIENTE → APROBADA | DENEGADA) y no se
+// borra: el historial de lo pedido y lo decidido se conserva. El índice único
+// parcial impide dos PENDIENTES del mismo cliente en la misma sede; Prisma no
+// expresa índices parciales, así que la garantía vive en la migración.
+model SolicitudAntecedente {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barberiaId       String    @map("barberia_id") @db.Uuid
+  solicitanteId    String    @map("solicitante_id") @db.Uuid
+  clienteId        String    @map("cliente_id") @db.Uuid
+  motivo           String    @db.Text
+  evidenciaTexto   String?   @map("evidencia_texto") @db.Text
+  estado           String    @default("PENDIENTE") @db.VarChar(20)
+  resueltoPor      String?   @map("resuelto_por") @db.Uuid
+  resueltoAt       DateTime? @map("resuelto_at") @db.Timestamptz
+  motivoDenegacion String?   @map("motivo_denegacion") @db.Text
+  creadoAt         DateTime? @default(now()) @map("creado_at") @db.Timestamptz
+
+  barberia    Barberia @relation(fields: [barberiaId], references: [id], onDelete: Cascade)
+  solicitante Usuario  @relation("SolicitudAntecedenteSolicitante", fields: [solicitanteId], references: [id], onDelete: Cascade)
+  cliente     Usuario  @relation("SolicitudAntecedenteCliente", fields: [clienteId], references: [id], onDelete: Cascade)
+  // RESTRICT y no SET NULL: el CHECK exige `resuelto_por` cuando la solicitud
+  // está resuelta, así que borrar al decidor dejaría la fila en un estado
+  // imposible. Es un historial de seguridad: se conserva.
+  resolutor   Usuario? @relation("SolicitudAntecedenteResolutor", fields: [resueltoPor], references: [id], onDelete: Restrict)
+
+  @@index([clienteId, estado], name: "idx_solicitudes_antecedente_cliente_estado")
+  @@index([barberiaId, estado], name: "idx_solicitudes_antecedente_sede_estado")
+  @@map("solicitudes_antecedente")
 }
 
 model Notificacion {
