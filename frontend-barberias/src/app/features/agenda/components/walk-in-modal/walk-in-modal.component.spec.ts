@@ -29,6 +29,14 @@ describe('WalkInModalComponent', () => {
     fechaCreacion: '',
   };
 
+  /** QA2-04 · un servicio retirado no debe poder agendarse desde el mostrador. */
+  const SERVICIO_INACTIVO: Servicio = {
+    ...SERVICIO,
+    id: 's-2',
+    nombre: 'Corte retirado',
+    estado: 'INACTIVO',
+  };
+
   const BARBERO: Personal = {
     id: 'b-1',
     nombreCompleto: 'Barbero Demo',
@@ -67,6 +75,38 @@ describe('WalkInModalComponent', () => {
     fixture.componentRef.setInput('staff', [BARBERO]);
     fixture.componentRef.setInput('servicios', [SERVICIO]);
     fixture.detectChanges();
+  });
+
+  it('ROJO: solo ofrece servicios activos del catálogo', () => {
+    fixture.componentRef.setInput('servicios', [
+      { ...SERVICIO, estado: 'ACTIVO' },
+      SERVICIO_INACTIVO,
+    ]);
+    fixture.detectChanges();
+
+    expect(componente.serviciosActivos().map((s) => s.id)).toEqual([SERVICIO.id]);
+
+    const opciones = Array.from(
+      fixture.nativeElement.querySelectorAll('#walkin-servicio option'),
+    ).map((opcion) => (opcion as HTMLOptionElement).textContent ?? '');
+
+    expect(opciones.join(' ')).not.toContain('Corte retirado');
+  });
+
+  it('ROJO: un servicio inactivo no se puede seleccionar ni enviar', () => {
+    fixture.componentRef.setInput('servicios', [
+      { ...SERVICIO, estado: 'ACTIVO' },
+      SERVICIO_INACTIVO,
+    ]);
+    fixture.detectChanges();
+
+    componente.nombre.set('Cliente Sin App');
+    componente.barberoId.set(BARBERO.id);
+    componente.servicioId.set(SERVICIO_INACTIVO.id);
+    componente.horaInicio.set('10:30');
+
+    expect(componente.servicioSeleccionado()).toBeNull();
+    expect(componente.puedeEnviar()).toBe(false);
   });
 
   it('sin servicio elegido no hay precio ni hora de fin', () => {

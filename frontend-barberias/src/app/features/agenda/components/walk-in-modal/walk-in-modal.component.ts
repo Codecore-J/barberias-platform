@@ -94,7 +94,7 @@ import type { Servicio } from '../../../../core/services/servicios.service';
           <label for="walkin-servicio" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">
             Servicio
           </label>
-          @if (servicios().length === 0) {
+          @if (serviciosActivos().length === 0) {
             <p class="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
               El catálogo de esta sede no tiene servicios activos. Crea uno en «Servicios» para poder
               agendar un walk-in.
@@ -108,7 +108,7 @@ import type { Servicio } from '../../../../core/services/servicios.service';
               class="w-full bg-zinc-900 border border-zinc-700 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors disabled:opacity-60"
             >
               <option value="">Selecciona un servicio</option>
-              @for (servicio of servicios(); track servicio.id) {
+              @for (servicio of serviciosActivos(); track servicio.id) {
                 <option [value]="servicio.id">
                   {{ servicio.nombre }} · {{ servicio.duracionMinutos }} min ·
                   {{ servicio.precio | currency: 'USD' : 'symbol' : '1.2-2' }}
@@ -217,8 +217,17 @@ export class WalkInModalComponent {
   readonly fecha = input.required<string>();
   /** Equipo asignable de la sede (ya filtrado por estado y rol). */
   readonly staff = input<Personal[]>([]);
-  /** Catálogo activo de la sede. */
+  /** Catálogo de la sede tal como lo entrega la API (puede traer INACTIVOS). */
   readonly servicios = input<Servicio[]>([]);
+
+  /**
+   * F3-02 · QA2-04: el panel de administración recibe también los servicios
+   * INACTIVOS (para poder reactivarlos), así que el modal filtra aquí. El
+   * backend ya rechaza un alta con un servicio retirado; esto evita ofrecerlo.
+   */
+  readonly serviciosActivos = computed<Servicio[]>(() =>
+    this.servicios().filter((servicio) => servicio.estado !== 'INACTIVO'),
+  );
 
   readonly creado = output<void>();
   readonly cerrar = output<void>();
@@ -233,7 +242,7 @@ export class WalkInModalComponent {
   readonly servicioSeleccionado = computed<Servicio | null>(() => {
     const id = this.servicioId();
     if (!id) return null;
-    return this.servicios().find((s) => s.id === id) ?? null;
+    return this.serviciosActivos().find((s) => s.id === id) ?? null;
   });
 
   readonly duracionMinutos = computed(() => this.servicioSeleccionado()?.duracionMinutos ?? 0);
