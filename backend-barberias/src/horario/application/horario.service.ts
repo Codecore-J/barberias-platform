@@ -156,6 +156,26 @@ export class HorarioService {
     });
   }
 
+  /**
+   * F4-02 · la lectura de excepciones con el alcance de quien pregunta.
+   *
+   * La sede ve el calendario de la sede, como hasta ahora. El barbero ve ADEMÁS
+   * las suyas (`excepciones_horario_barbero`), pero nunca las de un compañero:
+   * el `barberoId` del filtro sale del JWT y no de la petición. Las dos listas se
+   * funden ordenadas por fecha para que la pantalla no tenga que mezclarlas.
+   */
+  async getExceptionsParaUsuario(usuarioId: string, barberiaId: string, from: Date, to: Date) {
+    const [deLaSede, propias] = await Promise.all([
+      this.getExceptions(barberiaId, from, to),
+      this.prisma.excepcionHorarioBarbero.findMany({
+        where: { barberiaId, barberoId: usuarioId, fecha: { gte: from, lte: to } },
+        orderBy: { fecha: 'asc' },
+      }),
+    ]);
+
+    return [...deLaSede, ...propias].sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
+  }
+
   async configureBarberSchedules(usuarioId: string, barberiaId: string, schedules: CreateHorarioDto[]) {
     // Check if user is barbero in this barberia
     const isBarbero = await this.prisma.usuarioRol.findFirst({

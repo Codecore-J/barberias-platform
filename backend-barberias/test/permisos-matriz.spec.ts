@@ -267,7 +267,9 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // puede guardar su plantilla puede leerla.
   'GET /shops/:shopId/mi-horario/base': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   'PUT /shops/:shopId/mi-horario/base': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
-  'GET /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA],
+  // F4-02: el barbero lee las de la sede y las suyas; el filtro por barbero sale
+  // del token, así que la ruta no le abre las de un compañero.
+  'GET /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA, ROL_BARBERO],
   'POST /shops/:shopId/hours/exceptions': [ROL_ADMIN_BARBERIA],
   // F4-01: el barbero registra su propia excepción; el servicio rechaza la de
   // un compañero (403 «tu propia agenda»), así que la lista incluye los dos.

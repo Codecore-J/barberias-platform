@@ -97,7 +97,8 @@ const CASOS: Caso[] = [
   // T-11: la lectura del horario propio acompaña a su escritura.
   { verbo: 'get', ruta: '/shops/{A}/hours/mine', permitidos: ['BARBERO', 'ADMIN_BARBERIA'] },
   { verbo: 'post', ruta: '/shops/{A}/hours/mine', permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: [] },
-  { verbo: 'get', ruta: '/shops/{A}/hours/exceptions', permitidos: ['ADMIN_BARBERIA'] },
+  // F4-02: la lectura acompaña al barbero (ve la sede y las suyas).
+  { verbo: 'get', ruta: '/shops/{A}/hours/exceptions', permitidos: ['ADMIN_BARBERIA', 'BARBERO'] },
   { verbo: 'post', ruta: '/shops/{A}/hours/exceptions', permitidos: ['ADMIN_BARBERIA'], cuerpo: {} },
   // F4-01: el barbero entra por su propia ruta; con `{BARBERO}` (su id) y un
   // cuerpo vacío la respuesta es 400 de validación, que cuenta como permitida.

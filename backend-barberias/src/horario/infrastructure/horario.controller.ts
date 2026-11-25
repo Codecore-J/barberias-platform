@@ -40,17 +40,23 @@ export class HorarioController {
    * GET /barberias/:barberiaId/horarios/excepciones
    * Lectura de excepciones, misma política que la lectura de horarios
    * (decisión 8).
+   *
+   * F4-02: el BARBERO entra a leer su calendario. El servicio le devuelve las
+   * excepciones de la sede y las SUYAS (jamás las de un compañero, porque el
+   * `barberoId` del filtro es su id del token); el ADMIN_BARBERIA sigue viendo
+   * el calendario de la sede.
    */
-  @Roles('ADMIN_BARBERIA')
+  @Roles('BARBERO', 'ADMIN_BARBERIA')
   @Get('exceptions')
   findExceptions(
     @Param('shopId', ParseUUIDPipe) barberiaId: string,
     @Query('from') from: string,
     @Query('to') to: string,
+    @CurrentUser() user: UsuarioAutenticado,
   ) {
     const fromDate = from ? new Date(from) : new Date();
     const toDate = to ? new Date(to) : new Date(new Date().setMonth(new Date().getMonth() + 1));
-    return this.horarioService.getExceptions(barberiaId, fromDate, toDate);
+    return this.horarioService.getExceptionsParaUsuario(user.id, barberiaId, fromDate, toDate);
   }
 
   /**
