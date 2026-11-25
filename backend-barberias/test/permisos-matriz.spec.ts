@@ -251,6 +251,7 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // F5-03 · la bandeja global y la decisión son de la plataforma.
   'GET /antecedentes/solicitudes/': [ROL_ADMINISTRADOR],
   'PATCH /antecedentes/solicitudes/:id': [ROL_ADMINISTRADOR],
+  'GET /shops/:shopId/antecedentes/clientes/': [ROL_BARBERO, ROL_ADMIN_BARBERIA],
   'PATCH /shops/:shopId/records/:id/evaluate': [ROL_ADMINISTRADOR],
   'GET /shops/:shopId/records/client/:clientId': [ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA, ROL_BARBERO],
   'GET /shops/:shopId/records/pending': [ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA, ROL_BARBERO],
@@ -788,8 +789,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // solicitud pendiente (T-28) suma la 129: 129 × 4 = 516. F4-04 suma la
   // resolución de la propuesta de horario base: 130 × 4 = 520. F5-02 suma la
   // creación y la lectura de solicitudes de antecedente: 132 × 4 = 528. F5-03
-  // suma la bandeja global y su resolución: 134 × 4 = 536.
-  expect(evaluaciones).toBe(536);
+  // suma la bandeja global y su resolución: 134 × 4 = 536. F5-05 suma el
+  // selector de clientes de la sede: 135 × 4 = 540.
+  expect(evaluaciones).toBe(540);
 
     const resumen =
       desviaciones.length > 40

@@ -10,6 +10,22 @@
 > `RUTAS_BRECHA_ROL = []` en `src/iam/domain/matriz.ts`, y `test/matriz-acciones.spec.ts` y
 > `test/permisos-matriz.spec.ts` fallan si alguna vuelve a desviarse.
 
+> **Actualización F5 (25 nov 2026).** Se suman **5 rutas** al inventario vivo
+> (`POLITICA_DECLARADA` pasa a **135 claves** y el test exige **540** evaluaciones).
+> Todas usan acciones ya existentes:
+>
+> | Ruta | Acción | Rol efectivo |
+> |---|---|---|
+> | `POST /shops/:shopId/antecedentes/solicitudes` | `antecedentes.solicitar` | ADMIN_BARBERIA, BARBERO |
+> | `GET /shops/:shopId/antecedentes/solicitudes` | `antecedentes.ver` | ADMIN_BARBERIA (sede), BARBERO (propias) |
+> | `GET /shops/:shopId/antecedentes/clientes` | `antecedentes.ver` | ADMIN_BARBERIA, BARBERO (su agenda) |
+> | `GET /antecedentes/solicitudes` | `antecedentes.ver` | ADMINISTRADOR (todas las sedes) |
+> | `PATCH /antecedentes/solicitudes/:id` | `antecedentes.resolver` | ADMINISTRADOR |
+>
+> Las rutas `records` 93–96 se conservan como compatibilidad; la vía nueva de
+> alta y resolución es la de esta tabla. La antigua `PATCH …/records/:id/evaluate`
+> sigue siendo exclusiva del ADMINISTRADOR (brecha 94 ya cerrada en T-11).
+
 ## 1 · Cómo se construyó
 
 - **Fuente de las rutas:** `backend-barberias/test/permisos-matriz.spec.ts`, constante

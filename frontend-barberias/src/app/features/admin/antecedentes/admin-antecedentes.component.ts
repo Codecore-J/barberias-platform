@@ -1,257 +1,218 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
-import { AntecedentesService, Antecedente } from '../../../core/services/antecedentes.service';
+import {
+  AntecedentesService,
+  ClienteElegible,
+  SolicitudAntecedente,
+} from '../../../core/services/antecedentes.service';
 import { TenantService } from '../../../core/services/tenant.service';
-import { FichaClienteDrawerComponent } from '../../clientes/components/ficha-cliente-drawer/ficha-cliente-drawer.component';
-import { ConfirmDialogService } from '../../../shared/ui/confirm-dialog/confirm-dialog.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 
+/**
+ * F5 / T-55 · la sede pide, no decide.
+ *
+ * El ADMIN_BARBERIA elige un cliente que ya pasó por la sede, escribe el motivo
+ * (y evidencia opcional) y sigue el estado de lo pedido. La aprobación vive en
+ * la bandeja de la plataforma.
+ */
 @Component({
   selector: 'app-admin-antecedentes',
   standalone: true,
-  imports: [CommonModule, FormsModule, DatePipe, RouterLink, FichaClienteDrawerComponent],
+  imports: [CommonModule, FormsModule, DatePipe],
   template: `
     <div class="min-h-screen py-10 px-4 max-w-5xl mx-auto space-y-8 bg-ambient-mesh">
-      
-      <!-- Encabezado -->
       <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative z-20">
         <div>
           <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold uppercase tracking-wider mb-1">
             <i class="pi pi-shield text-xs"></i>
-            <span>Auditoría Médica y Técnica</span>
+            <span>Antecedentes · solicitud</span>
           </div>
-          <h2 class="text-3xl font-display font-bold text-white">Aprobación de <span class="text-amber-400">Antecedentes</span></h2>
-          <p class="text-sm text-zinc-400">Revisa y aprueba las notas clínicas y condiciones especiales reportadas por tu equipo para {{ tenantService.nombreBarberiaActiva() }}.</p>
+          <h2 class="text-3xl font-display font-bold text-white">Antecedentes de <span class="text-amber-400">{{ tenantService.nombreBarberiaActiva() }}</span></h2>
+          <p class="text-sm text-zinc-400">Pide la revisión de un antecedente. La plataforma decide; aquí ves el estado y el motivo de una denegación.</p>
         </div>
 
-        <button (click)="cargarPendientes()" 
-                class="px-4 py-2 rounded-xl text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 transition-all flex items-center gap-2">
-          <i class="pi pi-refresh" [ngClass]="cargando() ? 'pi-spin' : ''"></i> Actualizar
-        </button>
+        <div class="flex gap-2">
+          <button (click)="cargar()"
+                  class="px-4 py-2 rounded-xl text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 transition-all flex items-center gap-2">
+            <i class="pi pi-refresh" [ngClass]="cargando() ? 'pi-spin' : ''"></i> Actualizar
+          </button>
+          <button (click)="formularioAbierto.set(!formularioAbierto())"
+                  class="px-4 py-2 rounded-xl text-xs font-bold text-zinc-950 gold-gradient-bg hover:brightness-110 transition-all flex items-center gap-2">
+            <i class="pi pi-plus"></i> Solicitar antecedente
+          </button>
+        </div>
       </div>
 
-      <!-- Cómo llegan los antecedentes aquí -->
-      <div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200 flex items-start gap-3 relative z-10">
-        <i class="pi pi-info-circle text-amber-400 text-base mt-0.5 shrink-0"></i>
-        <p class="leading-relaxed">
-          Los barberos reportan un antecedente desde la <strong class="text-amber-300">ficha del cliente</strong>,
-          en la agenda del día (ícono de identificación en cada turno). El reporte llega aquí en estado
-          <strong class="text-amber-300">pendiente</strong>; al aprobarlo queda visible en la ficha técnica y en las
-          próximas citas del cliente.
-        </p>
-      </div>
+      @if (formularioAbierto()) {
+        <div class="glass-panel p-6 rounded-3xl border border-amber-500/30 relative z-10 space-y-4">
+          <h3 class="text-lg font-bold text-white">Nueva solicitud</h3>
 
-      <!-- Estado de carga -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label class="space-y-1.5 block">
+              <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Cliente</span>
+              <select id="solicitud-cliente" [(ngModel)]="clienteId"
+                      class="w-full px-3 py-2.5 rounded-xl bg-zinc-900 border border-zinc-700 text-sm text-white">
+                <option value="">Elige un cliente…</option>
+                @for (cliente of clientes(); track cliente.id) {
+                  <option [value]="cliente.id">{{ cliente.nombreCompleto }} · {{ cliente.correo }}</option>
+                }
+              </select>
+              @if (clientes().length === 0) {
+                <span class="text-[11px] text-zinc-500">Solo aparecen clientes con una cita ya ocurrida en la sede.</span>
+              }
+            </label>
+
+            <label class="space-y-1.5 block">
+              <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Motivo</span>
+              <textarea id="solicitud-motivo" [(ngModel)]="motivo" rows="3" maxlength="2000"
+                        placeholder="Qué ocurrió y por qué debe revisarse"
+                        class="w-full px-3 py-2.5 rounded-xl bg-zinc-900 border border-zinc-700 text-sm text-white"></textarea>
+            </label>
+          </div>
+
+          <label class="space-y-1.5 block">
+            <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Evidencia (opcional)</span>
+            <textarea id="solicitud-evidencia" [(ngModel)]="evidenciaTexto" rows="2" maxlength="2000"
+                      placeholder="Testigos, notas de recepción, etc."
+                      class="w-full px-3 py-2.5 rounded-xl bg-zinc-900 border border-zinc-700 text-sm text-white"></textarea>
+          </label>
+
+          @if (error()) {
+            <p class="text-xs text-rose-400">{{ error() }}</p>
+          }
+
+          <div class="flex justify-end gap-2">
+            <button (click)="formularioAbierto.set(false)"
+                    class="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-300 bg-zinc-800 border border-zinc-700">
+              Cancelar
+            </button>
+            <button id="enviar-solicitud" (click)="enviar()" [disabled]="enviando()"
+                    class="px-5 py-2 rounded-xl text-xs font-bold text-zinc-950 gold-gradient-bg hover:brightness-110 disabled:opacity-50 flex items-center gap-2">
+              <i class="pi" [ngClass]="enviando() ? 'pi-spin pi-spinner' : 'pi-send'"></i> Enviar solicitud
+            </button>
+          </div>
+        </div>
+      }
+
       @if (cargando()) {
         <div class="flex justify-center items-center py-20 relative z-10">
           <i class="pi pi-spin pi-spinner text-4xl text-amber-500"></i>
         </div>
-      }
-
-      <!-- Sin pendientes -->
-      @if (!cargando() && pendientes().length === 0) {
-        <div class="glass-panel p-12 text-center rounded-3xl border border-white/5 relative z-10 space-y-4">
-          <div class="w-20 h-20 mx-auto rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-4xl text-emerald-400 shadow-lg">
-            <i class="pi pi-check-circle"></i>
-          </div>
-          <div>
-            <h3 class="text-xl font-bold text-white">Todo al día</h3>
-            <p class="text-zinc-400 text-sm mt-1">No hay antecedentes pendientes de aprobación médica o técnica en esta sede.</p>
-            <p class="text-zinc-500 text-xs mt-1">Cuando un barbero reporte una alergia o condición desde la ficha de un cliente, aparecerá aquí.</p>
-          </div>
-          <div class="flex flex-wrap justify-center gap-3 pt-2">
-            <a routerLink="/admin/agenda"
-               class="px-5 py-2.5 rounded-xl text-xs font-bold text-zinc-950 gold-gradient-bg hover:brightness-110 transition-all flex items-center gap-2">
-              <i class="pi pi-calendar"></i> Ir a la agenda
-            </a>
-            <a routerLink="/admin/usuarios"
-               class="px-5 py-2.5 rounded-xl text-xs font-semibold text-zinc-300 bg-zinc-800 border border-zinc-700 hover:border-amber-500/40 hover:text-amber-300 transition-colors flex items-center gap-2">
-              <i class="pi pi-users"></i> Ver usuarios y fichas
-            </a>
-          </div>
+      } @else if (solicitudes().length === 0) {
+        <div class="glass-panel p-12 text-center rounded-3xl border border-white/5 relative z-10 space-y-2">
+          <h3 class="text-xl font-bold text-white">Todavía no hay solicitudes</h3>
+          <p class="text-zinc-400 text-sm">Cuando pidas un antecedente, su estado aparecerá aquí.</p>
         </div>
-      }
-
-      <!-- Lista de Pendientes -->
-      @if (!cargando() && pendientes().length > 0) {
-        <div class="space-y-4 relative z-10">
-          <div class="text-xs text-zinc-400 font-medium">
-            Mostrando <span class="text-amber-400 font-bold">{{ pendientes().length }}</span> reporte(s) pendiente(s) de revisión:
-          </div>
-
-          @for (ant of pendientes(); track ant.id) {
-            <div class="glass-panel p-6 rounded-3xl border border-amber-500/30 shadow-xl flex flex-col md:flex-row gap-6 justify-between items-start md:items-center">
-              
-              <div class="space-y-3 flex-1">
-                <div class="flex flex-wrap items-center gap-2.5">
-                  <span class="px-2.5 py-1 text-[10px] font-bold uppercase rounded-lg border border-amber-500/30 text-amber-400 bg-amber-500/10">
-                    PENDIENTE DE REVISIÓN
+      } @else {
+        <div class="space-y-3 relative z-10">
+          @for (solicitud of solicitudes(); track solicitud.id) {
+            <div class="glass-panel p-5 rounded-2xl border border-white/5 flex flex-col md:flex-row md:items-center gap-4 justify-between">
+              <div class="space-y-1.5 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="px-2.5 py-0.5 text-[10px] font-bold uppercase rounded-lg border"
+                        [ngClass]="claseEstado(solicitud.estado)">
+                    {{ solicitud.estado }}
                   </span>
-                  
-                  @if (ant.severidad) {
-                    <span class="px-2.5 py-0.5 text-[10px] font-bold uppercase rounded-lg border"
-                          [ngClass]="{
-                            'bg-rose-500/10 text-rose-400 border-rose-500/30': ant.severidad === 'ALTA' || ant.severidad === 'CRITICA',
-                            'bg-amber-500/10 text-amber-400 border-amber-500/30': ant.severidad === 'MEDIA' || ant.severidad === 'MODERADA',
-                            'bg-emerald-500/10 text-emerald-400 border-emerald-500/30': ant.severidad === 'BAJA' || ant.severidad === 'LEVE'
-                          }">
-                      Severidad: {{ ant.severidad }}
-                    </span>
-                  }
-
-                  <span class="text-xs text-zinc-400"><i class="pi pi-clock mr-1 text-[11px]"></i>{{ ant.creadoAt | date:'medium' }}</span>
+                  <span class="text-xs text-zinc-400">{{ solicitud.cliente?.nombreCompleto || 'Cliente' }}</span>
+                  <span class="text-xs text-zinc-500">{{ solicitud.creadoAt | date:'medium' }}</span>
                 </div>
-                
-                <div>
-                  <div class="flex items-center gap-3 mb-1.5">
-                    <h4 class="text-lg font-bold text-white">
-                      Cliente: <span class="text-amber-400">{{ ant.cliente?.nombreCompleto || 'Desconocido' }}</span>
-                    </h4>
-                    <button (click)="abrirFicha(ant.clienteId, ant.cliente?.nombreCompleto || 'Cliente')"
-                            class="px-2.5 py-1 rounded-lg text-xs font-semibold text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition-all flex items-center gap-1.5"
-                            title="Abrir historial clínico y citas">
-                      <i class="pi pi-id-card text-xs"></i> Ver Ficha
-                    </button>
-                  </div>
-
-                  <p class="text-sm text-zinc-300 bg-black/40 p-3.5 rounded-2xl border border-white/5 leading-relaxed font-sans">
-                    "{{ ant.descripcion }}"
+                <p class="text-sm text-zinc-300">{{ solicitud.motivo }}</p>
+                @if (solicitud.evidenciaTexto) {
+                  <p class="text-xs text-zinc-500">Evidencia: {{ solicitud.evidenciaTexto }}</p>
+                }
+                @if (solicitud.estado === 'DENEGADA' && solicitud.motivoDenegacion) {
+                  <p class="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl p-2.5">
+                    <strong>Motivo de la denegación:</strong> {{ solicitud.motivoDenegacion }}
                   </p>
-                </div>
-                
-                <div class="text-xs text-zinc-500 flex items-center gap-2">
-                  <i class="pi pi-user text-amber-400/70"></i> 
-                  <span>Reportado por:</span> 
-                  <strong class="text-zinc-300">{{ ant.barbero?.nombreCompleto || 'Barbero del equipo' }}</strong>
-                </div>
+                }
               </div>
-
-              <!-- Acciones -->
-              <div class="flex flex-col sm:flex-row md:flex-col gap-2.5 w-full md:w-44 shrink-0">
-                <button (click)="aprobar(ant)" [disabled]="procesando() === ant.id"
-                        class="w-full px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-all shadow-lg shadow-emerald-950/40">
-                  <i class="pi" [ngClass]="procesando() === ant.id ? 'pi-spin pi-spinner' : 'pi-check'"></i> Aprobar
-                </button>
-                <button (click)="rechazar(ant)" [disabled]="procesando() === ant.id"
-                        class="w-full px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-500/20 transition-all">
-                  <i class="pi pi-times"></i> Rechazar
-                </button>
-              </div>
-
             </div>
           }
         </div>
       }
-
-      <!-- DRAWER DE FICHA TÉCNICA DEL CLIENTE -->
-      @if (clienteSeleccionado()) {
-        <app-ficha-cliente-drawer
-          [clienteId]="clienteSeleccionado()!.id"
-          [clienteNombre]="clienteSeleccionado()!.nombre"
-          (close)="clienteSeleccionado.set(null)">
-        </app-ficha-cliente-drawer>
-      }
-
     </div>
   `
 })
 export class AdminAntecedentesComponent implements OnInit {
-  private antecedentesService = inject(AntecedentesService);
-  protected tenantService = inject(TenantService);
-  private confirmDialog = inject(ConfirmDialogService);
-  private toast = inject(ToastService);
+  private readonly antecedentes = inject(AntecedentesService);
+  protected readonly tenantService = inject(TenantService);
+  private readonly toast = inject(ToastService);
 
-  pendientes = signal<Antecedente[]>([]);
-  cargando = signal(true);
-  procesando = signal<string | null>(null);
+  readonly solicitudes = signal<SolicitudAntecedente[]>([]);
+  readonly clientes = signal<ClienteElegible[]>([]);
+  readonly cargando = signal(true);
+  readonly enviando = signal(false);
+  readonly formularioAbierto = signal(false);
+  readonly error = signal<string | null>(null);
 
-  clienteSeleccionado = signal<{ id: string; nombre: string } | null>(null);
+  clienteId = '';
+  motivo = '';
+  evidenciaTexto = '';
 
-  ngOnInit() {
-    this.cargarPendientes();
+  ngOnInit(): void {
+    this.cargar();
   }
 
-  cargarPendientes() {
-    const bId = this.tenantService.barberiaActiva()?.id;
-    if (!bId) return;
+  cargar(): void {
+    const barberiaId = this.tenantService.barberiaActivaId();
+    if (!barberiaId) return;
 
     this.cargando.set(true);
-    this.antecedentesService.obtenerPendientes(bId).subscribe({
+    this.antecedentes.listarSolicitudes(barberiaId).subscribe({
       next: (data) => {
-        this.pendientes.set(data || []);
+        this.solicitudes.set(data || []);
         this.cargando.set(false);
       },
-      error: () => this.cargando.set(false)
+      error: () => this.cargando.set(false),
+    });
+
+    this.antecedentes.listarClientesElegibles(barberiaId).subscribe({
+      next: (data) => this.clientes.set(data || []),
+      error: () => this.clientes.set([]),
     });
   }
 
-  abrirFicha(id: string, nombre: string) {
-    if (!id) return;
-    this.clienteSeleccionado.set({ id, nombre });
-  }
+  enviar(): void {
+    const barberiaId = this.tenantService.barberiaActivaId();
+    if (!barberiaId) return;
 
-  async aprobar(ant: Antecedente): Promise<void> {
-    const bId = this.tenantService.barberiaActiva()?.id;
-    if (!bId) return;
+    if (!this.clienteId) {
+      this.error.set('Elige el cliente sobre el que se pide el antecedente.');
+      return;
+    }
+    if (!this.motivo.trim()) {
+      this.error.set('El motivo es obligatorio.');
+      return;
+    }
 
-    const confirmado = await this.confirmDialog.confirm({
-      titulo: 'Aprobar antecedente',
-      mensaje: `El antecedente reportado para ${ant.cliente?.nombreCompleto || 'este cliente'} quedará visible en su ficha técnica y en sus próximas citas.`,
-      textoConfirmar: 'Sí, aprobar',
-      icono: 'pi pi-check-circle',
-    });
-    if (!confirmado) return;
+    this.error.set(null);
+    this.enviando.set(true);
 
-    this.procesando.set(ant.id);
-    this.antecedentesService.evaluar(bId, ant.id, 'APROBADO').subscribe({
+    this.antecedentes.crearSolicitud(barberiaId, {
+      clienteId: this.clienteId,
+      motivo: this.motivo.trim(),
+      evidenciaTexto: this.evidenciaTexto.trim() || undefined,
+    }).subscribe({
       next: () => {
-        this.cargarPendientes();
-        this.procesando.set(null);
-        this.toast.success(
-          'Antecedente aprobado y publicado en la ficha del cliente.',
-          'Aprobado',
-        );
+        this.enviando.set(false);
+        this.formularioAbierto.set(false);
+        this.clienteId = '';
+        this.motivo = '';
+        this.evidenciaTexto = '';
+        this.toast.success('Solicitud enviada a la plataforma.', 'Enviada');
+        this.cargar();
       },
-      error: () => this.procesando.set(null)
+      error: (err) => {
+        this.enviando.set(false);
+        this.error.set(err?.error?.mensaje || 'No se pudo enviar la solicitud.');
+      },
     });
   }
 
-  async rechazar(ant: Antecedente): Promise<void> {
-    // El `prompt()` nativo pedía el motivo en una caja del sistema operativo y
-    // validaba después con un `alert`. Aquí el campo es parte del modal: el
-    // botón no confirma hasta que hay texto y el error se pinta bajo el campo.
-    const motivo = await this.confirmDialog.solicitarTexto({
-      titulo: 'Rechazar antecedente',
-      mensaje: `Indica por qué se rechaza el reporte de ${ant.cliente?.nombreCompleto || 'este cliente'}. El motivo queda registrado para quien lo reportó.`,
-      textoConfirmar: 'Rechazar',
-      tono: 'peligro',
-      icono: 'pi pi-times-circle',
-      entrada: {
-        etiqueta: 'Motivo del rechazo',
-        marcador: 'Ej.: no es una condición relevante para el servicio prestado',
-        multilinea: true,
-        obligatorio: true,
-        mensajeObligatorio: 'El motivo es obligatorio para rechazar un antecedente.',
-      },
-    });
-    if (motivo === null) return;
-
-    const bId = this.tenantService.barberiaActiva()?.id;
-    if (!bId) return;
-
-    this.procesando.set(ant.id);
-    this.antecedentesService.evaluar(bId, ant.id, 'RECHAZADO', motivo).subscribe({
-      next: () => {
-        this.cargarPendientes();
-        this.procesando.set(null);
-        this.toast.warning(
-          'Antecedente rechazado. El reporte no se mostrará en la ficha del cliente.',
-          'Rechazado',
-        );
-      },
-      error: () => this.procesando.set(null)
-    });
+  claseEstado(estado: string): string {
+    if (estado === 'APROBADA') return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+    if (estado === 'DENEGADA') return 'bg-rose-500/10 text-rose-400 border-rose-500/30';
+    return 'bg-amber-500/10 text-amber-400 border-amber-500/30';
   }
 }

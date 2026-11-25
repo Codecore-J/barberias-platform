@@ -49,6 +49,23 @@ export class SolicitudAntecedenteSedeController {
 }
 
 /**
+ * F5 / T-55 · clientes que el formulario puede ofrecer en esta sede.
+ */
+@Controller('shops/:shopId/antecedentes/clientes')
+export class SolicitudAntecedenteClientesController {
+  constructor(private readonly solicitudes: SolicitudAntecedenteService) {}
+
+  @Roles('ADMIN_BARBERIA', 'BARBERO')
+  @Get()
+  listar(
+    @Param('shopId', ParseUUIDPipe) barberiaId: string,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.solicitudes.listarClientes(user.id, barberiaId);
+  }
+}
+
+/**
  * F5 / T-53 · la plataforma resuelve. Ruta global, sin sede: la petición ya
  * lleva su `barberia_id` y el ADMINISTRADOR decide sobre toda la plataforma.
  */

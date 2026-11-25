@@ -204,6 +204,31 @@ export class SolicitudAntecedenteService {
   }
 
   /**
+   * F5 / T-55 · clientes que el formulario puede ofrecer.
+   *
+   * Sale de las reservas de la sede, no de una lista global de cuentas: pedir
+   * un antecedente exige relación previa, así que ofrecer a quien nunca pasó
+   * por aquí solo llevaría a un 422. El BARBERO ve únicamente su agenda.
+   */
+  async listarClientes(usuarioId: string, barberiaId: string) {
+    const { rolNombre } = await this.exigirSedeYRol(usuarioId, barberiaId);
+
+    const reservas = await this.prisma.reserva.findMany({
+      where: {
+        barberiaId,
+        ...(rolNombre === ROL_ADMIN_BARBERIA ? {} : { barberoId: usuarioId }),
+      },
+      select: {
+        cliente: { select: { id: true, nombreCompleto: true, correo: true } },
+      },
+      distinct: ['clienteId'],
+      orderBy: { clienteId: 'asc' },
+    });
+
+    return reservas.map((reserva) => reserva.cliente);
+  }
+
+  /**
    * F5 / T-53 · bandeja de la plataforma.
    *
    * Solo el ADMINISTRADOR global resuelve: la sede pide y no decide sobre su

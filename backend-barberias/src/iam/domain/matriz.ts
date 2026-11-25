@@ -162,6 +162,8 @@ export const RUTA_ACCION: Readonly<Record<string, readonly Accion[]>> = {
   // La bandeja de la plataforma y su decisión: resolver es solo del global.
   'GET /antecedentes/solicitudes/': ['antecedentes.ver'],
   'PATCH /antecedentes/solicitudes/:id': ['antecedentes.resolver'],
+  // El selector del formulario ofrece solo clientes con relación en la sede.
+  'GET /shops/:shopId/antecedentes/clientes/': ['antecedentes.ver'],
   'PATCH /shops/:shopId/records/:id/evaluate': ['antecedentes.resolver'],
   'GET /shops/:shopId/records/client/:clientId': ['antecedentes.ver'],
   'GET /shops/:shopId/records/pending': ['antecedentes.ver'],
