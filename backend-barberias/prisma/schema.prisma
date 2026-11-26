@@ -148,6 +148,25 @@ model Barberia {
   // primero y esta restricción cubre cualquier escritura que los esquive.
   telefono      String    @db.VarChar(30)
   ubicacion     String    @db.Text
+  // F6 / T-60 · ubicación geográfica de la sede. Coordenadas y divisiones
+  // político-administrativas llegan con la migración `f601_ubicacion_sede` y
+  // son NULLABLES a propósito: las sedes anteriores se crearon sin
+  // coordenadas y no se rellenan con un punto inventado. La obligatoriedad es
+  // del alta (T-62, `CreateBarberiaDto`), no de la columna: así una sede
+  // histórica sigue siendo válida y la migración no rompe filas existentes.
+  // `Decimal(10,7)` da ~1 cm de precisión, suficiente para una dirección.
+  latitud       Decimal?  @db.Decimal(10, 7)
+  longitud      Decimal?  @db.Decimal(10, 7)
+  // ISO 3166-1 alpha-2 en mayúsculas (`DO`). Nominatim lo devuelve en
+  // minúsculas; el servicio lo normaliza (T-61).
+  paisCodigo    String?   @map("pais_codigo") @db.VarChar(2)
+  // División 1 = provincia, división 2 = municipio (República Dominicana).
+  // Se guarda el texto que devuelve Nominatim; el catálogo de T-65 permite
+  // ofrecerlo como select sin inventar nombres.
+  divisionNivel1 String?  @map("division_nivel1") @db.VarChar(100)
+  divisionNivel2 String?  @map("division_nivel2") @db.VarChar(100)
+  // `display_name` de Nominatim truncado a 300 caracteres (T-62).
+  direccionCompleta String? @map("direccion_completa") @db.VarChar(300)
   codigoAcceso  String    @unique @map("codigo_acceso") @db.VarChar(50)
   enlaceUnico   String    @unique @map("enlace_unico") @db.VarChar(100)
   responsableId String    @map("responsable_id") @db.Uuid
