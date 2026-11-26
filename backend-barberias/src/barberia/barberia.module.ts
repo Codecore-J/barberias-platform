@@ -24,6 +24,8 @@ import { SharedModule } from '../shared/shared.module.js';
 import { AnalyticsModule } from '../analytics/analytics.module.js';
 // F6 / T-62: el alta de sede deduce país y divisiones con Nominatim.
 import { GeocodificacionModule } from '../geocodificacion/geocodificacion.module.js';
+// F6 / T-64: el logo de la sede se sube a Cloudinary (mismo servicio que T-24).
+import { CloudinaryService } from '../shared/cloudinary/cloudinary.service.js';
 
 @Module({
   imports: [
@@ -55,6 +57,7 @@ import { GeocodificacionModule } from '../geocodificacion/geocodificacion.module
     MiEstadoService,
     ClienteBarberiasService,
     VinculacionService,
+    CloudinaryService,
   ],
   exports: [
     BarberiaService,

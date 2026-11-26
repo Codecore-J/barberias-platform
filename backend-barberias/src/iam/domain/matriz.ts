@@ -96,6 +96,10 @@ export const RUTA_ACCION: Readonly<Record<string, readonly Accion[]>> = {
   'PATCH /shops/:shopId/select': [],
   'PATCH /shops/:shopId': ['plataforma.sedes.gestionar'],
   'PATCH /shops/:shopId/status': ['plataforma.sedes.gestionar'],
+  // F6 / T-64 · el logo lo sube el ADMIN_BARBERIA de la sede, igual que la foto
+  // de servicio de T-24: es autoservicio del dueño sobre su propia marca, no
+  // una acción de plataforma ni una de las 30 de la matriz.
+  'PATCH /shops/:shopId/logo': [],
   'POST /shops/link': [],
   'GET /shops/:shopId/invitation': [],
   'GET /shops/:shopId/settings/': [],

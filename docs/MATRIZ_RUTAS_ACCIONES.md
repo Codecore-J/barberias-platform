@@ -30,6 +30,16 @@
 > una solicitud `PENDIENTE` (motivo = nota) y ya no crea un antecedente `APROBADO`
 > directo.
 
+> **Actualización F6 (26 nov 2026).** T-64 suma **1 ruta** y ninguna acción nueva:
+> `PATCH /shops/:shopId/logo` la gobierna el rol ADMIN_BARBERIA de la sede, igual que
+> la foto de servicio de T-24 (autoservicio del dueño sobre su propia marca, fuera de
+> las 30 acciones). El inventario vivo queda en **132 claves** y el test exige **528**
+> evaluaciones (132 × 4).
+>
+> | Ruta | Acción | Rol efectivo |
+> |---|---|---|
+> | `PATCH /shops/:shopId/logo` | `sin acción` | ADMIN_BARBERIA (su sede); el ADMINISTRADOR global **no** sube logos |
+
 ## 1 · Cómo se construyó
 
 - **Fuente de las rutas:** `backend-barberias/test/permisos-matriz.spec.ts`, constante

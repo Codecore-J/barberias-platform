@@ -4,6 +4,7 @@ import { BarberiaService } from '../src/barberia/application/barberia.service.js
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
 import { AuditoriaService } from '../src/auditoria/application/auditoria.service.js';
 import { NotificacionService } from '../src/notificacion/application/notificacion.service.js';
+import { CloudinaryService } from '../src/shared/cloudinary/cloudinary.service.js';
 import {
   GeocodificacionNoDisponibleException,
   NominatimService,
@@ -111,6 +112,12 @@ describe('T-62 · alta de sede con geolocalización obligatoria', () => {
         { provide: AuditoriaService, useValue: { registrarEvento: vi.fn().mockResolvedValue({}) } },
         { provide: NotificacionService, useValue: { enviarNotificacion: vi.fn() } },
         { provide: NominatimService, useValue: nominatim },
+        // T-64 añadió la subida del logo al mismo servicio: aquí solo tiene que
+        // existir para que el módulo de pruebas resuelva.
+        {
+          provide: CloudinaryService,
+          useValue: { configurado: () => false, subir: vi.fn(), borrar: vi.fn() },
+        },
       ],
     }).compile();
 

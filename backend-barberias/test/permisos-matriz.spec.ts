@@ -120,6 +120,10 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // resuelve la sede del parámetro y la política es la lista plana: el
   // ADMINISTRADOR global (decisión 4).
   'PATCH /shops/:shopId/status': [ROL_ADMINISTRADOR],
+  // F6 / T-64 · el logo lo sube SOLO el ADMIN_BARBERIA de la sede. El
+  // ADMINISTRADOR global no sube logos: crear y suspender sedes es suyo
+  // (T-11), la marca de la sede es de su dueño.
+  'PATCH /shops/:shopId/logo': [ROL_ADMIN_BARBERIA],
   'POST /shops/link': [ROL_CLIENTE, ROL_ADMINISTRADOR],
   // E3-12/2 (2026-10-17): la invitación de la sede (regla 1.10). La ruta usa
   // `:id`, así que el guard NO resuelve la sede del parámetro y la política es
@@ -788,8 +792,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // creación y la lectura de solicitudes de antecedente: 132 × 4 = 528. F5-03
   // suma la bandeja global y su resolución: 134 × 4 = 536. F5-05 suma el
   // selector de clientes de la sede: 135 × 4 = 540. Al eliminar las cuatro rutas
-  // `records` del flujo viejo quedan 131 × 4 = 524.
-  expect(evaluaciones).toBe(524);
+  // `records` del flujo viejo quedan 131 × 4 = 524; F6/T-64 suma la ruta del
+  // logo de la sede: 132 × 4 = 528.
+  expect(evaluaciones).toBe(528);
 
     const resumen =
       desviaciones.length > 40

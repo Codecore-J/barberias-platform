@@ -182,6 +182,11 @@ model Barberia {
   // cuando llegó E3-13: la migración la declara idempotente y así el esquema y
   // la base coinciden también en bases creadas desde cero. Ver H50.
   logoUrl       String?   @map("logo_url") @db.Text
+  // F6 / T-64 · `public_id` de Cloudinary del logo. Sin él, reemplazar el logo
+  // solo podría deducir el id desde la URL (posible, pero frágil) y el archivo
+  // anterior quedaría huérfano en cada cambio. La columna llega con la
+  // migración `f604_logo_public_id_sede`, idempotente como la de `logo_url`.
+  logoPublicId  String?   @map("logo_public_id") @db.VarChar(255)
   // E2-03: alta de la sede. La crea la migración reconstruida
   // `20261011130000_e203_integridad_base`; en `dev` ya existía (H50).
   creadoAt      DateTime? @default(now()) @map("creado_at") @db.Timestamptz

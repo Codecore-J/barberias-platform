@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
   Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
@@ -15,7 +16,11 @@ import type { BarberiaResponseDto } from './dto/barberia-response.dto.js';
 import type { VincularBarberiaDto } from './dto/vincular-barberia.dto.js';
 import { plainToInstance } from 'class-transformer';
 import * as bcrypt from 'bcrypt';
-import { errorDeConflicto, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
+import {
+  errorDeConflicto,
+  errorDeSolicitud,
+  reglaDeNegocio,
+} from '../../shared/errors/d40.errors.js';
 import { BarberiaResponseDto as BarberiaResponse } from './dto/barberia-response.dto.js';
 import type { BarberiaLecturaDto } from './dto/barberia-lectura.dto.js';
 import { BarberiaLecturaDto as BarberiaLectura } from './dto/barberia-lectura.dto.js';
@@ -46,6 +51,14 @@ import { NotificacionService } from '../../notificacion/application/notificacion
 // F6 / T-62 · el país, la provincia y el municipio los deduce el proveedor a
 // partir de las coordenadas; el cliente no los envía.
 import { NominatimService } from '../../geocodificacion/nominatim.service.js';
+// F6 / T-64 · logo por archivo: mismo servicio de Cloudinary que la foto de
+// servicio de T-24.
+import {
+  type ArchivoSubido,
+  CloudinaryService,
+  TAMANO_MAXIMO_IMAGEN,
+  TIPOS_IMAGEN_PERMITIDOS,
+} from '../../shared/cloudinary/cloudinary.service.js';
 // E3-12: el estado de la 6.ª vinculación y su límite viven en el dominio de la
 // vinculación, compartidos con el flujo que las resuelve (VinculacionService).
 import {
@@ -172,6 +185,8 @@ export class BarberiaService {
     // sede sin país ni divisiones no puede existir, y degradar en silencio
     // dejaría sedes a medias.
     private readonly nominatim: NominatimService,
+    // F6 / T-64 · subida del logo de la sede a Cloudinary.
+    private readonly cloudinary: CloudinaryService,
     // H71: reabrir una vinculación cerrada avisa a la plataforma. `@Optional`
     // a propósito: el aviso es best-effort y su ausencia (una cola caída, un
     // test unitario que no lo necesita) no puede impedir que el cliente vuelva
@@ -426,6 +441,88 @@ export class BarberiaService {
         direccionCompleta: ubicacion.direccionCompleta,
       });
     });
+  }
+
+  // ── LOGO DE LA SEDE ────────────────────────────────────────────────────────
+
+  /**
+   * F6 / T-64 · cambia el logo de la sede a partir de un archivo subido.
+   *
+   * Solo el ADMIN_BARBERIA de ESA sede. El ADMINISTRADOR global queda fuera a
+   * propósito: la marca de la sede es de su dueño, y el global ya tiene la
+   * creación y la suspensión (T-11). El `RolesGuard` ya filtra la ruta, pero el
+   * alcance de la sede no lo puede resolver el guard (`:shopId` con segmento
+   * extra), así que se comprueba aquí.
+   *
+   * Reemplazar el logo BORRA el anterior de Cloudinary, igual que la foto de
+   * servicio (T-24): el `public_id` guardado manda y la URL queda de respaldo
+   * para las filas anteriores a la columna.
+   */
+  async actualizarLogo(
+    barberiaId: string,
+    usuario: UsuarioAutenticado,
+    archivo: ArchivoSubido | undefined,
+  ): Promise<{ id: string; logoUrl: string | null; logoPublicId: string | null }> {
+    if (!this.tieneAlgunRolEnBarberia(barberiaId, usuario, [ROL_ADMIN_BARBERIA])) {
+      throw new ForbiddenException(
+        'Solo el administrador de esta sede puede cambiar su logo.',
+      );
+    }
+
+    if (!archivo?.buffer || archivo.buffer.length === 0) {
+      throw errorDeSolicitud(
+        'IMAGEN_REQUERIDA',
+        'Adjunta el logo de la sede en el campo «archivo».',
+      );
+    }
+
+    if (
+      !TIPOS_IMAGEN_PERMITIDOS.includes(
+        archivo.mimetype as (typeof TIPOS_IMAGEN_PERMITIDOS)[number],
+      )
+    ) {
+      throw errorDeSolicitud('IMAGEN_TIPO_INVALIDO', 'El logo debe ser JPG, PNG o WEBP.');
+    }
+
+    const tamano = archivo.size || archivo.buffer.length;
+    if (tamano > TAMANO_MAXIMO_IMAGEN) {
+      throw errorDeSolicitud('IMAGEN_DEMASIADO_GRANDE', 'La imagen no puede superar los 2 MB.');
+    }
+
+    const sede = await this.prisma.barberia.findUnique({
+      where: { id: barberiaId },
+      select: { id: true, logoUrl: true, logoPublicId: true },
+    });
+
+    if (!sede) {
+      throw new NotFoundException(`Barbería ${barberiaId} no encontrada.`);
+    }
+
+    if (!this.cloudinary.configurado()) {
+      throw new ServiceUnavailableException({
+        statusCode: 503,
+        codigo: 'IMAGEN_NO_CONFIGURADA',
+        mensaje:
+          'La subida de imágenes no está disponible: falta CLOUDINARY_URL en el entorno del servidor.',
+      });
+    }
+
+    const publicIdAnterior =
+      sede.logoPublicId ?? CloudinaryService.publicIdDe(sede.logoUrl);
+    if (publicIdAnterior) {
+      await this.cloudinary.borrar(publicIdAnterior);
+    }
+
+    const subida = await this.cloudinary.subir(archivo.buffer, `sedes/${barberiaId}`);
+
+    const actualizada = await this.prisma.barberia.update({
+      where: { id: barberiaId },
+      data: { logoUrl: subida.url, logoPublicId: subida.publicId },
+      select: { id: true, logoUrl: true, logoPublicId: true },
+    });
+
+    this.logger.log(`Logo de la sede actualizado: ${barberiaId}`);
+    return actualizada;
   }
 
   // ── LISTAR PERSONAL ────────────────────────────────────────────────────────

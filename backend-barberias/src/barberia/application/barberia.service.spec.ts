@@ -7,6 +7,7 @@ import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
 import { NominatimService } from '../../geocodificacion/nominatim.service.js';
+import { CloudinaryService } from '../../shared/cloudinary/cloudinary.service.js';
 import {
   ConflictException,
   NotFoundException,
@@ -202,6 +203,16 @@ describe('BarberiaService', () => {
           // H71: reabrir un vínculo cerrado avisa a la plataforma.
           provide: NotificacionService,
           useValue: notificacion,
+        },
+        {
+          // F6 / T-64 · el logo de la sede se sube a Cloudinary. Doble: esta
+          // suite no habla con el proveedor.
+          provide: CloudinaryService,
+          useValue: {
+            configurado: vi.fn().mockReturnValue(false),
+            subir: vi.fn(),
+            borrar: vi.fn(),
+          },
         },
         {
           // F6 / T-62 · el alta geocodifica con Nominatim. Doble obligatorio:
