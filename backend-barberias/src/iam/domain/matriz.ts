@@ -100,6 +100,9 @@ export const RUTA_ACCION: Readonly<Record<string, readonly Accion[]>> = {
   // de servicio de T-24: es autoservicio del dueño sobre su propia marca, no
   // una acción de plataforma ni una de las 30 de la matriz.
   'PATCH /shops/:shopId/logo': [],
+  // F6 / T-66 · catálogo de divisiones: datos públicos del país, sin sesión y
+  // sin acción de la matriz (como `/health`).
+  'GET /divisiones/:paisCodigo': [],
   'POST /shops/link': [],
   'GET /shops/:shopId/invitation': [],
   'GET /shops/:shopId/settings/': [],

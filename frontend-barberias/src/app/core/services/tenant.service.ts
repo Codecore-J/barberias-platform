@@ -43,6 +43,28 @@ export interface ActualizarBarberiaRequest {
   passwordActual?: string;
 }
 
+/**
+ * F6 / T-66 · catálogo público de divisiones (`GET /divisiones/:paisCodigo`).
+ *
+ * Provincia y municipio llegan ya agrupados y en orden alfabético: el formulario
+ * solo pinta las dos listas.
+ */
+export interface MunicipioCatalogo {
+  id: string;
+  nombre: string;
+}
+
+export interface ProvinciaCatalogo {
+  id: string;
+  nombre: string;
+  municipios: MunicipioCatalogo[];
+}
+
+export interface CatalogoDivisiones {
+  paisCodigo: string;
+  provincias: ProvinciaCatalogo[];
+}
+
 /** El vínculo que devuelven las rutas de vinculación: el estado es el de D10. */
 export interface VinculoDeCliente {
   id: string;
@@ -105,6 +127,14 @@ export class TenantService {
    */
   private readonly apiUrlUnirse = `${API_URL}/mi-estado/unirse`;
   private readonly storageKey = 'active_barberia_id';
+
+  /**
+   * F6 / T-66 · catálogo de divisiones ya resuelto, por país.
+   *
+   * Es información pública que cambia de año en año: pedirla en cada montaje del
+   * formulario sería una petición por visita para el mismo dato.
+   */
+  private readonly divisionesResueltas = new Map<string, CatalogoDivisiones>();
 
   // Signals reactivos para el tenant
   readonly barberiaActiva = signal<BarberiaResumen | null>(null);
@@ -485,6 +515,25 @@ export class TenantService {
   }
 
   /**
+   * F6 / T-66 · catálogo de provincias y municipios del país.
+   *
+   * Es público (`GET /divisiones/:paisCodigo`), así que no exige sesión. Un
+   * fallo devuelve el catálogo vacío en lugar de romper el alta: sin catálogo el
+   * formulario sigue sirviendo (las divisiones las deduce el backend).
+   */
+  cargarDivisiones(paisCodigo = 'DO'): Observable<CatalogoDivisiones> {
+    const pais = (paisCodigo ?? 'DO').trim().toUpperCase();
+
+    const cacheado = this.divisionesResueltas.get(pais);
+    if (cacheado) return of(cacheado);
+
+    return this.http.get<CatalogoDivisiones>(`${API_URL}/divisiones/${pais}`).pipe(
+      tap((catalogo) => this.divisionesResueltas.set(pais, catalogo)),
+      catchError(() => of({ paisCodigo: pais, provincias: [] })),
+    );
+  }
+
+  /**
    * Crea una nueva barbería y el usuario actual queda como Dueño/Responsable
    */
   crearBarberia(dto: {
@@ -495,6 +544,12 @@ export class TenantService {
     /** F6 / T-62: obligatorias; sin ellas el backend responde 422. */
     latitud: number;
     longitud: number;
+    /**
+     * F6 / T-66 · respaldo, no verdad: el backend usa lo que dedujo Nominatim y
+     * solo cae a estos nombres si el proveedor no devolvió ese nivel.
+     */
+    divisionNivel1?: string;
+    divisionNivel2?: string;
   }): Observable<any> {
     this.isLoading.set(true);
     return this.http.post(this.apiUrl, dto).pipe(

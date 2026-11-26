@@ -50,6 +50,8 @@ export const THROTTLER_TTL_MS = 60000;
  */
 export const THROTTLER_LIMITE_POR_DEFECTO = 120;
 
+import { DivisionesModule } from './divisiones/divisiones.module.js';
+
 @Module({
   imports: [
     HealthModule,
@@ -82,6 +84,8 @@ export const THROTTLER_LIMITE_POR_DEFECTO = 120;
     SharedModule,
     IamModule,
     BarberiaModule,
+    // F6 / T-66 · catálogo público de provincias y municipios para el alta.
+    DivisionesModule,
     CatalogoModule,
     HorarioModule,
     AgendaModule,

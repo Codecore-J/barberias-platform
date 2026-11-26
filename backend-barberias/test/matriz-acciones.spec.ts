@@ -28,7 +28,7 @@ import {
 
 const RUTA_SPEC = fileURLToPath(new URL('./permisos-matriz.spec.ts', import.meta.url));
 
-/** Las 132 claves de `POLITICA_DECLARADA`, leídas de su literal. */
+/** Las 133 claves de `POLITICA_DECLARADA`, leídas de su literal. */
 function clavesDePoliticaDeclarada(): string[] {
   const fuente = readFileSync(RUTA_SPEC, 'utf8').replace(/\r/g, '');
   const inicio = fuente.indexOf('const POLITICA_DECLARADA');
@@ -95,10 +95,10 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     expect(malFormadas).toEqual([]);
   });
 
-  it('cubre exactamente las 132 rutas del inventario', () => {
+  it('cubre exactamente las 133 rutas del inventario', () => {
     const claves = clavesDePoliticaDeclarada();
 
-    expect(claves.length).toBe(132);
+    expect(claves.length).toBe(133);
     expect(RUTAS.length).toBe(new Set(RUTAS).size);
 
     const sinDecision = claves.filter((clave) => !(clave in RUTA_ACCION));
@@ -116,7 +116,7 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     ).toBe('');
   });
 
-  it('reparte 75 rutas con acción y 57 sin acción (45 fuera + 12 brechas)', () => {
+  it('reparte 75 rutas con acción y 58 sin acción (46 fuera + 12 brechas)', () => {
     const conAccion = RUTAS.filter((clave) => RUTA_ACCION[clave].length > 0);
     const sinAccion = RUTAS.filter((clave) => RUTA_ACCION[clave].length === 0);
 
@@ -124,13 +124,13 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     // F5 sumó cinco rutas de antecedentes, todas con acción: 130 → 135. Al
     // eliminar las cuatro rutas `records` quedan 75 con acción.
     expect(conAccion.length).toBe(75);
-    expect(sinAccion.length).toBe(57);
-    expect(conAccion.length + sinAccion.length).toBe(132);
+    expect(sinAccion.length).toBe(58);
+    expect(conAccion.length + sinAccion.length).toBe(133);
 
-    // De las 57 sin acción, doce son brecha de la matriz y las otras 45 quedan
+    // De las 58 sin acción, doce son brecha de la matriz y las otras 46 quedan
     // fuera de su alcance (identidad, autoservicio, vitrina, integración).
     expect(RUTAS_BRECHA_MATRIZ.length).toBe(12);
-    expect(sinAccion.length - RUTAS_BRECHA_MATRIZ.length).toBe(45);
+    expect(sinAccion.length - RUTAS_BRECHA_MATRIZ.length).toBe(46);
   });
 
   it('las 12 brechas de §6 no tienen acción y son las del documento', () => {

@@ -360,8 +360,10 @@ export class BarberiaService {
           latitud,
           longitud,
           paisCodigo: ubicacion.paisCodigo,
-          divisionNivel1: ubicacion.divisionNivel1,
-          divisionNivel2: ubicacion.divisionNivel2,
+          // F6 / T-66 · si Nominatim no devolvió el nivel, vale lo que eligió el
+          // usuario en el formulario; si devolvió, manda el proveedor.
+          divisionNivel1: ubicacion.divisionNivel1 ?? dto.divisionNivel1 ?? null,
+          divisionNivel2: ubicacion.divisionNivel2 ?? dto.divisionNivel2 ?? null,
           direccionCompleta: ubicacion.direccionCompleta,
           codigoAcceso,
           enlaceUnico,
@@ -436,8 +438,8 @@ export class BarberiaService {
         latitud,
         longitud,
         paisCodigo: ubicacion.paisCodigo,
-        divisionNivel1: ubicacion.divisionNivel1,
-        divisionNivel2: ubicacion.divisionNivel2,
+        divisionNivel1: ubicacion.divisionNivel1 ?? dto.divisionNivel1 ?? null,
+        divisionNivel2: ubicacion.divisionNivel2 ?? dto.divisionNivel2 ?? null,
         direccionCompleta: ubicacion.direccionCompleta,
       });
     });
