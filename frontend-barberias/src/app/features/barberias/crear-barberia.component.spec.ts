@@ -16,43 +16,20 @@ import { TenantService } from '../../core/services/tenant.service';
  *     deniega, el mensaje es el que pide la fase (y no un error genérico).
  *  3. Mientras la posición llega, el botón de ubicación está ocupado (spinner).
  *  4. Con coordenadas se muestran en solo lectura y el alta se habilita.
- *  5. El payload envía `latitud` y `longitud`; las divisiones solo viajan si el
- *     usuario eligió provincia/municipio en el catálogo (T-66), como respaldo de
- *     lo que deduce Nominatim.
+ *  5. El payload envía `latitud` y `longitud` y NINGUNA división: la provincia y
+ *     el municipio los deduce el backend con Nominatim, y si no los devuelve la
+ *     sede queda con NULL (T-66, corregido: el cliente no es fuente de respaldo).
  *  6. El campo de logo por URL ya no existe: el logo se sube después (T-64).
- *  7. T-66 · los selects se pueblan del catálogo público, el municipio depende de
- *     la provincia y ambos se prellenan con el texto de «Ubicación».
  *
  * El navegador nunca se toca de verdad: `navigator.geolocation` es un doble.
  */
 
 const COORDS = { latitude: 18.4861, longitude: -69.9312 };
 
-/** F6 / T-66 · catálogo público tal como lo sirve `GET /divisiones/DO`. */
-const CATALOGO = {
-  paisCodigo: 'DO',
-  provincias: [
-    {
-      id: 'p-santiago',
-      nombre: 'Santiago',
-      municipios: [
-        { id: 'm-santiago', nombre: 'Santiago de los Caballeros' },
-        { id: 'm-tamboril', nombre: 'Tamboril' },
-      ],
-    },
-    {
-      id: 'p-dn',
-      nombre: 'Distrito Nacional',
-      municipios: [{ id: 'm-santo-domingo', nombre: 'Santo Domingo' }],
-    },
-  ],
-};
-
 describe('CrearBarberiaComponent · geolocalización obligatoria (T-63)', () => {
   let geolocation: { getCurrentPosition: ReturnType<typeof vi.fn> };
   let tenant: {
     crearBarberia: ReturnType<typeof vi.fn>;
-    cargarDivisiones: ReturnType<typeof vi.fn>;
     error: () => null;
   };
 
@@ -96,7 +73,6 @@ describe('CrearBarberiaComponent · geolocalización obligatoria (T-63)', () => 
 
     tenant = {
       crearBarberia: vi.fn(() => of({ id: 'sede-1' })),
-      cargarDivisiones: vi.fn(() => of(CATALOGO)),
       error: () => null,
     };
     vi.clearAllMocks();
@@ -199,66 +175,6 @@ describe('CrearBarberiaComponent · geolocalización obligatoria (T-63)', () => 
     expect(enviado).not.toHaveProperty('divisionNivel1');
     expect(enviado).not.toHaveProperty('divisionNivel2');
     expect(enviado).not.toHaveProperty('paisCodigo');
-  });
-
-  it('puebla los selects con el catálogo y el municipio depende de la provincia', () => {
-    const { fixture, componente } = montar();
-
-    expect(tenant.cargarDivisiones).toHaveBeenCalledWith('DO');
-    expect(componente.provincias().map((p) => p.nombre)).toEqual([
-      'Santiago',
-      'Distrito Nacional',
-    ]);
-    // Sin provincia no hay municipios que elegir.
-    expect(componente.municipios()).toEqual([]);
-
-    componente.form.patchValue({ provincia: 'Santiago' });
-    componente.onProvinciaChange();
-    fixture.detectChanges();
-
-    expect(componente.municipios().map((m) => m.nombre)).toEqual([
-      'Santiago de los Caballeros',
-      'Tamboril',
-    ]);
-
-    // Cambiar de provincia descarta el municipio de la anterior.
-    componente.form.patchValue({ provincia: 'Distrito Nacional', municipio: 'Tamboril' });
-    componente.onProvinciaChange();
-    expect(componente.form.get('municipio')?.value).toBe('');
-    expect(componente.municipios().map((m) => m.nombre)).toEqual(['Santo Domingo']);
-  });
-
-  it('prellena provincia y municipio desde el texto de «Ubicación»', () => {
-    const { componente } = montar();
-
-    componente.form.patchValue({ ubicacion: 'Calle Duarte 12, Santiago de los Caballeros' });
-    componente.prellenarDivisionesDesdeUbicacion();
-
-    expect(componente.form.get('provincia')?.value).toBe('Santiago');
-    expect(componente.form.get('municipio')?.value).toBe('Santiago de los Caballeros');
-    expect(componente.municipios().length).toBe(2);
-  });
-
-  it('envía las divisiones elegidas como respaldo de lo que deduce el backend', () => {
-    const { fixture, componente } = montar();
-    geolocation.getCurrentPosition.mockImplementation((ok: any) =>
-      ok({ coords: COORDS, timestamp: Date.now() }),
-    );
-    rellenarFormulario(componente);
-    componente.form.patchValue({ provincia: 'Santiago', municipio: 'Tamboril' });
-    componente.usarMiUbicacion();
-    fixture.detectChanges();
-
-    componente.onSubmit();
-
-    expect(tenant.crearBarberia).toHaveBeenCalledWith(
-      expect.objectContaining({
-        latitud: COORDS.latitude,
-        longitud: COORDS.longitude,
-        divisionNivel1: 'Santiago',
-        divisionNivel2: 'Tamboril',
-      }),
-    );
   });
 
   it('el formulario ya no tiene campo de logo por URL', () => {

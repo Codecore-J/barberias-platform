@@ -541,15 +541,13 @@ export class TenantService {
     ubicacion: string;
     telefono: string;
     descripcion?: string;
-    /** F6 / T-62: obligatorias; sin ellas el backend responde 422. */
+    /**
+     * F6 / T-62: obligatorias; sin ellas el backend responde 422.
+     * T-66: la provincia y el municipio NO se envían —los deduce Nominatim y, si
+     * no los devuelve, se guardan NULL—.
+     */
     latitud: number;
     longitud: number;
-    /**
-     * F6 / T-66 · respaldo, no verdad: el backend usa lo que dedujo Nominatim y
-     * solo cae a estos nombres si el proveedor no devolvió ese nivel.
-     */
-    divisionNivel1?: string;
-    divisionNivel2?: string;
   }): Observable<any> {
     this.isLoading.set(true);
     return this.http.post(this.apiUrl, dto).pipe(

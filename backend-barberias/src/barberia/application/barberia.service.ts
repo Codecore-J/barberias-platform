@@ -360,10 +360,11 @@ export class BarberiaService {
           latitud,
           longitud,
           paisCodigo: ubicacion.paisCodigo,
-          // F6 / T-66 · si Nominatim no devolvió el nivel, vale lo que eligió el
-          // usuario en el formulario; si devolvió, manda el proveedor.
-          divisionNivel1: ubicacion.divisionNivel1 ?? dto.divisionNivel1 ?? null,
-          divisionNivel2: ubicacion.divisionNivel2 ?? dto.divisionNivel2 ?? null,
+          // F6 / T-66 · las divisiones son SOLO lo que devolvió Nominatim. Si el
+          // proveedor no trae ese nivel se guarda NULL: el nombre que pudiera
+          // mandar el cliente no es una fuente de verdad y no se usa de respaldo.
+          divisionNivel1: ubicacion.divisionNivel1 ?? null,
+          divisionNivel2: ubicacion.divisionNivel2 ?? null,
           direccionCompleta: ubicacion.direccionCompleta,
           codigoAcceso,
           enlaceUnico,
@@ -438,8 +439,8 @@ export class BarberiaService {
         latitud,
         longitud,
         paisCodigo: ubicacion.paisCodigo,
-        divisionNivel1: ubicacion.divisionNivel1 ?? dto.divisionNivel1 ?? null,
-        divisionNivel2: ubicacion.divisionNivel2 ?? dto.divisionNivel2 ?? null,
+        divisionNivel1: ubicacion.divisionNivel1 ?? null,
+        divisionNivel2: ubicacion.divisionNivel2 ?? null,
         direccionCompleta: ubicacion.direccionCompleta,
       });
     });

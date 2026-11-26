@@ -26,6 +26,8 @@ import {
  *  4. Si el país no está soportado → **422 PAIS_NO_SOPORTADO**, sin crear.
  *  5. Con una geocodificación correcta se persisten latitud, longitud,
  *     `pais_codigo`, las dos divisiones y `direccion_completa`.
+ *  5.b Si Nominatim no devuelve una división se guarda NULL: el nombre que
+ *     pudiera traer el cuerpo NO se usa como respaldo (T-66).
  *  6. La geocodificación ocurre ANTES de abrir la transacción SERIALIZABLE: no
  *     se retiene un bloqueo de fila esperando a un proveedor externo.
  *
@@ -185,6 +187,31 @@ describe('T-62 · alta de sede con geolocalización obligatoria', () => {
         divisionNivel1: 'Distrito Nacional',
         divisionNivel2: 'Santo Domingo',
         direccionCompleta: UBICACION.direccionCompleta,
+      }),
+    });
+  });
+
+  it('si Nominatim no devuelve las divisiones guarda NULL aunque el cuerpo traiga nombres', async () => {
+    nominatim.ubicacionDe.mockResolvedValue({
+      ...UBICACION,
+      divisionNivel1: null,
+      divisionNivel2: null,
+    });
+
+    await servicio.create(RESPONSABLE, {
+      ...DTO_BASE,
+      latitud: 18.4861,
+      longitud: -69.9312,
+      // El DTO ya no declara estos campos; se pasan a propósito para fijar que
+      // el servicio los ignora: la fuente de verdad es solo Nominatim.
+      divisionNivel1: 'Santiago',
+      divisionNivel2: 'Tamboril',
+    } as any);
+
+    expect(prisma.barberia.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        divisionNivel1: null,
+        divisionNivel2: null,
       }),
     });
   });

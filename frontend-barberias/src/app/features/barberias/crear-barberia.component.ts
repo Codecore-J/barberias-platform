@@ -1,11 +1,7 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, Router } from '@angular/router';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import type {
-  MunicipioCatalogo,
-  ProvinciaCatalogo,
-} from '../../core/services/tenant.service';
 import { TenantService } from '../../core/services/tenant.service';
 
 /** Estados posibles de la petición de ubicación al navegador. */
@@ -80,34 +76,7 @@ type EstadoUbicacion = 'inactiva' | 'obteniendo' | 'lista' | 'denegada';
                   <i class="pi pi-map-marker absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
                   <input type="text" formControlName="ubicacion" placeholder="Ej: Calle Duarte 12, Santiago"
                     maxlength="500"
-                    (input)="prellenarDivisionesDesdeUbicacion()"
                     class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
-                </div>
-
-                <!-- F6 / T-66 · provincia y municipio del catálogo público. El
-                     municipio depende de la provincia elegida y ambos se
-                     prellenan con lo que el usuario escriba en «Ubicación». -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                  <div class="space-y-1">
-                    <label for="sede-provincia" class="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Provincia</label>
-                    <select id="sede-provincia" formControlName="provincia" (change)="onProvinciaChange()"
-                      class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-2 px-3 text-white focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all">
-                      <option value="">Sin provincia</option>
-                      @for (provincia of provincias(); track provincia.id) {
-                        <option [value]="provincia.nombre">{{ provincia.nombre }}</option>
-                      }
-                    </select>
-                  </div>
-                  <div class="space-y-1">
-                    <label for="sede-municipio" class="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Municipio</label>
-                    <select id="sede-municipio" formControlName="municipio" [disabled]="municipios().length === 0"
-                      class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-2 px-3 text-white disabled:opacity-50 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all">
-                      <option value="">Sin municipio</option>
-                      @for (municipio of municipios(); track municipio.id) {
-                        <option [value]="municipio.nombre">{{ municipio.nombre }}</option>
-                      }
-                    </select>
-                  </div>
                 </div>
                 @if (form.get('ubicacion')?.touched && form.get('ubicacion')?.invalid) {
                   <p class="text-[11px] text-red-400 pl-1">Indica la ubicación o ciudad de la sede.</p>
@@ -197,7 +166,7 @@ type EstadoUbicacion = 'inactiva' | 'obteniendo' | 'lista' | 'denegada';
     </div>
   `
 })
-export class CrearBarberiaComponent implements OnInit {
+export class CrearBarberiaComponent {
   private readonly fb = inject(FormBuilder);
   protected readonly tenantService = inject(TenantService);
   private readonly router = inject(Router);
@@ -227,61 +196,7 @@ export class CrearBarberiaComponent implements OnInit {
     telefono: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
     ubicacion: ['', [Validators.required]],
     descripcion: [''],
-    // F6 / T-66 · opcionales: el backend deduce provincia y municipio de las
-    // coordenadas y solo usa estos nombres como respaldo.
-    provincia: [''],
-    municipio: [''],
   });
-
-  /** Catálogo público (`GET /divisiones/DO`), ordenado por el backend. */
-  readonly provincias = signal<ProvinciaCatalogo[]>([]);
-  readonly municipios = signal<MunicipioCatalogo[]>([]);
-
-  ngOnInit(): void {
-    this.tenantService.cargarDivisiones('DO').subscribe((catalogo) => {
-      this.provincias.set(catalogo.provincias);
-      this.prellenarDivisionesDesdeUbicacion();
-    });
-  }
-
-  /**
-   * El municipio depende de la provincia: al cambiarla, se recarga su lista y se
-   * limpia el municipio anterior (uno de otra provincia no existe en esta).
-   */
-  onProvinciaChange(): void {
-    const provincia = this.provincias().find(
-      (p) => p.nombre === this.form.get('provincia')?.value,
-    );
-    this.municipios.set(provincia?.municipios ?? []);
-    this.form.get('municipio')?.setValue('', { emitEvent: false });
-  }
-
-  /**
-   * F6 / T-66 · prellena los dos selects con lo que el usuario escribió en
-   * «Ubicación» (p. ej. «Calle Duarte 12, Santiago» → Santiago / Santiago de los
-   * Caballeros). Es una comodidad: si no reconoce nada, deja los selects vacíos y
-   * el backend deduce las divisiones de las coordenadas.
-   */
-  prellenarDivisionesDesdeUbicacion(): void {
-    const texto = String(this.form.get('ubicacion')?.value ?? '').toLowerCase();
-    if (!texto) return;
-
-    for (const provincia of this.provincias()) {
-      // El municipio primero: los nombres de municipio son más específicos que
-      // el de la provincia a la que pertenecen.
-      const municipio = provincia.municipios.find((m) =>
-        texto.includes(m.nombre.toLowerCase()),
-      );
-      if (municipio || texto.includes(provincia.nombre.toLowerCase())) {
-        this.form.patchValue(
-          { provincia: provincia.nombre, municipio: municipio?.nombre ?? '' },
-          { emitEvent: false },
-        );
-        this.municipios.set(provincia.municipios);
-        return;
-      }
-    }
-  }
 
   /** Mismo criterio que los modales de personal: inválido y ya tocado. */
   campoInvalido(nombre: string): boolean {
@@ -338,10 +253,10 @@ export class CrearBarberiaComponent implements OnInit {
     }
 
     // El `ValidationPipe` del backend usa `forbidNonWhitelisted`: se envía solo
-    // lo que `CreateBarberiaDto` declara. Las divisiones no viajan desde aquí:
-    // las deduce el backend con Nominatim a partir de las coordenadas.
-    const { nombre, telefono, ubicacion, descripcion, provincia, municipio } =
-      this.form.value;
+    // lo que `CreateBarberiaDto` declara. La provincia y el municipio NO viajan:
+    // los deduce el backend con Nominatim y, si no los devuelve, la sede queda
+    // con NULL (no se acepta un nombre puesto por el cliente).
+    const { nombre, telefono, ubicacion, descripcion } = this.form.value;
 
     this.isSubmitting.set(true);
     this.tenantService
@@ -352,10 +267,6 @@ export class CrearBarberiaComponent implements OnInit {
         descripcion,
         latitud: coords.latitud,
         longitud: coords.longitud,
-        // F6 / T-66 · solo viajan si el usuario eligió algo; vacíos no se envían
-        // (`forbidNonWhitelisted` acepta los campos, pero un `''` no es un nombre).
-        ...(provincia ? { divisionNivel1: provincia } : {}),
-        ...(municipio ? { divisionNivel2: municipio } : {}),
       })
       .subscribe({
         next: () => {
