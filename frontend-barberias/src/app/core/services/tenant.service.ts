@@ -487,7 +487,15 @@ export class TenantService {
   /**
    * Crea una nueva barbería y el usuario actual queda como Dueño/Responsable
    */
-  crearBarberia(dto: { nombre: string; ubicacion: string; telefono: string; descripcion?: string }): Observable<any> {
+  crearBarberia(dto: {
+    nombre: string;
+    ubicacion: string;
+    telefono: string;
+    descripcion?: string;
+    /** F6 / T-62: obligatorias; sin ellas el backend responde 422. */
+    latitud: number;
+    longitud: number;
+  }): Observable<any> {
     this.isLoading.set(true);
     return this.http.post(this.apiUrl, dto).pipe(
       tap((nuevaBarberia) => {
