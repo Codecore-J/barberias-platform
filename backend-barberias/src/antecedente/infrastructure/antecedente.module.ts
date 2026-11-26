@@ -1,10 +1,20 @@
 import { Module } from '@nestjs/common';
-import { AntecedenteService } from '../application/antecedente.service.js';
-import { AntecedenteController } from './antecedente.controller.js';
+import { AuditoriaModule } from '../../auditoria/infrastructure/auditoria.module.js';
+import { SolicitudAntecedenteService } from '../application/solicitud-antecedente.service.js';
+import {
+  SolicitudAntecedenteClientesController,
+  SolicitudAntecedenteGlobalController,
+  SolicitudAntecedenteSedeController,
+} from './solicitud-antecedente.controller.js';
 
 @Module({
-  controllers: [AntecedenteController],
-  providers: [AntecedenteService],
-  exports: [AntecedenteService],
+  imports: [AuditoriaModule],
+  controllers: [
+    SolicitudAntecedenteSedeController,
+    SolicitudAntecedenteClientesController,
+    SolicitudAntecedenteGlobalController,
+  ],
+  providers: [SolicitudAntecedenteService],
+  exports: [SolicitudAntecedenteService],
 })
 export class AntecedenteModule {}

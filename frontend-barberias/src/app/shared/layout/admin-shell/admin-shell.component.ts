@@ -420,6 +420,11 @@ export class AdminShellComponent {
             { ruta: '/barberias', etiqueta: 'Barberías', icono: 'pi pi-building' },
             { ruta: '/admin/usuarios', etiqueta: 'Usuarios', icono: 'pi pi-id-card' },
             { ruta: '/admin/vinculaciones', etiqueta: 'Vinculaciones', icono: 'pi pi-user-plus' },
+            {
+              ruta: '/admin/antecedentes/solicitudes',
+              etiqueta: 'Solicitudes de antecedentes',
+              icono: 'pi pi-shield',
+            },
           ],
         },
         {
@@ -467,6 +472,7 @@ export class AdminShellComponent {
             { ruta: '/admin/tickets', etiqueta: 'Pagos', icono: 'pi pi-receipt' },
             { ruta: '/admin/solicitudes-cambio', etiqueta: 'Solicitudes de cambio', icono: 'pi pi-send' },
             { ruta: '/admin/clientes-restringidos', etiqueta: 'Clientes restringidos', icono: 'pi pi-shield' },
+            { ruta: '/admin/antecedentes', etiqueta: 'Antecedentes', icono: 'pi pi-flag' },
           ],
         },
       ];
@@ -481,6 +487,7 @@ export class AdminShellComponent {
             { ruta: '/barbero/servicios', etiqueta: 'Mis servicios', icono: 'pi pi-briefcase' },
             { ruta: '/admin/servicios', etiqueta: 'Catálogo de sede', icono: 'pi pi-list' },
             { ruta: '/catalogo', etiqueta: 'Catálogo', icono: 'pi pi-shop' },
+            { ruta: '/barbero/antecedentes', etiqueta: 'Antecedentes', icono: 'pi pi-flag' },
           ],
         },
       ];

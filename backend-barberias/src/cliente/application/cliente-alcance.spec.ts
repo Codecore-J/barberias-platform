@@ -25,7 +25,8 @@ describe('ClienteService · alcance del BARBERO sobre fichas y notas (MAPA-1 · 
   const mockPrisma = {
     usuario: { findUnique: vi.fn() },
     reserva: { findMany: vi.fn(), findFirst: vi.fn() },
-    antecedente: { findMany: vi.fn(), create: vi.fn() },
+    antecedente: { findMany: vi.fn() },
+    solicitudAntecedente: { create: vi.fn() },
   };
 
   const usuario = (roles: string[], id: string, sedeDelRol = SEDE): UsuarioAutenticado =>
@@ -50,9 +51,10 @@ describe('ClienteService · alcance del BARBERO sobre fichas y notas (MAPA-1 · 
     mockPrisma.reserva.findMany.mockResolvedValue([]);
     mockPrisma.reserva.findFirst.mockResolvedValue(null);
     mockPrisma.antecedente.findMany.mockResolvedValue([]);
-    mockPrisma.antecedente.create.mockResolvedValue({
+    mockPrisma.solicitudAntecedente.create.mockResolvedValue({
       id: NOTA_ID,
-      contenido: 'Le gusta el degradado bajo',
+      motivo: 'Le gusta el degradado bajo',
+      estado: 'PENDIENTE',
       creadoAt: new Date('2026-11-17T12:00:00.000Z'),
     });
 
@@ -126,7 +128,7 @@ describe('ClienteService · alcance del BARBERO sobre fichas y notas (MAPA-1 · 
       service.guardarNota(CLIENTE_ID, SEDE, usuario(['BARBERO'], BARBERO_ID), 'nota'),
     ).rejects.toBeInstanceOf(ForbiddenException);
 
-    expect(mockPrisma.antecedente.create).not.toHaveBeenCalled();
+    expect(mockPrisma.solicitudAntecedente.create).not.toHaveBeenCalled();
   });
 
   it('el barbero con cita sí puede anotar sobre su cliente', async () => {
@@ -143,12 +145,19 @@ describe('ClienteService · alcance del BARBERO sobre fichas y notas (MAPA-1 · 
       where: { clienteId: CLIENTE_ID, barberiaId: SEDE, barberoId: BARBERO_ID },
       select: { id: true },
     });
-    expect(mockPrisma.antecedente.create).toHaveBeenCalledTimes(1);
-    expect(mockPrisma.antecedente.create.mock.calls[0][0].data).toMatchObject({
-      usuarioId: CLIENTE_ID,
-      barberiaOrigenId: SEDE,
+    expect(mockPrisma.solicitudAntecedente.create).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.solicitudAntecedente.create.mock.calls[0][0].data).toMatchObject({
+      barberiaId: SEDE,
+      solicitanteId: BARBERO_ID,
+      clienteId: CLIENTE_ID,
+      motivo: 'Le gusta el degradado bajo',
+      estado: 'PENDIENTE',
     });
-    expect(nota).toMatchObject({ id: NOTA_ID, contenido: 'Le gusta el degradado bajo' });
+    expect(nota).toMatchObject({
+      id: NOTA_ID,
+      contenido: 'Le gusta el degradado bajo',
+      estado: 'PENDIENTE',
+    });
   });
 
   it('el ADMIN_BARBERIA anota sin comprobar la relación con el barbero', async () => {
@@ -160,6 +169,6 @@ describe('ClienteService · alcance del BARBERO sobre fichas y notas (MAPA-1 · 
     );
 
     expect(mockPrisma.reserva.findFirst).not.toHaveBeenCalled();
-    expect(mockPrisma.antecedente.create).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.solicitudAntecedente.create).toHaveBeenCalledTimes(1);
   });
 });

@@ -134,6 +134,19 @@ export const routes: Routes = [
           import('./features/admin/personal/admin-personal.component').then((m) => m.AdminPersonalComponent),
       },
       {
+        //
+        // F5 · la sede PIDE antecedentes; la plataforma los resuelve. Esta
+        // bandeja es global (sin tenantGuard): el ADMINISTRADOR ve todas las
+        // sedes.
+        //
+        path: 'admin/antecedentes/solicitudes',
+        canActivate: [roleGuard(['ADMINISTRADOR'])],
+        loadComponent: () =>
+          import('./features/admin/solicitudes-antecedentes/solicitudes-antecedentes.component').then(
+            (m) => m.AdminSolicitudesAntecedentesComponent,
+          ),
+      },
+      {
         path: 'admin/antecedentes',
         canActivate: [tenantGuard, roleGuard(['ADMIN'])],
         loadComponent: () =>
@@ -217,6 +230,15 @@ export const routes: Routes = [
         canActivate: [tenantGuard, roleGuard(['BARBERO'])],
         loadComponent: () =>
           import('./features/barbero/horarios/barbero-horarios.component').then((m) => m.BarberoHorariosComponent),
+      },
+      {
+        // F5 · el barbero reporta un incidente y sigue sus propias solicitudes.
+        path: 'barbero/antecedentes',
+        canActivate: [tenantGuard, roleGuard(['BARBERO'])],
+        loadComponent: () =>
+          import('./features/barbero/antecedentes/barbero-antecedentes.component').then(
+            (m) => m.BarberoAntecedentesComponent,
+          ),
       },
       {
         //

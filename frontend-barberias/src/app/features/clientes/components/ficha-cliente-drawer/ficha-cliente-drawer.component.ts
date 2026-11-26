@@ -88,6 +88,9 @@ import { ModalOverlayDirective } from '../../../../shared/directives/modal-overl
                 <i class="pi" [ngClass]="isSubmitting() ? 'pi-spin pi-spinner' : 'pi-send'"></i>
               </button>
             </div>
+            @if (mensaje()) {
+              <p class="text-[11px] text-amber-400 mt-2">{{ mensaje() }}</p>
+            }
           </div>
         }
       </div>
@@ -111,6 +114,7 @@ export class FichaClienteDrawerComponent implements OnInit {
   ficha = signal<FichaCliente | null>(null);
   nuevaNota: string = '';
   isSubmitting = signal(false);
+  mensaje = signal<string | null>(null);
 
   ngOnInit() {
     this.cargarFicha();
@@ -131,13 +135,10 @@ export class FichaClienteDrawerComponent implements OnInit {
     
     this.isSubmitting.set(true);
     this.clientesService.guardarNota(this.clienteId, this.nuevaNota.trim()).subscribe({
-      next: (nota) => {
-        // Actualizamos la lista localmente
-        const currentFicha = this.ficha();
-        if (currentFicha) {
-          currentFicha.notas.unshift(nota);
-          this.ficha.set({...currentFicha});
-        }
+      next: () => {
+        // La nota queda PENDIENTE: no se pinta como aprobada hasta que la
+        // plataforma la resuelva.
+        this.mensaje.set('Nota enviada para aprobación de la plataforma.');
         this.nuevaNota = '';
         this.isSubmitting.set(false);
       },

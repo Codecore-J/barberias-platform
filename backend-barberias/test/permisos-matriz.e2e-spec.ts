@@ -84,12 +84,8 @@ const CASOS: Caso[] = [
   { verbo: 'get', ruta: '/shops/{A}/appointments/schedule/slots?fecha=2026-10-05&duracionMinutos=30', permitidos: ['CLIENTE', 'ADMIN_BARBERIA', 'ADMINISTRADOR'] },
 
   // ── antecedentes ─────────────────────────────────────────────────────────
-  { verbo: 'post', ruta: '/shops/{A}/records', permitidos: ['BARBERO', 'ADMIN_BARBERIA'], cuerpo: {} },
-  { verbo: 'patch', ruta: `/shops/{A}/records/${randomUUID()}/evaluate`, permitidos: ['ADMINISTRADOR'], cuerpo: {} },
-  // El decorador declara también al BARBERO, pero la cola de evaluación exige
-  // rol de sede en el servicio (`validateAdminAccess`): el 403 real se mantiene.
-  { verbo: 'get', ruta: '/shops/{A}/records/pending', permitidos: ['ADMIN_BARBERIA', 'ADMINISTRADOR'] },
-  { verbo: 'get', ruta: `/shops/{A}/records/client/${randomUUID()}`, permitidos: ['ADMINISTRADOR', 'ADMIN_BARBERIA', 'BARBERO'] },
+  // F5 eliminó las cuatro rutas `records` del flujo viejo: la sede pide por
+  // `/antecedentes/solicitudes` y la plataforma resuelve por `/antecedentes`.
 
   // ── horarios ─────────────────────────────────────────────────────────────
   { verbo: 'get', ruta: '/shops/{A}/hours', permitidos: ['ADMIN_BARBERIA'] },
