@@ -230,6 +230,31 @@ model Barberia {
   @@map("barberias")
 }
 
+/// F6 / T-65 · catálogo de divisiones administrativas (provincia y municipio).
+///
+/// Nominatim devuelve nombres, no códigos: esta tabla es la referencia que
+/// permite ofrecerlos como select y emparejar lo que llega del proveedor aunque
+/// su escritura no coincida exactamente (`nombre_nominatim`).
+model DivisionAdministrativa {
+  id              String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paisCodigo      String  @map("pais_codigo") @db.VarChar(2)
+  /// 1 = provincia, 2 = municipio (CHECK en la migración `f605`).
+  nivel           Int
+  nombre          String  @db.VarChar(100)
+  /// Cómo llama Nominatim a esta división, si difiere del nombre oficial.
+  nombreNominatim String? @map("nombre_nominatim") @db.VarChar(100)
+  padreId         String? @map("padre_id") @db.Uuid
+
+  padre     DivisionAdministrativa?  @relation("JerarquiaDivision", fields: [padreId], references: [id])
+  hijos     DivisionAdministrativa[] @relation("JerarquiaDivision")
+
+  /// Misma clave que el índice único `uk_divisiones_pais_nivel_nombre`: es lo
+  /// que hace idempotente el seed de T-65.
+  @@unique([paisCodigo, nivel, nombre], map: "uk_divisiones_pais_nivel_nombre")
+  @@index([padreId], map: "idx_divisiones_padre")
+  @@map("divisiones_administrativas")
+}
+
 model ClienteBarberia {
   id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   usuarioId            String    @map("usuario_id") @db.Uuid

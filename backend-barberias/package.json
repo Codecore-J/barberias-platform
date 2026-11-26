@@ -40,7 +40,8 @@
     "admins-sede:aplicar": "tsx prisma/regularizar-administradores-sede.ts --aplicar",
     "db:status": "prisma migrate status",
     "db:validate": "prisma validate",
-    "postinstall": "prisma skills sync || exit 0"
+    "postinstall": "prisma skills sync || exit 0",
+    "seed:divisiones": "tsx prisma/seed-divisiones-do.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
