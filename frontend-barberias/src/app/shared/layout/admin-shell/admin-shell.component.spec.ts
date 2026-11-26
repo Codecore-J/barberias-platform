@@ -67,6 +67,7 @@ describe('AdminShellComponent · navegación por rol (T-14)', () => {
     expect(visibles).toContain('/admin/categorias');
     expect(visibles).toContain('/admin/personal');
     expect(visibles).toContain('/admin/clientes-restringidos');
+    expect(visibles).toContain('/admin/antecedentes');
     // Nada de plataforma: el guard de usuarios y el hub de sedes no lo permiten.
     expect(visibles).not.toContain('/admin/usuarios');
     expect(visibles).not.toContain('/admin/vinculaciones');
@@ -81,6 +82,7 @@ describe('AdminShellComponent · navegación por rol (T-14)', () => {
     expect(visibles).toContain('/admin/agenda');
     expect(visibles).toContain('/barbero/servicios');
     expect(visibles).toContain('/admin/servicios');
+    expect(visibles).toContain('/barbero/antecedentes');
     expect(visibles).not.toContain('/admin/personal');
     expect(visibles).not.toContain('/admin/analiticas');
     expect(componente.configuracion().ruta).toBe('/barbero/horarios');
@@ -93,6 +95,7 @@ describe('AdminShellComponent · navegación por rol (T-14)', () => {
     expect(visibles).toContain('/barberias');
     expect(visibles).toContain('/admin/usuarios');
     expect(visibles).toContain('/admin/vinculaciones');
+    expect(visibles).toContain('/admin/antecedentes/solicitudes');
 
     // T-20/T-21 · el catálogo global lo gestiona el ADMINISTRADOR: el sidebar
     // no debe anunciar «solo lectura» de una pantalla que ahora escribe.
