@@ -39,7 +39,9 @@ const pendiente = {
 
 function txFalso() {
   return {
-    usuarioRol: { findFirst: vi.fn(async () => null) },
+    usuarioRol: {
+      findFirst: vi.fn(async (): Promise<{ id: string } | null> => null),
+    },
     antecedente: { create: vi.fn(async () => ({ id: 'ant-1' })) },
     solicitudAntecedente: {
       update: vi.fn(async () => ({ id: SOLICITUD, estado: 'APROBADA' })),

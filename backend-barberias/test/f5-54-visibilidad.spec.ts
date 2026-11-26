@@ -21,9 +21,20 @@ function prismaFalso() {
   return {
     barberia: { findUnique: vi.fn(async () => ({ id: SEDE, zonaHoraria: 'UTC' })) },
     usuarioRol: { findFirst: vi.fn(), findMany: vi.fn() },
-    reserva: { findMany: vi.fn(async () => []) },
-    solicitudAntecedente: { findMany: vi.fn(async () => []) },
+    // El tipo del argumento importa: sin él la tupla de `mock.calls` es `[]` y
+    // no hay forma de leer el `where` sin recurrir a un cast a `any`.
+    reserva: { findMany: vi.fn(async (_args?: unknown) => [] as unknown[]) },
+    solicitudAntecedente: {
+      findMany: vi.fn(
+        async (_args?: { where?: Record<string, unknown> }) => [] as unknown[],
+      ),
+    },
   };
+}
+
+/** `where` de la última consulta a la bandeja de solicitudes. */
+function ultimoWhere(prisma: ReturnType<typeof prismaFalso>) {
+  return prisma.solicitudAntecedente.findMany.mock.lastCall?.[0]?.where;
 }
 
 function preparar(prisma: ReturnType<typeof prismaFalso>) {
@@ -56,10 +67,7 @@ describe('T-54 · visibilidad de antecedentes (C-5)', () => {
 
     await service.listar(ADMIN_SEDE, SEDE);
 
-    const where = prisma.solicitudAntecedente.findMany.mock.calls[0][0].where as Record<
-      string,
-      unknown
-    >;
+    const where = ultimoWhere(prisma) as Record<string, unknown>;
     expect(where).toEqual({ barberiaId: SEDE });
     expect(where).not.toHaveProperty('solicitanteId');
   });
@@ -99,10 +107,7 @@ describe('T-54 · visibilidad de antecedentes (C-5)', () => {
 
     await service.listarPendientesGlobal(ADMIN_GLOBAL);
 
-    const where = prisma.solicitudAntecedente.findMany.mock.calls[0][0].where as Record<
-      string,
-      unknown
-    >;
+    const where = ultimoWhere(prisma) as Record<string, unknown>;
     expect(where).toEqual({ estado: 'PENDIENTE' });
     expect(where).not.toHaveProperty('barberiaId');
   });

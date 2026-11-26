@@ -24,7 +24,16 @@ function prismaFalso() {
   return {
     barberia: { findUnique: vi.fn(async () => ({ id: SEDE, zonaHoraria: 'UTC' })) },
     usuarioRol: { findFirst: vi.fn() },
-    reserva: { findMany: vi.fn(async () => []) },
+    // El tipo del retorno no es decorativo: con `[]` a secas el mock resuelve
+    // `never[]` y `mockResolvedValue` rechaza cualquier fila real.
+    reserva: {
+      findMany: vi.fn(
+        async (_args?: unknown) =>
+          [] as Array<{
+            cliente: { id: string; nombreCompleto: string; correo: string };
+          }>,
+      ),
+    },
   };
 }
 
