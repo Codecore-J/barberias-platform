@@ -43,6 +43,9 @@ import {
   esConflictoAdminUnico,
 } from '../../iam/domain/administrador-sede.js';
 import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
+// F6 / T-62 · el país, la provincia y el municipio los deduce el proveedor a
+// partir de las coordenadas; el cliente no los envía.
+import { NominatimService } from '../../geocodificacion/nominatim.service.js';
 // E3-12: el estado de la 6.ª vinculación y su límite viven en el dominio de la
 // vinculación, compartidos con el flujo que las resuelve (VinculacionService).
 import {
@@ -165,6 +168,10 @@ export class BarberiaService {
     // `@Optional`): el módulo ya importa `AuditoriaModule` y un cambio de estado
     // sin rastro no puede degradarse en silencio.
     private readonly auditoria: AuditoriaService,
+    // F6 / T-62 · geocodificación inversa del alta. Dependencia requerida: una
+    // sede sin país ni divisiones no puede existir, y degradar en silencio
+    // dejaría sedes a medias.
+    private readonly nominatim: NominatimService,
     // H71: reabrir una vinculación cerrada avisa a la plataforma. `@Optional`
     // a propósito: el aviso es best-effort y su ausencia (una cola caída, un
     // test unitario que no lo necesita) no puede impedir que el cliente vuelva
@@ -219,6 +226,32 @@ export class BarberiaService {
     responsableId: string,
     dto: CreateBarberiaDto,
   ): Promise<BarberiaResponseDto> {
+    // F6 / T-62 · 1. Coordenadas obligatorias. El 422 lo decide el servicio (no
+    // el `ValidationPipe`, que respondería 400) porque el contrato de la fase lo
+    // fija así, y con un mensaje que dice qué hacer.
+    const latitud = dto.latitud;
+    const longitud = dto.longitud;
+    const coordenadasValidas =
+      typeof latitud === 'number' &&
+      typeof longitud === 'number' &&
+      Number.isFinite(latitud) &&
+      Number.isFinite(longitud) &&
+      Math.abs(latitud) <= 90 &&
+      Math.abs(longitud) <= 180;
+
+    if (!coordenadasValidas) {
+      throw reglaDeNegocio(
+        'COORDENADAS_REQUERIDAS',
+        'Confirma la ubicación de la sede antes de crearla: faltan las coordenadas.',
+      );
+    }
+
+    // 2. Geocodificación ANTES de abrir la transacción SERIALIZABLE: no se
+    //    retiene ningún bloqueo de fila esperando a un proveedor externo, y si
+    //    Nominatim falla (503) o el país no está soportado (422) no se escribe
+    //    nada. La sede nunca queda creada a medias.
+    const ubicacion = await this.nominatim.ubicacionDe(latitud, longitud);
+
     return withSerializableTransaction(this.prisma, async (tx) => {
       // 1. El responsable tiene que existir antes de contar o escribir nada.
       const responsable = await tx.usuario.findUnique({
@@ -309,6 +342,12 @@ export class BarberiaService {
           descripcion: dto.descripcion,
           telefono: dto.telefono,
           ubicacion: dto.ubicacion,
+          latitud,
+          longitud,
+          paisCodigo: ubicacion.paisCodigo,
+          divisionNivel1: ubicacion.divisionNivel1,
+          divisionNivel2: ubicacion.divisionNivel2,
+          direccionCompleta: ubicacion.direccionCompleta,
           codigoAcceso,
           enlaceUnico,
           responsableId,
@@ -376,7 +415,16 @@ export class BarberiaService {
       this.logger.log(
         `Barbería creada: ${barberia.id} por usuario ${responsableId}`,
       );
-      return this.toResponse(barberia);
+      // La respuesta lleva lo que se acaba de deducir para que la pantalla
+      // muestre provincia y municipio sin pedirlos otra vez.
+      return Object.assign(this.toResponse(barberia), {
+        latitud,
+        longitud,
+        paisCodigo: ubicacion.paisCodigo,
+        divisionNivel1: ubicacion.divisionNivel1,
+        divisionNivel2: ubicacion.divisionNivel2,
+        direccionCompleta: ubicacion.direccionCompleta,
+      });
     });
   }
 

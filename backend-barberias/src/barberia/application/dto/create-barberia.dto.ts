@@ -6,6 +6,9 @@ import {
   MaxLength,
   IsNotEmpty,
   Matches,
+  IsNumber,
+  Min,
+  Max,
 } from 'class-validator';
 
 export class CreateBarberiaDto {
@@ -33,4 +36,28 @@ export class CreateBarberiaDto {
   @IsNotEmpty()
   @MaxLength(500)
   ubicacion: string;
+
+  /**
+   * F6 / T-62 · coordenadas de la sede. OBLIGATORIAS al crear.
+   *
+   * Se declaran opcionales en el DTO a propósito: el contrato de la fase pide
+   * **422** cuando faltan (regla de negocio), y un `class-validator` obligatorio
+   * devolvería 400 desde el `ValidationPipe` antes de que el servicio pueda
+   * explicar qué falta. Aquí solo se valida el TIPO y el RANGO; la presencia la
+   * exige `BarberiasService.create` con `COORDENADAS_REQUERIDAS`.
+   *
+   * Las divisiones (provincia/municipio) NO se aceptan del cliente: las deduce
+   * el backend con Nominatim para que no puedan discrepar de las coordenadas.
+   */
+  @IsOptional()
+  @IsNumber({}, { message: 'La latitud debe ser un número decimal.' })
+  @Min(-90)
+  @Max(90)
+  latitud?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'La longitud debe ser un número decimal.' })
+  @Min(-180)
+  @Max(180)
+  longitud?: number;
 }
