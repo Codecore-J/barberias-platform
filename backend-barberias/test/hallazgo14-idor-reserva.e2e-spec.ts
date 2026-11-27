@@ -87,7 +87,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     await request(app.getHttpServer()).post('/api/v1/auth/register').send({
       nombreCompleto: 'Owner IDOR',
       correo: 'owner.idor@test.com',
-      telefono: '9990001111',
+      telefono: '8090001111',
       password: 'Password1!',
     });
     const ownerRes = await request(app.getHttpServer()).post('/api/v1/auth/login').send({
@@ -105,7 +105,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     const barberiaX = await prisma.barberia.create({
       data: {
         nombre: 'Barberia IDOR Test',
-        telefono: '9991112222',
+        telefono: '8491112222',
         ubicacion: 'Centro',
         enlaceUnico: `barberia-idor-${sufijoX}`,
         codigoAcceso: `IDOR${sufijoX}`.toUpperCase(),
@@ -152,7 +152,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     await request(app.getHttpServer()).post('/api/v1/auth/register').send({
       nombreCompleto: 'Cliente A',
       correo: 'clienta.idor@test.com',
-      telefono: '9990001112',
+      telefono: '8090001112',
       password: 'Password1!',
     });
     const cARes = await request(app.getHttpServer()).post('/api/v1/auth/login').send({
@@ -166,7 +166,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     await request(app.getHttpServer()).post('/api/v1/auth/register').send({
       nombreCompleto: 'Cliente B',
       correo: 'clientb.idor@test.com',
-      telefono: '9990001113',
+      telefono: '8290001113',
       password: 'Password1!',
     });
     const cBRes = await request(app.getHttpServer()).post('/api/v1/auth/login').send({
@@ -302,7 +302,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     const barberiaY = await prisma.barberia.create({
       data: {
         nombre: 'Barberia Y',
-        telefono: '9993334444',
+        telefono: '8493334444',
         ubicacion: 'Norte',
         enlaceUnico: `barberia-y-${sufijoY}`,
         codigoAcceso: `BY${sufijoY}`.toUpperCase(),
@@ -315,7 +315,7 @@ describe('Hallazgo 14: IDOR Mismo-Tenant en Reserva (e2e)', () => {
     await request(app.getHttpServer()).post('/api/v1/auth/register').send({
       nombreCompleto: 'Usuario U',
       correo: 'usuario.u@test.com',
-      telefono: '9990001114',
+      telefono: '8090001114',
       password: 'Password1!',
     });
     const uRes = await request(app.getHttpServer()).post('/api/v1/auth/login').send({

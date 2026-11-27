@@ -111,8 +111,7 @@ describe('E2-07 · vocabulario: desactivar, liberar, suspender', () => {
 
     // D16: el catálogo lo escribe el BARBERO, así que la suite necesita uno.
     // Los teléfonos son 10 dígitos exactos porque `RegisterDto` ahora los valida.
-    const serie = String(Math.floor(Math.random() * 9000) + 1000);
-    const tel = (n: number) => `809${serie}${String(n).padStart(3, '0')}`;
+    const tel = (n: number) => `809${String(Date.now()).slice(-6)}${n}`;
 
     await registrarYLogin('admin', `admin.e207-${sufijo}@test.com`, tel(1));
     await registrarYLogin('cliente', `cliente.e207-${sufijo}@test.com`, tel(2));

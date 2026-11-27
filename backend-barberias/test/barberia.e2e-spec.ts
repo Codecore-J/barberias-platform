@@ -60,7 +60,7 @@ describe('Barberias Endpoints (e2e)', () => {
     await request(app.getHttpServer()).post('/api/v1/auth/register').send({
       nombreCompleto: 'Owner Barberia',
       correo: 'owner.e2e@test.com',
-      telefono: '1231231234',
+      telefono: '8091231234',
       password: 'Password1!',
     });
     const ownerRes = await request(app.getHttpServer()).post('/api/v1/auth/login').send({
@@ -74,7 +74,7 @@ describe('Barberias Endpoints (e2e)', () => {
     await request(app.getHttpServer()).post('/api/v1/auth/register').send({
       nombreCompleto: 'Cliente Prueba',
       correo: 'client.e2e@test.com',
-      telefono: '9879879876',
+      telefono: '8499879876',
       password: 'Password1!',
     });
     const clientRes = await request(app.getHttpServer()).post('/api/v1/auth/login').send({

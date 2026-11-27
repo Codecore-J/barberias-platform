@@ -154,18 +154,18 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
     // Usuarios y tokens: el registro puede devolver 409 por duplicado; el token
     // es el mismo y es lo que usan las pruebas.
     for (const [correo, telefono] of [
-      ['admin.e303@test.com', '6000000000'],
+      ['admin.e303@test.com', '8090000000'],
       // `RegisterDto` exige 10 dígitos exactos: los fixtures también.
-      ['cA.e303@test.com', '6000100011'],
-      ['cB.e303@test.com', '6000100012'],
-      ['cX.e303@test.com', '6000100013'],
-      ['cY.e303@test.com', '6000100014'],
-      ['cD.e303@test.com', '6000100015'],
-      ['cE.e303@test.com', '6000100016'],
-      ['cF.e303@test.com', '6000100017'],
-      ['cG.e303@test.com', '6000100018'],
-      ['cH.e303@test.com', '6000100019'],
-      ['cI.e303@test.com', '6000100020'],
+      ['cA.e303@test.com', '8090100011'],
+      ['cB.e303@test.com', '8090100012'],
+      ['cX.e303@test.com', '8090100013'],
+      ['cY.e303@test.com', '8090100014'],
+      ['cD.e303@test.com', '8090100015'],
+      ['cE.e303@test.com', '8090100016'],
+      ['cF.e303@test.com', '8090100017'],
+      ['cG.e303@test.com', '8090100018'],
+      ['cH.e303@test.com', '8090100019'],
+      ['cI.e303@test.com', '8090100020'],
     ] as [string, string][]) {
       const r = await registrarYLogin(correo, telefono);
       expect([200, 201, 409]).toContain(r.status);
@@ -174,7 +174,7 @@ describe('E3-03 · parte 2 — reglas de creación de reserva', () => {
       const barberiaId = await prisma.barberia.create({
         data: {
           nombre: `Sede ${nombre} E303`,
-          telefono: `600${String(1).padStart(7, '0')}`,
+          telefono: `809${String(1).padStart(7, '0')}`,
           ubicacion: nombre,
           estado: 'ACTIVO',
           codigoAcceso: `E303${nombre}`,

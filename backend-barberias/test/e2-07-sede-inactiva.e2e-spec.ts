@@ -141,8 +141,7 @@ describe('E2-07 · P-SD-3/P-SD-4 · sede suspendida: no reserva, no expone agend
     datos.fecha = fecha(2);
 
     // Teléfonos de 10 dígitos exactos: `RegisterDto` los valida.
-    const serie = String(Math.floor(Math.random() * 9000) + 1000);
-    const tel = (n: number) => `809${serie}${String(n).padStart(3, '0')}`;
+    const tel = (n: number) => `809${String(Date.now()).slice(-6)}${n}`;
 
     await registrarYLogin('admin', `admin.psd34-${sufijo}@test.com`, tel(1));
     await registrarYLogin('cliente', `cliente.psd34-${sufijo}@test.com`, tel(2));

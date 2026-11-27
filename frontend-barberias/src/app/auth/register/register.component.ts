@@ -5,6 +5,11 @@ import { AuthService } from '../auth.service';
 import { CommonModule } from '@angular/common';
 import { RegisterDto } from '../interfaces/auth.interface';
 import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
+import {
+  cedulaDominicana,
+  normalizarTelefonoRD,
+  telefonoDominicano,
+} from '../../shared/validators/identidad.validators';
 
 @Component({
   selector: 'app-register',
@@ -58,19 +63,22 @@ import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
               </div>
 
               <div class="space-y-2">
-                <label for="telefono" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Teléfono <span class="text-zinc-600 font-normal lowercase">(obligatorio · 10 dígitos)</span></label>
+                <label for="telefono" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Teléfono <span class="text-zinc-600 font-normal lowercase">(obligatorio · 809, 829 o 849)</span></label>
                 <div class="relative group">
                   <i class="pi pi-phone absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
                   <input id="telefono" name="telefono" type="tel" inputmode="numeric" autocomplete="tel-national" formControlName="telefono" placeholder="8095550199"
-                         maxlength="10" (input)="onTelefonoInput($event)"
+                         maxlength="11" (input)="onTelefonoInput($event)"
                          class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner"
                          [ngClass]="{'border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50': registerForm.get('telefono')?.invalid && registerForm.get('telefono')?.touched}">
                 </div>
+                @if (registerForm.get('telefono')?.touched && registerForm.get('telefono')?.hasError('telefonoDominicano')) {
+                  <p class="text-[11px] text-red-400 pl-1">Escribe un número dominicano de 10 dígitos: 809, 829 o 849.</p>
+                }
               </div>
             </div>
 
             <div class="space-y-2">
-              <label for="cedula" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Cédula <span class="text-zinc-600 font-normal lowercase">(opcional · 11 dígitos si la tienes)</span></label>
+              <label for="cedula" class="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Cédula <span class="text-zinc-600 font-normal lowercase">(opcional · 11 dígitos válidos)</span></label>
               <div class="relative group">
                 <i class="pi pi-id-card absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-500 transition-colors"></i>
                 <input id="cedula" name="cedula" type="text" inputmode="numeric" formControlName="cedula" placeholder="Opcional: 11 dígitos"
@@ -78,6 +86,9 @@ import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
                        class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner"
                        [ngClass]="{'border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50': registerForm.get('cedula')?.invalid && registerForm.get('cedula')?.touched}">
               </div>
+              @if (registerForm.get('cedula')?.touched && registerForm.get('cedula')?.hasError('cedulaDominicana')) {
+                <p class="text-[11px] text-red-400 pl-1">La cédula no es válida: revisa los 11 dígitos y el verificador.</p>
+              }
             </div>
 
             <div class="space-y-2">
@@ -162,9 +173,9 @@ export class RegisterComponent {
   registerForm = this.fb.group({
     nombreCompleto: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(150)]],
     correo: ['', [Validators.required, Validators.email, Validators.maxLength(150)]],
-    // Mismo contrato que `RegisterDto`: teléfono de 10 dígitos y cédula de 11.
-    telefono: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
-    cedula: ['', [Validators.pattern(/^\d{11}$/)]],
+    // Mismo contrato que `RegisterDto`: teléfono dominicano y cédula con verificador.
+    telefono: ['', [Validators.required, telefonoDominicano()]],
+    cedula: ['', [cedulaDominicana()]],
     password: ['', [
       Validators.required, 
       Validators.minLength(8), 
@@ -187,8 +198,12 @@ export class RegisterComponent {
   }
 
   onTelefonoInput(event: Event): void {
-    this.soloDigitos(event, 10);
-    this.registerForm.get('telefono')?.setValue((event.target as HTMLInputElement).value, { emitEvent: false });
+    const input = event.target as HTMLInputElement;
+    // Se permiten 11 dígitos para poder pegar `+1 809…`; el `+1` se descarta.
+    const digitos = input.value.replace(/\D/g, '').slice(0, 11);
+    const limpio = normalizarTelefonoRD(digitos);
+    if (input.value !== limpio) input.value = limpio;
+    this.registerForm.get('telefono')?.setValue(limpio, { emitEvent: false });
   }
 
   onCedulaInput(event: Event): void {

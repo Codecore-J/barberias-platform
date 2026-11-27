@@ -133,12 +133,12 @@ describe('E4-01 · reserva grupal', () => {
     }
 
     for (const [correo, telefono] of [
-      ['admin.e401@test.com', '6010000000'],
+      ['admin.e401@test.com', '8290000000'],
       // `RegisterDto` exige 10 dígitos exactos: los fixtures también.
-      ['gA.e401@test.com', '6010100011'],
-      ['gB.e401@test.com', '6010100012'],
-      ['gC.e401@test.com', '6010100013'],
-      ['gD.e401@test.com', '6010100014'],
+      ['gA.e401@test.com', '8290100011'],
+      ['gB.e401@test.com', '8290100012'],
+      ['gC.e401@test.com', '8290100013'],
+      ['gD.e401@test.com', '8290100014'],
     ] as [string, string][]) {
       await registrarYLogin(correo, telefono);
     }
@@ -148,7 +148,7 @@ describe('E4-01 · reserva grupal', () => {
       const sede = await prisma.barberia.create({
         data: {
           nombre: `Sede ${nombre} E401`,
-          telefono: `601${String(1).padStart(7, '0')}`,
+          telefono: `829${String(1).padStart(7, '0')}`,
           ubicacion: nombre,
           estado: 'ACTIVO',
           codigoAcceso: `E401${nombre}`,
