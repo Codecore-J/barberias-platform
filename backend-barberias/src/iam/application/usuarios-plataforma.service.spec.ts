@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UsuariosPlataformaService } from './usuarios-plataforma.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
+import { TiempoService } from '../../shared/time/tiempo.service.js';
 import type { UsuarioAutenticado } from '../domain/jwt.interface.js';
 import type { CrearUsuarioPlataformaDto } from './dto/crear-usuario-plataforma.dto.js';
 
@@ -58,6 +59,15 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
         UsuariosPlataformaService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AuditoriaService, useValue: mockAuditoria },
+        // F7 / T-72: el servicio recibe el reloj por DI; el módulo de prueba debe
+        // aportarlo igual que el módulo real, o Nest no resuelve el index [2].
+        {
+          provide: TiempoService,
+          useValue: {
+            ahora: () => new Date(),
+            fechaLocal: (fecha: Date) => fecha.toISOString().slice(0, 10),
+          },
+        },
       ],
     }).compile();
 
