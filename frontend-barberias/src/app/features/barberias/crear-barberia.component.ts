@@ -1,7 +1,12 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, Router } from '@angular/router';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import type {
+  MunicipioCatalogo,
+  ProvinciaCatalogo,
+  UbicacionDeducida,
+} from '../../core/services/tenant.service';
 import { TenantService } from '../../core/services/tenant.service';
 
 /** Estados posibles de la petición de ubicación al navegador. */
@@ -78,6 +83,39 @@ type EstadoUbicacion = 'inactiva' | 'obteniendo' | 'lista' | 'denegada';
                     maxlength="500"
                     class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 pl-12 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
                 </div>
+
+                <!-- F6 / T-66 · confirmación: estos dos nombres los deduce el
+                     backend de las coordenadas. Se pueden corregir, pero el alta
+                     guarda lo que verificó el servidor, no lo editado aquí. -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div class="space-y-1">
+                    <label for="sede-provincia" class="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Provincia</label>
+                    <select id="sede-provincia" formControlName="provincia" (change)="onProvinciaChange()"
+                      class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-2 px-3 text-white focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all">
+                      <option value="">Sin confirmar</option>
+                      @for (provincia of provincias(); track provincia.id) {
+                        <option [value]="provincia.nombre">{{ provincia.nombre }}</option>
+                      }
+                      @for (extra of provinciasExtra(); track extra) {
+                        <option [value]="extra">{{ extra }}</option>
+                      }
+                    </select>
+                  </div>
+                  <div class="space-y-1">
+                    <label for="sede-municipio" class="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Municipio</label>
+                    <select id="sede-municipio" formControlName="municipio" [disabled]="municipios().length === 0"
+                      class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-2 px-3 text-white disabled:opacity-50 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all">
+                      <option value="">Sin confirmar</option>
+                      @for (municipio of municipios(); track municipio.nombre) {
+                        <option [value]="municipio.nombre">{{ municipio.nombre }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+                <p class="text-[11px] text-zinc-500 pl-1">
+                  Provincia y municipio se deducen de tu ubicación exacta. Puedes corregirlos aquí,
+                  pero la sede se crea con lo que verifica el servidor.
+                </p>
                 @if (form.get('ubicacion')?.touched && form.get('ubicacion')?.invalid) {
                   <p class="text-[11px] text-red-400 pl-1">Indica la ubicación o ciudad de la sede.</p>
                 } @else if (form.get('ubicacion')?.dirty && !form.get('ubicacion')?.value) {
@@ -166,7 +204,7 @@ type EstadoUbicacion = 'inactiva' | 'obteniendo' | 'lista' | 'denegada';
     </div>
   `
 })
-export class CrearBarberiaComponent {
+export class CrearBarberiaComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
   protected readonly tenantService = inject(TenantService);
   private readonly router = inject(Router);
@@ -196,7 +234,67 @@ export class CrearBarberiaComponent {
     telefono: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
     ubicacion: ['', [Validators.required]],
     descripcion: [''],
+    // F6 / T-66 · confirmación de lo que deduce el backend. Editables, pero NO
+    // se envían: el alta guarda lo que devolvió Nominatim para las coordenadas.
+    provincia: [''],
+    municipio: [''],
   });
+
+  /** Catálogo público (`GET /divisiones/DO`), ordenado por el backend. */
+  readonly provincias = signal<ProvinciaCatalogo[]>([]);
+  readonly municipios = signal<MunicipioCatalogo[]>([]);
+
+  /** Provincia deducida que el catálogo aún no tiene (se ofrece igual). */
+  readonly provinciasExtra = signal<string[]>([]);
+
+  ngOnInit(): void {
+    this.tenantService.cargarDivisiones('DO').subscribe((catalogo) => {
+      this.provincias.set(catalogo.provincias);
+    });
+  }
+
+  /**
+   * El municipio depende de la provincia: al cambiarla se recarga su lista y se
+   * limpia el municipio anterior (uno de otra provincia no existe en esta).
+   */
+  onProvinciaChange(): void {
+    const nombre = this.form.get('provincia')?.value as string | undefined;
+    const provincia = this.provincias().find((p) => p.nombre === nombre);
+    this.municipios.set(provincia?.municipios ?? []);
+    this.form.get('municipio')?.setValue('', { emitEvent: false });
+  }
+
+  /**
+   * F6 / T-66 · confirma la ubicación: pide al backend qué provincia y qué
+   * municipio corresponden a las coordenadas y prellena los selects con eso.
+   *
+   * Un fallo no bloquea el alta: el formulario se queda sin confirmar y el
+   * backend volverá a deducirlo al crear la sede.
+   */
+  private confirmarUbicacion(latitud: number, longitud: number): void {
+    this.tenantService.resolverUbicacion(latitud, longitud).subscribe({
+      next: (deducida) => {
+        if (deducida) this.aplicarDivisiones(deducida);
+      },
+      error: () => undefined,
+    });
+  }
+
+  private aplicarDivisiones(deducida: UbicacionDeducida): void {
+    const provincia = deducida.divisionNivel1 ?? '';
+    const municipio = deducida.divisionNivel2 ?? '';
+
+    const enCatalogo = this.provincias().find((p) => p.nombre === provincia);
+    this.provinciasExtra.set(provincia && !enCatalogo ? [provincia] : []);
+
+    const municipios = [...(enCatalogo?.municipios ?? [])];
+    if (municipio && !municipios.some((m) => m.nombre === municipio)) {
+      municipios.unshift({ id: `deducido:${municipio}`, nombre: municipio });
+    }
+    this.municipios.set(municipios);
+
+    this.form.patchValue({ provincia, municipio }, { emitEvent: false });
+  }
 
   /** Mismo criterio que los modales de personal: inválido y ya tocado. */
   campoInvalido(nombre: string): boolean {
@@ -228,11 +326,13 @@ export class CrearBarberiaComponent {
 
     navigator.geolocation.getCurrentPosition(
       (posicion) => {
-        this.coordenadas.set({
-          latitud: Number(posicion.coords.latitude.toFixed(7)),
-          longitud: Number(posicion.coords.longitude.toFixed(7)),
-        });
+        const latitud = Number(posicion.coords.latitude.toFixed(7));
+        const longitud = Number(posicion.coords.longitude.toFixed(7));
+        this.coordenadas.set({ latitud, longitud });
         this.estadoUbicacion.set('lista');
+        // La confirmación llega después de tener coordenadas: el backend deduce
+        // provincia y municipio de ese punto exacto.
+        this.confirmarUbicacion(latitud, longitud);
       },
       () => {
         // Permiso denegado, timeout o posición no disponible: para el usuario es
@@ -253,9 +353,10 @@ export class CrearBarberiaComponent {
     }
 
     // El `ValidationPipe` del backend usa `forbidNonWhitelisted`: se envía solo
-    // lo que `CreateBarberiaDto` declara. La provincia y el municipio NO viajan:
-    // los deduce el backend con Nominatim y, si no los devuelve, la sede queda
-    // con NULL (no se acepta un nombre puesto por el cliente).
+    // lo que `CreateBarberiaDto` declara. Provincia y municipio son una
+    // CONFIRMACIÓN editable y NO viajan: si se enviaran, el backend los
+    // rechazaría (400) y, aunque los aceptara, no son fuente de verdad —la sede
+    // guarda lo que devolvió Nominatim, o NULL si no devolvió ese nivel—.
     const { nombre, telefono, ubicacion, descripcion } = this.form.value;
 
     this.isSubmitting.set(true);

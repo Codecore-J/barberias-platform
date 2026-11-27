@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { CrearBarberiaComponent } from './crear-barberia.component';
 import { TenantService } from '../../core/services/tenant.service';
 
@@ -26,10 +26,44 @@ import { TenantService } from '../../core/services/tenant.service';
 
 const COORDS = { latitude: 18.4861, longitude: -69.9312 };
 
+/**
+ * F6 / T-66 · lo que el backend deduce de las coordenadas. El formulario lo
+ * pinta en los selects como CONFIRMACIÓN; el usuario puede corregirlo, pero lo
+ * corregido no viaja al alta: la sede se crea con lo que verificó el proveedor.
+ */
+/** Catálogo público tal como lo sirve `GET /divisiones/DO`. */
+const CATALOGO = {
+  paisCodigo: 'DO',
+  provincias: [
+    {
+      id: 'p-santiago',
+      nombre: 'Santiago',
+      municipios: [
+        { id: 'm-santiago', nombre: 'Santiago de los Caballeros' },
+        { id: 'm-tamboril', nombre: 'Tamboril' },
+      ],
+    },
+    {
+      id: 'p-dn',
+      nombre: 'Distrito Nacional',
+      municipios: [{ id: 'm-santo-domingo', nombre: 'Santo Domingo' }],
+    },
+  ],
+};
+
+const UBICACION_DEDUCIDA = {
+  paisCodigo: 'DO',
+  divisionNivel1: 'Santiago',
+  divisionNivel2: 'Tamboril',
+  direccionCompleta: 'Tamboril, Santiago, República Dominicana',
+};
+
 describe('CrearBarberiaComponent · geolocalización obligatoria (T-63)', () => {
   let geolocation: { getCurrentPosition: ReturnType<typeof vi.fn> };
   let tenant: {
     crearBarberia: ReturnType<typeof vi.fn>;
+    cargarDivisiones: ReturnType<typeof vi.fn>;
+    resolverUbicacion: ReturnType<typeof vi.fn>;
     error: () => null;
   };
 
@@ -73,6 +107,8 @@ describe('CrearBarberiaComponent · geolocalización obligatoria (T-63)', () => 
 
     tenant = {
       crearBarberia: vi.fn(() => of({ id: 'sede-1' })),
+      cargarDivisiones: vi.fn(() => of(CATALOGO)),
+      resolverUbicacion: vi.fn(() => of(UBICACION_DEDUCIDA)),
       error: () => null,
     };
     vi.clearAllMocks();
@@ -175,6 +211,74 @@ describe('CrearBarberiaComponent · geolocalización obligatoria (T-63)', () => 
     expect(enviado).not.toHaveProperty('divisionNivel1');
     expect(enviado).not.toHaveProperty('divisionNivel2');
     expect(enviado).not.toHaveProperty('paisCodigo');
+  });
+
+  it('al confirmar la ubicación, prellena provincia y municipio con lo que dedujo el backend', () => {
+    const { fixture, componente } = montar();
+    geolocation.getCurrentPosition.mockImplementation((ok: any) =>
+      ok({ coords: COORDS, timestamp: Date.now() }),
+    );
+
+    componente.usarMiUbicacion();
+    fixture.detectChanges();
+
+    expect(tenant.resolverUbicacion).toHaveBeenCalledWith(
+      COORDS.latitude,
+      COORDS.longitude,
+    );
+    expect(componente.form.get('provincia')?.value).toBe('Santiago');
+    expect(componente.form.get('municipio')?.value).toBe('Tamboril');
+
+    // Y se VEN: los dos selects existen y muestran lo deducido.
+    const provincia = fixture.nativeElement.querySelector('#sede-provincia') as HTMLSelectElement;
+    const municipio = fixture.nativeElement.querySelector('#sede-municipio') as HTMLSelectElement;
+    expect(provincia.value).toBe('Santiago');
+    expect(municipio.value).toBe('Tamboril');
+    expect(municipio.disabled).toBe(false);
+  });
+
+  it('los selects son editables y lo que el usuario cambie no viaja al alta', () => {
+    const { fixture, componente } = montar();
+    geolocation.getCurrentPosition.mockImplementation((ok: any) =>
+      ok({ coords: COORDS, timestamp: Date.now() }),
+    );
+    rellenarFormulario(componente);
+    componente.usarMiUbicacion();
+    fixture.detectChanges();
+
+    // El usuario discrepa de la confirmación: los selects se dejan cambiar…
+    componente.form.patchValue({ provincia: 'Distrito Nacional', municipio: 'Santo Domingo' });
+    fixture.detectChanges();
+    expect(componente.form.get('provincia')?.disabled).toBe(false);
+
+    componente.onSubmit();
+
+    // …pero el alta sigue mandando solo lo verificado: el backend ignora estos
+    // dos nombres y guarda lo que devolvió Nominatim.
+    const enviado = tenant.crearBarberia.mock.calls[0][0];
+    expect(enviado).not.toHaveProperty('divisionNivel1');
+    expect(enviado).not.toHaveProperty('divisionNivel2');
+  });
+
+  it('si la consulta de ubicación falla, el alta sigue sin divisiones', () => {
+    const { fixture, componente } = montar();
+    tenant.resolverUbicacion.mockReturnValue(throwError(() => new Error('503')));
+    geolocation.getCurrentPosition.mockImplementation((ok: any) =>
+      ok({ coords: COORDS, timestamp: Date.now() }),
+    );
+    rellenarFormulario(componente);
+    componente.usarMiUbicacion();
+    fixture.detectChanges();
+
+    expect(componente.coordenadas()).toEqual({
+      latitud: COORDS.latitude,
+      longitud: COORDS.longitude,
+    });
+    expect(componente.form.get('provincia')?.value).toBe('');
+
+    componente.onSubmit();
+    const enviado = tenant.crearBarberia.mock.calls[0][0];
+    expect(enviado).not.toHaveProperty('divisionNivel1');
   });
 
   it('el formulario ya no tiene campo de logo por URL', () => {

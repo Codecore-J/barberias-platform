@@ -95,12 +95,12 @@ describe('T-66 · GET /divisiones/:paisCodigo', () => {
     expect(DivisionesController).toBeDefined();
 
     const prototipo = DivisionesController.prototype;
-    const metodo = Object.getOwnPropertyNames(prototipo)
-      .filter((nombre) => nombre !== 'constructor')
-      .map((nombre) => (prototipo as any)[nombre])
-      .find((fn) => typeof fn === 'function');
+    // Por nombre y no «el primero»: el controlador declara además
+    // `GET /divisiones/ubicacion` (confirmación por coordenadas), que va antes
+    // que el comodín para no ser capturada como país.
+    const metodo = (prototipo as any).listar as object;
 
-    expect(metodo).toBeDefined();
+    expect(typeof metodo).toBe('function');
     expect(Reflect.getMetadata(PATH_METADATA, metodo)).toBe(':paisCodigo');
     // METHOD_METADATA 0 = GET
     expect(Reflect.getMetadata(METHOD_METADATA, metodo)).toBe(0);

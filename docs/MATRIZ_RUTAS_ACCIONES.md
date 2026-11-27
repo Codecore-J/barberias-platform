@@ -30,14 +30,15 @@
 > una solicitud `PENDIENTE` (motivo = nota) y ya no crea un antecedente `APROBADO`
 > directo.
 
-> **Actualización F6 (26 nov 2026).** La fase suma **2 rutas** y ninguna acción nueva.
-> El inventario vivo queda en **133 claves** y el test exige **532** evaluaciones
-> (133 × 4).
+> **Actualización F6 (26 nov 2026).** La fase suma **3 rutas** y ninguna acción nueva.
+> El inventario vivo queda en **134 claves** y el test exige **536** evaluaciones
+> (134 × 4).
 >
 > | Ruta | Acción | Rol efectivo |
 > |---|---|---|
 > | `PATCH /shops/:shopId/logo` | `sin acción` | ADMIN_BARBERIA (su sede); el ADMINISTRADOR global **no** sube logos — autoservicio del dueño sobre su propia marca, igual que la foto de servicio de T-24 |
 > | `GET /divisiones/:paisCodigo` | `sin acción` | **pública**: catálogo de provincias y municipios, dato público del país |
+> | `GET /divisiones/ubicacion` | `sin acción` | **pública**: confirma la provincia y el municipio de unas coordenadas para los selects del alta; no escribe nada |
 
 ## 1 · Cómo se construyó
 

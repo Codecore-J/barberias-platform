@@ -95,10 +95,10 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     expect(malFormadas).toEqual([]);
   });
 
-  it('cubre exactamente las 133 rutas del inventario', () => {
+  it('cubre exactamente las 134 rutas del inventario', () => {
     const claves = clavesDePoliticaDeclarada();
 
-    expect(claves.length).toBe(133);
+    expect(claves.length).toBe(134);
     expect(RUTAS.length).toBe(new Set(RUTAS).size);
 
     const sinDecision = claves.filter((clave) => !(clave in RUTA_ACCION));
@@ -116,7 +116,7 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     ).toBe('');
   });
 
-  it('reparte 75 rutas con acción y 58 sin acción (46 fuera + 12 brechas)', () => {
+  it('reparte 75 rutas con acción y 59 sin acción (47 fuera + 12 brechas)', () => {
     const conAccion = RUTAS.filter((clave) => RUTA_ACCION[clave].length > 0);
     const sinAccion = RUTAS.filter((clave) => RUTA_ACCION[clave].length === 0);
 
@@ -124,13 +124,13 @@ describe('Matriz objetivo ruta → acción (T-10)', () => {
     // F5 sumó cinco rutas de antecedentes, todas con acción: 130 → 135. Al
     // eliminar las cuatro rutas `records` quedan 75 con acción.
     expect(conAccion.length).toBe(75);
-    expect(sinAccion.length).toBe(58);
-    expect(conAccion.length + sinAccion.length).toBe(133);
+    expect(sinAccion.length).toBe(59);
+    expect(conAccion.length + sinAccion.length).toBe(134);
 
-    // De las 58 sin acción, doce son brecha de la matriz y las otras 46 quedan
+    // De las 59 sin acción, doce son brecha de la matriz y las otras 47 quedan
     // fuera de su alcance (identidad, autoservicio, vitrina, integración).
     expect(RUTAS_BRECHA_MATRIZ.length).toBe(12);
-    expect(sinAccion.length - RUTAS_BRECHA_MATRIZ.length).toBe(46);
+    expect(sinAccion.length - RUTAS_BRECHA_MATRIZ.length).toBe(47);
   });
 
   it('las 12 brechas de §6 no tienen acción y son las del documento', () => {

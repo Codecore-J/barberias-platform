@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import {
+  NominatimService,
   PAISES_SOPORTADOS,
   PaisNoSoportadoException,
+  type UbicacionGeocodificada,
 } from '../../geocodificacion/nominatim.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { reglaDeNegocio } from '../../shared/errors/d40.errors.js';
 
 /** Un municipio tal como lo consume el select: id y nombre, nada más. */
 export interface MunicipioDeCatalogo {
@@ -42,7 +45,40 @@ interface FilaDeDivision {
  */
 @Injectable()
 export class DivisionesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // F6 / T-66 · la confirmación del formulario pregunta por las coordenadas
+    // antes de crear nada, con el MISMO proveedor que usa el alta.
+    private readonly nominatim: NominatimService,
+  ) {}
+
+  /**
+   * F6 / T-66 · qué provincia y qué municipio corresponden a unas coordenadas.
+   *
+   * Es una consulta de solo lectura para que el formulario pueda pintar los dos
+   * selects como confirmación. No escribe nada y no exige sesión: responde
+   * exactamente lo que el alta va a guardar, con los mismos errores del alta
+   * (422 si faltan las coordenadas o el país no está soportado, 503 si el
+   * proveedor no responde). Lo que el usuario escriba en esos selects NO se
+   * guarda: la fuente de verdad es esta respuesta.
+   */
+  async porUbicacion(latitud?: number, longitud?: number): Promise<UbicacionGeocodificada> {
+    if (
+      typeof latitud !== 'number' ||
+      typeof longitud !== 'number' ||
+      !Number.isFinite(latitud) ||
+      !Number.isFinite(longitud) ||
+      Math.abs(latitud) > 90 ||
+      Math.abs(longitud) > 180
+    ) {
+      throw reglaDeNegocio(
+        'COORDENADAS_REQUERIDAS',
+        'Confirma la ubicación de la sede antes de continuar: faltan las coordenadas.',
+      );
+    }
+
+    return this.nominatim.ubicacionDe(latitud, longitud);
+  }
 
   async listar(paisCodigo: string): Promise<CatalogoDeDivisiones> {
     const pais = (paisCodigo ?? '').trim().toUpperCase();

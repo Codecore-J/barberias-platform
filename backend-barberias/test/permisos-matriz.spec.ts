@@ -127,6 +127,8 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // F6 / T-66 · catálogo público de divisiones: sin sesión, así que el guard
   // deja pasar a cualquier rol (mismo criterio que `/health`).
   'GET /divisiones/:paisCodigo': TODOS,
+  // F6 / T-66 · confirmación por coordenadas: pública, igual que el catálogo.
+  'GET /divisiones/ubicacion': TODOS,
   'POST /shops/link': [ROL_CLIENTE, ROL_ADMINISTRADOR],
   // E3-12/2 (2026-10-17): la invitación de la sede (regla 1.10). La ruta usa
   // `:id`, así que el guard NO resuelve la sede del parámetro y la política es
@@ -797,7 +799,7 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // selector de clientes de la sede: 135 × 4 = 540. Al eliminar las cuatro rutas
   // `records` del flujo viejo quedan 131 × 4 = 524. F6 sumó la ruta del logo de
   // la sede (T-64) y la del catálogo de divisiones (T-66): 133 × 4 = 532.
-  expect(evaluaciones).toBe(532);
+  expect(evaluaciones).toBe(536);
 
     const resumen =
       desviaciones.length > 40

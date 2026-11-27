@@ -65,6 +65,17 @@ export interface CatalogoDivisiones {
   provincias: ProvinciaCatalogo[];
 }
 
+/**
+ * F6 / T-66 · lo que el backend deduce de unas coordenadas
+ * (`GET /divisiones/ubicacion`). Es exactamente lo que el alta va a guardar.
+ */
+export interface UbicacionDeducida {
+  paisCodigo: string;
+  divisionNivel1: string | null;
+  divisionNivel2: string | null;
+  direccionCompleta: string | null;
+}
+
 /** El vínculo que devuelven las rutas de vinculación: el estado es el de D10. */
 export interface VinculoDeCliente {
   id: string;
@@ -531,6 +542,22 @@ export class TenantService {
       tap((catalogo) => this.divisionesResueltas.set(pais, catalogo)),
       catchError(() => of({ paisCodigo: pais, provincias: [] })),
     );
+  }
+
+  /**
+   * F6 / T-66 · confirmación de provincia y municipio para unas coordenadas.
+   *
+   * Solo lectura: no crea la sede. Es la fuente con la que se prellenan los
+   * selects del alta, y por eso lo que devuelve coincide con lo que el backend
+   * guarda después. Un fallo devuelve `null` en lugar de romper el formulario:
+   * el alta se puede enviar igual y el backend volverá a deducirlo.
+   */
+  resolverUbicacion(latitud: number, longitud: number): Observable<UbicacionDeducida | null> {
+    return this.http
+      .get<UbicacionDeducida>(`${API_URL}/divisiones/ubicacion`, {
+        params: { latitud, longitud },
+      })
+      .pipe(catchError(() => of(null)));
   }
 
   /**
