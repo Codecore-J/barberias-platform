@@ -332,4 +332,5 @@ describe('AdminUsuariosComponent · Fase 2', () => {
 
     expect(component.puedeEliminarUsuario(otroAdmin)).toBe(false);
   });
+
 });

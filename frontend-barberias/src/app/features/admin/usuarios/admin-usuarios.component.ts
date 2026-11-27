@@ -442,17 +442,25 @@ interface TarjetaSede {
                   <input
                     id="usuario-telefono"
                     [ngModel]="formTelefono()"
-                    (ngModelChange)="formTelefono.set(soloDigitos($event, 10))"
+                    (ngModelChange)="formTelefono.set(normalizarTelefonoEntrada($event))"
                     name="formTelefono"
                     type="tel"
                     inputmode="numeric"
                     autocomplete="tel-national"
-                    maxlength="10"
+                    maxlength="11"
                     [disabled]="creando()"
                     class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 disabled:opacity-60 transition-colors"
                     placeholder="8095550199"
                   />
-                  <p class="text-[11px] text-zinc-600 mt-1">Obligatorio · 10 dígitos, sin espacios ni guiones</p>
+                  @if (formTelefono().length === 10 && !telefonoValido()) {
+                    <p class="text-[11px] text-rose-400 mt-1">
+                      El teléfono debe empezar por 809, 829 o 849.
+                    </p>
+                  } @else {
+                    <p class="text-[11px] text-zinc-600 mt-1">
+                      Obligatorio · 10 dígitos con prefijo 809, 829 o 849
+                    </p>
+                  }
                 </div>
 
                 <div>
@@ -471,7 +479,15 @@ interface TarjetaSede {
                     class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 disabled:opacity-60 transition-colors"
                     placeholder="00112345678"
                   />
-                  <p class="text-[11px] text-zinc-600 mt-1">Opcional · 11 dígitos si la ingresas</p>
+                  @if (formCedula().length === 11 && !cedulaValida()) {
+                    <p class="text-[11px] text-rose-400 mt-1">
+                      La cédula no es válida: revisa el dígito verificador.
+                    </p>
+                  } @else {
+                    <p class="text-[11px] text-zinc-600 mt-1">
+                      Opcional · 11 dígitos con dígito verificador válido
+                    </p>
+                  }
                 </div>
 
                 <div>
@@ -1309,6 +1325,44 @@ export class AdminUsuariosComponent implements OnInit {
     return (valor ?? '').replace(/\D/g, '').slice(0, maximo);
   }
 
+  // ── F7 / T-75 · formatos dominicanos (espejo del backend) ────────────────
+
+  /** Prefijos válidos de RD. */
+  readonly PREFIJOS_TELEFONO_RD = ['809', '829', '849'];
+
+  /**
+   * Deja el teléfono en 10 dígitos locales: filtra lo que no sea dígito y, si
+   * llegan 11 empezando por 1 (`+1 809…`), descarta el prefijo internacional.
+   */
+  normalizarTelefonoEntrada(valor: string): string {
+    const digitos = (valor ?? '').replace(/\D/g, '').slice(0, 11);
+    return digitos.length === 11 && digitos.startsWith('1') ? digitos.slice(1) : digitos;
+  }
+
+  /** Mismo contrato que `TelefonoDominicano` del backend. */
+  telefonoValido(valor: string = this.formTelefono()): boolean {
+    return (
+      /^\d{10}$/.test(valor) &&
+      !/^(\d)\1{9}$/.test(valor) &&
+      this.PREFIJOS_TELEFONO_RD.includes(valor.slice(0, 3))
+    );
+  }
+
+  /** Cédula: 11 dígitos con dígito verificador (Luhn adaptado a RD). */
+  cedulaValida(valor: string = this.formCedula()): boolean {
+    if (!/^\d{11}$/.test(valor)) return false;
+    if (/^0{11}$/.test(valor)) return false;
+
+    const digitos = valor.split('').map(Number);
+    const verificador = digitos.pop() as number;
+    const suma = digitos.reduce((total, digito, indice) => {
+      const producto = digito * (indice % 2 === 0 ? 1 : 2);
+      return total + (producto > 9 ? producto - 9 : producto);
+    }, 0);
+
+    return (10 - (suma % 10)) % 10 === verificador;
+  }
+
   /** Mensaje exacto del conflicto, con el correo y el nombre del dueño actual. */
   readonly mensajeConflictoSede = computed(() => {
     const admin = this.conflictoAdminSede();
@@ -1328,14 +1382,15 @@ export class AdminUsuariosComponent implements OnInit {
     if (!this.formNombre().trim()) return false;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.formCorreo().trim())) return false;
     // Mismo contrato que `CrearUsuarioPlataformaDto`: 10 dígitos exactos.
-    if (!/^\d{10}$/.test(this.formTelefono())) return false;
+    // F7 / T-75: 10 dígitos con prefijo 809/829/849 (el backend aplica lo mismo).
+    if (!this.telefonoValido()) return false;
     if (password.length < PASSWORD_MINIMO) return false;
     if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) return false;
 
-    // Y la cédula, 11 dígitos exactos si se indica (es opcional: hay clientes
-    // extranjeros sin cédula dominicana).
+    // Y la cédula, 11 dígitos con verificador válido si se indica (es opcional:
+    // hay clientes extranjeros sin cédula dominicana).
     const cedula = this.formCedula().trim();
-    if (cedula && !/^\d{11}$/.test(cedula)) return false;
+    if (cedula && !this.cedulaValida(cedula)) return false;
 
     if (this.rolRequiereSede() && !this.formBarberiaId()) return false;
 
