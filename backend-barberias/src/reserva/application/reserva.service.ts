@@ -1378,11 +1378,24 @@ export class ReservaService {
 
       await this.cambiarEstado(tx, reserva, ESTADOS.NO_PRESENTADO, ACTORES.STAFF);
 
+      // F7 / T-72 · si la cuenta del cliente fue eliminada la reserva quedó sin
+      // `clienteId`: la cita se marca igual, pero no hay vínculo ni contador de
+      // inasistencias que actualizar.
+      const clienteId = reserva.clienteId;
+      let evaluacion = {
+        contadorNoPresentado: 0,
+        estaRestringido: false,
+        motivoRestriccion: null,
+        advertencia: false,
+        restringidoAhora: false,
+      } as ReturnType<typeof evaluarInasistencia>;
+
+      if (clienteId) {
       // Obtener o crear vínculo cliente-barbería
       let vinculo = await tx.clienteBarberia.findUnique({
         where: {
           uk_cliente_barberia: {
-            usuarioId: reserva.clienteId,
+            usuarioId: clienteId,
             barberiaId: reserva.barberiaId,
           }
         }
@@ -1391,7 +1404,7 @@ export class ReservaService {
       if (!vinculo) {
         vinculo = await tx.clienteBarberia.create({
           data: {
-            usuarioId: reserva.clienteId,
+            usuarioId: clienteId,
             barberiaId: reserva.barberiaId,
             contadorNoPresentado: 0,
           }
@@ -1402,14 +1415,14 @@ export class ReservaService {
       // contador sube SIEMPRE en la fila de ESA sede (nunca global, D48) y al
       // cruzar el límite de la sede nace `esta_restringido` con su motivo. Una
       // restricción vigente conserva su motivo (D20).
-      const evaluacion = evaluarInasistencia(vinculo.contadorNoPresentado, {
+      evaluacion = evaluarInasistencia(vinculo.contadorNoPresentado, {
         estaRestringido: vinculo.estaRestringido,
         motivoRestriccion: vinculo.motivoRestriccion,
       });
 
       if (evaluacion.restringidoAhora) {
         this.logger.warn(
-          `El cliente ${reserva.clienteId} ha sido restringido automáticamente en la barbería ${barberiaId}`,
+          `El cliente ${clienteId} ha sido restringido automáticamente en la barbería ${barberiaId}`,
         );
       }
 
@@ -1427,7 +1440,7 @@ export class ReservaService {
       // CONFIRMADA con las notas temporales ya destruidas.
       await tx.antecedente.deleteMany({
         where: {
-          usuarioId: reserva.clienteId,
+          usuarioId: clienteId,
           barberiaOrigenId: reserva.barberiaId,
           compartido: false,
         },
@@ -1444,7 +1457,7 @@ export class ReservaService {
             entidadId: vinculo.id,
             contexto: {
               barberiaId,
-              clienteId: reserva.clienteId,
+              clienteId,
               reservaId,
               contadorNoPresentado: evaluacion.contadorNoPresentado,
               limite: LIMITE_INASISTENCIAS_POR_DEFECTO,
@@ -1452,6 +1465,7 @@ export class ReservaService {
           },
           tx,
         );
+      }
       }
 
       return {
@@ -1785,7 +1799,7 @@ export class ReservaService {
     // que si la cancelación fallara la reserva ya CONFIRMADA seguiría a salvo.
     await this.aplicarEfectosPostCommit(reservaId, ESTADOS.CONFIRMADA);
 
-    if (this.notificacionService) {
+    if (this.notificacionService && reserva.clienteId) {
       this.notificacionService
         .enviarNotificacion({
           usuarioId: reserva.clienteId,
@@ -1877,7 +1891,7 @@ export class ReservaService {
       await this.avisarHuecoLiberado(barberiaId, bloqueLiberado, reservaId);
     }
 
-    if (this.notificacionService) {
+    if (this.notificacionService && reserva.clienteId) {
       const razon = motivo.codigo === 'OTRO' ? motivo.detalle : TEXTO_MOTIVO_RECHAZO[motivo.codigo];
       this.notificacionService
         .enviarNotificacion({
@@ -2344,7 +2358,7 @@ export class ReservaService {
       await this.avisarHuecoLiberado(barberiaId, bloqueAnterior, reservaId);
     }
 
-    if (this.notificacionService) {
+    if (this.notificacionService && reserva.clienteId) {
       this.notificacionService
         .enviarNotificacion({
           usuarioId: reserva.clienteId,
@@ -2469,8 +2483,8 @@ export class ReservaService {
       await this.avisarHuecoLiberado(barberiaId, bloqueLiberado, reservaId);
     }
 
-    if (this.notificacionService) {
-      const destinatario = esStaff ? reserva.clienteId : user.id;
+    const destinatario = esStaff ? reserva.clienteId : user.id;
+    if (this.notificacionService && destinatario) {
       const contenido = esStaff
         ? `Tu reserva del ${this.fechaISO(reserva.fechaCita)} a las ${this.horaHHMM(reserva.horaInicio)} fue cancelada por la sede.`
         : `Tu reserva del ${this.fechaISO(reserva.fechaCita)} a las ${this.horaHHMM(reserva.horaInicio)} quedó cancelada.`;
@@ -2588,7 +2602,7 @@ export class ReservaService {
       await this.avisarHuecoLiberado(barberiaId, bloqueLiberado, reservaId);
     }
 
-    if (this.notificacionService) {
+    if (this.notificacionService && reserva.clienteId) {
       const razon =
         motivo.codigo === 'OTRO'
           ? motivo.detalle
@@ -2825,7 +2839,7 @@ export class ReservaService {
       await this.avisarHuecoLiberado(barberiaId, bloqueAnterior, reservaId);
     }
 
-    if (this.notificacionService) {
+    if (this.notificacionService && reserva.clienteId) {
       this.notificacionService
         .enviarNotificacion({
           usuarioId: reserva.clienteId,
@@ -2975,12 +2989,14 @@ export class ReservaService {
           fechaActual: fechaCalendarioISO(p.reserva.fechaCita),
           horaInicioActual: horaRelojHHMM(p.reserva.horaInicio),
           horaFinActual: horaRelojHHMM(p.reserva.horaFin),
-          cliente: {
-            id: p.reserva.cliente.id,
-            nombre: p.reserva.cliente.nombreCompleto,
-            correo: p.reserva.cliente.correo,
-            telefono: p.reserva.cliente.telefono,
-          },
+          cliente: p.reserva.cliente
+            ? {
+                id: p.reserva.cliente.id,
+                nombre: p.reserva.cliente.nombreCompleto,
+                correo: p.reserva.cliente.correo,
+                telefono: p.reserva.cliente.telefono,
+              }
+            : null,
           barbero: p.reserva.barbero
             ? {
                 id: p.reserva.barbero.id,
@@ -3311,7 +3327,8 @@ export class ReservaService {
         },
       });
 
-      if (!reserva) return;
+      // F7 / T-72 · sin cliente (cuenta eliminada) no hay evento que publicar.
+      if (!reserva || !reserva.cliente || !reserva.clienteId) return;
 
       const evento: EventoReserva = {
         tipo,

@@ -40,6 +40,14 @@
 > | `GET /divisiones/:paisCodigo` | `sin acción` | **pública**: catálogo de provincias y municipios, dato público del país |
 > | `GET /divisiones/ubicacion` | `sin acción` | **pública**: confirma la provincia y el municipio de unas coordenadas para los selects del alta; no escribe nada |
 
+> **Actualización F7 (27 nov 2026).** La fase suma **1 ruta** sobre `plataforma.usuarios.gestionar`
+> (la acción ya nombraba «eliminar»). El inventario vivo queda en **135 claves** y el
+> test exige **540** evaluaciones (135 × 4).
+>
+> | Ruta | Acción | Rol efectivo |
+> |---|---|---|
+> | `DELETE /plataforma/usuarios/:id` | `plataforma.usuarios.gestionar` | ADMINISTRADOR global · borrado REAL con `{ confirmacion }`, respaldo previo y 409 de último administrador / admin de sede / responsable de sede |
+
 ## 1 · Cómo se construyó
 
 - **Fuente de las rutas:** `backend-barberias/test/permisos-matriz.spec.ts`, constante

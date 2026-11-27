@@ -72,6 +72,12 @@ export class WhatsappWebhookService {
       throw new NotFoundException('Reserva no encontrada');
     }
 
+    // F7 / T-72 · reserva sin cliente (cuenta eliminada): no hay teléfono que
+    // comparar ni usuario al que aplicar la transición.
+    if (!reserva.cliente || !reserva.clienteId) {
+      throw new NotFoundException('Reserva no encontrada');
+    }
+
     if (!telefonosCoinciden(dto.telefono, reserva.cliente.telefono)) {
       this.logger.warn(
         `Webhook de WhatsApp: el teléfono del payload no corresponde al cliente de la reserva ${reserva.id}`,
@@ -90,7 +96,7 @@ export class WhatsappWebhookService {
       return this.sinTransicion(dto, reserva.id, reserva.estado);
     }
 
-    const usuario = await this.usuarioDeCliente(reserva.clienteId);
+    const usuario = await this.usuarioDeCliente(reserva.cliente.id);
 
     const resultado =
       dto.accion === 'CONFIRMAR'

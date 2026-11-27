@@ -8,6 +8,11 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
 import { errorDeConflicto, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
+import {
+  TiempoService,
+  fechaCalendarioISO,
+  horaRelojHHMM,
+} from '../../shared/time/tiempo.service.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { AMBITO_BARBERIA, ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA } from '../domain/roles.js';
 import { asegurarSedeSinAdmin, esConflictoAdminUnico } from '../domain/administrador-sede.js';
@@ -18,6 +23,7 @@ import type {
   RolDeUsuarioResponseDto,
 } from './dto/administrador-cuenta.dto.js';
 import type { CrearUsuarioPlataformaDto } from './dto/crear-usuario-plataforma.dto.js';
+import type { EliminarUsuarioDto } from './dto/eliminar-usuario.dto.js';
 import type { UsuarioAuditoriaResponseDto } from './dto/usuario-auditoria-response.dto.js';
 import { UsuarioListResponseDto } from './dto/usuario-list-response.dto.js';
 
@@ -61,6 +67,24 @@ function codigoDeDuplicado(target: string | string[] | null | undefined): {
   return { codigo: 'DATOS_YA_REGISTRADOS', mensaje: 'Ya existe una cuenta con esos datos.' };
 }
 
+/** Sedes que impiden un borrado, con su nombre para poder mostrarlas. */
+export interface SedeAfectada {
+  id: string;
+  nombre: string;
+}
+
+/** Lo que devuelve `DELETE /plataforma/usuarios/:id` (T-72). */
+export interface EliminarUsuarioResultado {
+  id: string;
+  correo: string;
+  /** `true` si tras el borrado no queda ninguna cuenta con ese correo. */
+  correoLiberado: boolean;
+  respaldoId: string;
+  reservasCanceladas: number;
+  pagosDesvinculados: number;
+  cajasDesvinculadas: number;
+}
+
 /** Lo que devuelve el cambio de estado de una cuenta. */
 export interface CambioEstadoCuentaResultado {
   id: string;
@@ -95,6 +119,7 @@ export class UsuariosPlataformaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditoria: AuditoriaService,
+    private readonly tiempo: TiempoService = new TiempoService(),
   ) {}
 
   async cambiarEstado(
@@ -614,5 +639,308 @@ export class UsuariosPlataformaService {
       actor: evento.usuario ?? null,
       creadoAt: evento.creadoAt,
     }));
+  }
+
+  // ── T-72 · eliminación real de una cuenta ─────────────────────────────────
+
+  /**
+   * `DELETE /plataforma/usuarios/:id` · borra la cuenta de verdad.
+   *
+   * Orden de las comprobaciones (todas ANTES de escribir nada):
+   *  1. no se puede eliminar a sí mismo (409 `AUTOBORRADO_NO_PERMITIDO`);
+   *  2. el correo de confirmación tiene que coincidir EXACTO (422
+   *     `CONFIRMACION_INCORRECTA`);
+   *  3. no se puede dejar la plataforma sin administrador (409
+   *     `ULTIMO_ADMINISTRADOR`);
+   *  4. un ADMIN_BARBERIA activo exige transferir primero (409
+   *     `USUARIO_ES_ADMIN_SEDE` con las sedes);
+   *  5. un responsable de sede exige reasignar primero (409
+   *     `USUARIO_ES_RESPONSABLE_SEDE` con las sedes);
+   *  6. vínculos RESTRICT que esta tarea no migra: propuestas de horario y
+   *     solicitudes de antecedente resueltas.
+   *
+   * Después, en UNA transacción serializable: respaldo → pagos y cajas con el
+   * nombre congelado → cancelación de reservas futuras → auditoría sin FK →
+   * borrado de la fila → evento `USUARIO_ELIMINADO`. Si algo falla, no se borra
+   * nada: el respaldo y el borrado comparten transacción.
+   */
+  async eliminarUsuario(
+    usuarioId: string,
+    solicitante: UsuarioAutenticado,
+    dto: EliminarUsuarioDto,
+  ): Promise<EliminarUsuarioResultado> {
+    if (usuarioId === solicitante.id) {
+      throw errorDeConflicto(
+        'AUTOBORRADO_NO_PERMITIDO',
+        'No puedes eliminar tu propia cuenta desde la bandeja de plataforma.',
+      );
+    }
+
+    const confirmacion = (dto?.confirmacion ?? '').trim();
+
+    return withSerializableTransaction(this.prisma, async (tx) => {
+      const usuario = await tx.usuario.findUnique({
+        where: { id: usuarioId },
+        include: {
+          _count: {
+            select: {
+              reservas: true,
+              reservasBarbero: true,
+              pagosRegistrados: true,
+              antecedentes: true,
+              notificaciones: true,
+            },
+          },
+        },
+      });
+
+      if (!usuario) {
+        throw new NotFoundException('Usuario no encontrado.');
+      }
+
+      if (confirmacion !== usuario.correo) {
+        throw reglaDeNegocio(
+          'CONFIRMACION_INCORRECTA',
+          'La confirmación no coincide con el correo exacto de la cuenta: no se elimina nada.',
+        );
+      }
+
+      const roles = await tx.usuarioRol.findMany({
+        where: { usuarioId },
+        select: {
+          id: true,
+          estado: true,
+          rol: { select: { nombre: true, ambito: true } },
+          barberia: { select: { id: true, nombre: true } },
+        },
+      });
+
+      const esAdminGlobal = roles.some(
+        (rol) =>
+          rol.estado === 'ACTIVO' &&
+          rol.barberia === null &&
+          rol.rol.nombre === ROL_ADMINISTRADOR,
+      );
+
+      if (esAdminGlobal) {
+        const administradores = await tx.usuarioRol.count({
+          where: {
+            rol: { nombre: ROL_ADMINISTRADOR },
+            barberiaId: null,
+            estado: 'ACTIVO',
+            usuario: { estadoCuenta: 'ACTIVO' },
+          },
+        });
+
+        if (administradores <= 1) {
+          throw errorDeConflicto(
+            'ULTIMO_ADMINISTRADOR',
+            'No puedes eliminar al último administrador activo de la plataforma.',
+          );
+        }
+      }
+
+      const sedesAdmin: SedeAfectada[] = roles.flatMap((rol) =>
+        rol.estado === 'ACTIVO' &&
+        rol.rol.nombre === ROL_ADMIN_BARBERIA &&
+        rol.barberia !== null
+          ? [{ id: rol.barberia.id, nombre: rol.barberia.nombre }]
+          : [],
+      );
+
+      if (sedesAdmin.length > 0) {
+        throw errorDeConflicto(
+          'USUARIO_ES_ADMIN_SEDE',
+          'La cuenta administra una sede: transfiere la administración antes de eliminarla.',
+          { sedes: sedesAdmin },
+        );
+      }
+
+      const sedesResponsable = await tx.barberia.findMany({
+        where: { responsableId: usuarioId },
+        select: { id: true, nombre: true },
+      });
+
+      if (sedesResponsable.length > 0) {
+        throw errorDeConflicto(
+          'USUARIO_ES_RESPONSABLE_SEDE',
+          'La cuenta figura como responsable de una sede: reasigna esa responsabilidad antes de eliminarla.',
+          { sedes: sedesResponsable },
+        );
+      }
+
+      const propuestas = await tx.propuestaHorario.count({ where: { creadoPor: usuarioId } });
+
+      if (propuestas > 0) {
+        throw errorDeConflicto(
+          'USUARIO_CON_PROPUESTAS_HORARIO',
+          'La cuenta creó propuestas de horario que la referencian: no se puede eliminar todavía.',
+          { total: propuestas },
+        );
+      }
+
+      const solicitudesResueltas = await tx.solicitudAntecedente.count({
+        where: { resueltoPor: usuarioId },
+      });
+
+      if (solicitudesResueltas > 0) {
+        throw errorDeConflicto(
+          'USUARIO_CON_SOLICITUDES_ANTECEDENTES',
+          'La cuenta resolvió solicitudes de antecedente que la referencian: no se puede eliminar todavía.',
+          { total: solicitudesResueltas },
+        );
+      }
+
+      // 1 · respaldo íntegro. El hash de la contraseña NO se copia: no hace falta
+      // para auditar el borrado y no debe sobrevivir a la cuenta.
+      const snapshot = {
+        id: usuario.id,
+        nombreCompleto: usuario.nombreCompleto,
+        correo: usuario.correo,
+        telefono: usuario.telefono,
+        cedula: usuario.cedula,
+        estadoCuenta: usuario.estadoCuenta,
+        tokenVersion: usuario.tokenVersion,
+        correoVerificado: usuario.correoVerificado,
+        telefonoVerificado: usuario.telefonoVerificado,
+        creadoAt: usuario.creadoAt?.toISOString() ?? null,
+        roles: roles.map((rol) => ({
+          rol: rol.rol.nombre,
+          ambito: rol.rol.ambito,
+          estado: rol.estado,
+          barberiaId: rol.barberia?.id ?? null,
+          barberiaNombre: rol.barberia?.nombre ?? null,
+        })),
+        relaciones: {
+          reservasComoCliente: usuario._count?.reservas ?? 0,
+          reservasComoBarbero: usuario._count?.reservasBarbero ?? 0,
+          pagosRegistrados: usuario._count?.pagosRegistrados ?? 0,
+          antecedentes: usuario._count?.antecedentes ?? 0,
+          notificaciones: usuario._count?.notificaciones ?? 0,
+        },
+      };
+
+      const respaldo = await tx.respaldoEliminacion.create({
+        data: { usuarioId, snapshot, eliminadoPor: solicitante.id },
+      });
+
+      // 2 y 3 · pagos y arqueos: el FK se apaga y el nombre queda congelado.
+      const nombre = usuario.nombreCompleto;
+      const pagosRegistrados = await tx.pago.updateMany({
+        where: { registradoPor: usuarioId },
+        data: { registradoPor: null, usuarioNombreSnapshot: nombre },
+      });
+      const pagosAnulados = await tx.pago.updateMany({
+        where: { anuladoPor: usuarioId },
+        data: { anuladoPor: null, usuarioNombreSnapshot: nombre },
+      });
+      const cajasAbiertas = await tx.cierreCaja.updateMany({
+        where: { abiertoPor: usuarioId },
+        data: { abiertoPor: null, usuarioNombreSnapshot: nombre },
+      });
+      const cajasCerradas = await tx.cierreCaja.updateMany({
+        where: { cerradoPor: usuarioId },
+        data: { cerradoPor: null, usuarioNombreSnapshot: nombre },
+      });
+
+      // 4 · reservas futuras: se cancelan (el historial pasado se conserva y el
+      // SET NULL de la FK lo desvincula al borrar la cuenta).
+      const ahora = this.tiempo.ahora();
+      const hoy = this.tiempo.fechaLocal(ahora);
+      const candidatas = await tx.reserva.findMany({
+        where: {
+          clienteId: usuarioId,
+          estado: { in: ['PENDIENTE', 'CONFIRMADA', 'PROPUESTA_PENDIENTE'] },
+          fechaCita: { gte: this.tiempo.fechaDeCalendario(this.tiempo.sumarDias(hoy, -1)) },
+        },
+        select: {
+          id: true,
+          fechaCita: true,
+          horaInicio: true,
+          barberia: { select: { zonaHoraria: true } },
+        },
+      });
+
+      const futuras = candidatas.filter(
+        (reserva) =>
+          this.tiempo
+            .aInstante(
+              fechaCalendarioISO(reserva.fechaCita),
+              horaRelojHHMM(reserva.horaInicio),
+              reserva.barberia.zonaHoraria,
+            )
+            .getTime() > ahora.getTime(),
+      );
+
+      if (futuras.length > 0) {
+        await tx.reserva.updateMany({
+          where: { id: { in: futuras.map((reserva) => reserva.id) } },
+          data: {
+            estado: 'CANCELADA',
+            canceladoPorId: solicitante.id,
+            motivoCodigo: 'OTRO',
+            motivoDetalle: 'Cuenta eliminada por la plataforma',
+          },
+        });
+      }
+
+      // 6 · la auditoría sobrevive sin FK al usuario: el correo queda escrito en
+      // el contexto para no perder de quién era el evento.
+      await tx.$executeRaw`
+        UPDATE "auditoria"
+        SET "usuario_id" = NULL,
+            "contexto" = COALESCE("contexto", '{}'::jsonb)
+              || jsonb_build_object(
+                   'correoEliminado', ${usuario.correo}::text,
+                   'usuarioEliminadoId', ${usuarioId}::text
+                 )
+        WHERE "usuario_id" = ${usuarioId}::uuid
+      `;
+
+      // 7 · borrar la fila. `usuario_roles`, cliente_barberias y el resto de
+      // CASCADE se limpian solos; los RESTRICT ya se comprobaron arriba.
+      await tx.usuario.delete({ where: { id: usuarioId } });
+
+      // Verificación explícita de T-72: el correo queda libre.
+      const restantes = await tx.usuario.count({ where: { correo: usuario.correo } });
+
+      const reservasCanceladas = futuras.length;
+      const pagosDesvinculados = pagosRegistrados.count + pagosAnulados.count;
+      const cajasDesvinculadas = cajasAbiertas.count + cajasCerradas.count;
+
+      // 8 · evento final, con el actor y el correo del eliminado.
+      await this.auditoria.registrarEvento(
+        {
+          usuarioId: solicitante.id,
+          accion: 'USUARIO_ELIMINADO',
+          entidad: 'usuarios',
+          entidadId: usuarioId,
+          contexto: {
+            correo: usuario.correo,
+            nombreCompleto: usuario.nombreCompleto,
+            respaldoId: respaldo.id,
+            reservasCanceladas,
+            pagosDesvinculados,
+            cajasDesvinculadas,
+            correoLiberado: restantes === 0,
+          },
+        },
+        tx,
+      );
+
+      this.logger.warn(
+        `Cuenta ${usuario.correo} ELIMINADA por ${solicitante.correo} (respaldo ${respaldo.id}, ${reservasCanceladas} reservas canceladas)`,
+      );
+
+      return {
+        id: usuarioId,
+        correo: usuario.correo,
+        correoLiberado: restantes === 0,
+        respaldoId: respaldo.id,
+        reservasCanceladas,
+        pagosDesvinculados,
+        cajasDesvinculadas,
+      } satisfies EliminarUsuarioResultado;
+    });
   }
 }

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { UsuariosPlataformaService } from '../application/usuarios-plataforma.service.js';
 import { PlataformaUsuariosController } from './plataforma-usuarios.controller.js';
 import { AuditoriaModule } from '../../auditoria/infrastructure/auditoria.module.js';
+import { TiempoService } from '../../shared/time/tiempo.service.js';
 
 /**
  * E4-03/5 · D09/D24 · módulo de la bandeja de plataforma para el estado de una
@@ -18,7 +19,9 @@ import { AuditoriaModule } from '../../auditoria/infrastructure/auditoria.module
 @Module({
   imports: [AuditoriaModule],
   controllers: [PlataformaUsuariosController],
-  providers: [UsuariosPlataformaService],
+  // F7 / T-72 · el borrado necesita el reloj y la zona de cada sede para
+  // decidir qué reservas son futuras.
+  providers: [UsuariosPlataformaService, TiempoService],
   exports: [UsuariosPlataformaService],
 })
 export class PlataformaUsuariosModule {}

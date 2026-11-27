@@ -377,7 +377,8 @@ export class ExpiracionReservaService implements OnApplicationBootstrap {
       select: { clienteId: true, fechaCita: true, horaInicio: true },
     });
 
-    if (!reserva) {
+    // F7 / T-72 · sin cliente (cuenta eliminada) no hay a quién avisar.
+    if (!reserva || !reserva.clienteId) {
       return;
     }
 
@@ -385,10 +386,13 @@ export class ExpiracionReservaService implements OnApplicationBootstrap {
     // almacenamiento, sin `toISOString().slice` (prohibido sobre fechas de cita).
     const fecha = fechaCalendarioISO(reserva.fechaCita);
     const hora = horaRelojHHMM(reserva.horaInicio);
+    // Capturado antes del callback: dentro de la clausura TypeScript ya no
+    // conserva el estrechamiento del `clienteId`.
+    const clienteId = reserva.clienteId;
 
     const encolado = await encolarConLimite(() =>
       this.notificacionService!.enviarNotificacion({
-        usuarioId: reserva.clienteId,
+        usuarioId: clienteId,
         tipo: 'RESERVA_EXPIRADA',
         contenido: `Tu solicitud del ${fecha} a las ${hora} expiró sin confirmarse: el espacio volvió a quedar libre.`,
       }),

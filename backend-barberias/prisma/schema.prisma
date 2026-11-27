@@ -642,7 +642,11 @@ model BloqueosAgenda {
 model Reserva {
   id                         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   barberiaId                 String    @map("barberia_id") @db.Uuid
-  clienteId                  String    @map("cliente_id") @db.Uuid
+  // F7 / T-72 · al eliminar una cuenta el historial de la sede se conserva: la
+  // reserva deja de apuntar a la persona (SET NULL) pero mantiene su importe,
+  // su servicio y su fecha. Antes era NOT NULL + RESTRICT y hacía imposible
+  // borrar a cualquier usuario con historial.
+  clienteId                  String?   @map("cliente_id") @db.Uuid
   // F3-01 · nombre que teclea el operador en un walk-in (cliente sin cuenta).
   // `cliente_id` sigue siendo el OPERADOR (T-05), así que el nombre visible de
   // la cita vive aquí; NULL en las reservas del propio cliente.
@@ -680,8 +684,8 @@ model Reserva {
   recordatorioEnviado        Boolean   @default(false) @map("recordatorio_enviado")
 
   barberia     Barberia @relation(fields: [barberiaId], references: [id])
-  cliente      Usuario  @relation("ClienteReserva", fields: [clienteId], references: [id])
-  barbero      Usuario? @relation("BarberoReserva", fields: [barberoId], references: [id])
+  cliente      Usuario? @relation("ClienteReserva", fields: [clienteId], references: [id], onDelete: SetNull)
+  barbero      Usuario? @relation("BarberoReserva", fields: [barberoId], references: [id], onDelete: SetNull)
   canceladoPor Usuario? @relation("CanceladoPorReserva", fields: [canceladoPorId], references: [id])
 
   participantes ParticipanteReserva[]
@@ -795,6 +799,9 @@ model Pago {
   anuladoAt       DateTime? @map("anulado_at") @db.Timestamptz
   anuladoPor      String?   @map("anulado_por") @db.Uuid
   motivoAnulacion String?   @map("motivo_anulacion") @db.Text
+  // F7 / T-72 · nombre congelado de quien registró o anuló el cobro. Al
+  // eliminar la cuenta el FK queda en NULL y esta columna conserva el rastro.
+  usuarioNombreSnapshot String? @map("usuario_nombre_snapshot") @db.VarChar(150)
 
   reserva     Reserva  @relation(fields: [reservaId], references: [id])
   barberia    Barberia @relation(fields: [barberiaId], references: [id])
@@ -826,6 +833,9 @@ model CierreCaja {
   estado             String    @default("CERRADO") @db.VarChar(20)
   abiertoPor         String?   @map("abierto_por") @db.Uuid
   cerradoPor         String?   @map("cerrado_por") @db.Uuid
+  // F7 / T-72 · nombre congelado de quien abrió/cerró el arqueo; el FK se
+  // desvincula al eliminar la cuenta y el arqueo sigue siendo legible.
+  usuarioNombreSnapshot String? @map("usuario_nombre_snapshot") @db.VarChar(150)
   abiertoAt          DateTime? @map("abierto_at") @db.Timestamptz
   cerradoAt          DateTime? @map("cerrado_at") @db.Timestamptz
   creadoAt           DateTime  @default(now()) @map("creado_at") @db.Timestamptz
