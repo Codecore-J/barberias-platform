@@ -11,9 +11,11 @@ import { FormsModule } from '@angular/forms';
 import {
   BarberiaOpcion,
   CrearUsuarioRequest,
+  EliminacionPreview,
   ROLES_PLATAFORMA,
   RolDeUsuario,
   RolPlataforma,
+  SedeAfectada,
   UsuarioAuditoriaEvento,
   UsuarioListResponse,
   UsuariosService,
@@ -326,6 +328,14 @@ interface TarjetaSede {
                         >
                           <i class="pi pi-sync"></i> Cambiar Estado
                         </button>
+                        @if (puedeEliminarUsuario(usuario)) {
+                          <button
+                            (click)="abrirEliminacion(usuario)"
+                            class="px-3 py-2 rounded-xl font-semibold text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition-all flex items-center gap-1.5 whitespace-nowrap"
+                          >
+                            <i class="pi pi-trash"></i> Eliminar
+                          </button>
+                        }
                       </div>
                     </td>
                   </tr>
@@ -936,6 +946,116 @@ interface TarjetaSede {
           </div>
         </app-modal-shell>
       }
+
+      <!-- F7 / T-74 · eliminación real de la cuenta -->
+      @if (eliminacionAbierta() && usuarioEliminar(); as usuario) {
+        <app-modal-shell
+          [visible]="true"
+          [titulo]="'Eliminar a ' + usuario.nombreCompleto"
+          [subtitulo]="usuario.correo"
+          icono="pi pi-trash"
+          tono="peligro"
+          [cerrarBloqueado]="eliminando()"
+          (cerrar)="cerrarEliminacion()">
+          <div
+            class="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-bold flex items-center gap-2"
+          >
+            <i class="pi pi-exclamation-triangle"></i>
+            Esta acción es irreversible: la cuenta se borra de la base.
+          </div>
+
+          @if (cargandoPreviewEliminacion()) {
+            <div class="flex justify-center py-6">
+              <i class="pi pi-spin pi-spinner text-2xl text-amber-500"></i>
+            </div>
+          } @else if (previewEliminacion(); as preview) {
+            <div
+              class="rounded-2xl border border-zinc-700/60 bg-zinc-800/40 p-4 space-y-1.5 text-xs text-zinc-300"
+            >
+              <p class="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                Se eliminará
+              </p>
+              <p>
+                <span class="font-bold text-white">{{ preview.reservasFuturas }}</span> reservas
+                futuras canceladas
+              </p>
+              <p>
+                <span class="font-bold text-white">{{ preview.pagosDesvinculados }}</span> pagos
+                desvinculados (conservan el nombre)
+              </p>
+              <p>
+                <span class="font-bold text-white">{{ preview.cajasDesvinculadas }}</span> arqueos
+                desvinculados
+              </p>
+              @if (preview.sedesAdministradas.length > 0) {
+                <p class="text-amber-300">
+                  <span class="font-bold">{{ preview.sedesAdministradas.length }}</span> sedes
+                  afectadas: {{ nombresDeSedes(preview.sedesAdministradas) }}
+                </p>
+              }
+              @if (preview.bloqueos.length > 0) {
+                <p class="text-rose-300 pt-1">
+                  No se puede eliminar todavía: {{ textoBloqueos(preview.bloqueos) }}
+                </p>
+              }
+            </div>
+          }
+
+          @if (sedesConflictoEliminacion().length > 0) {
+            <div
+              role="alert"
+              class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-[11px]"
+            >
+              Transfiere primero la administración de:
+              {{ nombresDeSedes(sedesConflictoEliminacion()) }}.
+            </div>
+          }
+
+          <div>
+            <label for="eliminar-confirmacion" class="block text-xs font-semibold text-zinc-400 mb-1.5">
+              Escribe el correo exacto para confirmar
+            </label>
+            <input
+              id="eliminar-confirmacion"
+              [ngModel]="confirmacionCorreo()"
+              (ngModelChange)="confirmacionCorreo.set($event)"
+              name="eliminarConfirmacion"
+              type="text"
+              autocomplete="off"
+              [disabled]="eliminando()"
+              class="w-full bg-zinc-950 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-rose-500 disabled:opacity-60 transition-colors"
+              [placeholder]="usuario.correo"
+            />
+            <p class="text-[11px] text-zinc-500 mt-1.5">Debe coincidir con {{ usuario.correo }}</p>
+          </div>
+
+          @if (errorEliminacion()) {
+            <div
+              class="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2"
+            >
+              <i class="pi pi-exclamation-triangle"></i> {{ errorEliminacion() }}
+            </div>
+          }
+
+          <div modal-footer class="p-4 border-t border-zinc-800 flex gap-3 shrink-0">
+            <button
+              (click)="cerrarEliminacion()"
+              [disabled]="eliminando()"
+              class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium text-zinc-400 bg-white/5 hover:bg-white/10 disabled:opacity-40 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              (click)="confirmarEliminacion()"
+              [disabled]="!puedeConfirmarEliminacion()"
+              class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-40 transition-all flex items-center justify-center gap-2"
+            >
+              <i class="pi" [ngClass]="eliminando() ? 'pi-spin pi-spinner' : 'pi-trash'"></i>
+              <span>Confirmar eliminación</span>
+            </button>
+          </div>
+        </app-modal-shell>
+      }
     </div>
   `,
 })
@@ -1029,6 +1149,132 @@ export class AdminUsuariosComponent implements OnInit {
     this.usuarioSeleccionado()?.estadoCuenta === 'SUSPENDIDO' ? 'ACTIVO' : 'SUSPENDIDO',
   );
   readonly motivoValido = computed(() => this.motivoTexto().trim().length > 0);
+
+  // ── F7 / T-74 · eliminación real ───────────────────────────────────────────
+  readonly eliminacionAbierta = signal(false);
+  readonly usuarioEliminar = signal<UsuarioListResponse | null>(null);
+  readonly previewEliminacion = signal<EliminacionPreview | null>(null);
+  readonly cargandoPreviewEliminacion = signal(false);
+  readonly errorEliminacion = signal<string | null>(null);
+  readonly confirmacionCorreo = signal('');
+  readonly eliminando = signal(false);
+  readonly sedesConflictoEliminacion = signal<SedeAfectada[]>([]);
+
+  /** Id del único ADMINISTRADOR activo de la plataforma, si solo queda uno. */
+  readonly ultimoAdministradorActivo = computed(() => {
+    const activos = this.service
+      .usuarios()
+      .filter((usuario) => usuario.estadoCuenta === 'ACTIVO' && usuario.roles.includes('ADMINISTRADOR'));
+
+    return activos.length === 1 ? activos[0].id : null;
+  });
+
+  /**
+   * El botón «Eliminar» no se ofrece para la cuenta propia ni para el último
+   * administrador activo: el backend los rechaza (409) y no tiene sentido
+   * enseñar una acción imposible.
+   */
+  puedeEliminarUsuario(usuario: UsuarioListResponse): boolean {
+    if (this.esUsuarioActual(usuario)) return false;
+    return this.ultimoAdministradorActivo() !== usuario.id;
+  }
+
+  /** Confirmar exige el correo EXACTO y un resumen sin bloqueos. */
+  readonly puedeConfirmarEliminacion = computed(() => {
+    const usuario = this.usuarioEliminar();
+    const preview = this.previewEliminacion();
+
+    return (
+      !!usuario &&
+      !!preview?.puedeEliminar &&
+      !this.eliminando() &&
+      this.confirmacionCorreo().trim() === usuario.correo
+    );
+  });
+
+  abrirEliminacion(usuario: UsuarioListResponse): void {
+    this.usuarioEliminar.set(usuario);
+    this.previewEliminacion.set(null);
+    this.confirmacionCorreo.set('');
+    this.errorEliminacion.set(null);
+    this.sedesConflictoEliminacion.set([]);
+    this.eliminacionAbierta.set(true);
+    this.cargandoPreviewEliminacion.set(true);
+
+    this.service.previsualizarEliminacion(usuario.id).subscribe({
+      next: (preview) => {
+        this.previewEliminacion.set(preview);
+        this.cargandoPreviewEliminacion.set(false);
+      },
+      error: (err) => {
+        this.cargandoPreviewEliminacion.set(false);
+        this.errorEliminacion.set(
+          mensajeDeError(err, 'No se pudo calcular qué se va a eliminar'),
+        );
+      },
+    });
+  }
+
+  cerrarEliminacion(): void {
+    if (this.eliminando()) return;
+    this.eliminacionAbierta.set(false);
+    this.usuarioEliminar.set(null);
+    this.previewEliminacion.set(null);
+    this.confirmacionCorreo.set('');
+    this.errorEliminacion.set(null);
+    this.sedesConflictoEliminacion.set([]);
+  }
+
+  confirmarEliminacion(): void {
+    const usuario = this.usuarioEliminar();
+
+    if (!usuario || !this.puedeConfirmarEliminacion()) return;
+
+    this.eliminando.set(true);
+    this.errorEliminacion.set(null);
+    this.sedesConflictoEliminacion.set([]);
+
+    this.service.eliminarUsuario(usuario.id, this.confirmacionCorreo().trim()).subscribe({
+      next: (resultado) => {
+        this.eliminando.set(false);
+        this.eliminacionAbierta.set(false);
+        this.usuarioEliminar.set(null);
+        this.previewEliminacion.set(null);
+        this.confirmacionCorreo.set('');
+        this.toast.success(
+          `Cuenta eliminada: ${usuario.correo}. ${resultado.reservasCanceladas} reservas canceladas y ${resultado.pagosDesvinculados} pagos desvinculados.`,
+          'Usuarios',
+        );
+        this.cargar();
+      },
+      error: (err) => {
+        this.eliminando.set(false);
+        this.errorEliminacion.set(mensajeDeError(err, 'No se pudo eliminar la cuenta'));
+
+        // 409 de T-72/T-73: se listan las sedes que el dueño debe transferir.
+        if (codigoDeError(err) === 'USUARIO_ES_ADMIN_SEDE') {
+          const sedes = (err as { error?: { sedes?: SedeAfectada[] } })?.error?.sedes ?? [];
+          this.sedesConflictoEliminacion.set(sedes);
+        }
+      },
+    });
+  }
+
+  nombresDeSedes(sedes: SedeAfectada[]): string {
+    return sedes.map((sede) => sede.nombre).join(', ');
+  }
+
+  textoBloqueos(bloqueos: string[]): string {
+    const etiquetas: Record<string, string> = {
+      ULTIMO_ADMINISTRADOR: 'es el último administrador activo de la plataforma',
+      USUARIO_ES_ADMIN_SEDE: 'administra una sede y hay que transferirla antes',
+      USUARIO_ES_RESPONSABLE_SEDE: 'figura como responsable de una sede',
+      USUARIO_CON_PROPUESTAS_HORARIO: 'creó propuestas de horario',
+      USUARIO_CON_SOLICITUDES_ANTECEDENTES: 'resolvió solicitudes de antecedente',
+    };
+
+    return bloqueos.map((codigo) => etiquetas[codigo] ?? codigo).join('; ');
+  }
 
   // ── Alta de usuario ────────────────────────────────────────────────────────
   readonly creacionAbierta = signal(false);

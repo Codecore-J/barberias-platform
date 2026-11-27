@@ -74,6 +74,22 @@ export interface SedeAfectada {
   nombre: string;
 }
 
+/** Resumen previo al borrado (T-74): lo que el modal muestra antes de confirmar. */
+export interface PrevisualizacionEliminacion {
+  id: string;
+  correo: string;
+  reservasFuturas: number;
+  pagosDesvinculados: number;
+  cajasDesvinculadas: number;
+  sedesAdministradas: SedeAfectada[];
+  sedesResponsable: SedeAfectada[];
+  propuestasHorario: number;
+  solicitudesResueltas: number;
+  puedeEliminar: boolean;
+  /** Códigos de los bloqueos vigentes, en el orden de las reglas de T-72. */
+  bloqueos: string[];
+}
+
 /** Lo que devuelve `PATCH /plataforma/sedes/:sedeId/transferir-admin` (T-73). */
 export interface TransferenciaAdministracionResultado {
   sedeId: string;
@@ -950,6 +966,119 @@ export class UsuariosPlataformaService {
         cajasDesvinculadas,
       } satisfies EliminarUsuarioResultado;
     });
+  }
+
+  /**
+   * `GET /plataforma/usuarios/:id/eliminacion` · resumen de solo lectura (T-74).
+   *
+   * La UI no puede inventar cuántas reservas o pagos se van a desvincular: este
+   * cálculo es el MISMO que aplica `eliminarUsuario`, para que el modal muestre
+   * cifras reales y no una promesa genérica. También devuelve los bloqueos
+   * vigentes (último administrador, admin de sede, responsable, etc.) para que
+   * el botón de confirmar no ofrezca algo que el backend va a rechazar.
+   */
+  async previsualizarEliminacion(usuarioId: string): Promise<PrevisualizacionEliminacion> {
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { id: usuarioId },
+      select: { id: true, correo: true, nombreCompleto: true },
+    });
+
+    if (!usuario) {
+      throw new NotFoundException('Usuario no encontrado.');
+    }
+
+    const roles = await this.prisma.usuarioRol.findMany({
+      where: { usuarioId },
+      select: {
+        estado: true,
+        rol: { select: { nombre: true } },
+        barberia: { select: { id: true, nombre: true } },
+      },
+    });
+
+    const esAdminGlobal = roles.some(
+      (rol) =>
+        rol.estado === 'ACTIVO' &&
+        rol.barberia === null &&
+        rol.rol.nombre === ROL_ADMINISTRADOR,
+    );
+
+    const sedesAdministradas: SedeAfectada[] = roles.flatMap((rol) =>
+      rol.estado === 'ACTIVO' && rol.rol.nombre === ROL_ADMIN_BARBERIA && rol.barberia
+        ? [{ id: rol.barberia.id, nombre: rol.barberia.nombre }]
+        : [],
+    );
+
+    const ahora = this.tiempo.ahora();
+    const hoy = this.tiempo.fechaLocal(ahora);
+
+    const [candidatas, sedesResponsable, pagosRegistrados, pagosAnulados, cajasAbiertas, cajasCerradas, propuestasHorario, solicitudesResueltas, administradores] =
+      await Promise.all([
+        this.prisma.reserva.findMany({
+          where: {
+            clienteId: usuarioId,
+            estado: { in: ['PENDIENTE', 'CONFIRMADA', 'PROPUESTA_PENDIENTE'] },
+            fechaCita: { gte: this.tiempo.fechaDeCalendario(this.tiempo.sumarDias(hoy, -1)) },
+          },
+          select: {
+            fechaCita: true,
+            horaInicio: true,
+            barberia: { select: { zonaHoraria: true } },
+          },
+        }),
+        this.prisma.barberia.findMany({
+          where: { responsableId: usuarioId },
+          select: { id: true, nombre: true },
+        }),
+        this.prisma.pago.count({ where: { registradoPor: usuarioId } }),
+        this.prisma.pago.count({ where: { anuladoPor: usuarioId } }),
+        this.prisma.cierreCaja.count({ where: { abiertoPor: usuarioId } }),
+        this.prisma.cierreCaja.count({ where: { cerradoPor: usuarioId } }),
+        this.prisma.propuestaHorario.count({ where: { creadoPor: usuarioId } }),
+        this.prisma.solicitudAntecedente.count({ where: { resueltoPor: usuarioId } }),
+        esAdminGlobal
+          ? this.prisma.usuarioRol.count({
+              where: {
+                rol: { nombre: ROL_ADMINISTRADOR },
+                barberiaId: null,
+                estado: 'ACTIVO',
+                usuario: { estadoCuenta: 'ACTIVO' },
+              },
+            })
+          : Promise.resolve(0),
+      ]);
+
+    const reservasFuturas = candidatas.filter(
+      (reserva) =>
+        this.tiempo
+          .aInstante(
+            fechaCalendarioISO(reserva.fechaCita),
+            horaRelojHHMM(reserva.horaInicio),
+            reserva.barberia.zonaHoraria,
+          )
+          .getTime() > ahora.getTime(),
+    ).length;
+
+    const bloqueos: string[] = [];
+    if (esAdminGlobal && administradores <= 1) bloqueos.push('ULTIMO_ADMINISTRADOR');
+    if (sedesAdministradas.length > 0) bloqueos.push('USUARIO_ES_ADMIN_SEDE');
+    if (sedesResponsable.length > 0) bloqueos.push('USUARIO_ES_RESPONSABLE_SEDE');
+    if (propuestasHorario > 0) bloqueos.push('USUARIO_CON_PROPUESTAS_HORARIO');
+    if (solicitudesResueltas > 0) bloqueos.push('USUARIO_CON_SOLICITUDES_ANTECEDENTES');
+
+    return {
+      id: usuario.id,
+      correo: usuario.correo,
+      reservasFuturas,
+      pagosDesvinculados: pagosRegistrados + pagosAnulados,
+      cajasDesvinculadas: cajasAbiertas + cajasCerradas,
+      sedesAdministradas,
+      sedesResponsable,
+      propuestasHorario,
+      solicitudesResueltas,
+      puedeEliminar: bloqueos.length === 0,
+      bloqueos,
+    };
   }
 
   // ── T-73 · transferir la administración de una sede ────────────────────────

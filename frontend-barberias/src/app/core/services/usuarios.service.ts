@@ -38,6 +38,38 @@ export interface CambioEstadoCuentaResponse {
   sesionesCerradas: boolean;
 }
 
+/** Sede afectada por una eliminación o transferencia (F7). */
+export interface SedeAfectada {
+  id: string;
+  nombre: string;
+}
+
+/** `GET /plataforma/usuarios/:id/eliminacion` · resumen previo al borrado (T-74). */
+export interface EliminacionPreview {
+  id: string;
+  correo: string;
+  reservasFuturas: number;
+  pagosDesvinculados: number;
+  cajasDesvinculadas: number;
+  sedesAdministradas: SedeAfectada[];
+  sedesResponsable: SedeAfectada[];
+  propuestasHorario: number;
+  solicitudesResueltas: number;
+  puedeEliminar: boolean;
+  bloqueos: string[];
+}
+
+/** `DELETE /plataforma/usuarios/:id` · resultado del borrado real (T-72). */
+export interface EliminarUsuarioResponse {
+  id: string;
+  correo: string;
+  correoLiberado: boolean;
+  respaldoId: string;
+  reservasCanceladas: number;
+  pagosDesvinculados: number;
+  cajasDesvinculadas: number;
+}
+
 /**
  * Roles que el ADMINISTRADOR puede asignar al dar de alta una cuenta. Espejo
  * de `ROLES_PLATAFORMA` en el `CrearUsuarioPlataformaDto` del backend.
@@ -181,6 +213,23 @@ export class UsuariosService {
     return this.http.patch<CambioEstadoCuentaResponse>(`${this.apiUrl}/${id}/estado`, {
       estadoCuenta,
       motivo,
+    });
+  }
+
+  /** `GET /plataforma/usuarios/:id/eliminacion` · resumen previo al borrado. */
+  previsualizarEliminacion(id: string): Observable<EliminacionPreview> {
+    return this.http.get<EliminacionPreview>(`${this.apiUrl}/${id}/eliminacion`);
+  }
+
+  /**
+   * `DELETE /plataforma/usuarios/:id` · borrado REAL.
+   *
+   * El correo viaja en el CUERPO (`{ confirmacion }`): un DELETE con cuerpo es
+   * válido y es la forma de exigir la confirmación exacta sin meterla en la URL.
+   */
+  eliminarUsuario(id: string, confirmacion: string): Observable<EliminarUsuarioResponse> {
+    return this.http.delete<EliminarUsuarioResponse>(`${this.apiUrl}/${id}`, {
+      body: { confirmacion },
     });
   }
 

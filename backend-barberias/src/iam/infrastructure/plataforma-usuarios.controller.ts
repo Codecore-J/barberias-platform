@@ -131,6 +131,21 @@ export class PlataformaUsuariosController {
   }
 
   /**
+   * GET /plataforma/usuarios/:id/eliminacion · F7 / T-74
+   *
+   * Resumen de solo lectura para el modal de borrado: reservas futuras que se
+   * cancelarían, pagos y arqueos que se desvincularían, sedes afectadas y los
+   * bloqueos vigentes. Mismos cálculos que el `DELETE`.
+   */
+  @Get(':id/eliminacion')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMINISTRADOR')
+  @HttpCode(HttpStatus.OK)
+  previsualizarEliminacion(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usuariosPlataformaService.previsualizarEliminacion(id);
+  }
+
+  /**
    * DELETE /plataforma/usuarios/:id · F7 / T-72
    *
    * Eliminación REAL de la cuenta. El cuerpo debe repetir el correo exacto

@@ -40,13 +40,14 @@
 > | `GET /divisiones/:paisCodigo` | `sin acción` | **pública**: catálogo de provincias y municipios, dato público del país |
 > | `GET /divisiones/ubicacion` | `sin acción` | **pública**: confirma la provincia y el municipio de unas coordenadas para los selects del alta; no escribe nada |
 
-> **Actualización F7 (27 nov 2026).** La fase suma **2 rutas** sobre acciones ya
+> **Actualización F7 (27 nov 2026).** La fase suma **3 rutas** sobre acciones ya
 > existentes (`plataforma.usuarios.gestionar` y `plataforma.sedes.gestionar`). El
-> inventario vivo queda en **136 claves** y el test exige **544** evaluaciones (136 × 4).
+> inventario vivo queda en **137 claves** y el test exige **548** evaluaciones (137 × 4).
 >
 > | Ruta | Acción | Rol efectivo |
 > |---|---|---|
 > | `DELETE /plataforma/usuarios/:id` | `plataforma.usuarios.gestionar` | ADMINISTRADOR global · borrado REAL con `{ confirmacion }`, respaldo previo y 409 de último administrador / admin de sede / responsable de sede |
+> | `GET /plataforma/usuarios/:id/eliminacion` | `plataforma.usuarios.gestionar` | ADMINISTRADOR global · resumen de solo lectura (reservas futuras, pagos, sedes y bloqueos) para el modal de borrado |
 > | `PATCH /plataforma/sedes/:sedeId/transferir-admin` | `plataforma.sedes.gestionar` | ADMINISTRADOR global · transfiere el `ADMIN_BARBERIA` de la sede antes de eliminar al dueño actual |
 
 ## 1 · Cómo se construyó
