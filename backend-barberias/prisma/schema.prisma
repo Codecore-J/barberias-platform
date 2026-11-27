@@ -1096,3 +1096,21 @@ model OtpConfirmacion {
   @@index([usuarioId, tipo, usado, expiraEn], name: "idx_otp_usuario_canal")
   @@map("otp_confirmaciones")
 }
+
+/// F7 / T-71 · copia de la cuenta antes de eliminarla de verdad.
+///
+/// Se escribe cuando el usuario YA no existe, así que `usuario_id` y
+/// `eliminado_por` son UUID sueltos SIN relación: una FK a `usuarios` haría
+/// imposible insertar el respaldo. La tabla es de solo escritura para el
+/// sistema y de solo lectura para auditoría; nunca se borra desde la app.
+model RespaldoEliminacion {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId    String   @map("usuario_id") @db.Uuid
+  snapshot     Json     @db.JsonB
+  eliminadoPor String   @map("eliminado_por") @db.Uuid
+  eliminadoAt  DateTime @default(now()) @map("eliminado_at") @db.Timestamptz
+
+  @@index([usuarioId], name: "idx_respaldo_eliminacion_usuario")
+  @@index([eliminadoAt], name: "idx_respaldo_eliminacion_at")
+  @@map("respaldo_eliminacion")
+}
