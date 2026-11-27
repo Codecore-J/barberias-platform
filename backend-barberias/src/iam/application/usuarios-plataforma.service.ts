@@ -24,6 +24,7 @@ import type {
 } from './dto/administrador-cuenta.dto.js';
 import type { CrearUsuarioPlataformaDto } from './dto/crear-usuario-plataforma.dto.js';
 import type { EliminarUsuarioDto } from './dto/eliminar-usuario.dto.js';
+import type { TransferirAdministracionDto } from './dto/transferir-administracion.dto.js';
 import type { UsuarioAuditoriaResponseDto } from './dto/usuario-auditoria-response.dto.js';
 import { UsuarioListResponseDto } from './dto/usuario-list-response.dto.js';
 
@@ -71,6 +72,13 @@ function codigoDeDuplicado(target: string | string[] | null | undefined): {
 export interface SedeAfectada {
   id: string;
   nombre: string;
+}
+
+/** Lo que devuelve `PATCH /plataforma/sedes/:sedeId/transferir-admin` (T-73). */
+export interface TransferenciaAdministracionResultado {
+  sedeId: string;
+  adminAnteriorId: string;
+  nuevoAdminId: string;
 }
 
 /** Lo que devuelve `DELETE /plataforma/usuarios/:id` (T-72). */
@@ -941,6 +949,156 @@ export class UsuariosPlataformaService {
         pagosDesvinculados,
         cajasDesvinculadas,
       } satisfies EliminarUsuarioResultado;
+    });
+  }
+
+  // ── T-73 · transferir la administración de una sede ────────────────────────
+
+  /**
+   * `PATCH /plataforma/sedes/:sedeId/transferir-admin` · cambia de dueño.
+   *
+   * El trigger `fn_admin_barberia_unico_por_sede` permite UN `ADMIN_BARBERIA`
+   * ACTIVO por sede y cuenta activa, así que el orden es obligatorio: primero se
+   * degrada al anterior (`INACTIVO`, no se borra la fila) y después se promueve
+   * al nuevo. Todo en una transacción serializable: si la promoción falla, el
+   * dueño anterior sigue siendo dueño.
+   *
+   * El nuevo administrador: cuenta ACTIVA y, si ya tenía un vínculo
+   * `ADMIN_BARBERIA` INACTIVO en la sede, se reactiva en vez de duplicarlo. Si no
+   * tenía ninguno, se crea. Un vínculo `BARBERO` se conserva: la cuenta dual
+   * (ADMIN_BARBERIA + BARBERO en la misma sede) es válida.
+   */
+  async transferirAdministracionSede(
+    sedeId: string,
+    dto: TransferirAdministracionDto,
+    solicitante: UsuarioAutenticado,
+  ): Promise<TransferenciaAdministracionResultado> {
+    return withSerializableTransaction(this.prisma, async (tx) => {
+      const sede = await tx.barberia.findUnique({
+        where: { id: sedeId },
+        select: { id: true, nombre: true },
+      });
+
+      if (!sede) {
+        throw new NotFoundException('Barbería no encontrada.');
+      }
+
+      const adminActual = await tx.usuarioRol.findFirst({
+        where: {
+          barberiaId: sedeId,
+          estado: 'ACTIVO',
+          rol: { nombre: ROL_ADMIN_BARBERIA },
+          usuario: { estadoCuenta: 'ACTIVO' },
+        },
+        select: {
+          id: true,
+          usuarioId: true,
+          usuario: { select: { id: true, correo: true, nombreCompleto: true } },
+        },
+      });
+
+      if (!adminActual) {
+        throw errorDeConflicto(
+          'SEDE_SIN_ADMIN',
+          'La sede no tiene administrador activo: no hay administración que transferir.',
+        );
+      }
+
+      if (adminActual.usuarioId === dto.nuevoAdminId) {
+        throw errorDeConflicto(
+          'TRANSFERENCIA_AL_MISMO_ADMIN',
+          'La cuenta indicada ya administra esta sede.',
+        );
+      }
+
+      const nuevo = await tx.usuario.findUnique({
+        where: { id: dto.nuevoAdminId },
+        select: { id: true, correo: true, nombreCompleto: true, estadoCuenta: true },
+      });
+
+      if (!nuevo) {
+        throw new NotFoundException('Usuario no encontrado.');
+      }
+
+      if (nuevo.estadoCuenta !== 'ACTIVO') {
+        throw errorDeConflicto(
+          'CUENTA_NO_ACTIVA',
+          'Solo una cuenta ACTIVA puede recibir la administración de una sede.',
+        );
+      }
+
+      const rolAdmin = await tx.rol.findUnique({
+        where: { nombre: ROL_ADMIN_BARBERIA },
+        select: { id: true },
+      });
+
+      if (!rolAdmin) {
+        throw new InternalServerErrorException(
+          'Configuración incompleta: el rol ADMIN_BARBERIA no existe. Ejecuta el seed.',
+        );
+      }
+
+      const vinculoNuevo = await tx.usuarioRol.findFirst({
+        where: {
+          usuarioId: dto.nuevoAdminId,
+          barberiaId: sedeId,
+          rol: { nombre: ROL_ADMIN_BARBERIA },
+        },
+        select: { id: true, estado: true },
+      });
+
+      if (vinculoNuevo?.estado === 'ACTIVO') {
+        throw errorDeConflicto(
+          'YA_ES_ADMIN_SEDE',
+          'La cuenta ya administra esta sede.',
+        );
+      }
+
+      // El trigger exige que no queden dos ACTIVOS: degradar primero.
+      await tx.usuarioRol.update({
+        where: { id: adminActual.id },
+        data: { estado: 'INACTIVO' },
+      });
+
+      if (vinculoNuevo) {
+        await tx.usuarioRol.update({
+          where: { id: vinculoNuevo.id },
+          data: { estado: 'ACTIVO' },
+        });
+      } else {
+        await tx.usuarioRol.create({
+          data: { usuarioId: dto.nuevoAdminId, rolId: rolAdmin.id, barberiaId: sedeId },
+        });
+      }
+
+      await this.auditoria.registrarEvento(
+        {
+          usuarioId: solicitante.id,
+          barberiaId: sedeId,
+          accion: 'ADMIN_TRANSFERIDO',
+          entidad: 'usuario_roles',
+          entidadId: vinculoNuevo?.id ?? adminActual.id,
+          contexto: {
+            sedeId,
+            sedeNombre: sede.nombre,
+            adminAnteriorId: adminActual.usuarioId,
+            adminAnteriorCorreo: adminActual.usuario?.correo ?? null,
+            nuevoAdminId: nuevo.id,
+            nuevoAdminCorreo: nuevo.correo,
+          },
+        },
+        tx,
+      );
+
+      this.logger.warn(
+        `Administración de ${sede.nombre} transferida de ${adminActual.usuarioId} a ${nuevo.correo} por ${solicitante.correo ?? solicitante.id}`,
+      );
+
+      return {
+        sedeId,
+        adminAnteriorId: adminActual.usuarioId,
+        nuevoAdminId: nuevo.id,
+      } satisfies TransferenciaAdministracionResultado;
     });
   }
 }
