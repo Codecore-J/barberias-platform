@@ -9,7 +9,11 @@ import {
   Post,
   Patch,
   Query,
+  UploadedFile,
+  UseFilters,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { BarberiaService } from '../application/barberia.service.js';
 import { AnalyticsService } from '../../analytics/application/analytics.service.js';
 import { AnalyticsQueryDto } from '../../analytics/dto/analytics-query.dto.js';
@@ -29,6 +33,13 @@ import { Roles } from '../../iam/infrastructure/roles.decorator.js';
 import type { UsuarioAutenticado } from '../../iam/domain/jwt.interface.js';
 import { Autenticado } from '../../iam/infrastructure/autenticado.decorator.js';
 import { esAdministradorGlobal } from '../../iam/domain/roles.js';
+// F6 / T-64 · logo de la sede por subida de archivo. Mismas piezas que la foto
+// de servicio de T-24: memoria, tope de 2 MB y traducción del corte de Multer.
+import {
+  type ArchivoSubido,
+  TAMANO_MAXIMO_IMAGEN,
+} from '../../shared/cloudinary/cloudinary.service.js';
+import { ImagenDemasiadoGrandeFilter } from '../../shared/cloudinary/imagen-demasiado-grande.filter.js';
 
 @Controller('shops')
 export class BarberiaController {
@@ -318,6 +329,32 @@ export class BarberiaController {
    * Suspender una sede sigue siendo una decisión de plataforma (decisión 4):
    * solo el ADMINISTRADOR global.
    */
+  /**
+   * PATCH /shops/:shopId/logo · F6 / T-64
+   *
+   * El logo deja de ser una URL escrita a mano: lo sube el ADMIN_BARBERIA de la
+   * sede como archivo (jpg, png o webp, máx. 2 MB). El ADMINISTRADOR global no
+   * sube logos; crear y suspender sedes sigue siendo suyo (T-11).
+   *
+   * Responde 201 porque crea un recurso nuevo (el archivo) y deja su URL en la
+   * sede. La pertenencia a la sede no la resuelve el guard (`:shopId` con
+   * segmento extra), así que la exige el servicio.
+   */
+  @Roles('ADMIN_BARBERIA')
+  @Patch(':shopId/logo')
+  @HttpCode(HttpStatus.CREATED)
+  @UseFilters(ImagenDemasiadoGrandeFilter)
+  @UseInterceptors(
+    FileInterceptor('archivo', { limits: { fileSize: TAMANO_MAXIMO_IMAGEN } }),
+  )
+  actualizarLogo(
+    @Param('shopId', ParseUUIDPipe) id: string,
+    @CurrentUser() user: UsuarioAutenticado,
+    @UploadedFile() archivo: ArchivoSubido,
+  ) {
+    return this.barberiaService.actualizarLogo(id, user, archivo);
+  }
+
   @Roles('ADMINISTRADOR')
   @Patch(':shopId/status')
   @HttpCode(HttpStatus.OK)

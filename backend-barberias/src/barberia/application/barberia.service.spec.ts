@@ -6,6 +6,8 @@ import { BarberiaService } from './barberia.service.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
+import { NominatimService } from '../../geocodificacion/nominatim.service.js';
+import { CloudinaryService } from '../../shared/cloudinary/cloudinary.service.js';
 import {
   ConflictException,
   NotFoundException,
@@ -201,6 +203,29 @@ describe('BarberiaService', () => {
           // H71: reabrir un vínculo cerrado avisa a la plataforma.
           provide: NotificacionService,
           useValue: notificacion,
+        },
+        {
+          // F6 / T-64 · el logo de la sede se sube a Cloudinary. Doble: esta
+          // suite no habla con el proveedor.
+          provide: CloudinaryService,
+          useValue: {
+            configurado: vi.fn().mockReturnValue(false),
+            subir: vi.fn(),
+            borrar: vi.fn(),
+          },
+        },
+        {
+          // F6 / T-62 · el alta geocodifica con Nominatim. Doble obligatorio:
+          // esta suite no puede salir a la red.
+          provide: NominatimService,
+          useValue: {
+            ubicacionDe: vi.fn().mockResolvedValue({
+              paisCodigo: 'DO',
+              divisionNivel1: 'Distrito Nacional',
+              divisionNivel2: 'Santo Domingo',
+              direccionCompleta: 'Calle 1, Santo Domingo, República Dominicana',
+            }),
+          },
         },
       ],
     }).compile();
@@ -614,6 +639,9 @@ describe('BarberiaService', () => {
       descripcion: 'Una sede de prueba',
       telefono: '8095550000',
       ubicacion: 'Calle 1',
+      // F6 / T-62 · el alta exige coordenadas (422 sin ellas).
+      latitud: 18.4861,
+      longitud: -69.9312,
     } as any;
 
     const barberiaCreada = {

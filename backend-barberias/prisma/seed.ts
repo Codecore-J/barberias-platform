@@ -14,6 +14,8 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { sembrarDemo } from './seed-demo.js';
+// F6 / T-65 · catálogo de provincias y municipios de República Dominicana.
+import { sembrarDivisionesDO } from './seed-divisiones-do.js';
 
 /** Categorías oficiales de la sede: ellas vinculan los servicios que publica el barbero. */
 const CATEGORIAS_OFICIALES = [
@@ -179,6 +181,14 @@ async function main() {
   // decide si escribe es la propia función (E0-07: solo con APP_ENV=dev); en
   // cualquier otro entorno se omite con un aviso y este seed sigue valiendo para
   // roles y permisos.
+  // F6 / T-65 · el catálogo de divisiones va ANTES de la demo porque la sede de
+  // demo declara su provincia y municipio a partir de él. Es idempotente
+  // (`upsert` por país + nivel + nombre), así que corre en cada `db seed`.
+  const divisiones = await sembrarDivisionesDO(prisma);
+  console.log(
+    `✅ Divisiones sembradas: ${divisiones.provincias} provincias y ${divisiones.municipios} municipios.`,
+  );
+
   await sembrarDemo(prisma);
 
   console.log('🎉 Seed completado exitosamente.');

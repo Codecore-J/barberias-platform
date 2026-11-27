@@ -148,6 +148,25 @@ model Barberia {
   // primero y esta restricción cubre cualquier escritura que los esquive.
   telefono      String    @db.VarChar(30)
   ubicacion     String    @db.Text
+  // F6 / T-60 · ubicación geográfica de la sede. Coordenadas y divisiones
+  // político-administrativas llegan con la migración `f601_ubicacion_sede` y
+  // son NULLABLES a propósito: las sedes anteriores se crearon sin
+  // coordenadas y no se rellenan con un punto inventado. La obligatoriedad es
+  // del alta (T-62, `CreateBarberiaDto`), no de la columna: así una sede
+  // histórica sigue siendo válida y la migración no rompe filas existentes.
+  // `Decimal(10,7)` da ~1 cm de precisión, suficiente para una dirección.
+  latitud       Decimal?  @db.Decimal(10, 7)
+  longitud      Decimal?  @db.Decimal(10, 7)
+  // ISO 3166-1 alpha-2 en mayúsculas (`DO`). Nominatim lo devuelve en
+  // minúsculas; el servicio lo normaliza (T-61).
+  paisCodigo    String?   @map("pais_codigo") @db.VarChar(2)
+  // División 1 = provincia, división 2 = municipio (República Dominicana).
+  // Se guarda el texto que devuelve Nominatim; el catálogo de T-65 permite
+  // ofrecerlo como select sin inventar nombres.
+  divisionNivel1 String?  @map("division_nivel1") @db.VarChar(100)
+  divisionNivel2 String?  @map("division_nivel2") @db.VarChar(100)
+  // `display_name` de Nominatim truncado a 300 caracteres (T-62).
+  direccionCompleta String? @map("direccion_completa") @db.VarChar(300)
   codigoAcceso  String    @unique @map("codigo_acceso") @db.VarChar(50)
   enlaceUnico   String    @unique @map("enlace_unico") @db.VarChar(100)
   responsableId String    @map("responsable_id") @db.Uuid
@@ -163,6 +182,11 @@ model Barberia {
   // cuando llegó E3-13: la migración la declara idempotente y así el esquema y
   // la base coinciden también en bases creadas desde cero. Ver H50.
   logoUrl       String?   @map("logo_url") @db.Text
+  // F6 / T-64 · `public_id` de Cloudinary del logo. Sin él, reemplazar el logo
+  // solo podría deducir el id desde la URL (posible, pero frágil) y el archivo
+  // anterior quedaría huérfano en cada cambio. La columna llega con la
+  // migración `f604_logo_public_id_sede`, idempotente como la de `logo_url`.
+  logoPublicId  String?   @map("logo_public_id") @db.VarChar(255)
   // E2-03: alta de la sede. La crea la migración reconstruida
   // `20261011130000_e203_integridad_base`; en `dev` ya existía (H50).
   creadoAt      DateTime? @default(now()) @map("creado_at") @db.Timestamptz
@@ -204,6 +228,31 @@ model Barberia {
   solicitudesAntecedente SolicitudAntecedente[]
 
   @@map("barberias")
+}
+
+/// F6 / T-65 · catálogo de divisiones administrativas (provincia y municipio).
+///
+/// Nominatim devuelve nombres, no códigos: esta tabla es la referencia que
+/// permite ofrecerlos como select y emparejar lo que llega del proveedor aunque
+/// su escritura no coincida exactamente (`nombre_nominatim`).
+model DivisionAdministrativa {
+  id              String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paisCodigo      String  @map("pais_codigo") @db.VarChar(2)
+  /// 1 = provincia, 2 = municipio (CHECK en la migración `f605`).
+  nivel           Int
+  nombre          String  @db.VarChar(100)
+  /// Cómo llama Nominatim a esta división, si difiere del nombre oficial.
+  nombreNominatim String? @map("nombre_nominatim") @db.VarChar(100)
+  padreId         String? @map("padre_id") @db.Uuid
+
+  padre     DivisionAdministrativa?  @relation("JerarquiaDivision", fields: [padreId], references: [id])
+  hijos     DivisionAdministrativa[] @relation("JerarquiaDivision")
+
+  /// Misma clave que el índice único `uk_divisiones_pais_nivel_nombre`: es lo
+  /// que hace idempotente el seed de T-65.
+  @@unique([paisCodigo, nivel, nombre], map: "uk_divisiones_pais_nivel_nombre")
+  @@index([padreId], map: "idx_divisiones_padre")
+  @@map("divisiones_administrativas")
 }
 
 model ClienteBarberia {

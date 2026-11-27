@@ -6,8 +6,8 @@
  * ruta). Los identificadores se copian tal cual, sin renombrar ni derivar, y su
  * orden en `RUTA_ACCION` es el de la tabla del documento.
  *
- * `RUTA_ACCION` cubre las 123 rutas del inventario (`POLITICA_DECLARADA` en
- * `test/permisos-matriz.spec.ts`): 70 con al menos una acción y 53 con `[]`
+ * `RUTA_ACCION` cubre las 134 rutas del inventario (`POLITICA_DECLARADA` en
+ * `test/permisos-matriz.spec.ts`): 75 con al menos una acción y 59 con `[]`
  * porque la matriz no las cubre —41 fuera de su alcance y las 12 brechas de
  * `RUTAS_BRECHA_MATRIZ`. El tipo `Accion` hace que un identificador inventado
  * no compile: el mapa no puede desviarse de la matriz por una errata.
@@ -96,6 +96,16 @@ export const RUTA_ACCION: Readonly<Record<string, readonly Accion[]>> = {
   'PATCH /shops/:shopId/select': [],
   'PATCH /shops/:shopId': ['plataforma.sedes.gestionar'],
   'PATCH /shops/:shopId/status': ['plataforma.sedes.gestionar'],
+  // F6 / T-64 · el logo lo sube el ADMIN_BARBERIA de la sede, igual que la foto
+  // de servicio de T-24: es autoservicio del dueño sobre su propia marca, no
+  // una acción de plataforma ni una de las 30 de la matriz.
+  'PATCH /shops/:shopId/logo': [],
+  // F6 / T-66 · catálogo de divisiones: datos públicos del país, sin sesión y
+  // sin acción de la matriz (como `/health`).
+  'GET /divisiones/:paisCodigo': [],
+  // F6 / T-66 · confirmación de provincia/municipio por coordenadas: misma
+  // información pública que el catálogo, también sin sesión.
+  'GET /divisiones/ubicacion': [],
   'POST /shops/link': [],
   'GET /shops/:shopId/invitation': [],
   'GET /shops/:shopId/settings/': [],

@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
   Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { withSerializableTransaction } from '../../shared/concurrency/serializable-transaction.js';
@@ -15,7 +16,11 @@ import type { BarberiaResponseDto } from './dto/barberia-response.dto.js';
 import type { VincularBarberiaDto } from './dto/vincular-barberia.dto.js';
 import { plainToInstance } from 'class-transformer';
 import * as bcrypt from 'bcrypt';
-import { errorDeConflicto, reglaDeNegocio } from '../../shared/errors/d40.errors.js';
+import {
+  errorDeConflicto,
+  errorDeSolicitud,
+  reglaDeNegocio,
+} from '../../shared/errors/d40.errors.js';
 import { BarberiaResponseDto as BarberiaResponse } from './dto/barberia-response.dto.js';
 import type { BarberiaLecturaDto } from './dto/barberia-lectura.dto.js';
 import { BarberiaLecturaDto as BarberiaLectura } from './dto/barberia-lectura.dto.js';
@@ -43,6 +48,17 @@ import {
   esConflictoAdminUnico,
 } from '../../iam/domain/administrador-sede.js';
 import { NotificacionService } from '../../notificacion/application/notificacion.service.js';
+// F6 / T-62 · el país, la provincia y el municipio los deduce el proveedor a
+// partir de las coordenadas; el cliente no los envía.
+import { NominatimService } from '../../geocodificacion/nominatim.service.js';
+// F6 / T-64 · logo por archivo: mismo servicio de Cloudinary que la foto de
+// servicio de T-24.
+import {
+  type ArchivoSubido,
+  CloudinaryService,
+  TAMANO_MAXIMO_IMAGEN,
+  TIPOS_IMAGEN_PERMITIDOS,
+} from '../../shared/cloudinary/cloudinary.service.js';
 // E3-12: el estado de la 6.ª vinculación y su límite viven en el dominio de la
 // vinculación, compartidos con el flujo que las resuelve (VinculacionService).
 import {
@@ -165,6 +181,12 @@ export class BarberiaService {
     // `@Optional`): el módulo ya importa `AuditoriaModule` y un cambio de estado
     // sin rastro no puede degradarse en silencio.
     private readonly auditoria: AuditoriaService,
+    // F6 / T-62 · geocodificación inversa del alta. Dependencia requerida: una
+    // sede sin país ni divisiones no puede existir, y degradar en silencio
+    // dejaría sedes a medias.
+    private readonly nominatim: NominatimService,
+    // F6 / T-64 · subida del logo de la sede a Cloudinary.
+    private readonly cloudinary: CloudinaryService,
     // H71: reabrir una vinculación cerrada avisa a la plataforma. `@Optional`
     // a propósito: el aviso es best-effort y su ausencia (una cola caída, un
     // test unitario que no lo necesita) no puede impedir que el cliente vuelva
@@ -219,6 +241,32 @@ export class BarberiaService {
     responsableId: string,
     dto: CreateBarberiaDto,
   ): Promise<BarberiaResponseDto> {
+    // F6 / T-62 · 1. Coordenadas obligatorias. El 422 lo decide el servicio (no
+    // el `ValidationPipe`, que respondería 400) porque el contrato de la fase lo
+    // fija así, y con un mensaje que dice qué hacer.
+    const latitud = dto.latitud;
+    const longitud = dto.longitud;
+    const coordenadasValidas =
+      typeof latitud === 'number' &&
+      typeof longitud === 'number' &&
+      Number.isFinite(latitud) &&
+      Number.isFinite(longitud) &&
+      Math.abs(latitud) <= 90 &&
+      Math.abs(longitud) <= 180;
+
+    if (!coordenadasValidas) {
+      throw reglaDeNegocio(
+        'COORDENADAS_REQUERIDAS',
+        'Confirma la ubicación de la sede antes de crearla: faltan las coordenadas.',
+      );
+    }
+
+    // 2. Geocodificación ANTES de abrir la transacción SERIALIZABLE: no se
+    //    retiene ningún bloqueo de fila esperando a un proveedor externo, y si
+    //    Nominatim falla (503) o el país no está soportado (422) no se escribe
+    //    nada. La sede nunca queda creada a medias.
+    const ubicacion = await this.nominatim.ubicacionDe(latitud, longitud);
+
     return withSerializableTransaction(this.prisma, async (tx) => {
       // 1. El responsable tiene que existir antes de contar o escribir nada.
       const responsable = await tx.usuario.findUnique({
@@ -309,6 +357,15 @@ export class BarberiaService {
           descripcion: dto.descripcion,
           telefono: dto.telefono,
           ubicacion: dto.ubicacion,
+          latitud,
+          longitud,
+          paisCodigo: ubicacion.paisCodigo,
+          // F6 / T-66 · las divisiones son SOLO lo que devolvió Nominatim. Si el
+          // proveedor no trae ese nivel se guarda NULL: el nombre que pudiera
+          // mandar el cliente no es una fuente de verdad y no se usa de respaldo.
+          divisionNivel1: ubicacion.divisionNivel1 ?? null,
+          divisionNivel2: ubicacion.divisionNivel2 ?? null,
+          direccionCompleta: ubicacion.direccionCompleta,
           codigoAcceso,
           enlaceUnico,
           responsableId,
@@ -376,8 +433,99 @@ export class BarberiaService {
       this.logger.log(
         `Barbería creada: ${barberia.id} por usuario ${responsableId}`,
       );
-      return this.toResponse(barberia);
+      // La respuesta lleva lo que se acaba de deducir para que la pantalla
+      // muestre provincia y municipio sin pedirlos otra vez.
+      return Object.assign(this.toResponse(barberia), {
+        latitud,
+        longitud,
+        paisCodigo: ubicacion.paisCodigo,
+        divisionNivel1: ubicacion.divisionNivel1 ?? null,
+        divisionNivel2: ubicacion.divisionNivel2 ?? null,
+        direccionCompleta: ubicacion.direccionCompleta,
+      });
     });
+  }
+
+  // ── LOGO DE LA SEDE ────────────────────────────────────────────────────────
+
+  /**
+   * F6 / T-64 · cambia el logo de la sede a partir de un archivo subido.
+   *
+   * Solo el ADMIN_BARBERIA de ESA sede. El ADMINISTRADOR global queda fuera a
+   * propósito: la marca de la sede es de su dueño, y el global ya tiene la
+   * creación y la suspensión (T-11). El `RolesGuard` ya filtra la ruta, pero el
+   * alcance de la sede no lo puede resolver el guard (`:shopId` con segmento
+   * extra), así que se comprueba aquí.
+   *
+   * Reemplazar el logo BORRA el anterior de Cloudinary, igual que la foto de
+   * servicio (T-24): el `public_id` guardado manda y la URL queda de respaldo
+   * para las filas anteriores a la columna.
+   */
+  async actualizarLogo(
+    barberiaId: string,
+    usuario: UsuarioAutenticado,
+    archivo: ArchivoSubido | undefined,
+  ): Promise<{ id: string; logoUrl: string | null; logoPublicId: string | null }> {
+    if (!this.tieneAlgunRolEnBarberia(barberiaId, usuario, [ROL_ADMIN_BARBERIA])) {
+      throw new ForbiddenException(
+        'Solo el administrador de esta sede puede cambiar su logo.',
+      );
+    }
+
+    if (!archivo?.buffer || archivo.buffer.length === 0) {
+      throw errorDeSolicitud(
+        'IMAGEN_REQUERIDA',
+        'Adjunta el logo de la sede en el campo «archivo».',
+      );
+    }
+
+    if (
+      !TIPOS_IMAGEN_PERMITIDOS.includes(
+        archivo.mimetype as (typeof TIPOS_IMAGEN_PERMITIDOS)[number],
+      )
+    ) {
+      throw errorDeSolicitud('IMAGEN_TIPO_INVALIDO', 'El logo debe ser JPG, PNG o WEBP.');
+    }
+
+    const tamano = archivo.size || archivo.buffer.length;
+    if (tamano > TAMANO_MAXIMO_IMAGEN) {
+      throw errorDeSolicitud('IMAGEN_DEMASIADO_GRANDE', 'La imagen no puede superar los 2 MB.');
+    }
+
+    const sede = await this.prisma.barberia.findUnique({
+      where: { id: barberiaId },
+      select: { id: true, logoUrl: true, logoPublicId: true },
+    });
+
+    if (!sede) {
+      throw new NotFoundException(`Barbería ${barberiaId} no encontrada.`);
+    }
+
+    if (!this.cloudinary.configurado()) {
+      throw new ServiceUnavailableException({
+        statusCode: 503,
+        codigo: 'IMAGEN_NO_CONFIGURADA',
+        mensaje:
+          'La subida de imágenes no está disponible: falta CLOUDINARY_URL en el entorno del servidor.',
+      });
+    }
+
+    const publicIdAnterior =
+      sede.logoPublicId ?? CloudinaryService.publicIdDe(sede.logoUrl);
+    if (publicIdAnterior) {
+      await this.cloudinary.borrar(publicIdAnterior);
+    }
+
+    const subida = await this.cloudinary.subir(archivo.buffer, `sedes/${barberiaId}`);
+
+    const actualizada = await this.prisma.barberia.update({
+      where: { id: barberiaId },
+      data: { logoUrl: subida.url, logoPublicId: subida.publicId },
+      select: { id: true, logoUrl: true, logoPublicId: true },
+    });
+
+    this.logger.log(`Logo de la sede actualizado: ${barberiaId}`);
+    return actualizada;
   }
 
   // ── LISTAR PERSONAL ────────────────────────────────────────────────────────

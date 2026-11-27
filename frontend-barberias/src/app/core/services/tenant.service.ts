@@ -43,6 +43,39 @@ export interface ActualizarBarberiaRequest {
   passwordActual?: string;
 }
 
+/**
+ * F6 / T-66 · catálogo público de divisiones (`GET /divisiones/:paisCodigo`).
+ *
+ * Provincia y municipio llegan ya agrupados y en orden alfabético: el formulario
+ * solo pinta las dos listas.
+ */
+export interface MunicipioCatalogo {
+  id: string;
+  nombre: string;
+}
+
+export interface ProvinciaCatalogo {
+  id: string;
+  nombre: string;
+  municipios: MunicipioCatalogo[];
+}
+
+export interface CatalogoDivisiones {
+  paisCodigo: string;
+  provincias: ProvinciaCatalogo[];
+}
+
+/**
+ * F6 / T-66 · lo que el backend deduce de unas coordenadas
+ * (`GET /divisiones/ubicacion`). Es exactamente lo que el alta va a guardar.
+ */
+export interface UbicacionDeducida {
+  paisCodigo: string;
+  divisionNivel1: string | null;
+  divisionNivel2: string | null;
+  direccionCompleta: string | null;
+}
+
 /** El vínculo que devuelven las rutas de vinculación: el estado es el de D10. */
 export interface VinculoDeCliente {
   id: string;
@@ -105,6 +138,14 @@ export class TenantService {
    */
   private readonly apiUrlUnirse = `${API_URL}/mi-estado/unirse`;
   private readonly storageKey = 'active_barberia_id';
+
+  /**
+   * F6 / T-66 · catálogo de divisiones ya resuelto, por país.
+   *
+   * Es información pública que cambia de año en año: pedirla en cada montaje del
+   * formulario sería una petición por visita para el mismo dato.
+   */
+  private readonly divisionesResueltas = new Map<string, CatalogoDivisiones>();
 
   // Signals reactivos para el tenant
   readonly barberiaActiva = signal<BarberiaResumen | null>(null);
@@ -485,9 +526,56 @@ export class TenantService {
   }
 
   /**
+   * F6 / T-66 · catálogo de provincias y municipios del país.
+   *
+   * Es público (`GET /divisiones/:paisCodigo`), así que no exige sesión. Un
+   * fallo devuelve el catálogo vacío en lugar de romper el alta: sin catálogo el
+   * formulario sigue sirviendo (las divisiones las deduce el backend).
+   */
+  cargarDivisiones(paisCodigo = 'DO'): Observable<CatalogoDivisiones> {
+    const pais = (paisCodigo ?? 'DO').trim().toUpperCase();
+
+    const cacheado = this.divisionesResueltas.get(pais);
+    if (cacheado) return of(cacheado);
+
+    return this.http.get<CatalogoDivisiones>(`${API_URL}/divisiones/${pais}`).pipe(
+      tap((catalogo) => this.divisionesResueltas.set(pais, catalogo)),
+      catchError(() => of({ paisCodigo: pais, provincias: [] })),
+    );
+  }
+
+  /**
+   * F6 / T-66 · confirmación de provincia y municipio para unas coordenadas.
+   *
+   * Solo lectura: no crea la sede. Es la fuente con la que se prellenan los
+   * selects del alta, y por eso lo que devuelve coincide con lo que el backend
+   * guarda después. Un fallo devuelve `null` en lugar de romper el formulario:
+   * el alta se puede enviar igual y el backend volverá a deducirlo.
+   */
+  resolverUbicacion(latitud: number, longitud: number): Observable<UbicacionDeducida | null> {
+    return this.http
+      .get<UbicacionDeducida>(`${API_URL}/divisiones/ubicacion`, {
+        params: { latitud, longitud },
+      })
+      .pipe(catchError(() => of(null)));
+  }
+
+  /**
    * Crea una nueva barbería y el usuario actual queda como Dueño/Responsable
    */
-  crearBarberia(dto: { nombre: string; ubicacion: string; telefono: string; descripcion?: string }): Observable<any> {
+  crearBarberia(dto: {
+    nombre: string;
+    ubicacion: string;
+    telefono: string;
+    descripcion?: string;
+    /**
+     * F6 / T-62: obligatorias; sin ellas el backend responde 422.
+     * T-66: la provincia y el municipio NO se envían —los deduce Nominatim y, si
+     * no los devuelve, se guardan NULL—.
+     */
+    latitud: number;
+    longitud: number;
+  }): Observable<any> {
     this.isLoading.set(true);
     return this.http.post(this.apiUrl, dto).pipe(
       tap((nuevaBarberia) => {

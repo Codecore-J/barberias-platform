@@ -22,9 +22,19 @@ import { SharedModule } from '../shared/shared.module.js';
 // ruta estática quede registrada antes de `/shops/:shopId`. Solo aporta el
 // `AnalyticsService`.
 import { AnalyticsModule } from '../analytics/analytics.module.js';
+// F6 / T-62: el alta de sede deduce país y divisiones con Nominatim.
+import { GeocodificacionModule } from '../geocodificacion/geocodificacion.module.js';
+// F6 / T-64: el logo de la sede se sube a Cloudinary (mismo servicio que T-24).
+import { CloudinaryService } from '../shared/cloudinary/cloudinary.service.js';
 
 @Module({
-  imports: [SharedModule, AuditoriaModule, NotificacionModule, AnalyticsModule],
+  imports: [
+    SharedModule,
+    AuditoriaModule,
+    NotificacionModule,
+    AnalyticsModule,
+    GeocodificacionModule,
+  ],
   controllers: [
     BarberiaController,
     ConfiguracionBarberiaController,
@@ -47,6 +57,7 @@ import { AnalyticsModule } from '../analytics/analytics.module.js';
     MiEstadoService,
     ClienteBarberiasService,
     VinculacionService,
+    CloudinaryService,
   ],
   exports: [
     BarberiaService,
