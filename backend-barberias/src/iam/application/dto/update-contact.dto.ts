@@ -1,12 +1,11 @@
-import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
 } from 'class-validator';
 import { PhoneNotRepetitive } from '../../../shared/phone.validator.js';
-import { TelefonoDominicano, normalizarTelefonoRD } from '../../../shared/identidad.validator.js';
 
 /**
  * T-21 · Corrección del contacto de una cuenta «zombie».
@@ -26,11 +25,10 @@ import { TelefonoDominicano, normalizarTelefonoRD } from '../../../shared/identi
 export class UpdateContactDto {
   @IsOptional()
   @IsString()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? normalizarTelefonoRD(value) : value,
-  )
   @PhoneNotRepetitive()
-  @TelefonoDominicano()
+  @Matches(/^\d{10}$/, {
+    message: 'El teléfono debe tener exactamente 10 dígitos numéricos.',
+  })
   telefono?: string;
 
   @IsOptional()

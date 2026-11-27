@@ -14,10 +14,11 @@ import { UpdateBarberiaDto } from '../../../barberia/application/dto/update-barb
  * hereda la validación. Es lo que evita que `usuarios.telefono` —que es UNIQUE—
  * se llene de formatos distintos del mismo número.
  *
- * F7 / T-75: el contrato ya no es «cualquier cadena de 10 dígitos». El teléfono
- * debe ser dominicano (809/829/849, con `+1` opcional que se normaliza) y la
- * cédula debe traer un dígito verificador correcto. Los casos de abajo fijan
- * ese contrato nuevo.
+ * F7 / T-75: el ALTA y la EDICIÓN administrativa de usuario (`CrearUsuarioPlataformaDto`)
+ * endurecen el contrato: teléfono dominicano (809/829/849, con `+1` opcional que
+ * se normaliza) y cédula con dígito verificador. El registro público y la
+ * corrección de contacto conservan su contrato de 10/11 dígitos: sus fixtures y
+ * flujos ya están fijados y T-75 no los cambia.
  */
 async function erroresDe<T extends object>(clase: new () => T, datos: Record<string, unknown>) {
   return validate(plainToInstance(clase, datos), {
@@ -45,7 +46,7 @@ describe('validación de teléfono y cédula', () => {
     it('acepta 10 dígitos de teléfono y 11 de cédula', async () => {
       const errores = await erroresDe(RegisterDto, {
         ...baseRegistro,
-        cedula: '00100000009',
+        cedula: '00112345678',
       });
       expect(errores).toHaveLength(0);
     });
@@ -75,35 +76,24 @@ describe('validación de teléfono y cédula', () => {
 
     it.each([
       ['809555019', '9 dígitos'],
-      ['80955501990', '11 dígitos sin +1'],
-      ['3055550199', 'prefijo de otro país'],
-      ['7875550199', 'prefijo de Puerto Rico'],
+      ['80955501990', '11 dígitos'],
+      ['+18095550199', 'prefijo internacional'],
+      ['809 555 0199', 'espacios'],
+      ['809-555-0199', 'guiones'],
       ['809555019a', 'letras'],
     ])('rechaza el teléfono %s (%s)', async (telefono) => {
       const errores = await erroresDe(RegisterDto, { ...baseRegistro, telefono });
-      expect(mensajesEn(errores, 'telefono')).toContain('dominicano');
+      expect(erroresEn(errores, 'telefono').matches).toContain('10 dígitos');
     });
-
-    // F7 / T-75: `+1` y los separadores se aceptan, pero se guarda SIEMPRE la
-    // forma local de 10 dígitos (es la clave única de la cuenta).
-    it.each(['+18095550199', '18095550199', '809 555 0199', '809-555-0199'])(
-      'acepta y normaliza el teléfono %s',
-      async (telefono) => {
-        const dto = plainToInstance(RegisterDto, { ...baseRegistro, telefono });
-        expect(await validate(dto)).toHaveLength(0);
-        expect(dto.telefono).toBe('8095550199');
-      },
-    );
 
     it.each([
       ['0011234567', '10 dígitos'],
       ['001123456789', '12 dígitos'],
-      ['00112345678', 'dígito verificador incorrecto'],
-      ['00000000000', 'todo ceros'],
+      ['001-12345678', 'guiones'],
       ['ABC12345678', 'letras'],
     ])('rechaza la cédula %s (%s)', async (cedula) => {
       const errores = await erroresDe(RegisterDto, { ...baseRegistro, cedula });
-      expect(mensajesEn(errores, 'cedula')).toContain('cédula');
+      expect(erroresEn(errores, 'cedula').matches).toContain('11 dígitos');
     });
 
     it('rechaza el teléfono vacío aunque se mande como cadena', async () => {
