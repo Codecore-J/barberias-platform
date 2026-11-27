@@ -333,4 +333,19 @@ describe('AdminUsuariosComponent · Fase 2', () => {
     expect(component.puedeEliminarUsuario(otroAdmin)).toBe(false);
   });
 
+  // ── F7 / T-76 · el buscador no recuerda la búsqueda anterior ──────────
+
+  it('ROJO: al destruir el componente el buscador y los filtros vuelven a vacío', () => {
+    component.busqueda.set('ana@demo.com');
+    component.filtroEstado.set('SUSPENDIDO');
+    component.filtroRol.set('BARBERO');
+    component.pagina.set(3);
+
+    component.ngOnDestroy();
+
+    expect(component.busqueda()).toBe('');
+    expect(component.filtroEstado()).toBe('TODOS');
+    expect(component.filtroRol()).toBe('TODOS');
+    expect(component.pagina()).toBe(1);
+  });
 });

@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { RolLabelPipe } from '../../../shared/pipes/rol-label.pipe';
 import { mensajeDeError } from '../../../core/utils/error-message';
@@ -1075,7 +1075,7 @@ interface TarjetaSede {
     </div>
   `,
 })
-export class AdminUsuariosComponent implements OnInit {
+export class AdminUsuariosComponent implements OnInit, OnDestroy {
   protected readonly service = inject(UsuariosService);
   private readonly authService = inject(AuthService);
   private readonly toast = inject(ToastService);
@@ -1406,6 +1406,20 @@ export class AdminUsuariosComponent implements OnInit {
 
   ngOnInit(): void {
     this.cargar();
+  }
+
+  /**
+   * F7 / T-76 · el buscador no recuerda la búsqueda anterior.
+   *
+   * El término vivía solo en la señal de la instancia, pero cualquier reutilización
+   * futura del componente (o un outlet que lo mantenga montado) lo revivía al
+   * volver. Al destruirlo se limpian búsqueda, filtros y página para que el
+   * siguiente montaje arranque en el estado inicial, nunca en «resultados vacíos»
+   * por un correo que ya no se recuerda haber escrito.
+   */
+  ngOnDestroy(): void {
+    this.limpiarFiltros();
+    this.pagina.set(1);
   }
 
   cargar(): void {
