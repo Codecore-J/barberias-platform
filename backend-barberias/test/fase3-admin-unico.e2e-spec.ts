@@ -82,7 +82,8 @@ describe('Fase 3 · administrador único por sede y cuenta dual (E2E)', () => {
     barbero: `barbero.f3-${sufijo}@${DOMINIO}`,
   };
 
-  const telefono = (posicion: number) => `81${digitos}${posicion}`;
+  // F7 / T-75: el alta administrativa exige prefijo dominicano real.
+  const telefono = (posicion: number) => `809${digitos.slice(0, 6)}${posicion}`;
   const password = 'Password1!';
 
   let tokenGlobal = '';
@@ -163,7 +164,7 @@ describe('Fase 3 · administrador único por sede y cuenta dual (E2E)', () => {
     const sede = await prisma.barberia.create({
       data: {
         nombre: `Sede F3-${sufijo}`,
-        telefono: `82${digitos}0`,
+        telefono: `849${digitos}`,
         ubicacion: 'Sede Fase 3 E2E',
         estado: 'ACTIVO',
         codigoAcceso: `${PREFIJO_SEDE}${sufijo}`,

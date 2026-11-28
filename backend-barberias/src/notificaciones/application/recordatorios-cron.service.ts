@@ -113,6 +113,12 @@ export class RecordatoriosCronService {
 
       for (const reserva of candidatas) {
         try {
+          // F7 / T-72 · una cuenta eliminada deja la reserva sin cliente: no hay
+          // a quién recordar la cita.
+          if (!reserva.cliente || !reserva.clienteId) {
+            continue;
+          }
+
           const inicio = this.tiempo.aInstante(
             fechaCalendarioISO(reserva.fechaCita),
             horaRelojHHMM(reserva.horaInicio),

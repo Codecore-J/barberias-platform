@@ -58,7 +58,7 @@ describe('F4-02 · lectura propia de excepciones', () => {
         telefonoVerificado: true,
         nombreCompleto: `F402 ${correo}`,
         correo,
-        telefono: `8${String(secuenciaTelefono).padStart(9, '0')}`,
+        telefono: `809${String(secuenciaTelefono).padStart(7, '0')}`,
         passwordHash: '$2b$10$HashFalsoF402NoSeUsaParaLogin',
         estadoCuenta: 'ACTIVO',
         usuarioRoles: rolId ? { create: [{ rolId, barberiaId: barberia }] } : undefined,

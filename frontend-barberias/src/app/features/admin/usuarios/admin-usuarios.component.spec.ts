@@ -37,6 +37,8 @@ describe('AdminUsuariosComponent · Fase 2', () => {
   const listarBarberias = vi.fn(() => of([{ id: 'sede-1', nombre: 'Sede A E401' }]));
   const crearUsuario = vi.fn();
   const obtenerRolesUsuario = vi.fn(() => of<RolDeUsuario[]>([]));
+  const previsualizarEliminacion = vi.fn();
+  const eliminarUsuario = vi.fn();
 
   const success = vi.fn();
 
@@ -48,6 +50,8 @@ describe('AdminUsuariosComponent · Fase 2', () => {
     listarBarberias.mockClear();
     crearUsuario.mockReset();
     obtenerRolesUsuario.mockClear();
+    previsualizarEliminacion.mockReset();
+    eliminarUsuario.mockReset();
     success.mockClear();
 
     await TestBed.configureTestingModule({
@@ -63,6 +67,8 @@ describe('AdminUsuariosComponent · Fase 2', () => {
             listarBarberias,
             crearUsuario,
             obtenerRolesUsuario,
+            previsualizarEliminacion,
+            eliminarUsuario,
             obtenerAuditoriaUsuario: vi.fn(() => of([])),
             cambiarEstadoUsuario: vi.fn(),
             cambiarAdministrador: vi.fn(),
@@ -216,5 +222,130 @@ describe('AdminUsuariosComponent · Fase 2', () => {
       .join(' | ');
     expect(textos).toContain('admin. de barbería');
     expect(textos).toContain('barbero');
+  });
+
+  // ── F7 / T-74 · eliminación real ────────────────────────────────
+
+  const ana: UsuarioListResponse = {
+    id: 'usuario-ana',
+    nombreCompleto: 'Ana Pérez',
+    correo: 'ana@demo.com',
+    telefono: '8095550199',
+    estadoCuenta: 'ACTIVO',
+    fechaRegistro: null,
+    roles: ['CLIENTE'],
+  };
+
+  const preview = {
+    id: ana.id,
+    correo: ana.correo,
+    reservasFuturas: 2,
+    pagosDesvinculados: 1,
+    cajasDesvinculadas: 0,
+    sedesAdministradas: [],
+    sedesResponsable: [],
+    propuestasHorario: 0,
+    solicitudesResueltas: 0,
+    puedeEliminar: true,
+    bloqueos: [],
+  };
+
+  function botonEliminar(): HTMLButtonElement | undefined {
+    return [...document.body.querySelectorAll('button')].find((boton) =>
+      (boton as HTMLElement).textContent?.includes('Confirmar eliminación'),
+    ) as HTMLButtonElement | undefined;
+  }
+
+  it('ROJO: confirmar eliminación sigue deshabilitado hasta escribir el correo exacto', () => {
+    usuarios.set([ana]);
+    previsualizarEliminacion.mockReturnValue(of(preview));
+    fixture.detectChanges();
+
+    component.abrirEliminacion(ana);
+    fixture.detectChanges();
+
+    expect(component.puedeConfirmarEliminacion()).toBe(false);
+    expect(botonEliminar()?.disabled).toBe(true);
+
+    component.confirmacionCorreo.set('ana@');
+    fixture.detectChanges();
+    expect(botonEliminar()?.disabled).toBe(true);
+
+    component.confirmacionCorreo.set(ana.correo);
+    fixture.detectChanges();
+    expect(component.puedeConfirmarEliminacion()).toBe(true);
+    expect(botonEliminar()?.disabled).toBe(false);
+  });
+
+  it('el modal muestra el resumen del borrado que devuelve el backend', () => {
+    usuarios.set([ana]);
+    previsualizarEliminacion.mockReturnValue(of(preview));
+    fixture.detectChanges();
+
+    component.abrirEliminacion(ana);
+    fixture.detectChanges();
+
+    const texto = document.body.textContent ?? '';
+    expect(texto).toContain('2 reservas futuras');
+    expect(texto).toContain('1 pago');
+    expect(texto).toContain('Esta acción es irreversible');
+  });
+
+  it('un 409 USUARIO_ES_ADMIN_SEDE muestra las sedes afectadas', () => {
+    usuarios.set([ana]);
+    // El resumen dice que se puede; el 409 llega porque el vínculo cambió entre
+    // la previsualización y la confirmación (carrera real de la bandeja).
+    previsualizarEliminacion.mockReturnValue(of({ ...preview, puedeEliminar: true }));
+    eliminarUsuario.mockReturnValue(
+      throwError(() => ({
+        status: 409,
+        error: {
+          statusCode: 409,
+          codigo: 'USUARIO_ES_ADMIN_SEDE',
+          mensaje: 'La cuenta administra una sede.',
+          sedes: [{ id: 'sede-1', nombre: 'Sede A E401' }],
+        },
+      })),
+    );
+    fixture.detectChanges();
+
+    component.abrirEliminacion(ana);
+    component.confirmacionCorreo.set(ana.correo);
+    component.confirmarEliminacion();
+    fixture.detectChanges();
+
+    expect(component.sedesConflictoEliminacion()).toEqual([
+      { id: 'sede-1', nombre: 'Sede A E401' },
+    ]);
+    expect(document.body.textContent).toContain('Sede A E401');
+  });
+
+  it('el último administrador activo y la cuenta propia no ofrecen eliminación', () => {
+    const otroAdmin: UsuarioListResponse = {
+      ...ana,
+      id: 'admin-plataforma',
+      correo: 'admin@demo.com',
+      roles: ['ADMINISTRADOR'],
+    };
+    usuarios.set([otroAdmin]);
+    fixture.detectChanges();
+
+    expect(component.puedeEliminarUsuario(otroAdmin)).toBe(false);
+  });
+
+  // ── F7 / T-76 · el buscador no recuerda la búsqueda anterior ──────────
+
+  it('ROJO: al destruir el componente el buscador y los filtros vuelven a vacío', () => {
+    component.busqueda.set('ana@demo.com');
+    component.filtroEstado.set('SUSPENDIDO');
+    component.filtroRol.set('BARBERO');
+    component.pagina.set(3);
+
+    component.ngOnDestroy();
+
+    expect(component.busqueda()).toBe('');
+    expect(component.filtroEstado()).toBe('TODOS');
+    expect(component.filtroRol()).toBe('TODOS');
+    expect(component.pagina()).toBe(1);
   });
 });

@@ -70,6 +70,8 @@ const MOTIVO_MINIMO = 40;
 const RUTAS_DELETE_AUTORIZADAS: Record<string, string> = {
   "catalogo/infrastructure/categorias.controller.ts:@Delete(':id')":
     'T-21 (backlog de catálogo) · la categoría GLOBAL solo se borra si ningún servicio de barbero la usa: el servicio responde 409 CATEGORIA_CON_SERVICIOS con la cuenta. No es un cambio de estado encubierto ni afecta a datos de negocio, porque desactivar (activa = false) sigue siendo el camino normal del §9 y el borrado solo retira una categoría creada por error.',
+  "iam/infrastructure/plataforma-usuarios.controller.ts:@Delete(':id')":
+    'F7 / T-72 · eliminación REAL de una cuenta pedida por el dueño, no un cambio de estado: exige `{ confirmacion }` con el correo exacto, guarda un respaldo completo antes de tocar nada y devuelve 409 si es el último administrador, si administra una sede o si figura como responsable. Suspender/reactivar sigue siendo PATCH :id/estado; este DELETE solo existe para el borrado definitivo y jamás destruye historial (pagos, cajas y auditoría quedan desvinculados con su snapshot).',
 };
 
 const BORRADOS_AUTORIZADOS: Record<string, string> = {
@@ -85,6 +87,8 @@ const BORRADOS_AUTORIZADOS: Record<string, string> = {
     'T-21 (backlog de catálogo) · borrado FÍSICO de una categoría global que no tiene ningún servicio de barbero vinculado (la cuenta incluye los inactivos). No representa un cambio de estado: una categoría en uso se desactiva con `activa = false`, y este borrado solo retira del catálogo global una fila creada por error. Si la categoría tuviera servicios, el servicio responde 409 y nunca llega aquí.',
   'barberia/application/solicitud-cambio.service.ts:usuarioRol.deleteMany':
     'El rol ADMIN_BARBERIA se MUEVE de un responsable al otro (E3-13): retirar el vínculo del anterior es la mitad del movimiento y va seguido del `upsert` del nuevo en la misma transacción. El filtro `usuarioId: { not: nuevo.id }` deja intacto al entrante, así que el vínculo nunca queda sin dueño.',
+  'iam/application/usuarios-plataforma.service.ts:usuario.delete':
+    'F7 / T-72 · es el borrado REAL de la cuenta que el dueño pidió, con la fila de `usuarios` completa respaldada antes en la misma transacción. No sustituye a la suspensión: el estado se cambia con PATCH y este camino solo se abre para una cuenta que ya no debe existir. Todo lo que cuelga de ella (reservas, pagos, cajas, auditoría) se degrada o desvincula, nunca se destruye en cascada.',
 };
 
 /**
@@ -94,6 +98,8 @@ const BORRADOS_AUTORIZADOS: Record<string, string> = {
 const PETICIONES_DELETE_FRONTEND_AUTORIZADAS: Record<string, string> = {
   'core/services/catalogo-hibrido.service.ts:http.delete':
     'T-21 (backlog de catálogo) · único borrado físico del panel: retira una categoría GLOBAL que ningún servicio de barbero usa. El backend responde 409 CATEGORIA_CON_SERVICIOS si alguno la usa y la pantalla ofrece desactivar, así que no sustituye al cambio de estado del §9: con servicios, la categoría se desactiva con PATCH.',
+  'core/services/usuarios.service.ts:http.delete':
+    'F7 / T-72 · la bandeja de usuarios llama al borrado REAL que el dueño autorizó, con el correo en el cuerpo como confirmación. El botón solo aparece cuando la cuenta no es la propia ni el último administrador, y el 409 de sede/responsable explica qué transferir antes; suspender una cuenta sigue siendo PATCH, no este verbo.',
 };
 
 /**
@@ -113,6 +119,10 @@ const VOCABULARIO_FRONTEND_AUTORIZADO: Record<string, string> = {
     '`localStorage.removeItem` no toca datos de dominio: quita la clave de la sede activa del almacenamiento del NAVEGADOR. El vocabulario del diseño (Spec 01 §9) habla de persistencia del dominio, no de la caché local del cliente.',
   'tenant.service.ts:delete':
     'Único `.delete(` del archivo es `Map.delete` sobre la caché EN MEMORIA de invitaciones: olvida la de una sede para volver a pedirla cuando la pantalla pasa `forzarRecarga`. No toca datos de dominio ni el backend; el código sigue vivo en la base.',
+  'usuarios.service.ts:delete':
+    'F7 / T-72 · verbo HTTP del borrado real de una cuenta, el mismo que autoriza el backend con confirmación por correo y respaldo previo. No es un cambio de estado encubierto: la suspensión viaja por PATCH y este camino solo se usa desde el modal irreversible de la bandeja.',
+  'usuarios.service.ts:eliminarUsuario':
+    'F7 / T-72 · nombre del contrato del borrado real (`DELETE /plataforma/usuarios/:id`): la pantalla lo presenta como acción irreversible y exige escribir el correo. El vocabulario del diseño se respeta porque el estado de la cuenta no se cambia con este método, se cambia con `cambiarEstado`.',
 };
 
 /** Todas las rutas de archivos que acepta `aceptar`, recorriendo el árbol. */

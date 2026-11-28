@@ -108,7 +108,7 @@ describe('F6 · carrera por el administrador único (E2E)', () => {
       .send({
         nombreCompleto: 'Global F6',
         correo: correos.global,
-        telefono: `84${digitos}0`,
+        telefono: `849${digitos}`,
         password,
       });
 
@@ -123,7 +123,7 @@ describe('F6 · carrera por el administrador único (E2E)', () => {
     const sede = await prisma.barberia.create({
       data: {
         nombre: `Sede F6-${sufijo}`,
-        telefono: `85${digitos}0`,
+        telefono: `829${digitos}`,
         ubicacion: 'Sede F6 E2E',
         estado: 'ACTIVO',
         codigoAcceso: `${PREFIJO_SEDE}${sufijo}`,
@@ -161,8 +161,8 @@ describe('F6 · carrera por el administrador único (E2E)', () => {
         });
 
     const respuestas = await Promise.all([
-      alta(correos.primero, `86${digitos}1`),
-      alta(correos.segundo, `86${digitos}2`),
+      alta(correos.primero, `849${digitos.slice(0, 6)}1`),
+      alta(correos.segundo, `829${digitos.slice(0, 6)}2`),
     ]);
 
     const estados = respuestas.map((r) => r.status).sort();

@@ -1,6 +1,11 @@
 import { Transform } from 'class-transformer';
 import { PhoneNotRepetitive } from '../../../shared/phone.validator.js';
 import {
+  CedulaDominicana,
+  TelefonoDominicano,
+  normalizarTelefonoRD,
+} from '../../../shared/identidad.validator.js';
+import {
   IsEmail,
   IsNotEmpty,
   IsOptional,
@@ -27,10 +32,11 @@ export class RegisterDto {
    */
   @IsString()
   @IsNotEmpty({ message: 'El teléfono es obligatorio.' })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? normalizarTelefonoRD(value) : value,
+  )
   @PhoneNotRepetitive()
-  @Matches(/^\d{10}$/, {
-    message: 'El teléfono debe tener exactamente 10 dígitos numéricos.',
-  })
+  @TelefonoDominicano()
   telefono: string;
 
   /**
@@ -45,12 +51,12 @@ export class RegisterDto {
    */
   @IsOptional()
   @IsString()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? (value.trim() === '' ? undefined : value.trim()) : value,
-  )
-  @Matches(/^\d{11}$/, {
-    message: 'La cédula debe tener exactamente 11 dígitos numéricos.',
+  @Transform(({ value }: { value: unknown }) => {
+    if (typeof value !== 'string') return value;
+    const limpia = value.replace(/\D/g, '');
+    return limpia === '' ? undefined : limpia;
   })
+  @CedulaDominicana()
   cedula?: string;
 
   /**

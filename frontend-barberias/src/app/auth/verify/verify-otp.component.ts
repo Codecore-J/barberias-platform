@@ -7,6 +7,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../auth.service';
 import { PARAM_RETURN_URL, returnUrlSeguro } from '../../core/utils/return-url.util';
 import { mensajeDeError } from '../../core/utils/error-message';
+import { normalizarTelefonoRD, telefonoDominicano } from '../../shared/validators/identidad.validators';
 
 /**
  * V2.1 · Pantalla de verificación del teléfono (`/auth/verify`).
@@ -123,11 +124,11 @@ import { mensajeDeError } from '../../core/utils/error-message';
                     Nuevo número de teléfono
                   </label>
                   <input id="nuevoTelefono" name="nuevoTelefono" inputmode="numeric" autocomplete="tel-national"
-                         maxlength="10" formControlName="telefono" placeholder="8095550100"
+                         maxlength="11" formControlName="telefono" placeholder="8095550100"
                          (input)="soloDigitosTelefono($event)"
                          class="w-full text-center tracking-[0.3em] text-lg font-bold bg-zinc-900/80 border border-zinc-700/80 rounded-xl py-3 px-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all shadow-inner">
                   @if (contactoForm.get('telefono')?.invalid && contactoForm.get('telefono')?.touched) {
-                    <p class="text-[11px] text-red-400 pl-1">Escribe los 10 dígitos, sin guiones ni espacios.</p>
+                    <p class="text-[11px] text-red-400 pl-1">Escribe un número dominicano de 10 dígitos: 809, 829 o 849.</p>
                   }
                 </div>
 
@@ -205,9 +206,9 @@ export class VerifyOtpComponent implements OnInit, OnDestroy {
     codigo: ['', [Validators.required, Validators.pattern(/^\d{6}$/)]],
   });
 
-  /** T-21 · mismo formato que el alta (10 dígitos, sin guiones ni espacios). */
+  /** T-21 · mismo formato dominicano que el alta (809/829/849 de 10 dígitos). */
   contactoForm = this.fb.group({
-    telefono: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
+    telefono: ['', [Validators.required, telefonoDominicano()]],
   });
 
   ngOnInit(): void {
@@ -298,10 +299,14 @@ export class VerifyOtpComponent implements OnInit, OnDestroy {
     this.error.set(null);
   }
 
-  /** El input acepta solo dígitos y se corta en 10, igual que el DTO del alta. */
+  /**
+   * El input acepta solo dígitos, tolera pegar `+1 809…` y guarda la forma
+   * local de 10 dígitos, igual que el DTO del alta.
+   */
   soloDigitosTelefono(event: Event): void {
     const input = event.target as HTMLInputElement;
-    const limpio = input.value.replace(/\D/g, '').slice(0, 10);
+    const digitos = input.value.replace(/\D/g, '').slice(0, 11);
+    const limpio = normalizarTelefonoRD(digitos);
     if (input.value !== limpio) {
       input.value = limpio;
     }

@@ -6,8 +6,8 @@
  * ruta). Los identificadores se copian tal cual, sin renombrar ni derivar, y su
  * orden en `RUTA_ACCION` es el de la tabla del documento.
  *
- * `RUTA_ACCION` cubre las 134 rutas del inventario (`POLITICA_DECLARADA` en
- * `test/permisos-matriz.spec.ts`): 75 con al menos una acción y 59 con `[]`
+ * `RUTA_ACCION` cubre las 137 rutas del inventario (`POLITICA_DECLARADA` en
+ * `test/permisos-matriz.spec.ts`): 78 con al menos una acción y 59 con `[]`
  * porque la matriz no las cubre —41 fuera de su alcance y las 12 brechas de
  * `RUTAS_BRECHA_MATRIZ`. El tipo `Accion` hace que un identificador inventado
  * no compile: el mapa no puede desviarse de la matriz por una errata.
@@ -90,6 +90,13 @@ export const RUTA_ACCION: Readonly<Record<string, readonly Accion[]>> = {
   'GET /plataforma/usuarios/:id/auditoria': ['plataforma.auditoria.ver'],
   'GET /plataforma/usuarios/:id/roles': ['plataforma.usuarios.gestionar'],
   'PATCH /plataforma/usuarios/:id/administrador': ['plataforma.usuarios.gestionar'],
+  // F7 / T-72 · eliminación REAL de una cuenta (no es cambio de estado).
+  'DELETE /plataforma/usuarios/:id': ['plataforma.usuarios.gestionar'],
+  // F7 / T-74 · resumen de solo lectura para el modal de borrado.
+  'GET /plataforma/usuarios/:id/eliminacion': ['plataforma.usuarios.gestionar'],
+  // F7 / T-73 · transferir la administración de una sede antes de eliminar al
+  // dueño actual; es gestión de sedes, no de cuentas.
+  'PATCH /plataforma/sedes/:sedeId/transferir-admin': ['plataforma.sedes.gestionar'],
   'GET /shops/': [],
   'POST /shops/': ['plataforma.sedes.gestionar'],
   'GET /shops/:shopId': [],

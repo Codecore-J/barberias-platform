@@ -234,6 +234,14 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // I-05: conceder o retirar el rol GLOBAL de administrador. Es el único que
   // tiene sentido desde plataforma; los de sede se cambian en `.../staff`.
   'PATCH /plataforma/usuarios/:id/administrador': [ROL_ADMINISTRADOR],
+  // F7 / T-72: eliminación REAL de la cuenta. Sustituye al cambio de estado
+  // cuando lo que se quiere es que el correo vuelva a estar libre.
+  'DELETE /plataforma/usuarios/:id': [ROL_ADMINISTRADOR],
+  // F7 / T-74: resumen de solo lectura del borrado para el modal.
+  'GET /plataforma/usuarios/:id/eliminacion': [ROL_ADMINISTRADOR],
+  // F7 / T-73: transferir la administración de una sede antes de eliminar al
+  // dueño actual. Es gestión de sedes: solo el ADMINISTRADOR global.
+  'PATCH /plataforma/sedes/:sedeId/transferir-admin': [ROL_ADMINISTRADOR],
 
   'GET /shops/:shopId/appointments/schedule/blocks': [ROL_ADMIN_BARBERIA],
   'POST /shops/:shopId/appointments/schedule/blocks': [ROL_ADMIN_BARBERIA],
@@ -799,7 +807,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // selector de clientes de la sede: 135 × 4 = 540. Al eliminar las cuatro rutas
   // `records` del flujo viejo quedan 131 × 4 = 524. F6 sumó la ruta del logo de
   // la sede (T-64) y la del catálogo de divisiones (T-66): 133 × 4 = 532.
-  expect(evaluaciones).toBe(536);
+  // F7 / T-72 suma el borrado real de una cuenta, T-73 la transferencia de
+  // administración de una sede y T-74 su resumen previo: 137 × 4 = 548.
+  expect(evaluaciones).toBe(548);
 
     const resumen =
       desviaciones.length > 40

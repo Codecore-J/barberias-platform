@@ -5,6 +5,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
+import { cedulaFixture, telefonoFixture } from './utils/identidad-fixtures.js';
 
 /**
  * Bandeja de usuarios de la PLATAFORMA · flujo completo contra la API real.
@@ -85,10 +86,10 @@ describe('Plataforma · usuarios (E2E)', () => {
     nuevo: `nuevo.pu-${sufijo}@${DOMINIO}`,
   };
 
-  // 10 dígitos para el teléfono y 11 para la cédula: es el contrato de los DTOs.
-  const telefonoAdmin = `80${digitos}0`;
-  const telefonoNuevo = `80${digitos}1`;
-  const cedulaNueva = `90${digitos}00`;
+  // F7 / T-75: teléfono dominicano (prefijo 809/829/849) y cédula con verificador.
+  const telefonoAdmin = telefonoFixture(digitos, '809');
+  const telefonoNuevo = telefonoFixture(digitos, '829');
+  const cedulaNueva = cedulaFixture(digitos);
   const password = 'Password1!';
 
   let tokenAdmin = '';
@@ -406,7 +407,7 @@ describe('Plataforma · usuarios (E2E)', () => {
       .send({
         nombreCompleto: 'T-20 Registro Público',
         correo,
-        telefono: `81${digitos}9`,
+        telefono: telefonoFixture(digitos, '849'),
         password: 'Password1!',
       });
     expect([200, 201], JSON.stringify(alta.body)).toContain(alta.status);

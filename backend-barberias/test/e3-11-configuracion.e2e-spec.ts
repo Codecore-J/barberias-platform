@@ -95,7 +95,7 @@ describe('E3-11 · configuración de la barbería', () => {
           telefonoVerificado: true,
           nombreCompleto: `Cliente E311 ${sufijo}`,
           correo: `cliente.e311.${sufijo}@test.com`,
-          telefono: `8123456789`,
+          telefono: `8091234567`,
           passwordHash: '$2b$10$HashFalso',
         },
         select: { id: true },

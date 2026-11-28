@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -14,6 +15,7 @@ import { UsuariosPlataformaService } from '../application/usuarios-plataforma.se
 import { CambiarEstadoCuentaDto } from '../application/dto/cambiar-estado-cuenta.dto.js';
 import { AdministradorCuentaDto } from '../application/dto/administrador-cuenta.dto.js';
 import { CrearUsuarioPlataformaDto } from '../application/dto/crear-usuario-plataforma.dto.js';
+import { EliminarUsuarioDto } from '../application/dto/eliminar-usuario.dto.js';
 import { CurrentUser } from './current-user.decorator.js';
 import { Roles } from './roles.decorator.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
@@ -126,6 +128,47 @@ export class PlataformaUsuariosController {
     @CurrentUser() user: UsuarioAutenticado,
   ) {
     return this.usuariosPlataformaService.cambiarAdministrador(id, user, dto);
+  }
+
+  /**
+   * GET /plataforma/usuarios/:id/eliminacion · F7 / T-74
+   *
+   * Resumen de solo lectura para el modal de borrado: reservas futuras que se
+   * cancelarían, pagos y arqueos que se desvincularían, sedes afectadas y los
+   * bloqueos vigentes. Mismos cálculos que el `DELETE`.
+   */
+  @Get(':id/eliminacion')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMINISTRADOR')
+  @HttpCode(HttpStatus.OK)
+  previsualizarEliminacion(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usuariosPlataformaService.previsualizarEliminacion(id);
+  }
+
+  /**
+   * DELETE /plataforma/usuarios/:id · F7 / T-72
+   *
+   * Eliminación REAL de la cuenta. El cuerpo debe repetir el correo exacto
+   * (`{ confirmacion }`); si no coincide, 422 `CONFIRMACION_INCORRECTA`.
+   *
+   * Conflictos antes de borrar: 409 `AUTOBORRADO_NO_PERMITIDO`,
+   * `ULTIMO_ADMINISTRADOR`, `USUARIO_ES_ADMIN_SEDE` (con `sedes`),
+   * `USUARIO_ES_RESPONSABLE_SEDE` (con `sedes`), `USUARIO_CON_PROPUESTAS_HORARIO`
+   * y `USUARIO_CON_SOLICITUDES_ANTECEDENTES`.
+   *
+   * Responde 200 con el resumen del borrado (respaldo, reservas canceladas,
+   * pagos y arqueos desvinculados) y `correoLiberado`.
+   */
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMINISTRADOR')
+  @HttpCode(HttpStatus.OK)
+  eliminarUsuario(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EliminarUsuarioDto,
+    @CurrentUser() user: UsuarioAutenticado,
+  ) {
+    return this.usuariosPlataformaService.eliminarUsuario(id, user, dto);
   }
 
   /**
