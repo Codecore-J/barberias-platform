@@ -35,18 +35,29 @@ describe('E4-03/5 · suspensión manual de cuenta (D09/D24)', () => {
   const tokens: Record<string, string> = {};
   const usuarios: Record<string, string> = {};
 
-  // 10 dígitos numéricos exactos: `RegisterDto` lo valida y el sufijo base36 no
-  // garantizaba solo dígitos.
-  const serie = String(Math.floor(Math.random() * 9000) + 1000);
-  const telefono = (n: number) => `809${serie}${String(n).padStart(3, '0')}`;
+  // `telefono` es UNIQUE NOT NULL en la base y `RegisterDto` exige exactamente
+  // 10 dígitos. Derivarlo de una serie fija por corrida chocaba con las corridas
+  // anteriores (el `409 TELEFONO_YA_REGISTRADO` se toleraba y la cuenta no
+  // llegaba a crearse): ahora cada alta sortea su número y, si la base ya lo
+  // tiene, sortea otro.
+  const telefonoUnico = () => `809${String(Math.floor(Math.random() * 9_000_000) + 1_000_000)}`;
 
   const password = 'Password1!';
 
-  const registrar = async (correo: string, n: number) => {
-    const res = await request(app.getHttpServer())
-      .post(`${api}/auth/register`)
-      .send({ nombreCompleto: correo, correo, telefono: telefono(n), password });
-    expect([200, 201, 409]).toContain(res.status);
+  const registrar = async (correo: string) => {
+    for (let intento = 0; intento < 5; intento += 1) {
+      const res = await request(app.getHttpServer())
+        .post(`${api}/auth/register`)
+        .send({ nombreCompleto: correo, correo, telefono: telefonoUnico(), password });
+
+      if (res.status === 200 || res.status === 201) return;
+
+      // El correo lleva sufijo único, así que un 409 aquí solo puede ser el
+      // teléfono: se reintenta con otro en vez de seguir con la cuenta ausente.
+      expect(res.status).toBe(409);
+    }
+
+    throw new Error(`No se pudo registrar ${correo}: el teléfono siguió repetido`);
   };
 
   const login = async (correo: string): Promise<number> => {
@@ -89,9 +100,9 @@ describe('E4-03/5 · suspensión manual de cuenta (D09/D24)', () => {
     await app.init();
     prisma = app.get(PrismaService);
 
-    await registrar(correos.global, 1);
-    await registrar(correos.adminSede, 2);
-    await registrar(correos.cliente, 3);
+    await registrar(correos.global);
+    await registrar(correos.adminSede);
+    await registrar(correos.cliente);
 
     for (const correo of Object.values(correos)) {
       const usuario = await prisma.usuario.findUniqueOrThrow({
@@ -125,7 +136,7 @@ describe('E4-03/5 · suspensión manual de cuenta (D09/D24)', () => {
       update: { responsableId: usuarios[correos.adminSede], estado: 'ACTIVO' },
       create: {
         nombre: `Sede E403S-${sufijo}`,
-        telefono: telefono(11),
+        telefono: telefonoUnico(),
         ubicacion: 'Zona S',
         estado: 'ACTIVO',
         codigoAcceso: `E403S-${sufijo}`.slice(0, 20),
