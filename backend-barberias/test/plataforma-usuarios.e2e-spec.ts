@@ -280,15 +280,25 @@ describe('Plataforma · usuarios (E2E)', () => {
     expect(cuentas).toBe(1);
   }, 60_000);
 
-  it('3 · GET lista todas las cuentas y devuelve la creada con el DTO', async () => {
+  it('3 · GET lista paginada y devuelve la creada con el DTO', async () => {
     const res = await request(app.getHttpServer())
       .get(`${api}/plataforma/usuarios`)
       .set(auth());
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
+    // T-81 · sobre paginado `{ datos, total, pagina, porPagina }` + `resumen`
+    // de KPI (que mide la plataforma entera, no la página visible).
+    expect(res.body).toMatchObject({ pagina: 1, porPagina: 25 });
+    expect(Array.isArray(res.body.datos)).toBe(true);
+    expect(res.body.total).toBeGreaterThanOrEqual(1);
+    expect(res.body.resumen).toMatchObject({
+      total: expect.any(Number),
+      activos: expect.any(Number),
+      suspendidos: expect.any(Number),
+      porRol: expect.any(Object),
+    });
 
-    const creada = res.body.find(
+    const creada = res.body.datos.find(
       (usuario: { id: string }) => usuario.id === usuarioCreadoId,
     );
 
@@ -304,6 +314,74 @@ describe('Plataforma · usuarios (E2E)', () => {
     });
     expect(creada).not.toHaveProperty('passwordHash');
     expect(creada).not.toHaveProperty('cedula');
+  }, 60_000);
+
+  /**
+   * T-81 · paginación real: `skip`/`take` en la base, `total` del conjunto
+   * filtrado y `resumen` de la plataforma entera. El contrato anterior devolvía
+   * las 68 cuentas de staging en cada visita a `/admin/usuarios`.
+   */
+  it('3b · page/pageSize recortan en la base y el resumen no depende de la página', async () => {
+    const primera = await request(app.getHttpServer())
+      .get(`${api}/plataforma/usuarios?page=1&pageSize=1`)
+      .set(auth());
+    const segunda = await request(app.getHttpServer())
+      .get(`${api}/plataforma/usuarios?page=2&pageSize=1`)
+      .set(auth());
+
+    expect(primera.status).toBe(200);
+    expect(segunda.status).toBe(200);
+    expect(primera.body).toMatchObject({ pagina: 1, porPagina: 1 });
+    expect(segunda.body).toMatchObject({ pagina: 2, porPagina: 1 });
+    expect(primera.body.datos).toHaveLength(1);
+    expect(segunda.body.datos).toHaveLength(1);
+    // Páginas distintas = filas distintas: el `skip` se aplica, no se recorta en
+    // memoria después de traerlo todo.
+    expect(segunda.body.datos[0].id).not.toBe(primera.body.datos[0].id);
+    expect(primera.body.total).toBe(segunda.body.total);
+    expect(primera.body.total).toBeGreaterThanOrEqual(2);
+    expect(primera.body.datos.length).toBeLessThan(primera.body.total);
+
+    // El resumen son los KPI de TODA la plataforma: la misma cifra en las dos
+    // páginas, y como mínimo la cuenta creada en esta corrida.
+    expect(primera.body.resumen).toEqual(segunda.body.resumen);
+    expect(primera.body.resumen.total).toBeGreaterThanOrEqual(1);
+    // `porRol` trae las cuatro claves del catálogo, con 0 cuando no hay cuentas.
+    expect(Object.keys(primera.body.resumen.porRol).sort()).toEqual(
+      ['ADMINISTRADOR', 'ADMIN_BARBERIA', 'BARBERO', 'CLIENTE'].sort(),
+    );
+    expect(primera.body.resumen.porRol.ADMIN_BARBERIA).toBeGreaterThanOrEqual(1);
+
+    // Filtros de servidor: el estado y el rol acotan el `total`, no solo la fila.
+    const suspendidos = await request(app.getHttpServer())
+      .get(`${api}/plataforma/usuarios?estado=SUSPENDIDO&pageSize=100`)
+      .set(auth());
+    expect(suspendidos.status).toBe(200);
+    expect(
+      suspendidos.body.datos.every((u: { estadoCuenta: string }) => u.estadoCuenta === 'SUSPENDIDO'),
+    ).toBe(true);
+
+    const porRol = await request(app.getHttpServer())
+      .get(`${api}/plataforma/usuarios?rol=ADMIN_BARBERIA&pageSize=100`)
+      .set(auth());
+    expect(porRol.status).toBe(200);
+    expect(
+      porRol.body.datos.every((u: { roles: string[] }) => u.roles.includes('ADMIN_BARBERIA')),
+    ).toBe(true);
+
+    // El buscador es de servidor y no distingue mayúsculas.
+    const buscado = await request(app.getHttpServer())
+      .get(`${api}/plataforma/usuarios?busqueda=${encodeURIComponent(correos.nuevo.toUpperCase())}`)
+      .set(auth());
+    expect(buscado.status).toBe(200);
+    expect(buscado.body.total).toBe(1);
+    expect(buscado.body.datos[0].correo).toBe(correos.nuevo);
+
+    // Un `pageSize` fuera del tope se rechaza (400), no se sirve la tabla entera.
+    const excesivo = await request(app.getHttpServer())
+      .get(`${api}/plataforma/usuarios?pageSize=1000`)
+      .set(auth());
+    expect(excesivo.status).toBe(400);
   }, 60_000);
 
   it('4 · suspender SIN motivo → 422 MOTIVO_REQUERIDO y la cuenta no cambia', async () => {

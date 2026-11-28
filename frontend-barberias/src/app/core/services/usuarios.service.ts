@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { mensajeDeError } from '../utils/error-message.js';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, tap, map, catchError } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 
@@ -143,6 +143,51 @@ export interface BarberiaOpcion {
 }
 
 /**
+ * F8 / T-81 · KPI de la bandeja, calculados en la BASE sobre TODA la plataforma.
+ *
+ * Antes salían de `usuarios()`, que era la tabla entera; con paginación de
+ * servidor esas tarjetas medirían 25 filas y dirían mentiras, así que el backend
+ * los manda aparte del total filtrado.
+ */
+export interface ResumenUsuarios {
+  total: number;
+  activos: number;
+  suspendidos: number;
+  porRol: Record<string, number>;
+}
+
+/**
+ * F8 / T-81 · contrato de `GET /plataforma/usuarios`.
+ *
+ * `datos` es la página pedida, `total` el tamaño del conjunto FILTRADO (de ahí
+ * salen las páginas) y `resumen` los contadores de la plataforma entera.
+ */
+export interface UsuariosPaginados {
+  datos: UsuarioListResponse[];
+  total: number;
+  pagina: number;
+  porPagina: number;
+  resumen: ResumenUsuarios;
+}
+
+/** Filtros que viajan al backend; `TODOS`/vacío se omiten de la URL. */
+export interface FiltrosUsuarios {
+  page?: number;
+  pageSize?: number;
+  busqueda?: string;
+  estado?: 'TODOS' | 'ACTIVO' | 'SUSPENDIDO';
+  rol?: string;
+}
+
+/** Resumen vacío: la pantalla pinta ceros mientras llega la primera respuesta. */
+const RESUMEN_VACIO = (): ResumenUsuarios => ({
+  total: 0,
+  activos: 0,
+  suspendidos: 0,
+  porRol: { ADMINISTRADOR: 0, ADMIN_BARBERIA: 0, BARBERO: 0, CLIENTE: 0 },
+});
+
+/**
  * Bandeja de usuarios de la PLATAFORMA.
  *
  * Es una ruta transversal (`@Roles('ADMINISTRADOR')` en el backend), así que no
@@ -157,36 +202,81 @@ export class UsuariosService {
   private readonly http = inject(HttpClient);
   private readonly apiUrl = `${API_URL}/plataforma/usuarios`;
 
+  /** Filas de la página visible (nunca la tabla entera). */
   readonly usuarios = signal<UsuarioListResponse[]>([]);
+  /** Tamaño del conjunto FILTRADO: es lo que da el número de páginas. */
+  readonly total = signal<number>(0);
+  readonly pagina = signal<number>(1);
+  readonly porPagina = signal<number>(25);
+  readonly resumen = signal<ResumenUsuarios>(RESUMEN_VACIO());
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
 
   /**
-   * `GET /plataforma/usuarios` · arreglo plano ordenado por `fecha_registro DESC`.
+   * `GET /plataforma/usuarios?page&pageSize&busqueda&estado&rol`.
+   *
+   * F8 / T-81 · el backend pagina con `skip`/`take` y devuelve
+   * `{ datos, total, pagina, porPagina, resumen }`. El buscador y los filtros
+   * viajan como query params (los resuelve SQL): filtrar en el navegador después
+   * de paginar mostraría páginas medio vacías y un `total` que no cuadra.
    *
    * Un cuerpo ausente no puede romper la tabla (se pinta vacío), y el `mensaje`
    * del contrato de errores D40 se guarda tal cual para que la pantalla explique
    * el 403 en vez de un texto genérico.
    */
-  obtenerUsuarios(): Observable<UsuarioListResponse[]> {
+  obtenerUsuarios(filtros: FiltrosUsuarios = {}): Observable<UsuariosPaginados> {
     this.isLoading.set(true);
     this.error.set(null);
 
-    return this.http.get<UsuarioListResponse[]>(this.apiUrl).pipe(
-      map((usuarios) => usuarios ?? []),
-      tap((usuarios) => {
-        this.usuarios.set(usuarios);
-        this.isLoading.set(false);
-      }),
-      catchError((err) => {
-        this.isLoading.set(false);
-        this.usuarios.set([]);
-        this.error.set(
-          mensajeDeError(err, 'No se pudieron cargar los usuarios'),
-        );
-        throw err;
-      }),
-    );
+    return this.http
+      .get<UsuariosPaginados>(this.apiUrl, { params: this.aParams(filtros) })
+      .pipe(
+        map((respuesta) => ({
+          datos: respuesta?.datos ?? [],
+          total: respuesta?.total ?? 0,
+          pagina: respuesta?.pagina ?? 1,
+          porPagina: respuesta?.porPagina ?? 25,
+          resumen: respuesta?.resumen ?? RESUMEN_VACIO(),
+        })),
+        tap((respuesta) => {
+          this.usuarios.set(respuesta.datos);
+          this.total.set(respuesta.total);
+          this.pagina.set(respuesta.pagina);
+          this.porPagina.set(respuesta.porPagina);
+          this.resumen.set(respuesta.resumen);
+          this.isLoading.set(false);
+        }),
+        catchError((err) => {
+          this.isLoading.set(false);
+          this.usuarios.set([]);
+          this.total.set(0);
+          this.error.set(
+            mensajeDeError(err, 'No se pudieron cargar los usuarios'),
+          );
+          throw err;
+        }),
+      );
+  }
+
+  /**
+   * Query params limpios: `page=1` y `estado=TODOS` son el estado por defecto y
+   * no ensucian la URL ni el caché del navegador.
+   */
+  private aParams(filtros: FiltrosUsuarios): HttpParams {
+    let params = new HttpParams();
+    const busqueda = filtros.busqueda?.trim() ?? '';
+
+    if (filtros.page && filtros.page > 1) params = params.set('page', String(filtros.page));
+    if (filtros.pageSize && filtros.pageSize !== 25) {
+      params = params.set('pageSize', String(filtros.pageSize));
+    }
+    if (busqueda) params = params.set('busqueda', busqueda);
+    if (filtros.estado && filtros.estado !== 'TODOS') {
+      params = params.set('estado', filtros.estado);
+    }
+    if (filtros.rol && filtros.rol !== 'TODOS') params = params.set('rol', filtros.rol);
+
+    return params;
   }
 
   /**

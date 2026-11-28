@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { provideRouter, Router } from '@angular/router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { AdminUsuariosComponent } from './admin-usuarios.component';
@@ -7,6 +8,8 @@ import {
   RolDeUsuario,
   UsuarioListResponse,
   UsuariosService,
+  type FiltrosUsuarios,
+  type UsuariosPaginados,
 } from '../../../core/services/usuarios.service';
 import { AuthService } from '../../../auth/auth.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
@@ -30,10 +33,36 @@ describe('AdminUsuariosComponent · Fase 2', () => {
   };
 
   const usuarios = signal<UsuarioListResponse[]>([]);
+  const total = signal(0);
+  const pagina = signal(1);
+  const porPagina = signal(25);
+  const resumen = signal({
+    total: 0,
+    activos: 0,
+    suspendidos: 0,
+    porRol: { ADMINISTRADOR: 1, ADMIN_BARBERIA: 0, BARBERO: 0, CLIENTE: 0 } as Record<string, number>,
+  });
   const isLoading = signal(false);
   const error = signal<string | null>(null);
 
-  const obtenerUsuarios = vi.fn(() => of<UsuarioListResponse[]>([]));
+  /**
+   * F8 / T-81 · la respuesta ya es la página: el mock devuelve el sobre del
+   * contrato y NO recorta nada, para que el test diga si el componente pagina.
+   */
+  const obtenerUsuarios = vi.fn((_filtros: FiltrosUsuarios = {}) =>
+    of<UsuariosPaginados>({
+      datos: [],
+      total: 0,
+      pagina: 1,
+      porPagina: 25,
+      resumen: {
+        total: 0,
+        activos: 0,
+        suspendidos: 0,
+        porRol: { ADMINISTRADOR: 0, ADMIN_BARBERIA: 0, BARBERO: 0, CLIENTE: 0 },
+      },
+    }),
+  );
   const listarBarberias = vi.fn(() => of([{ id: 'sede-1', nombre: 'Sede A E401' }]));
   const crearUsuario = vi.fn();
   const obtenerRolesUsuario = vi.fn(() => of<RolDeUsuario[]>([]));
@@ -44,6 +73,15 @@ describe('AdminUsuariosComponent · Fase 2', () => {
 
   beforeEach(async () => {
     usuarios.set([]);
+    total.set(0);
+    pagina.set(1);
+    porPagina.set(25);
+    resumen.set({
+      total: 0,
+      activos: 0,
+      suspendidos: 0,
+      porRol: { ADMINISTRADOR: 1, ADMIN_BARBERIA: 0, BARBERO: 0, CLIENTE: 0 },
+    });
     isLoading.set(false);
     error.set(null);
     obtenerUsuarios.mockClear();
@@ -57,10 +95,17 @@ describe('AdminUsuariosComponent · Fase 2', () => {
     await TestBed.configureTestingModule({
       imports: [AdminUsuariosComponent],
       providers: [
+        // F8 / T-81 · el estado de la vista vive en la URL: el componente
+        // inyecta Router y ActivatedRoute.
+        provideRouter([]),
         {
           provide: UsuariosService,
           useValue: {
             usuarios,
+            total,
+            pagina,
+            porPagina,
+            resumen,
             isLoading,
             error,
             obtenerUsuarios,
@@ -347,5 +392,47 @@ describe('AdminUsuariosComponent · Fase 2', () => {
     expect(component.filtroEstado()).toBe('TODOS');
     expect(component.filtroRol()).toBe('TODOS');
     expect(component.pagina()).toBe(1);
+  });
+
+  // ── F8 / T-81 · paginación de servidor con estado en la URL ──────────────
+
+  it('ROJO: pide la página al backend en vez de recortarla en memoria', async () => {
+    const router = TestBed.inject(Router);
+    // 30 filas: es la página que devolvió el servidor, no la tabla entera.
+    usuarios.set(
+      Array.from({ length: 30 }, (_, indice) => ({
+        ...ana,
+        id: `usuario-${indice}`,
+        correo: `usuario${indice}@demo.com`,
+      })),
+    );
+    total.set(61);
+    porPagina.set(25);
+
+    await router.navigate([], { queryParams: { page: 2 } });
+    fixture.detectChanges();
+
+    // El componente NO trocea: pide `page=2` y pinta lo que llega.
+    expect(obtenerUsuarios).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 2, pageSize: 25 }),
+    );
+    expect(component.usuariosPagina()).toHaveLength(30);
+    expect(component.totalPaginas()).toBe(3);
+    expect(component.paginasVisibles()).toEqual([1, 2, 3]);
+  });
+
+  it('un filtro vuelve a la página 1 y queda escrito en la URL', async () => {
+    const router = TestBed.inject(Router);
+    await router.navigate([], { queryParams: { page: 3 } });
+
+    component.alCambiarEstado('SUSPENDIDO');
+    await fixture.whenStable();
+    await new Promise((resolver) => setTimeout(resolver, 0));
+
+    expect(obtenerUsuarios).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 1, estado: 'SUSPENDIDO' }),
+    );
+    expect(router.url).toContain('estado=SUSPENDIDO');
+    expect(router.url).not.toContain('page=3');
   });
 });

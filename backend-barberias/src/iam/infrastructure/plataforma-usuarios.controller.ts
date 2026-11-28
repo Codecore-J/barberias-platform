@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { UsuariosPlataformaService } from '../application/usuarios-plataforma.service.js';
@@ -16,12 +17,14 @@ import { CambiarEstadoCuentaDto } from '../application/dto/cambiar-estado-cuenta
 import { AdministradorCuentaDto } from '../application/dto/administrador-cuenta.dto.js';
 import { CrearUsuarioPlataformaDto } from '../application/dto/crear-usuario-plataforma.dto.js';
 import { EliminarUsuarioDto } from '../application/dto/eliminar-usuario.dto.js';
+import { ListarUsuariosDto } from '../application/dto/listar-usuarios.dto.js';
 import { CurrentUser } from './current-user.decorator.js';
 import { Roles } from './roles.decorator.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { RolesGuard } from './roles.guard.js';
 import type { UsuarioAutenticado } from '../domain/jwt.interface.js';
 import type { UsuarioListResponseDto } from '../application/dto/usuario-list-response.dto.js';
+import type { UsuariosPaginadosDto } from '../application/dto/usuarios-paginados-response.dto.js';
 import type { UsuarioAuditoriaResponseDto } from '../application/dto/usuario-auditoria-response.dto.js';
 
 /**
@@ -57,13 +60,16 @@ export class PlataformaUsuariosController {
   }
 
   /**
-   * GET /plataforma/usuarios
+   * GET /plataforma/usuarios?page=1&pageSize=25&busqueda=&estado=&rol=
    *
-   * Lista todos los usuarios de la plataforma. Solo `ADMINISTRADOR` puede
-   * llamarla (D05), por lo que `RolesGuard` la niega al resto por fail-closed.
+   * Bandeja paginada de la plataforma. Solo `ADMINISTRADOR` puede llamarla
+   * (D05), por lo que `RolesGuard` la niega al resto por fail-closed.
    *
    * Respuesta:
-   * - 200 → `[UsuarioListResponseDto[]]` ordenados por `fecha_registro DESC`.
+   * - 200 → `{ datos, total, pagina, porPagina, resumen }`. `datos` son como
+   *   mucho `pageSize` cuentas (tope 100) ordenadas por `fecha_registro DESC`;
+   *   `total` cuenta el conjunto filtrado y `resumen` los KPI de la plataforma.
+   * - 400 con `pageSize` fuera de rango o un filtro que no existe en el catálogo.
    * - 401 sin sesión.
    * - 403 sin `ADMINISTRADOR`.
    */
@@ -71,8 +77,8 @@ export class PlataformaUsuariosController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMINISTRADOR')
   @HttpCode(HttpStatus.OK)
-  obtenerTodosLosUsuarios(): Promise<UsuarioListResponseDto[]> {
-    return this.usuariosPlataformaService.obtenerTodosLosUsuarios();
+  obtenerTodosLosUsuarios(@Query() query: ListarUsuariosDto): Promise<UsuariosPaginadosDto> {
+    return this.usuariosPlataformaService.obtenerTodosLosUsuarios(query);
   }
 
   /**

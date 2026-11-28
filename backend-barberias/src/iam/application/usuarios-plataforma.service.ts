@@ -16,13 +16,16 @@ import {
 import { AuditoriaService } from '../../auditoria/application/auditoria.service.js';
 import { AMBITO_BARBERIA, ROL_ADMINISTRADOR, ROL_ADMIN_BARBERIA } from '../domain/roles.js';
 import { asegurarSedeSinAdmin, esConflictoAdminUnico } from '../domain/administrador-sede.js';
+import type { Prisma } from '@prisma/client';
 import type { UsuarioAutenticado } from '../domain/jwt.interface.js';
 import type { CambiarEstadoCuentaDto } from './dto/cambiar-estado-cuenta.dto.js';
 import type {
   AdministradorCuentaDto,
   RolDeUsuarioResponseDto,
 } from './dto/administrador-cuenta.dto.js';
-import type { CrearUsuarioPlataformaDto } from './dto/crear-usuario-plataforma.dto.js';
+import type { CrearUsuarioPlataformaDto, RolPlataforma } from './dto/crear-usuario-plataforma.dto.js';
+import type { ListarUsuariosDto } from './dto/listar-usuarios.dto.js';
+import type { UsuariosPaginadosDto } from './dto/usuarios-paginados-response.dto.js';
 import type { EliminarUsuarioDto } from './dto/eliminar-usuario.dto.js';
 import type { TransferirAdministracionDto } from './dto/transferir-administracion.dto.js';
 import type { UsuarioAuditoriaResponseDto } from './dto/usuario-auditoria-response.dto.js';
@@ -41,6 +44,15 @@ const BCRYPT_ROUNDS = 10;
  * el restablecimiento de contraseña—, así que el historial las lee todas.
  */
 const ENTIDADES_DE_USUARIO = ['usuarios', 'Usuario'];
+
+/** F8 / T-81 · tamaño de página por defecto de la bandeja de plataforma. */
+const PAGINA_POR_DEFECTO = 25;
+
+/** F8 / T-81 · tope duro: una página no puede volver a traer la tabla entera. */
+const PAGINA_MAXIMA = 100;
+
+/** Roles del catálogo, para que `porRol` traiga siempre las cuatro claves. */
+const ROLES_KPI: RolPlataforma[] = ['ADMINISTRADOR', 'ADMIN_BARBERIA', 'BARBERO', 'CLIENTE'];
 
 /** Extrae `contexto.motivo` sin asumir la forma del JSON. */
 function motivoDelContexto(contexto: unknown): string | null {
@@ -399,47 +411,116 @@ export class UsuariosPlataformaService {
   }
 
   /**
-   * Lista todos los usuarios de la plataforma.
+   * Bandeja paginada de la plataforma · `GET /plataforma/usuarios`.
    *
-   * Contrato:
-   * - `GET /plataforma/usuarios` → `200` con `UsuarioListResponseDto[]`.
+   * Contrato (F8 / T-81): `200` con `{ datos, total, pagina, porPagina, resumen }`.
    * - Solo `ADMINISTRADOR` (D05), aprobado por `RolesGuard` + `@Roles`.
-   * - Orden: `fecha_registro DESC` (la columna se llama `creado_at`).
-   * - `roles` sale como un array de strings con los nombres, sin repetir: un
-   *   `ADMIN_BARBERIA` con tres sedes aparece una sola vez.
+   * - `total` es el tamaño del conjunto FILTRADO: es lo que permite calcular
+   *   páginas sin traer las filas.
+   * - `resumen` son los KPI de TODA la plataforma (tarjetas de la pantalla): con
+   *   paginación de servidor, contarlos sobre `datos` mentiría.
+   * - Orden: `creado_at DESC` con `id ASC` como desempate. El segundo criterio no
+   *   es cosmético: dos cuentas dadas de alta en el mismo milisegundo podían
+   *   intercambiarse entre páginas y una fila se veía dos veces o desaparecía.
    *
    * El `select` es explícito a propósito: `password_hash`, `token_version` y
    * `cedula` no se leen, así que no hay forma de que se cuelen en la respuesta.
+   *
+   * Todo va en un solo `$transaction` de array: la página, su total y los KPI son
+   * una foto consistente y se paga un único viaje a la base en vez de seis.
    */
-  async obtenerTodosLosUsuarios(): Promise<UsuarioListResponseDto[]> {
-    const usuarios = await this.prisma.usuario.findMany({
-      orderBy: { creadoAt: 'desc' },
-      select: {
-        id: true,
-        nombreCompleto: true,
-        correo: true,
-        telefono: true,
-        estadoCuenta: true,
-        creadoAt: true,
-        usuarioRoles: {
+  async obtenerTodosLosUsuarios(
+    filtros: ListarUsuariosDto = {},
+  ): Promise<UsuariosPaginadosDto> {
+    const pagina = Math.max(1, Math.trunc(filtros.page ?? 1));
+    const porPagina = Math.min(
+      Math.max(Math.trunc(filtros.pageSize ?? PAGINA_POR_DEFECTO), 1),
+      PAGINA_MAXIMA,
+    );
+    const busqueda = filtros.busqueda?.trim() ?? '';
+    const estado = filtros.estado ?? 'TODOS';
+    const rol = filtros.rol;
+
+    // El `where` se compone en la base: el buscador y los filtros NO viajan al
+    // navegador, así que `total` y las páginas cuentan lo mismo que se ve.
+    const where: Prisma.UsuarioWhereInput = {
+      ...(estado === 'TODOS' ? {} : { estadoCuenta: estado }),
+      ...(rol ? { usuarioRoles: { some: { rol: { nombre: rol } } } } : {}),
+      ...(busqueda
+        ? {
+            OR: [
+              { nombreCompleto: { contains: busqueda, mode: 'insensitive' } },
+              { correo: { contains: busqueda, mode: 'insensitive' } },
+              // El teléfono son dígitos: `insensitive` no aporta y sí impide usar
+              // el índice de prefijo.
+              { telefono: { contains: busqueda } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, usuarios, activos, suspendidos, vinculos, catalogo] =
+      await this.prisma.$transaction([
+        this.prisma.usuario.count({ where }),
+        this.prisma.usuario.findMany({
+          where,
+          orderBy: [{ creadoAt: 'desc' }, { id: 'asc' }],
+          skip: (pagina - 1) * porPagina,
+          take: porPagina,
           select: {
-            rol: {
-              select: { nombre: true },
+            id: true,
+            nombreCompleto: true,
+            correo: true,
+            telefono: true,
+            estadoCuenta: true,
+            creadoAt: true,
+            usuarioRoles: {
+              select: {
+                rol: {
+                  select: { nombre: true },
+                },
+              },
             },
           },
-        },
-      },
-    });
+        }),
+        this.prisma.usuario.count({ where: { estadoCuenta: 'ACTIVO' } }),
+        this.prisma.usuario.count({ where: { estadoCuenta: 'SUSPENDIDO' } }),
+        // Un renglón por par (rol, cuenta): así el conteo por rol es de CUENTAS
+        // distintas y no de vínculos, sin necesitar `COUNT(DISTINCT ...)`.
+        this.prisma.usuarioRol.groupBy({
+          by: ['rolId', 'usuarioId'],
+          _count: { _all: true },
+        }),
+        this.prisma.rol.findMany({ select: { id: true, nombre: true } }),
+      ]);
 
-    return usuarios.map((usuario) => ({
-      id: usuario.id,
-      nombreCompleto: usuario.nombreCompleto,
-      correo: usuario.correo,
-      telefono: usuario.telefono,
-      estadoCuenta: usuario.estadoCuenta,
-      fechaRegistro: usuario.creadoAt,
-      roles: [...new Set(usuario.usuarioRoles.map(({ rol }) => rol.nombre))],
-    }));
+    const nombrePorRolId = new Map(catalogo.map((fila) => [fila.id, fila.nombre]));
+    const porRol: Record<string, number> = Object.fromEntries(
+      ROLES_KPI.map((nombre) => [nombre, 0]),
+    );
+
+    for (const fila of vinculos) {
+      const nombre = nombrePorRolId.get(fila.rolId);
+      if (nombre && nombre in porRol) porRol[nombre] += 1;
+    }
+
+    return {
+      datos: usuarios.map((usuario) => ({
+        id: usuario.id,
+        nombreCompleto: usuario.nombreCompleto,
+        correo: usuario.correo,
+        telefono: usuario.telefono,
+        estadoCuenta: usuario.estadoCuenta,
+        fechaRegistro: usuario.creadoAt,
+        roles: [...new Set(usuario.usuarioRoles.map(({ rol }) => rol.nombre))],
+      })),
+      total,
+      pagina,
+      porPagina,
+      // La cuenta solo puede estar ACTIVA o SUSPENDIDA: la suma es el total sin
+      // pagar una séptima consulta.
+      resumen: { total: activos + suspendidos, activos, suspendidos, porRol },
+    };
   }
 
   /**

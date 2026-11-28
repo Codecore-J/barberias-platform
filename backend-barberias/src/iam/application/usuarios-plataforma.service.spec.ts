@@ -28,6 +28,7 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
       findMany: vi.fn(),
       findFirst: vi.fn(),
       create: vi.fn(),
+      count: vi.fn(),
     },
     usuarioRol: {
       create: vi.fn(),
@@ -36,11 +37,19 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
       update: vi.fn(),
       delete: vi.fn(),
       count: vi.fn(),
+      groupBy: vi.fn(),
     },
-    rol: { findUnique: vi.fn() },
+    rol: { findUnique: vi.fn(), findMany: vi.fn() },
     barberia: { findUnique: vi.fn() },
     auditoria: { findMany: vi.fn() },
-    $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(mockPrisma)),
+    // F8 / T-81 · el listado usa el `$transaction` de ARRAY (página + total +
+    // KPI en una sola foto); el resto del servicio usa el de callback.
+    $transaction: vi.fn(async (entrada: unknown) => {
+      if (typeof entrada === 'function') {
+        return (entrada as (tx: unknown) => Promise<unknown>)(mockPrisma);
+      }
+      return Promise.all(entrada as Promise<unknown>[]);
+    }),
   };
 
   const adminSede = { id: 'rol-admin-sede', nombre: 'ADMIN_BARBERIA', ambito: 'BARBERIA' };
@@ -193,7 +202,7 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
     });
   });
 
-  describe('obtenerTodosLosUsuarios', () => {
+  describe('obtenerTodosLosUsuarios (F8 / T-81 · paginación)', () => {
     const fila = (extra: Record<string, unknown> = {}) => ({
       id: 'uuid-1',
       nombreCompleto: 'Ana Pérez',
@@ -205,13 +214,43 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
       ...extra,
     });
 
-    it('VERDE: ordena por fecha de registro DESC y pide solo los campos del DTO', async () => {
-      mockPrisma.usuario.findMany.mockResolvedValue([fila()]);
+    /** Los seis promises del `$transaction` de array, en el orden del servicio. */
+    function prepararListado(opciones: {
+      total?: number;
+      activos?: number;
+      suspendidos?: number;
+      filas?: unknown[];
+      vinculos?: unknown[];
+    } = {}) {
+      mockPrisma.usuario.count
+        .mockResolvedValueOnce(opciones.total ?? 1)
+        .mockResolvedValueOnce(opciones.activos ?? 1)
+        .mockResolvedValueOnce(opciones.suspendidos ?? 0);
+      mockPrisma.usuario.findMany.mockResolvedValue(opciones.filas ?? [fila()]);
+      mockPrisma.usuarioRol.groupBy.mockResolvedValue(
+        opciones.vinculos ?? [
+          { rolId: 'rol-admin-sede', usuarioId: 'uuid-1', _count: { _all: 1 } },
+          { rolId: 'rol-cliente', usuarioId: 'uuid-1', _count: { _all: 1 } },
+        ],
+      );
+      mockPrisma.rol.findMany.mockResolvedValue([
+        { id: 'rol-admin-sede', nombre: 'ADMIN_BARBERIA' },
+        { id: 'rol-cliente', nombre: 'CLIENTE' },
+        { id: 'rol-barbero', nombre: 'BARBERO' },
+        { id: 'rol-admin', nombre: 'ADMINISTRADOR' },
+      ]);
+    }
 
-      await service.obtenerTodosLosUsuarios();
+    it('VERDE: pagina en la base con skip/take y ordena con desempate estable', async () => {
+      prepararListado();
+
+      await service.obtenerTodosLosUsuarios({ page: 3, pageSize: 10 });
 
       expect(mockPrisma.usuario.findMany).toHaveBeenCalledWith({
-        orderBy: { creadoAt: 'desc' },
+        where: {},
+        orderBy: [{ creadoAt: 'desc' }, { id: 'asc' }],
+        skip: 20,
+        take: 10,
         select: {
           id: true,
           nombreCompleto: true,
@@ -224,26 +263,81 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
       });
     });
 
-    it('VERDE: aplana usuario_roles a los nombres de rol, sin repetir', async () => {
-      mockPrisma.usuario.findMany.mockResolvedValue([
-        fila({
-          usuarioRoles: [
-            { rol: { nombre: 'ADMIN_BARBERIA' } },
-            { rol: { nombre: 'ADMIN_BARBERIA' } },
-            { rol: { nombre: 'CLIENTE' } },
-          ],
-        }),
-      ]);
+    it('VERDE: el buscador y los filtros se resuelven en el where de la base', async () => {
+      prepararListado();
 
-      const [usuario] = await service.obtenerTodosLosUsuarios();
+      await service.obtenerTodosLosUsuarios({
+        busqueda: '  Ana ',
+        estado: 'SUSPENDIDO',
+        rol: 'ADMIN_BARBERIA',
+      });
+
+      expect(mockPrisma.usuario.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            estadoCuenta: 'SUSPENDIDO',
+            usuarioRoles: { some: { rol: { nombre: 'ADMIN_BARBERIA' } } },
+            OR: [
+              { nombreCompleto: { contains: 'Ana', mode: 'insensitive' } },
+              { correo: { contains: 'Ana', mode: 'insensitive' } },
+              { telefono: { contains: 'Ana' } },
+            ],
+          },
+        }),
+      );
+    });
+
+    it('VERDE: devuelve total del filtro, la página y el resumen de la plataforma', async () => {
+      prepararListado({ total: 61, activos: 58, suspendidos: 3 });
+
+      const resultado = await service.obtenerTodosLosUsuarios({ page: 2, pageSize: 25 });
+
+      expect(resultado).toMatchObject({ total: 61, pagina: 2, porPagina: 25 });
+      expect(resultado.datos).toHaveLength(1);
+      expect(resultado.resumen).toEqual({
+        total: 61,
+        activos: 58,
+        suspendidos: 3,
+        porRol: { ADMINISTRADOR: 0, ADMIN_BARBERIA: 1, BARBERO: 0, CLIENTE: 1 },
+      });
+    });
+
+    it('VERDE: porRol cuenta cuentas distintas, no vínculos repetidos', async () => {
+      prepararListado({
+        vinculos: [
+          { rolId: 'rol-barbero', usuarioId: 'uuid-1', _count: { _all: 1 } },
+          { rolId: 'rol-barbero', usuarioId: 'uuid-2', _count: { _all: 1 } },
+        ],
+      });
+
+      const { resumen } = await service.obtenerTodosLosUsuarios();
+
+      expect(resumen.porRol.BARBERO).toBe(2);
+      expect(resumen.porRol.ADMIN_BARBERIA).toBe(0);
+    });
+
+    it('VERDE: aplana usuario_roles a los nombres de rol, sin repetir', async () => {
+      prepararListado({
+        filas: [
+          fila({
+            usuarioRoles: [
+              { rol: { nombre: 'ADMIN_BARBERIA' } },
+              { rol: { nombre: 'ADMIN_BARBERIA' } },
+              { rol: { nombre: 'CLIENTE' } },
+            ],
+          }),
+        ],
+      });
+
+      const [usuario] = (await service.obtenerTodosLosUsuarios()).datos;
 
       expect(usuario.roles).toEqual(['ADMIN_BARBERIA', 'CLIENTE']);
     });
 
     it('VERDE: mapea creado_at a fechaRegistro y no cuela datos sensibles', async () => {
-      mockPrisma.usuario.findMany.mockResolvedValue([fila()]);
+      prepararListado();
 
-      const [usuario] = await service.obtenerTodosLosUsuarios();
+      const [usuario] = (await service.obtenerTodosLosUsuarios()).datos;
 
       expect(usuario).toEqual({
         id: 'uuid-1',

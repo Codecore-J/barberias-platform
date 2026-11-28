@@ -1,4 +1,6 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnDestroy, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
 import { CommonModule, DatePipe } from '@angular/common';
 import { RolLabelPipe } from '../../../shared/pipes/rol-label.pipe';
 import { mensajeDeError } from '../../../core/utils/error-message';
@@ -29,6 +31,12 @@ const MOTIVO_MAXIMO = 500;
 
 /** Mismo mínimo que `/auth/register` y que `CrearUsuarioPlataformaDto`. */
 const PASSWORD_MINIMO = 8;
+
+/**
+ * F8 / T-81 · espera del buscador antes de escribir la URL y pedir la página.
+ * Sin ella, cada tecla sería una navegación y una consulta a la base.
+ */
+const DEBOUNCE_BUSQUEDA_MS = 300;
 
 type FiltroEstado = 'TODOS' | 'ACTIVO' | 'SUSPENDIDO';
 type FiltroRol = 'TODOS' | RolPlataforma;
@@ -172,7 +180,8 @@ interface TarjetaSede {
         <div class="relative flex-1">
           <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-xs"></i>
           <input
-            [(ngModel)]="busqueda"
+            [ngModel]="busqueda()"
+            (ngModelChange)="alCambiarBusqueda($event)"
             name="busqueda"
             type="text"
             placeholder="Buscar por nombre, correo o teléfono"
@@ -181,7 +190,8 @@ interface TarjetaSede {
         </div>
 
         <select
-          [(ngModel)]="filtroEstado"
+          [ngModel]="filtroEstado()"
+          (ngModelChange)="alCambiarEstado($event)"
           name="filtroEstado"
           class="bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2.5 text-xs text-zinc-200 focus:outline-none focus:border-amber-500 transition-colors"
         >
@@ -191,7 +201,8 @@ interface TarjetaSede {
         </select>
 
         <select
-          [(ngModel)]="filtroRol"
+          [ngModel]="filtroRol()"
+          (ngModelChange)="alCambiarFiltroRol($event)"
           name="filtroRol"
           class="bg-zinc-950 border border-zinc-700/60 rounded-xl px-3 py-2.5 text-xs text-zinc-200 focus:outline-none focus:border-amber-500 transition-colors"
         >
@@ -222,8 +233,11 @@ interface TarjetaSede {
           <div class="flex items-center justify-between px-5 py-4 border-b border-white/5">
             <p class="text-xs text-zinc-400">
               Mostrando <span class="font-bold text-white">{{ usuariosPagina().length }}</span> de
-              <span class="font-bold text-white">{{ totalUsuarios() }}</span>
-              {{ totalUsuarios() === 1 ? 'cuenta' : 'cuentas' }}
+              <span class="font-bold text-white">{{ totalFiltrado() }}</span>
+              {{ totalFiltrado() === 1 ? 'cuenta' : 'cuentas' }}
+              @if (hayFiltros()) {
+                <span class="text-zinc-500">· filtradas de {{ totalUsuarios() }}</span>
+              }
             </p>
           </div>
 
@@ -345,9 +359,10 @@ interface TarjetaSede {
           </div>
 
           <!--
-            T-24 · la bandeja trae TODAS las cuentas de la plataforma. En vez de
-            pintarlas todas (a 500 el DOM se arrastra), se pagina en cliente y
-            las tarjetas de KPI siguen midiendo el total real, no la página.
+            F8 / T-81 · paginación de servidor. La URL manda (?page=2):
+            Anterior, Siguiente y los números navegan, y la suscripción a los
+            query params es la que pide la página al backend. Los KPI no viven
+            aquí: miden la plataforma entera, no la página visible.
           -->
           @if (totalPaginas() > 1) {
             <div class="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-4 border-t border-white/5">
@@ -360,13 +375,31 @@ interface TarjetaSede {
                   type="button"
                   (click)="irAPagina(paginaActual() - 1)"
                   [disabled]="paginaActual() === 1"
+                  aria-label="Página anterior"
                   class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
                   <i class="pi pi-chevron-left text-[10px]"></i> Anterior
                 </button>
+
+                @for (numero of paginasVisibles(); track numero) {
+                  <button
+                    type="button"
+                    (click)="irAPagina(numero)"
+                    [attr.aria-current]="numero === paginaActual() ? 'page' : null"
+                    [ngClass]="
+                      numero === paginaActual()
+                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                        : 'bg-white/5 text-zinc-300 border-transparent hover:bg-white/10'
+                    "
+                    class="min-w-8 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-colors">
+                    {{ numero }}
+                  </button>
+                }
+
                 <button
                   type="button"
                   (click)="irAPagina(paginaActual() + 1)"
                   [disabled]="paginaActual() === totalPaginas()"
+                  aria-label="Página siguiente"
                   class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
                   Siguiente <i class="pi pi-chevron-right text-[10px]"></i>
                 </button>
@@ -374,7 +407,7 @@ interface TarjetaSede {
             </div>
           }
 
-          @if (totalUsuarios() === 0) {
+          @if (totalFiltrado() === 0 && !hayFiltros()) {
             <div class="text-center py-20">
               <i class="pi pi-inbox text-5xl text-zinc-600 mb-4 block"></i>
               <p class="text-zinc-300 font-medium">No hay usuarios para mostrar.</p>
@@ -382,7 +415,7 @@ interface TarjetaSede {
                 La bandeja se llena con cada alta de cuenta en la plataforma.
               </p>
             </div>
-          } @else if (usuariosFiltrados().length === 0) {
+          } @else if (hayFiltros()) {
             <div class="text-center py-20">
               <i class="pi pi-filter-slash text-5xl text-zinc-600 mb-4 block"></i>
               <p class="text-zinc-300 font-medium">Ningún usuario coincide con los filtros.</p>
@@ -1075,7 +1108,7 @@ interface TarjetaSede {
     </div>
   `,
 })
-export class AdminUsuariosComponent implements OnInit, OnDestroy {
+export class AdminUsuariosComponent implements OnDestroy {
   protected readonly service = inject(UsuariosService);
   private readonly authService = inject(AuthService);
   private readonly toast = inject(ToastService);
@@ -1087,14 +1120,14 @@ export class AdminUsuariosComponent implements OnInit, OnDestroy {
   readonly filtroEstado = signal<FiltroEstado>('TODOS');
   readonly filtroRol = signal<FiltroRol>('TODOS');
 
-  // ── KPIs (todo derivado de la señal de usuarios) ───────────────────────────
-  readonly totalUsuarios = computed(() => this.service.usuarios().length);
-  readonly totalActivos = computed(
-    () => this.service.usuarios().filter((u) => u.estadoCuenta === 'ACTIVO').length,
-  );
-  readonly totalSuspendidos = computed(
-    () => this.service.usuarios().filter((u) => u.estadoCuenta === 'SUSPENDIDO').length,
-  );
+  // ── KPIs · F8 / T-81 · contados por la BASE sobre toda la plataforma ───────
+  /**
+   * Con paginación de servidor, contar las filas recibidas mediría la página
+   * (25) y no la plataforma. El backend manda estos números en `resumen`.
+   */
+  readonly totalUsuarios = computed(() => this.service.resumen().total);
+  readonly totalActivos = computed(() => this.service.resumen().activos);
+  readonly totalSuspendidos = computed(() => this.service.resumen().suspendidos);
   readonly porcentajeActivos = computed(() => {
     const total = this.totalUsuarios();
     return total === 0 ? 0 : Math.round((this.totalActivos() / total) * 100);
@@ -1104,54 +1137,135 @@ export class AdminUsuariosComponent implements OnInit, OnDestroy {
     return total === 0 ? 0 : Math.round((this.totalSuspendidos() / total) * 100);
   });
   /**
-   * Conteo por rol. Un usuario con varios roles suma en cada uno: la tarjeta
-   * mide CUENTAS POR ROL, no cuentas distintas.
+   * Cuentas por rol (una cuenta con el mismo rol en dos sedes suma una vez).
    */
   readonly distribucionRoles = computed(() =>
     ROLES_PLATAFORMA.map((rol) => ({
       rol,
-      total: this.service.usuarios().filter((usuario) => usuario.roles.includes(rol)).length,
+      total: this.service.resumen().porRol[rol] ?? 0,
     })),
   );
 
-  /** Búsqueda libre + estado + rol, combinados. */
-  readonly usuariosFiltrados = computed(() => {
-    const termino = this.busqueda().trim().toLowerCase();
-    const estado = this.filtroEstado();
-    const rol = this.filtroRol();
-
-    return this.service.usuarios().filter((usuario) => {
-      if (estado !== 'TODOS' && usuario.estadoCuenta !== estado) return false;
-      if (rol !== 'TODOS' && !usuario.roles.includes(rol)) return false;
-      if (!termino) return true;
-
-      return [usuario.nombreCompleto, usuario.correo, usuario.telefono ?? ''].some((valor) =>
-        valor.toLowerCase().includes(termino),
-      );
-    });
-  });
-
-  // ── Paginación (T-24) ──────────────────────────────────────────────────────
+  // ── Paginación y filtros · F8 / T-81 ──────────────────────────────────────
   /**
-   * Cuentas por página. La respuesta del backend es un array completo (ese es
-   * el contrato de `GET /plataforma/usuarios`), así que la paginación se hace
-   * aquí: lo que colapsaba era el DOM, no la petición, y los KPI deben seguir
-   * midiendo el total de la plataforma y no la página visible.
+   * El estado de la vista vive en la URL (`?page=2&busqueda=ana&estado=ACTIVO`),
+   * no en memoria: el botón Atrás devuelve a la página anterior y una recarga no
+   * pierde el sitio. Hay UNA sola fuente de verdad: la suscripción a los query
+   * params es la que pide datos, y los controles solo navegan.
    */
   readonly TAMANO_PAGINA = 25;
   readonly pagina = signal(1);
   readonly totalPaginas = computed(() =>
-    Math.max(1, Math.ceil(this.usuariosFiltrados().length / this.TAMANO_PAGINA)),
+    Math.max(1, Math.ceil(this.service.total() / this.service.porPagina())),
   );
   /** Se recorta al rango vigente: cambiar de filtro no deja una página vacía. */
   readonly paginaActual = computed(() => Math.min(this.pagina(), this.totalPaginas()));
-  readonly usuariosPagina = computed(() => {
-    const desde = (this.paginaActual() - 1) * this.TAMANO_PAGINA;
-    return this.usuariosFiltrados().slice(desde, desde + this.TAMANO_PAGINA);
+  /** La respuesta YA es la página: no se vuelve a recortar en memoria. */
+  readonly usuariosPagina = computed(() => this.service.usuarios());
+  /** «Mostrando X de Y»: Y es el conjunto filtrado, no la página. */
+  readonly totalFiltrado = computed(() => this.service.total());
+  readonly hayFiltros = computed(
+    () =>
+      this.busqueda().trim().length > 0 ||
+      this.filtroEstado() !== 'TODOS' ||
+      this.filtroRol() !== 'TODOS',
+  );
+  /** Ventana de números de página alrededor de la actual (máximo 5). */
+  readonly paginasVisibles = computed(() => {
+    const total = this.totalPaginas();
+    const actual = this.paginaActual();
+    if (total <= 5) return Array.from({ length: total }, (_, indice) => indice + 1);
+
+    const desde = Math.min(Math.max(1, actual - 2), total - 4);
+    return Array.from({ length: 5 }, (_, indice) => desde + indice);
   });
 
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private readonly destroyRef = inject(DestroyRef);
+  private busquedaProgramada?: ReturnType<typeof setTimeout>;
+
+  constructor() {
+    this.destroyRef.onDestroy(() => {
+      if (this.busquedaProgramada) clearTimeout(this.busquedaProgramada);
+    });
+
+    // Puerto único de entrada de la vista: cambiar la URL (botones, Atrás o una
+    // recarga) reescribe los filtros y pide la página.
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((params) => {
+        this.pagina.set(this.leerPagina(params.get('page')));
+        this.busqueda.set(params.get('busqueda') ?? '');
+        this.filtroEstado.set(this.leerEstado(params.get('estado')));
+        this.filtroRol.set(this.leerRol(params.get('rol')));
+        this.cargar();
+      });
+  }
+
   irAPagina(pagina: number): void {
-    this.pagina.set(Math.min(Math.max(1, pagina), this.totalPaginas()));
+    this.navegar({ page: Math.min(Math.max(1, pagina), this.totalPaginas()) });
+  }
+
+  /** El buscador espera a que se deje de teclear antes de pedir la página. */
+  alCambiarBusqueda(valor: string): void {
+    this.busqueda.set(valor);
+    if (this.busquedaProgramada) clearTimeout(this.busquedaProgramada);
+
+    this.busquedaProgramada = setTimeout(() => {
+      this.busquedaProgramada = undefined;
+      this.navegar({ busqueda: this.busqueda().trim() }, true);
+    }, DEBOUNCE_BUSQUEDA_MS);
+  }
+
+  alCambiarEstado(estado: FiltroEstado): void {
+    this.filtroEstado.set(estado);
+    this.navegar({ estado });
+  }
+
+  alCambiarFiltroRol(rol: FiltroRol): void {
+    this.filtroRol.set(rol);
+    this.navegar({ rol });
+  }
+
+  /**
+   * Cualquier cambio de filtro vuelve a la página 1: quedarse en la 4 de un
+   * conjunto que ahora tiene dos páginas deja la tabla vacía sin explicar nada.
+   */
+  private navegar(
+    cambios: { page?: number; busqueda?: string; estado?: FiltroEstado; rol?: FiltroRol },
+    replaceUrl = false,
+  ): void {
+    const page = cambios.page ?? 1;
+    const busqueda = (cambios.busqueda ?? this.busqueda()).trim();
+    const estado = cambios.estado ?? this.filtroEstado();
+    const rol = cambios.rol ?? this.filtroRol();
+
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      replaceUrl,
+      queryParams: {
+        page: page > 1 ? page : null,
+        busqueda: busqueda || null,
+        estado: estado !== 'TODOS' ? estado : null,
+        rol: rol !== 'TODOS' ? rol : null,
+      },
+    });
+  }
+
+  private leerPagina(valor: string | null): number {
+    const numero = Number(valor);
+    return Number.isInteger(numero) && numero > 1 ? numero : 1;
+  }
+
+  private leerEstado(valor: string | null): FiltroEstado {
+    return valor === 'ACTIVO' || valor === 'SUSPENDIDO' ? valor : 'TODOS';
+  }
+
+  private leerRol(valor: string | null): FiltroRol {
+    return valor && (ROLES_PLATAFORMA as readonly string[]).includes(valor)
+      ? (valor as RolPlataforma)
+      : 'TODOS';
   }
 
   // ── Cambio de estado ───────────────────────────────────────────────────────
@@ -1176,13 +1290,22 @@ export class AdminUsuariosComponent implements OnInit, OnDestroy {
   readonly eliminando = signal(false);
   readonly sedesConflictoEliminacion = signal<SedeAfectada[]>([]);
 
-  /** Id del único ADMINISTRADOR activo de la plataforma, si solo queda uno. */
+  /**
+   * Id del único ADMINISTRADOR activo de la plataforma, si solo queda uno.
+   *
+   * F8 / T-81 · antes se contaba sobre la tabla descargada; con una sola página
+   * en memoria, ver un administrador no dice cuántos hay. El resumen de la base
+   * sí cuenta la plataforma entera, así que la pista solo aparece cuando el
+   * catálogo tiene UN administrador y está en la página visible.
+   */
   readonly ultimoAdministradorActivo = computed(() => {
-    const activos = this.service
-      .usuarios()
-      .filter((usuario) => usuario.estadoCuenta === 'ACTIVO' && usuario.roles.includes('ADMINISTRADOR'));
+    if ((this.service.resumen().porRol['ADMINISTRADOR'] ?? 0) !== 1) return null;
 
-    return activos.length === 1 ? activos[0].id : null;
+    const unico = this.service
+      .usuarios()
+      .find((usuario) => usuario.estadoCuenta === 'ACTIVO' && usuario.roles.includes('ADMINISTRADOR'));
+
+    return unico?.id ?? null;
   });
 
   /**
@@ -1404,10 +1527,6 @@ export class AdminUsuariosComponent implements OnInit, OnDestroy {
   readonly cargandoHistorial = signal(false);
   readonly errorHistorial = signal<string | null>(null);
 
-  ngOnInit(): void {
-    this.cargar();
-  }
-
   /**
    * F7 / T-76 · el buscador no recuerda la búsqueda anterior.
    *
@@ -1418,18 +1537,34 @@ export class AdminUsuariosComponent implements OnInit, OnDestroy {
    * por un correo que ya no se recuerda haber escrito.
    */
   ngOnDestroy(): void {
-    this.limpiarFiltros();
+    // Sin navegar: el componente se va y escribir la URL aquí devolvería al
+    // usuario a una pantalla que ya abandonó.
+    if (this.busquedaProgramada) clearTimeout(this.busquedaProgramada);
+    this.busquedaProgramada = undefined;
+    this.busqueda.set('');
+    this.filtroEstado.set('TODOS');
+    this.filtroRol.set('TODOS');
     this.pagina.set(1);
   }
 
+  /** Único sitio que pide la página: filtros y `page` salen de las señales. */
   cargar(): void {
-    this.service.obtenerUsuarios().subscribe({ error: () => undefined });
+    this.service
+      .obtenerUsuarios({
+        page: this.pagina(),
+        pageSize: this.TAMANO_PAGINA,
+        busqueda: this.busqueda(),
+        estado: this.filtroEstado(),
+        rol: this.filtroRol(),
+      })
+      .subscribe({ error: () => undefined });
   }
 
   limpiarFiltros(): void {
     this.busqueda.set('');
     this.filtroEstado.set('TODOS');
     this.filtroRol.set('TODOS');
+    this.navegar({ page: 1, busqueda: '', estado: 'TODOS', rol: 'TODOS' });
   }
 
   // ── Cambio de estado ───────────────────────────────────────────────────────
@@ -1790,7 +1925,7 @@ export class AdminUsuariosComponent implements OnInit, OnDestroy {
 
   /** La columna ROLES de la tabla se alimenta del listado, no del modal. */
   private recargar(): void {
-    this.service.obtenerUsuarios().subscribe({ error: () => undefined });
+    this.cargar();
   }
 
   // ── Etiquetas y colores ────────────────────────────────────────────────────
