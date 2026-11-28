@@ -4,7 +4,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { DashboardSedeComponent } from './dashboard-sede.component';
 import { TenantService } from '../../../core/services/tenant.service';
 import { ReservasService } from '../../../core/services/reservas.service';
@@ -114,6 +114,36 @@ describe('DashboardSedeComponent (T-15)', () => {
    * un error en la consola y tumbaba las métricas de la sede. La agenda se
    * sigue cargando; la caja no se pide.
    */
+  /**
+   * F8 / T-85 · la carga inicial no puede ser todo-o-nada.
+   *
+   * Antes un único `Promise.all` retenía las tres tarjetas hasta que la caja
+   * respondía: si `/payments/history` tardaba, «Turnos completados» —que ya
+   * estaba en memoria— seguía escondido tras un esqueleto. Ahora lo crítico se
+   * pinta en cuanto llega y lo que falta se ve cargando en SU tarjeta.
+   */
+  it('ROJO: los turnos se pintan en cuanto llega la agenda, sin esperar la caja', async () => {
+    const cajaPendiente = new Subject<never>();
+    pagos = { obtenerHistorial: vi.fn(() => cajaPendiente.asObservable()) };
+
+    configurar({ id: 'sede-1', nombre: 'Imperial Barbers' });
+    fixture.detectChanges();
+    await new Promise((resolver) => setTimeout(resolver, 0));
+    fixture.detectChanges();
+
+    const componente = fixture.componentInstance;
+
+    // Lo crítico ya está, aunque la caja siga en vuelo.
+    expect(componente.completadosHoy()).toBe(2);
+    expect(texto()).toContain('Turnos Completados');
+    expect(texto()).toContain('Luis Medina');
+
+    // Y la caja tiene su propio esqueleto: no se pinta un $0 que mienta.
+    const esqueleto = fixture.nativeElement.querySelector('[data-testid="esqueleto-caja"]');
+    expect(esqueleto).not.toBeNull();
+    expect(texto()).not.toContain('$0');
+  });
+
   it('el ADMINISTRADOR global con sede no pide el historial de caja', async () => {
     configurar({ id: 'sede-1', nombre: 'Imperial Barbers' }, 'ADMINISTRADOR');
     fixture.detectChanges();
