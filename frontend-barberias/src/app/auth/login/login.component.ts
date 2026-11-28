@@ -1,10 +1,13 @@
 import { Component, DestroyRef, inject, isDevMode, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import type { Subscription } from 'rxjs';
 import { AuthService } from '../auth.service';
 import { CommonModule } from '@angular/common';
 import { PARAM_RETURN_URL } from '../../core/utils/return-url.util';
 import { mensajeDeError } from '../../core/utils/error-message';
+import { API_URL } from '../../core/constants/api.constants';
 
 import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.component';
 
@@ -16,6 +19,20 @@ import { ModalShellComponent } from '../../shared/ui/modal-shell/modal-shell.com
  * punto donde el usuario ya cree que el botón no responde.
  */
 const UMBRAL_AVISO_ESPERA_MS = 8000;
+
+/**
+ * F8 / T-83 · tiempos de la sonda de vida del backend.
+ *
+ * - 3 s es el plazo para considerar que el servidor no está despierto. Por
+ *   debajo, una red móvil lenta pintaría el aviso sin motivo.
+ * - El reintento es de 5 s: el arranque de Render tarda decenas de segundos y no
+ *   tiene sentido sondear más a menudo.
+ * - A los 90 s se deja de intentar y se dice la verdad en vez de seguir
+ *   esperando un servidor que no va a responder.
+ */
+const SONDA_PLAZO_MS = 3000;
+const SONDA_REINTENTO_MS = 5000;
+const SONDA_LIMITE_MS = 90_000;
 
 @Component({
   selector: 'app-login',
@@ -81,7 +98,7 @@ const UMBRAL_AVISO_ESPERA_MS = 8000;
               </div>
             }
 
-            <button type="submit" [disabled]="loginForm.invalid || authService.authState().isLoading"
+            <button type="submit" [disabled]="loginForm.invalid || authService.authState().isLoading || servidorDespertando() || servidorNoDisponible()"
                     class="w-full py-4 rounded-xl font-bold text-sm text-zinc-950 gold-gradient-bg shadow-[0_10px_30px_rgba(212,175,55,0.3)] hover:shadow-[0_15px_40px_rgba(212,175,55,0.5)] disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-1 transition-all flex items-center justify-center gap-2 cursor-pointer">
               @if (authService.authState().isLoading) {
                 <i class="pi pi-spin pi-spinner text-lg"></i> Ingresando...
@@ -95,6 +112,35 @@ const UMBRAL_AVISO_ESPERA_MS = 8000;
               «Ingresando…», pero a los pocos segundos eso parece un cuelgue. Se
               explica qué está pasando para que nadie recargue ni pulse de nuevo.
             -->
+            <!--
+              F8 / T-83 · el backend de Render Free tarda hasta 60 s en despertar.
+              Se dice antes de que el usuario pulse, y el envío queda bloqueado
+              mientras el banner esté visible.
+            -->
+            @if (servidorDespertando()) {
+              <p id="aviso-servidor-despertando"
+                 data-testid="aviso-servidor"
+                 role="status" aria-live="polite"
+                 class="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/25 rounded-xl p-3 flex items-start gap-2">
+                <i class="pi pi-spin pi-spinner mt-0.5"></i>
+                <span>
+                  Despertando el servidor, puede tardar hasta 60 segundos. Por favor espera.
+                </span>
+              </p>
+            }
+
+            @if (servidorNoDisponible()) {
+              <p id="aviso-servidor-no-disponible"
+                 role="alert"
+                 class="text-[11px] text-rose-300 bg-rose-500/10 border border-rose-500/25 rounded-xl p-3 flex flex-col gap-2">
+                <span><i class="pi pi-exclamation-triangle mr-1"></i>El servidor no está disponible. Intenta de nuevo en unos minutos.</span>
+                <button type="button" (click)="reintentarConexion()"
+                        class="self-start px-3 py-1.5 rounded-lg text-[11px] font-bold text-rose-200 bg-rose-500/20 hover:bg-rose-500/30 transition-colors cursor-pointer">
+                  Reintentar
+                </button>
+              </p>
+            }
+
             @if (esperaProlongada()) {
               <p class="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/25 rounded-xl p-3 flex items-start gap-2"
                  role="status" aria-live="polite">
@@ -296,13 +342,113 @@ export class LoginComponent {
   /** T-26 · `true` cuando el login ya lleva demasiado tiempo esperando. */
   readonly esperaProlongada = signal(false);
 
+  /** F8 / T-83 · el servidor no respondió a `GET /health/liveness` en 3 s. */
+  readonly servidorDespertando = signal(false);
+  /** F8 / T-83 · 90 s sin respuesta: se deja de sondear y se avisa. */
+  readonly servidorNoDisponible = signal(false);
+
   private readonly destroyRef = inject(DestroyRef);
+  private readonly http = inject(HttpClient);
   private avisoDeEspera?: ReturnType<typeof setTimeout>;
+  private sonda?: Subscription;
+  private plazoDeSonda?: ReturnType<typeof setTimeout>;
+  private reintentoDeSonda?: ReturnType<typeof setTimeout>;
+  private limiteDeSonda?: ReturnType<typeof setTimeout>;
 
   constructor() {
-    // El temporizador no puede sobrevivir al componente: si se navega fuera con
-    // la petición en vuelo, el aviso no debe pintarse sobre otra pantalla.
-    this.destroyRef.onDestroy(() => this.limpiarAvisoDeEspera());
+    // Los temporizadores no pueden sobrevivir al componente: si se navega fuera
+    // con la petición en vuelo, el aviso no debe pintarse sobre otra pantalla.
+    this.destroyRef.onDestroy(() => {
+      this.limpiarAvisoDeEspera();
+      this.limpiarSonda();
+    });
+
+    // F8 / T-83 · la pantalla de login se pinta antes de que el backend exista
+    // para el usuario: se sondea la vida mientras el formulario ya es usable.
+    this.iniciarSondaDeServidor();
+  }
+
+  // ── F8 / T-83 · cold start de Render ───────────────────────────────────────
+
+  /**
+   * Sondea `GET /health/liveness` con 3 s de plazo y reintenta cada 5 s.
+   *
+   * Se hace a mano con `setTimeout` y no con `timeout()` de RxJS porque el plazo
+   * tiene que ABORTAR la petición colgada: si Render duerme la instancia, el
+   * fetch puede quedarse 60 s en vuelo y una sonda nueva encima duplicaría la
+   * espera. Al vencer el plazo se cancela la suscripción y se vuelve a probar.
+   */
+  private iniciarSondaDeServidor(): void {
+    this.limiteDeSonda = setTimeout(() => this.declararServidorNoDisponible(), SONDA_LIMITE_MS);
+    this.lanzarSonda();
+  }
+
+  private lanzarSonda(): void {
+    this.sonda?.unsubscribe();
+    this.limpiarPlazo();
+
+    let respondio = false;
+
+    this.plazoDeSonda = setTimeout(() => {
+      if (respondio) return;
+      this.servidorDespertando.set(true);
+      this.programarReintento();
+    }, SONDA_PLAZO_MS);
+
+    this.sonda = this.http.get(`${API_URL}/health/liveness`).subscribe({
+      next: () => {
+        respondio = true;
+        this.marcarServidorListo();
+      },
+      error: () => {
+        respondio = true;
+        // Respondió con error: la instancia está despierta (aunque no lista), así
+        // que no se miente diciendo que está arrancando. Se reintenta en
+        // silencio y el aviso, si estaba, se queda hasta que conteste 200.
+        this.programarReintento();
+      },
+    });
+  }
+
+  private programarReintento(): void {
+    this.limpiarPlazo();
+    if (this.reintentoDeSonda) clearTimeout(this.reintentoDeSonda);
+    this.reintentoDeSonda = setTimeout(() => this.lanzarSonda(), SONDA_REINTENTO_MS);
+  }
+
+  private marcarServidorListo(): void {
+    this.limpiarSonda();
+    this.servidorDespertando.set(false);
+    this.servidorNoDisponible.set(false);
+  }
+
+  private declararServidorNoDisponible(): void {
+    this.limpiarSonda();
+    this.servidorDespertando.set(false);
+    this.servidorNoDisponible.set(true);
+  }
+
+  private limpiarPlazo(): void {
+    if (this.plazoDeSonda) clearTimeout(this.plazoDeSonda);
+    this.plazoDeSonda = undefined;
+  }
+
+  private limpiarSonda(): void {
+    this.sonda?.unsubscribe();
+    this.sonda = undefined;
+    this.limpiarPlazo();
+
+    if (this.reintentoDeSonda) clearTimeout(this.reintentoDeSonda);
+    this.reintentoDeSonda = undefined;
+    if (this.limiteDeSonda) clearTimeout(this.limiteDeSonda);
+    this.limiteDeSonda = undefined;
+  }
+
+  /** El botón «Reintentar» del aviso de servidor no disponible. */
+  reintentarConexion(): void {
+    this.servidorNoDisponible.set(false);
+    this.servidorDespertando.set(false);
+    this.iniciarSondaDeServidor();
   }
 
   private programarAvisoDeEspera(): void {
@@ -445,7 +591,11 @@ export class LoginComponent {
   }
 
   onSubmit() {
-    if (!this.loginForm.valid) return;
+    // F8 / T-83 · con el servidor despertando o caído no se envía: el POST
+    // quedaría colgado y el usuario creería que su contraseña es la incorrecta.
+    if (!this.loginForm.valid || this.servidorDespertando() || this.servidorNoDisponible()) {
+      return;
+    }
 
     this.programarAvisoDeEspera();
     this.authService.login(this.loginForm.value as any, this.returnUrl).subscribe({
