@@ -4,7 +4,9 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { tablaCalificada } from '../../shared/db/esquema.js';
 import { esAdministradorGlobal } from '../domain/roles.js';
 import { resolverBarberiaId } from './current-barberia.decorator.js';
 import type { UsuarioAutenticado } from '../domain/jwt.interface.js';
@@ -54,16 +56,50 @@ export class VinculoBarberiaGuard implements CanActivate {
       return true;
     }
 
+    // F8 · rendimiento: UNA consulta por petición.
+    //
+    // Antes este guard hacía tres consultas EN SERIE en cada petición que
+    // atravesaba una ruta de sede: el estado de la barbería, `usuario_roles` y
+    // —solo si no había rol— `cliente_barberias`. Es el punto más caliente del
+    // backend (catálogo, agenda, horarios, analíticas), así que las tres cosas
+    // viajan ahora en una sola consulta:
+    //   - `estado` de la sede, para conservar el bloqueo de I-01;
+    //   - `EXISTS` en `usuario_roles` con `estado = 'ACTIVO'` (personal);
+    //   - `EXISTS` en `cliente_barberias` con `estado_vinculacion = 'ACTIVO'`.
+    //
+    // Los dos filtros ACTIVO siguen EN EL SQL: un vínculo suspendido no habilita
+    // y la decisión no depende de una comprobación en memoria. Las tablas van
+    // calificadas con `tablaCalificada` (H58) y los valores son parámetros, nunca
+    // texto pegado al SQL. Si la consulta falla, la excepción sube: el guard
+    // falla cerrado, no concede.
+    const filas = await this.prisma.$queryRaw<
+      Array<{ estado: string; es_personal: boolean; es_cliente: boolean }>
+    >`
+      SELECT b.estado AS estado,
+             EXISTS (
+               SELECT 1
+                 FROM ${Prisma.raw(tablaCalificada('usuario_roles'))} ur
+                WHERE ur.usuario_id = ${user.id}::uuid
+                  AND ur.barberia_id = b.id
+                  AND ur.estado = 'ACTIVO'
+             ) AS es_personal,
+             EXISTS (
+               SELECT 1
+                 FROM ${Prisma.raw(tablaCalificada('cliente_barberias'))} cb
+                WHERE cb.usuario_id = ${user.id}::uuid
+                  AND cb.barberia_id = b.id
+                  AND cb.estado_vinculacion = 'ACTIVO'
+             ) AS es_cliente
+        FROM ${Prisma.raw(tablaCalificada('barberias'))} b
+       WHERE b.id = ${barberiaId}::uuid
+    `;
+
     // I-01 · la sede tiene que seguir OPERANDO, no solo existir el vínculo. Sin
     // esto, suspender una barbería (E2-07) apagaba su ficha pero su personal
     // seguía leyendo y escribiendo el catálogo: `usuario_roles` no cambia al
-    // suspender la sede. Se comprueba ANTES de la pertenencia porque es la
-    // condición más barata y la que aplica a las dos puertas (personal y
-    // cliente): una sede suspendida no admite operaciones de nadie.
-    const sede = await this.prisma.barberia.findUnique({
-      where: { id: barberiaId },
-      select: { estado: true },
-    });
+    // suspender la sede. Una sede suspendida no admite operaciones de nadie, ni
+    // del personal ni del cliente.
+    const sede = filas[0];
     if (!sede) {
       throw new ForbiddenException('La barbería indicada no existe.');
     }
@@ -73,21 +109,8 @@ export class VinculoBarberiaGuard implements CanActivate {
       );
     }
 
-    // Personal: entra por `usuario_roles`.
-    const rol = await this.prisma.usuarioRol.findFirst({
-      where: { usuarioId: user.id, barberiaId, estado: 'ACTIVO' },
-      select: { id: true },
-    });
-    if (rol) {
-      return true;
-    }
-
-    // Cliente: entra por `cliente_barberias` y la fila tiene que estar ACTIVA.
-    const vinculo = await this.prisma.clienteBarberia.findFirst({
-      where: { usuarioId: user.id, barberiaId, estadoVinculacion: 'ACTIVO' },
-      select: { id: true },
-    });
-    if (vinculo) {
+    // Personal por rol o cliente por vínculo ACTIVO: las dos puertas del E1-06.
+    if (sede.es_personal || sede.es_cliente) {
       return true;
     }
 
