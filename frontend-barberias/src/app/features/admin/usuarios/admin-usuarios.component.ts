@@ -91,7 +91,7 @@ interface TarjetaSede {
             <i class="pi pi-plus"></i> Nuevo Usuario
           </button>
           <button
-            (click)="cargar()"
+            (click)="recargar()"
             class="px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm text-zinc-300 bg-zinc-900/80 border border-zinc-700/60 hover:border-amber-500/40 hover:text-amber-300 transition-all flex items-center gap-2"
           >
             <i class="pi pi-refresh" [class.pi-spin]="service.isLoading()"></i> Refrescar
@@ -1153,7 +1153,8 @@ export class AdminUsuariosComponent implements OnDestroy {
    * pierde el sitio. Hay UNA sola fuente de verdad: la suscripción a los query
    * params es la que pide datos, y los controles solo navegan.
    */
-  readonly TAMANO_PAGINA = 25;
+  // El tamaño de página NO se repite aquí: lo manda el backend (`porPagina` de
+  // la respuesta) y el servicio omite el parámetro mientras sea el defecto.
   readonly pagina = signal(1);
   readonly totalPaginas = computed(() =>
     Math.max(1, Math.ceil(this.service.total() / this.service.porPagina())),
@@ -1549,10 +1550,13 @@ export class AdminUsuariosComponent implements OnDestroy {
 
   /** Único sitio que pide la página: filtros y `page` salen de las señales. */
   cargar(): void {
+    // El KPI vive en su propia ruta y el servicio lo cachea por visita: llamar
+    // aquí no cuesta un viaje por cada tecla del buscador.
+    this.service.cargarResumen();
+
     this.service
       .obtenerUsuarios({
         page: this.pagina(),
-        pageSize: this.TAMANO_PAGINA,
         busqueda: this.busqueda(),
         estado: this.filtroEstado(),
         rol: this.filtroRol(),
@@ -1931,8 +1935,12 @@ export class AdminUsuariosComponent implements OnDestroy {
     });
   }
 
-  /** La columna ROLES de la tabla se alimenta del listado, no del modal. */
-  private recargar(): void {
+  /**
+   * La tabla se alimenta del listado y las tarjetas del KPI: tras escribir en la
+   * bandeja (alta, suspensión, borrado o cambio de rol) hay que releer los dos.
+   */
+  recargar(): void {
+    this.service.invalidarResumen();
     this.cargar();
   }
 

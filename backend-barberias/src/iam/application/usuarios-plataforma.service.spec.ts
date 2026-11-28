@@ -214,31 +214,14 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
       ...extra,
     });
 
-    /** Los seis promises del `$transaction` de array, en el orden del servicio. */
-    function prepararListado(opciones: {
-      total?: number;
-      activos?: number;
-      suspendidos?: number;
-      filas?: unknown[];
-      vinculos?: unknown[];
-    } = {}) {
-      mockPrisma.usuario.count
-        .mockResolvedValueOnce(opciones.total ?? 1)
-        .mockResolvedValueOnce(opciones.activos ?? 1)
-        .mockResolvedValueOnce(opciones.suspendidos ?? 0);
+    /**
+     * El `$transaction` del listado: el `total` del conjunto filtrado y la
+     * página. El KPI ya no viaja aquí —son agregados de toda la plataforma y los
+     * pide la pantalla a su propia ruta, una vez por visita—.
+     */
+    function prepararListado(opciones: { total?: number; filas?: unknown[] } = {}) {
+      mockPrisma.usuario.count.mockResolvedValueOnce(opciones.total ?? 1);
       mockPrisma.usuario.findMany.mockResolvedValue(opciones.filas ?? [fila()]);
-      mockPrisma.usuarioRol.groupBy.mockResolvedValue(
-        opciones.vinculos ?? [
-          { rolId: 'rol-admin-sede', usuarioId: 'uuid-1', _count: { _all: 1 } },
-          { rolId: 'rol-cliente', usuarioId: 'uuid-1', _count: { _all: 1 } },
-        ],
-      );
-      mockPrisma.rol.findMany.mockResolvedValue([
-        { id: 'rol-admin-sede', nombre: 'ADMIN_BARBERIA' },
-        { id: 'rol-cliente', nombre: 'CLIENTE' },
-        { id: 'rol-barbero', nombre: 'BARBERO' },
-        { id: 'rol-admin', nombre: 'ADMINISTRADOR' },
-      ]);
     }
 
     it('VERDE: pagina en la base con skip/take y ordena con desempate estable', async () => {
@@ -258,7 +241,12 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
           telefono: true,
           estadoCuenta: true,
           creadoAt: true,
-          usuarioRoles: { select: { rol: { select: { nombre: true } } } },
+          // Solo vínculos vigentes: `estado='INACTIVO'` es un rol revocado y
+          // listarlo como si siguiera activo contradiría al JWT.
+          usuarioRoles: {
+            where: { estado: 'ACTIVO' },
+            select: { rol: { select: { nombre: true } } },
+          },
         },
       });
     });
@@ -276,7 +264,10 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
         expect.objectContaining({
           where: {
             estadoCuenta: 'SUSPENDIDO',
-            usuarioRoles: { some: { rol: { nombre: 'ADMIN_BARBERIA' } } },
+            // Filtrar por rol solo puede encontrar vínculos VIGENTES.
+            usuarioRoles: {
+              some: { estado: 'ACTIVO', rol: { nombre: 'ADMIN_BARBERIA' } },
+            },
             OR: [
               { nombreCompleto: { contains: 'Ana', mode: 'insensitive' } },
               { correo: { contains: 'Ana', mode: 'insensitive' } },
@@ -287,33 +278,17 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
       );
     });
 
-    it('VERDE: devuelve total del filtro, la página y el resumen de la plataforma', async () => {
-      prepararListado({ total: 61, activos: 58, suspendidos: 3 });
+    it('VERDE: devuelve total del filtro y la página, sin el KPI', async () => {
+      prepararListado({ total: 61 });
 
       const resultado = await service.obtenerTodosLosUsuarios({ page: 2, pageSize: 25 });
 
       expect(resultado).toMatchObject({ total: 61, pagina: 2, porPagina: 25 });
       expect(resultado.datos).toHaveLength(1);
-      expect(resultado.resumen).toEqual({
-        total: 61,
-        activos: 58,
-        suspendidos: 3,
-        porRol: { ADMINISTRADOR: 0, ADMIN_BARBERIA: 1, BARBERO: 0, CLIENTE: 1 },
-      });
-    });
-
-    it('VERDE: porRol cuenta cuentas distintas, no vínculos repetidos', async () => {
-      prepararListado({
-        vinculos: [
-          { rolId: 'rol-barbero', usuarioId: 'uuid-1', _count: { _all: 1 } },
-          { rolId: 'rol-barbero', usuarioId: 'uuid-2', _count: { _all: 1 } },
-        ],
-      });
-
-      const { resumen } = await service.obtenerTodosLosUsuarios();
-
-      expect(resumen.porRol.BARBERO).toBe(2);
-      expect(resumen.porRol.ADMIN_BARBERIA).toBe(0);
+      // El contrato es exactamente el del prompt: los KPI tienen su propia ruta.
+      expect(Object.keys(resultado).sort()).toEqual(
+        ['datos', 'pagina', 'porPagina', 'total'].sort(),
+      );
     });
 
     it('VERDE: aplana usuario_roles a los nombres de rol, sin repetir', async () => {
@@ -359,6 +334,79 @@ describe('UsuariosPlataformaService (E4-03/5 · D09/D24)', () => {
           'roles',
         ].sort(),
       );
+    });
+  });
+
+  describe('obtenerResumenUsuarios (F8 / T-81 · KPI fuera del listado)', () => {
+    /** Los cuatro promises del `$transaction` del resumen, en el orden del servicio. */
+    function prepararResumen(
+      opciones: { activos?: number; suspendidos?: number; vinculos?: unknown[] } = {},
+    ) {
+      mockPrisma.usuario.count
+        .mockResolvedValueOnce(opciones.activos ?? 1)
+        .mockResolvedValueOnce(opciones.suspendidos ?? 0);
+      mockPrisma.usuarioRol.groupBy.mockResolvedValue(
+        opciones.vinculos ?? [
+          { rolId: 'rol-admin-sede', usuarioId: 'uuid-1', _count: { _all: 1 } },
+          { rolId: 'rol-cliente', usuarioId: 'uuid-1', _count: { _all: 1 } },
+        ],
+      );
+      mockPrisma.rol.findMany.mockResolvedValue([
+        { id: 'rol-admin-sede', nombre: 'ADMIN_BARBERIA' },
+        { id: 'rol-cliente', nombre: 'CLIENTE' },
+        { id: 'rol-barbero', nombre: 'BARBERO' },
+        { id: 'rol-admin', nombre: 'ADMINISTRADOR' },
+      ]);
+    }
+
+    it('VERDE: cuenta activos, suspendidos y vínculos vigentes por rol', async () => {
+      prepararResumen({ activos: 58, suspendidos: 3 });
+
+      const resumen = await service.obtenerResumenUsuarios();
+
+      expect(resumen).toEqual({
+        total: 61,
+        activos: 58,
+        suspendidos: 3,
+        porRol: { ADMINISTRADOR: 0, ADMIN_BARBERIA: 1, BARBERO: 0, CLIENTE: 1 },
+      });
+    });
+
+    it('VERDE: mide la plataforma entera, sin filtros ni página', async () => {
+      prepararResumen();
+
+      await service.obtenerResumenUsuarios();
+
+      expect(mockPrisma.usuario.count).toHaveBeenNthCalledWith(1, {
+        where: { estadoCuenta: 'ACTIVO' },
+      });
+      expect(mockPrisma.usuario.count).toHaveBeenNthCalledWith(2, {
+        where: { estadoCuenta: 'SUSPENDIDO' },
+      });
+    });
+
+    it('VERDE: un rol revocado (vínculo INACTIVO) no suma', async () => {
+      prepararResumen();
+
+      await service.obtenerResumenUsuarios();
+
+      expect(mockPrisma.usuarioRol.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { estado: 'ACTIVO' } }),
+      );
+    });
+
+    it('VERDE: porRol cuenta cuentas distintas, no vínculos repetidos', async () => {
+      prepararResumen({
+        vinculos: [
+          { rolId: 'rol-barbero', usuarioId: 'uuid-1', _count: { _all: 1 } },
+          { rolId: 'rol-barbero', usuarioId: 'uuid-2', _count: { _all: 1 } },
+        ],
+      });
+
+      const resumen = await service.obtenerResumenUsuarios();
+
+      expect(resumen.porRol.BARBERO).toBe(2);
+      expect(resumen.porRol.ADMIN_BARBERIA).toBe(0);
     });
   });
 

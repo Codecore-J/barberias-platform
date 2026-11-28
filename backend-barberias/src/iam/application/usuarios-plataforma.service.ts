@@ -25,7 +25,7 @@ import type {
 } from './dto/administrador-cuenta.dto.js';
 import type { CrearUsuarioPlataformaDto, RolPlataforma } from './dto/crear-usuario-plataforma.dto.js';
 import type { ListarUsuariosDto } from './dto/listar-usuarios.dto.js';
-import type { UsuariosPaginadosDto } from './dto/usuarios-paginados-response.dto.js';
+import type { UsuariosPaginadosDto, ResumenUsuariosDto } from './dto/usuarios-paginados-response.dto.js';
 import type { EliminarUsuarioDto } from './dto/eliminar-usuario.dto.js';
 import type { TransferirAdministracionDto } from './dto/transferir-administracion.dto.js';
 import type { UsuarioAuditoriaResponseDto } from './dto/usuario-auditoria-response.dto.js';
@@ -413,12 +413,11 @@ export class UsuariosPlataformaService {
   /**
    * Bandeja paginada de la plataforma · `GET /plataforma/usuarios`.
    *
-   * Contrato (F8 / T-81): `200` con `{ datos, total, pagina, porPagina, resumen }`.
+   * Contrato (F8 / T-81): `200` con `{ datos, total, pagina, porPagina }`.
    * - Solo `ADMINISTRADOR` (D05), aprobado por `RolesGuard` + `@Roles`.
    * - `total` es el tamaño del conjunto FILTRADO: es lo que permite calcular
-   *   páginas sin traer las filas.
-   * - `resumen` son los KPI de TODA la plataforma (tarjetas de la pantalla): con
-   *   paginación de servidor, contarlos sobre `datos` mentiría.
+   *   páginas sin traer las filas. Los KPI de la plataforma NO viajan aquí: los
+   *   sirve `obtenerResumenUsuarios` en su propia ruta.
    * - Orden: `creado_at DESC` con `id ASC` como desempate. El segundo criterio no
    *   es cosmético: dos cuentas dadas de alta en el mismo milisegundo podían
    *   intercambiarse entre páginas y una fila se veía dos veces o desaparecía.
@@ -426,8 +425,8 @@ export class UsuariosPlataformaService {
    * El `select` es explícito a propósito: `password_hash`, `token_version` y
    * `cedula` no se leen, así que no hay forma de que se cuelen en la respuesta.
    *
-   * Todo va en un solo `$transaction` de array: la página, su total y los KPI son
-   * una foto consistente y se paga un único viaje a la base en vez de seis.
+   * Todo va en un solo `$transaction` de array: la página y su total son una
+   * foto consistente y se paga un único viaje a la base en vez de dos.
    */
   async obtenerTodosLosUsuarios(
     filtros: ListarUsuariosDto = {},
@@ -445,7 +444,12 @@ export class UsuariosPlataformaService {
     // navegador, así que `total` y las páginas cuentan lo mismo que se ve.
     const where: Prisma.UsuarioWhereInput = {
       ...(estado === 'TODOS' ? {} : { estadoCuenta: estado }),
-      ...(rol ? { usuarioRoles: { some: { rol: { nombre: rol } } } } : {}),
+      // Solo vínculos VIGENTES: `usuario_roles.estado = 'INACTIVO'` significa rol
+      // revocado (el JWT y el menú también lo excluyen), así que filtrar por rol
+      // no puede devolver cuentas que ya no lo tienen.
+      ...(rol
+        ? { usuarioRoles: { some: { estado: 'ACTIVO', rol: { nombre: rol } } } }
+        : {}),
       ...(busqueda
         ? {
             OR: [
@@ -459,50 +463,34 @@ export class UsuariosPlataformaService {
         : {}),
     };
 
-    const [total, usuarios, activos, suspendidos, vinculos, catalogo] =
-      await this.prisma.$transaction([
-        this.prisma.usuario.count({ where }),
-        this.prisma.usuario.findMany({
-          where,
-          orderBy: [{ creadoAt: 'desc' }, { id: 'asc' }],
-          skip: (pagina - 1) * porPagina,
-          take: porPagina,
-          select: {
-            id: true,
-            nombreCompleto: true,
-            correo: true,
-            telefono: true,
-            estadoCuenta: true,
-            creadoAt: true,
-            usuarioRoles: {
-              select: {
-                rol: {
-                  select: { nombre: true },
-                },
+    const [total, usuarios] = await this.prisma.$transaction([
+      this.prisma.usuario.count({ where }),
+      this.prisma.usuario.findMany({
+        where,
+        orderBy: [{ creadoAt: 'desc' }, { id: 'asc' }],
+        skip: (pagina - 1) * porPagina,
+        take: porPagina,
+        select: {
+          id: true,
+          nombreCompleto: true,
+          correo: true,
+          telefono: true,
+          estadoCuenta: true,
+          creadoAt: true,
+          // La columna ROLES enseña los roles que la cuenta EJERCE hoy; el
+          // modal de roles (`GET /:id/roles`) sí lista cada vínculo con su
+          // estado, que es donde el administrador necesita ver los revocados.
+          usuarioRoles: {
+            where: { estado: 'ACTIVO' },
+            select: {
+              rol: {
+                select: { nombre: true },
               },
             },
           },
-        }),
-        this.prisma.usuario.count({ where: { estadoCuenta: 'ACTIVO' } }),
-        this.prisma.usuario.count({ where: { estadoCuenta: 'SUSPENDIDO' } }),
-        // Un renglón por par (rol, cuenta): así el conteo por rol es de CUENTAS
-        // distintas y no de vínculos, sin necesitar `COUNT(DISTINCT ...)`.
-        this.prisma.usuarioRol.groupBy({
-          by: ['rolId', 'usuarioId'],
-          _count: { _all: true },
-        }),
-        this.prisma.rol.findMany({ select: { id: true, nombre: true } }),
-      ]);
-
-    const nombrePorRolId = new Map(catalogo.map((fila) => [fila.id, fila.nombre]));
-    const porRol: Record<string, number> = Object.fromEntries(
-      ROLES_KPI.map((nombre) => [nombre, 0]),
-    );
-
-    for (const fila of vinculos) {
-      const nombre = nombrePorRolId.get(fila.rolId);
-      if (nombre && nombre in porRol) porRol[nombre] += 1;
-    }
+        },
+      }),
+    ]);
 
     return {
       datos: usuarios.map((usuario) => ({
@@ -517,10 +505,52 @@ export class UsuariosPlataformaService {
       total,
       pagina,
       porPagina,
-      // La cuenta solo puede estar ACTIVA o SUSPENDIDA: la suma es el total sin
-      // pagar una séptima consulta.
-      resumen: { total: activos + suspendidos, activos, suspendidos, porRol },
     };
+  }
+
+  /**
+   * KPI de la bandeja de plataforma · `GET /plataforma/usuarios/resumen`.
+   *
+   * Vive en su PROPIA ruta, no dentro del listado, por dos razones:
+   *
+   * 1. **Coherencia de contrato.** El listado paginado responde exactamente
+   *    `{ datos, total, pagina, porPagina }`: `total` describe el conjunto
+   *    FILTRADO y el KPI describe la plataforma ENTERA. Son dos preguntas
+   *    distintas y ahora son dos recursos distintos.
+   * 2. **Escalabilidad.** Los agregados (`count(*)` × 2 y un `groupBy` sobre
+   *    todos los vínculos) no se pagan en cada página ni en cada tecla del
+   *    buscador: la pantalla los pide una vez por visita y los invalida cuando
+   *    escribe (alta, suspensión, borrado o cambio de rol).
+   *
+   * `porRol` cuenta CUENTAS distintas con el rol VIGENTE: `estado='INACTIVO'`
+   * es un rol revocado y no debe inflar las tarjetas. Un renglón por par
+   * (rol, cuenta) evita necesitar `COUNT(DISTINCT ...)`.
+   */
+  async obtenerResumenUsuarios(): Promise<ResumenUsuariosDto> {
+    const [activos, suspendidos, vinculos, catalogo] = await this.prisma.$transaction([
+      this.prisma.usuario.count({ where: { estadoCuenta: 'ACTIVO' } }),
+      this.prisma.usuario.count({ where: { estadoCuenta: 'SUSPENDIDO' } }),
+      this.prisma.usuarioRol.groupBy({
+        by: ['rolId', 'usuarioId'],
+        where: { estado: 'ACTIVO' },
+        _count: { _all: true },
+      }),
+      this.prisma.rol.findMany({ select: { id: true, nombre: true } }),
+    ]);
+
+    const nombrePorRolId = new Map(catalogo.map((fila) => [fila.id, fila.nombre]));
+    const porRol: Record<string, number> = Object.fromEntries(
+      ROLES_KPI.map((nombre) => [nombre, 0]),
+    );
+
+    for (const fila of vinculos) {
+      const nombre = nombrePorRolId.get(fila.rolId);
+      if (nombre && nombre in porRol) porRol[nombre] += 1;
+    }
+
+    // La cuenta solo puede estar ACTIVA o SUSPENDIDA: la suma es el total sin
+    // pagar una quinta consulta.
+    return { total: activos + suspendidos, activos, suspendidos, porRol };
   }
 
   /**

@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { mensajeDeError } from '../utils/error-message.js';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable, tap, map, catchError } from 'rxjs';
+import { Observable, tap, map, catchError, of, finalize } from 'rxjs';
 import { API_URL } from '../constants/api.constants.js';
 
 /**
@@ -159,15 +159,15 @@ export interface ResumenUsuarios {
 /**
  * F8 / T-81 · contrato de `GET /plataforma/usuarios`.
  *
- * `datos` es la página pedida, `total` el tamaño del conjunto FILTRADO (de ahí
- * salen las páginas) y `resumen` los contadores de la plataforma entera.
+ * `datos` es la página pedida y `total` el tamaño del conjunto FILTRADO (de ahí
+ * salen las páginas). El KPI de la plataforma es otro recurso
+ * (`GET /plataforma/usuarios/resumen`): así no se paga en cada tecla.
  */
 export interface UsuariosPaginados {
   datos: UsuarioListResponse[];
   total: number;
   pagina: number;
   porPagina: number;
-  resumen: ResumenUsuarios;
 }
 
 /** Filtros que viajan al backend; `TODOS`/vacío se omiten de la URL. */
@@ -209,8 +209,11 @@ export class UsuariosService {
   readonly pagina = signal<number>(1);
   readonly porPagina = signal<number>(25);
   readonly resumen = signal<ResumenUsuarios>(RESUMEN_VACIO());
+  readonly resumenCargando = signal<boolean>(false);
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
+  /** La foto del KPI ya se pidió en esta visita (ver `cargarResumen`). */
+  private resumenPedido = false;
 
   /**
    * `GET /plataforma/usuarios?page&pageSize&busqueda&estado&rol`.
@@ -236,14 +239,12 @@ export class UsuariosService {
           total: respuesta?.total ?? 0,
           pagina: respuesta?.pagina ?? 1,
           porPagina: respuesta?.porPagina ?? 25,
-          resumen: respuesta?.resumen ?? RESUMEN_VACIO(),
         })),
         tap((respuesta) => {
           this.usuarios.set(respuesta.datos);
           this.total.set(respuesta.total);
           this.pagina.set(respuesta.pagina);
           this.porPagina.set(respuesta.porPagina);
-          this.resumen.set(respuesta.resumen);
           this.isLoading.set(false);
         }),
         catchError((err) => {
@@ -256,6 +257,43 @@ export class UsuariosService {
           throw err;
         }),
       );
+  }
+
+  /**
+   * KPI de la plataforma · `GET /plataforma/usuarios/resumen`.
+   *
+   * F8 / T-81 · es un recurso aparte del listado: son dos `count(*)` y un
+   * `groupBy` de TODOS los vínculos, y el listado se pide en cada tecla del
+   * buscador. La pantalla llama aquí en cada `cargar()`, pero esta caché de
+   * visita hace que la base los pague una sola vez.
+   *
+   * `invalidarResumen()` marca la foto como vieja: tras un alta, una suspensión,
+   * un borrado o un cambio de rol los contadores cambian y hay que releerlos.
+   * Si la petición falla, la foto se queda como estaba y la próxima visita
+   * reintenta (no se cachea un error).
+   */
+  cargarResumen(forzar = false): void {
+    if (this.resumenPedido && !forzar) return;
+    this.resumenPedido = true;
+    this.resumenCargando.set(true);
+
+    this.http
+      .get<ResumenUsuarios>(`${this.apiUrl}/resumen`)
+      .pipe(
+        map((respuesta) => respuesta ?? RESUMEN_VACIO()),
+        tap((resumen) => this.resumen.set(resumen)),
+        catchError(() => {
+          this.resumenPedido = false;
+          return of(null);
+        }),
+        finalize(() => this.resumenCargando.set(false)),
+      )
+      .subscribe();
+  }
+
+  /** La foto del KPI dejó de ser válida (se escribió en la bandeja). */
+  invalidarResumen(): void {
+    this.resumenPedido = false;
   }
 
   /**

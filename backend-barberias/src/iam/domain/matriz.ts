@@ -6,8 +6,8 @@
  * ruta). Los identificadores se copian tal cual, sin renombrar ni derivar, y su
  * orden en `RUTA_ACCION` es el de la tabla del documento.
  *
- * `RUTA_ACCION` cubre las 137 rutas del inventario (`POLITICA_DECLARADA` en
- * `test/permisos-matriz.spec.ts`): 78 con al menos una acción y 59 con `[]`
+ * `RUTA_ACCION` cubre las 138 rutas del inventario (`POLITICA_DECLARADA` en
+ * `test/permisos-matriz.spec.ts`): 79 con al menos una acción y 59 con `[]`
  * porque la matriz no las cubre —41 fuera de su alcance y las 12 brechas de
  * `RUTAS_BRECHA_MATRIZ`. El tipo `Accion` hace que un identificador inventado
  * no compile: el mapa no puede desviarse de la matriz por una errata.
@@ -86,6 +86,9 @@ export const RUTA_ACCION: Readonly<Record<string, readonly Accion[]>> = {
   'POST /plataforma/vinculaciones/:id/rechazar': [],
   'PATCH /plataforma/usuarios/:id/estado': ['plataforma.usuarios.gestionar'],
   'GET /plataforma/usuarios/': ['plataforma.usuarios.gestionar'],
+  // F8 / T-81 · KPI de la bandeja: leer los contadores es la misma capacidad
+  // que gestionar cuentas, no una acción nueva de la matriz.
+  'GET /plataforma/usuarios/resumen': ['plataforma.usuarios.gestionar'],
   'POST /plataforma/usuarios/': ['plataforma.usuarios.gestionar'],
   'GET /plataforma/usuarios/:id/auditoria': ['plataforma.auditoria.ver'],
   'GET /plataforma/usuarios/:id/roles': ['plataforma.usuarios.gestionar'],

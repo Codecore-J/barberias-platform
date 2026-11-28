@@ -286,17 +286,15 @@ describe('Plataforma · usuarios (E2E)', () => {
       .set(auth());
 
     expect(res.status).toBe(200);
-    // T-81 · sobre paginado `{ datos, total, pagina, porPagina }` + `resumen`
-    // de KPI (que mide la plataforma entera, no la página visible).
+    // T-81 · sobre paginado exacto: `{ datos, total, pagina, porPagina }`. El
+    // KPI no viaja aquí: tiene su propia ruta (`/resumen`) para no pagar los
+    // agregados de la plataforma en cada página ni en cada tecla del buscador.
     expect(res.body).toMatchObject({ pagina: 1, porPagina: 25 });
     expect(Array.isArray(res.body.datos)).toBe(true);
     expect(res.body.total).toBeGreaterThanOrEqual(1);
-    expect(res.body.resumen).toMatchObject({
-      total: expect.any(Number),
-      activos: expect.any(Number),
-      suspendidos: expect.any(Number),
-      porRol: expect.any(Object),
-    });
+    expect(Object.keys(res.body).sort()).toEqual(
+      ['datos', 'pagina', 'porPagina', 'total'].sort(),
+    );
 
     const creada = res.body.datos.find(
       (usuario: { id: string }) => usuario.id === usuarioCreadoId,
@@ -317,11 +315,11 @@ describe('Plataforma · usuarios (E2E)', () => {
   }, 60_000);
 
   /**
-   * T-81 · paginación real: `skip`/`take` en la base, `total` del conjunto
-   * filtrado y `resumen` de la plataforma entera. El contrato anterior devolvía
-   * las 68 cuentas de staging en cada visita a `/admin/usuarios`.
+   * T-81 · paginación real: `skip`/`take` en la base y `total` del conjunto
+   * filtrado. El contrato anterior devolvía las 68 cuentas de staging en cada
+   * visita a `/admin/usuarios`.
    */
-  it('3b · page/pageSize recortan en la base y el resumen no depende de la página', async () => {
+  it('3b · page/pageSize recortan en la base y los filtros mueven el total', async () => {
     const primera = await request(app.getHttpServer())
       .get(`${api}/plataforma/usuarios?page=1&pageSize=1`)
       .set(auth());
@@ -341,16 +339,6 @@ describe('Plataforma · usuarios (E2E)', () => {
     expect(primera.body.total).toBe(segunda.body.total);
     expect(primera.body.total).toBeGreaterThanOrEqual(2);
     expect(primera.body.datos.length).toBeLessThan(primera.body.total);
-
-    // El resumen son los KPI de TODA la plataforma: la misma cifra en las dos
-    // páginas, y como mínimo la cuenta creada en esta corrida.
-    expect(primera.body.resumen).toEqual(segunda.body.resumen);
-    expect(primera.body.resumen.total).toBeGreaterThanOrEqual(1);
-    // `porRol` trae las cuatro claves del catálogo, con 0 cuando no hay cuentas.
-    expect(Object.keys(primera.body.resumen.porRol).sort()).toEqual(
-      ['ADMINISTRADOR', 'ADMIN_BARBERIA', 'BARBERO', 'CLIENTE'].sort(),
-    );
-    expect(primera.body.resumen.porRol.ADMIN_BARBERIA).toBeGreaterThanOrEqual(1);
 
     // Filtros de servidor: el estado y el rol acotan el `total`, no solo la fila.
     const suspendidos = await request(app.getHttpServer())
@@ -382,6 +370,40 @@ describe('Plataforma · usuarios (E2E)', () => {
       .get(`${api}/plataforma/usuarios?pageSize=1000`)
       .set(auth());
     expect(excesivo.status).toBe(400);
+  }, 60_000);
+
+  /**
+   * T-81 · el KPI vive en su propia ruta: mide TODA la plataforma (no la página
+   * ni el filtro vigente) y es la fuente de las tarjetas de la pantalla.
+   */
+  it('3c · GET /resumen devuelve los KPI de la plataforma, ajenos a los filtros', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`${api}/plataforma/usuarios/resumen`)
+      .set(auth());
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      total: expect.any(Number),
+      activos: expect.any(Number),
+      suspendidos: expect.any(Number),
+      porRol: expect.any(Object),
+    });
+    // La cuenta ACTIVA creada en esta corrida entra en el total y en activos.
+    expect(res.body.total).toBeGreaterThanOrEqual(1);
+    expect(res.body.activos).toBeGreaterThanOrEqual(1);
+    expect(res.body.total).toBe(res.body.activos + res.body.suspendidos);
+    // `porRol` trae las cuatro claves del catálogo, con 0 cuando no hay cuentas.
+    expect(Object.keys(res.body.porRol).sort()).toEqual(
+      ['ADMINISTRADOR', 'ADMIN_BARBERIA', 'BARBERO', 'CLIENTE'].sort(),
+    );
+    expect(res.body.porRol.ADMIN_BARBERIA).toBeGreaterThanOrEqual(1);
+
+    // Un filtro del listado no puede mover el KPI: son dos recursos distintos.
+    const filtrado = await request(app.getHttpServer())
+      .get(`${api}/plataforma/usuarios/resumen?estado=SUSPENDIDO&page=3`)
+      .set(auth());
+    expect(filtrado.status).toBe(200);
+    expect(filtrado.body).toEqual(res.body);
   }, 60_000);
 
   it('4 · suspender SIN motivo → 422 MOTIVO_REQUERIDO y la cuenta no cambia', async () => {

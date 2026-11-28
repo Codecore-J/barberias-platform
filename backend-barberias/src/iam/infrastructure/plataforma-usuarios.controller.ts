@@ -24,7 +24,10 @@ import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { RolesGuard } from './roles.guard.js';
 import type { UsuarioAutenticado } from '../domain/jwt.interface.js';
 import type { UsuarioListResponseDto } from '../application/dto/usuario-list-response.dto.js';
-import type { UsuariosPaginadosDto } from '../application/dto/usuarios-paginados-response.dto.js';
+import type {
+  ResumenUsuariosDto,
+  UsuariosPaginadosDto,
+} from '../application/dto/usuarios-paginados-response.dto.js';
 import type { UsuarioAuditoriaResponseDto } from '../application/dto/usuario-auditoria-response.dto.js';
 
 /**
@@ -66,9 +69,10 @@ export class PlataformaUsuariosController {
    * (D05), por lo que `RolesGuard` la niega al resto por fail-closed.
    *
    * Respuesta:
-   * - 200 → `{ datos, total, pagina, porPagina, resumen }`. `datos` son como
-   *   mucho `pageSize` cuentas (tope 100) ordenadas por `fecha_registro DESC`;
-   *   `total` cuenta el conjunto filtrado y `resumen` los KPI de la plataforma.
+   * - 200 → `{ datos, total, pagina, porPagina }`. `datos` son como mucho
+   *   `pageSize` cuentas (tope 100) ordenadas por `fecha_registro DESC` y
+   *   `total` cuenta el conjunto filtrado. El KPI de las tarjetas es otro
+   *   recurso: `GET /plataforma/usuarios/resumen`.
    * - 400 con `pageSize` fuera de rango o un filtro que no existe en el catálogo.
    * - 401 sin sesión.
    * - 403 sin `ADMINISTRADOR`.
@@ -79,6 +83,26 @@ export class PlataformaUsuariosController {
   @HttpCode(HttpStatus.OK)
   obtenerTodosLosUsuarios(@Query() query: ListarUsuariosDto): Promise<UsuariosPaginadosDto> {
     return this.usuariosPlataformaService.obtenerTodosLosUsuarios(query);
+  }
+
+  /**
+   * GET /plataforma/usuarios/resumen · F8 / T-81
+   *
+   * KPI de TODA la plataforma para las tarjetas de la bandeja. Es un recurso
+   * aparte a propósito: el listado se pide en cada tecla del buscador y estos
+   * agregados (`count(*)` × 2 y un `groupBy` de todos los vínculos) se pagan una
+   * vez por visita, no una vez por página.
+   *
+   * - 200 → `{ total, activos, suspendidos, porRol }` (`porRol` solo cuenta
+   *   vínculos `ACTIVO`: un rol revocado no infla las tarjetas).
+   * - 401 sin sesión · 403 sin `ADMINISTRADOR`.
+   */
+  @Get('resumen')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMINISTRADOR')
+  @HttpCode(HttpStatus.OK)
+  obtenerResumen(): Promise<ResumenUsuariosDto> {
+    return this.usuariosPlataformaService.obtenerResumenUsuarios();
   }
 
   /**

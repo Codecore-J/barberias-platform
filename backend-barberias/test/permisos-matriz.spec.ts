@@ -222,6 +222,9 @@ const POLITICA_DECLARADA: Record<string, Rol[]> = {
   // Bandeja de usuarios de la plataforma: la lista completa de cuentas es del
   // ADMINISTRADOR global, igual que cambiarles el estado. La sede no la ve.
   'GET /plataforma/usuarios/': [ROL_ADMINISTRADOR],
+  // F8 / T-81: los KPI de la bandeja son la misma capacidad que gestionar
+  // cuentas; leerlos no es una acción nueva de la matriz.
+  'GET /plataforma/usuarios/resumen': [ROL_ADMINISTRADOR],
   // Alta administrativa de una cuenta: el ADMINISTRADOR elige el rol y, para los
   // roles de sede, la barbería. La sede no crea cuentas (eso es `personal`).
   'POST /plataforma/usuarios/': [ROL_ADMINISTRADOR],
@@ -808,8 +811,9 @@ describe('Matriz de permisos rol × ruta (E1-05)', () => {
   // `records` del flujo viejo quedan 131 × 4 = 524. F6 sumó la ruta del logo de
   // la sede (T-64) y la del catálogo de divisiones (T-66): 133 × 4 = 532.
   // F7 / T-72 suma el borrado real de una cuenta, T-73 la transferencia de
-  // administración de una sede y T-74 su resumen previo: 137 × 4 = 548.
-  expect(evaluaciones).toBe(548);
+  // administración de una sede y T-74 su resumen previo: 137. F8 / T-81 suma el
+  // KPI de la bandeja en su propia ruta: 138 × 4 = 552.
+  expect(evaluaciones).toBe(552);
 
     const resumen =
       desviaciones.length > 40

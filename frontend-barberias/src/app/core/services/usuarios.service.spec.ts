@@ -50,19 +50,21 @@ describe('UsuariosService · listado de plataforma', () => {
 
   /**
    * F8 / T-81 · la respuesta es un sobre paginado, no un array: el servicio
-   * guarda la página y además el `total` (páginas) y el `resumen` (KPI).
+   * guarda la página y su `total` (páginas). El KPI ya no viaja aquí.
    */
   const sobre = {
     datos: [ana, luis],
     total: 61,
     pagina: 2,
     porPagina: 25,
-    resumen: {
-      total: 61,
-      activos: 58,
-      suspendidos: 3,
-      porRol: { ADMINISTRADOR: 2, ADMIN_BARBERIA: 5, BARBERO: 20, CLIENTE: 40 },
-    },
+  };
+
+  /** KPI de la plataforma: `GET /plataforma/usuarios/resumen`. */
+  const kpi = {
+    total: 61,
+    activos: 58,
+    suspendidos: 3,
+    porRol: { ADMINISTRADOR: 2, ADMIN_BARBERIA: 5, BARBERO: 20, CLIENTE: 40 },
   };
 
   it('pide la página a /plataforma/usuarios y guarda el sobre completo', () => {
@@ -80,7 +82,6 @@ describe('UsuariosService · listado de plataforma', () => {
     expect(service.total()).toBe(61);
     expect(service.pagina()).toBe(2);
     expect(service.porPagina()).toBe(25);
-    expect(service.resumen().porRol['ADMIN_BARBERIA']).toBe(5);
     expect(service.isLoading()).toBe(false);
     expect(service.error()).toBeNull();
   });
@@ -107,6 +108,45 @@ describe('UsuariosService · listado de plataforma', () => {
     expect(peticion.request.params.get('rol')).toBe('CLIENTE');
 
     peticion.flush({ ...sobre, datos: [], total: 0, pagina: 1 });
+  });
+
+  it('el KPI se pide a su propia ruta, una sola vez por visita', () => {
+    service.cargarResumen();
+
+    const peticion = http.expectOne(`${USUARIOS_URL}/resumen`);
+    expect(peticion.request.method).toBe('GET');
+    peticion.flush(kpi);
+
+    expect(service.resumen()).toEqual(kpi);
+    expect(service.resumenCargando()).toBe(false);
+
+    // Cada tecla del buscador pasa por `cargar()`, que vuelve a pedir el KPI:
+    // la caché de la visita evita esos viajes.
+    service.cargarResumen();
+    http.expectNone(`${USUARIOS_URL}/resumen`);
+
+    // Escribir (alta, suspensión, borrado) invalida la foto y la vuelve a pedir.
+    service.invalidarResumen();
+    service.cargarResumen();
+    http.expectOne(`${USUARIOS_URL}/resumen`).flush(kpi);
+  });
+
+  it('si el KPI falla, la bandeja sigue viva y el reintento es posible', () => {
+    service.cargarResumen();
+    http
+      .expectOne(`${USUARIOS_URL}/resumen`)
+      .flush(
+        { codigo: 'PROHIBIDO', mensaje: 'No tienes permiso para acceder a este recurso.' },
+        { status: 403, statusText: 'Forbidden' },
+      );
+
+    expect(service.resumen().total).toBe(0);
+    expect(service.resumenCargando()).toBe(false);
+
+    // Como la foto no se pudo cargar, la siguiente visita la vuelve a pedir.
+    service.cargarResumen();
+    http.expectOne(`${USUARIOS_URL}/resumen`).flush(kpi);
+    expect(service.resumen()).toEqual(kpi);
   });
 
   it('un cuerpo ausente se pinta como página vacía, no rompe la tabla', () => {

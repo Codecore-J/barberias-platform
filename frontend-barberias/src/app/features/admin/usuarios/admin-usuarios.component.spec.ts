@@ -50,19 +50,11 @@ describe('AdminUsuariosComponent · Fase 2', () => {
    * contrato y NO recorta nada, para que el test diga si el componente pagina.
    */
   const obtenerUsuarios = vi.fn((_filtros: FiltrosUsuarios = {}) =>
-    of<UsuariosPaginados>({
-      datos: [],
-      total: 0,
-      pagina: 1,
-      porPagina: 25,
-      resumen: {
-        total: 0,
-        activos: 0,
-        suspendidos: 0,
-        porRol: { ADMINISTRADOR: 0, ADMIN_BARBERIA: 0, BARBERO: 0, CLIENTE: 0 },
-      },
-    }),
+    of<UsuariosPaginados>({ datos: [], total: 0, pagina: 1, porPagina: 25 }),
   );
+  // F8 / T-81 · el KPI tiene su propia ruta y su propia caché de visita.
+  const cargarResumen = vi.fn();
+  const invalidarResumen = vi.fn();
   const listarBarberias = vi.fn(() => of([{ id: 'sede-1', nombre: 'Sede A E401' }]));
   const crearUsuario = vi.fn();
   const obtenerRolesUsuario = vi.fn(() => of<RolDeUsuario[]>([]));
@@ -85,6 +77,8 @@ describe('AdminUsuariosComponent · Fase 2', () => {
     isLoading.set(false);
     error.set(null);
     obtenerUsuarios.mockClear();
+    cargarResumen.mockClear();
+    invalidarResumen.mockClear();
     listarBarberias.mockClear();
     crearUsuario.mockReset();
     obtenerRolesUsuario.mockClear();
@@ -109,6 +103,9 @@ describe('AdminUsuariosComponent · Fase 2', () => {
             isLoading,
             error,
             obtenerUsuarios,
+            cargarResumen,
+            invalidarResumen,
+            resumenCargando: signal(false),
             listarBarberias,
             crearUsuario,
             obtenerRolesUsuario,
@@ -322,6 +319,20 @@ describe('AdminUsuariosComponent · Fase 2', () => {
     expect(botonEliminar()?.disabled).toBe(false);
   });
 
+  it('el KPI va en su propia ruta: se pide al cargar y se invalida al escribir', () => {
+    // El constructor se suscribe a la URL y esa primera petición ya pide la foto.
+    expect(cargarResumen).toHaveBeenCalled();
+
+    cargarResumen.mockClear();
+    invalidarResumen.mockClear();
+
+    component.recargar();
+
+    // Refrescar (o cualquier escritura) invalida la caché y vuelve a pedirla.
+    expect(invalidarResumen).toHaveBeenCalledTimes(1);
+    expect(cargarResumen).toHaveBeenCalledTimes(1);
+  });
+
   it('el modal muestra el resumen del borrado que devuelve el backend', () => {
     usuarios.set([ana]);
     previsualizarEliminacion.mockReturnValue(of(preview));
@@ -412,10 +423,11 @@ describe('AdminUsuariosComponent · Fase 2', () => {
     await router.navigate([], { queryParams: { page: 2 } });
     fixture.detectChanges();
 
-    // El componente NO trocea: pide `page=2` y pinta lo que llega.
-    expect(obtenerUsuarios).toHaveBeenLastCalledWith(
-      expect.objectContaining({ page: 2, pageSize: 25 }),
-    );
+    // El componente NO trocea: pide `page=2` y pinta lo que llega. El tamaño de
+    // página no se repite aquí: es del backend y el servicio lo omite mientras
+    // sea el defecto (`porPagina` de la respuesta manda).
+    expect(obtenerUsuarios).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }));
+    expect(obtenerUsuarios.mock.lastCall?.[0]).not.toHaveProperty('pageSize');
     expect(component.usuariosPagina()).toHaveLength(30);
     expect(component.totalPaginas()).toBe(3);
     expect(component.paginasVisibles()).toEqual([1, 2, 3]);
