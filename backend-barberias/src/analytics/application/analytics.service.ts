@@ -409,78 +409,123 @@ export class AnalyticsService {
       select: { id: true, nombre: true, estado: true },
     });
 
-    const sedes = [];
-    for (const barberia of barberias) {
-      const reservas = await this.prisma.reserva.findMany({
-        where: {
-          barberiaId: barberia.id,
-          fechaCita: { gte: inicio, lte: fin },
-        },
-        select: { estado: true, recordatorioEnviado: true },
-      });
+    // F8 · rendimiento (N+1 del overview).
+    //
+    // Antes, por cada sede se leían sus reservas TRES veces —totales, cálculo
+    // global de inasistencias y cálculo global de cancelaciones— y sus pagos una
+    // vez. Con 13 sedes eran 54 consultas en serie; con 50 pasaban de 200, y el
+    // coste crecía con cada sede nueva. Ahora la base agrega y el servicio solo
+    // reparte:
+    //   1. las sedes del alcance (la consulta de arriba),
+    //   2. las reservas del periodo agrupadas por sede, estado y recordatorio,
+    //   3. los pagos no anulados agrupados por sede.
+    // El número de consultas es constante (3) sea cual sea el número de sedes.
+    const idsDeSedes = barberias.map((b) => b.id);
 
-      const totalCitas = reservas.length;
-      const citasCompletadas = reservas.filter((r) => r.estado === 'COMPLETADA' || r.estado === 'ATENDIDA').length;
-      const inasistencias = reservas.filter((r) => r.estado === 'INASISTENCIA' || r.estado === 'NO_PRESENTADO').length;
-      const cerradas = reservas.filter((r) => ['COMPLETADA', 'ATENDIDA', 'CANCELADA', 'INASISTENCIA', 'NO_PRESENTADO', 'RECHAZADA'].includes(r.estado)).length;
-      const tasaInasistencia = cerradas > 0 ? Number(((inasistencias / cerradas) * 100).toFixed(2)) : 0;
-      const recordatoriosEnviados = reservas.filter((r) => r.recordatorioEnviado).length;
-
-      const pagos = await this.prisma.pago.findMany({
+    const [conteos, ingresosPorSede] = await Promise.all([
+      this.prisma.reserva.groupBy({
+        by: ['barberiaId', 'estado', 'recordatorioEnviado'],
+        where: { barberiaId: { in: idsDeSedes }, fechaCita: { gte: inicio, lte: fin } },
+        _count: { _all: true },
+      }),
+      this.prisma.pago.groupBy({
+        by: ['barberiaId'],
         where: {
-          reserva: { barberiaId: barberia.id },
+          // El conjunto se acota por la sede de la RESERVA (lo mismo que leía el
+          // código anterior) y se agrupa por `pagos.barberia_id`, la copia de la
+          // sede del cobro que escribe la misma transacción y que tiene índice
+          // `idx_pagos_barberia_fecha`.
+          reserva: { barberiaId: { in: idsDeSedes } },
           estadoPago: { not: 'ANULADO' },
           registradoAt: { gte: inicio, lte: fin },
         },
-        select: { monto: true },
-      });
-      const ingresos = pagos.reduce((sum, p) => sum + Number(p.monto || 0), 0);
+        _sum: { monto: true },
+      }),
+    ]);
 
-      sedes.push({
+    const ESTADOS_CERRADOS = [
+      'COMPLETADA',
+      'ATENDIDA',
+      'CANCELADA',
+      'INASISTENCIA',
+      'NO_PRESENTADO',
+      'RECHAZADA',
+    ];
+    const ESTADOS_INASISTENCIA = ['INASISTENCIA', 'NO_PRESENTADO'];
+
+    interface RecuentoDeSede {
+      total: number;
+      completadas: number;
+      inasistencias: number;
+      cerradas: number;
+      canceladas: number;
+      recordatorios: number;
+    }
+
+    const recuentos = new Map<string, RecuentoDeSede>();
+    for (const fila of conteos) {
+      const cantidad = fila._count._all;
+      const recuento = recuentos.get(fila.barberiaId) ?? {
+        total: 0,
+        completadas: 0,
+        inasistencias: 0,
+        cerradas: 0,
+        canceladas: 0,
+        recordatorios: 0,
+      };
+
+      recuento.total += cantidad;
+      if (fila.estado === 'COMPLETADA' || fila.estado === 'ATENDIDA') recuento.completadas += cantidad;
+      if (ESTADOS_INASISTENCIA.includes(fila.estado)) recuento.inasistencias += cantidad;
+      if (ESTADOS_CERRADOS.includes(fila.estado)) recuento.cerradas += cantidad;
+      if (fila.estado === 'CANCELADA') recuento.canceladas += cantidad;
+      if (fila.recordatorioEnviado) recuento.recordatorios += cantidad;
+
+      recuentos.set(fila.barberiaId, recuento);
+    }
+
+    const ingresosPorSedeId = new Map(
+      ingresosPorSede.map((fila) => [fila.barberiaId, Number(fila._sum.monto ?? 0)]),
+    );
+
+    const sedes = barberias.map((barberia) => {
+      const recuento = recuentos.get(barberia.id);
+      const ingresos = ingresosPorSedeId.get(barberia.id) ?? 0;
+
+      return {
         barberiaId: barberia.id,
         nombre: barberia.nombre,
         activa: barberia.estado === 'ACTIVO',
         ingresos: Number(ingresos.toFixed(2)),
-        totalCitas,
-        citasCompletadas,
-        tasaInasistencia,
-        recordatoriosEnviados,
-      });
-    }
+        totalCitas: recuento?.total ?? 0,
+        citasCompletadas: recuento?.completadas ?? 0,
+        tasaInasistencia:
+          recuento && recuento.cerradas > 0
+            ? Number(((recuento.inasistencias / recuento.cerradas) * 100).toFixed(2))
+            : 0,
+        recordatoriosEnviados: recuento?.recordatorios ?? 0,
+      };
+    });
 
     const ingresosConsolidados = sedes.reduce((sum, s) => sum + s.ingresos, 0);
     const totalCitasGlobal = sedes.reduce((sum, s) => sum + s.totalCitas, 0);
-    const _inasistenciasGlobal = sedes.reduce((sum) => {
-      // approximate from tasa * cerradas not stored; better recompute
-      return sum;
-    }, 0);
-    // compute properly
-    let totalInasistencias = 0;
-    let totalCerradas = 0;
-    for (const barberia of barberias) {
-      const reservas = await this.prisma.reserva.findMany({
-        where: {
-          barberiaId: barberia.id,
-          fechaCita: { gte: inicio, lte: fin },
-        },
-        select: { estado: true },
-      });
-      totalInasistencias += reservas.filter((r) => r.estado === 'INASISTENCIA' || r.estado === 'NO_PRESENTADO').length;
-      totalCerradas += reservas.filter((r) => ['COMPLETADA', 'ATENDIDA', 'CANCELADA', 'INASISTENCIA', 'NO_PRESENTADO', 'RECHAZADA'].includes(r.estado)).length;
-    }
-    const tasaGlobalInasistencia = totalCerradas > 0 ? Number(((totalInasistencias / totalCerradas) * 100).toFixed(2)) : 0;
-    let totalCanceladas = 0;
-    for (const barberia of barberias) {
-      const reservas = await this.prisma.reserva.findMany({
-        where: {
-          barberiaId: barberia.id,
-          fechaCita: { gte: inicio, lte: fin },
-        },
-        select: { estado: true },
-      });
-      totalCanceladas += reservas.filter((r) => r.estado === 'CANCELADA').length;
-    }
-    const tasaGlobalCancelacion = totalCerradas > 0 ? Number(((totalCanceladas / totalCerradas) * 100).toFixed(2)) : 0;
+
+    // Las tasas globales usan el mismo denominador que la tasa por sede: los
+    // estados CERRADOS del periodo en las sedes del alcance.
+    const totalCerradas = barberias.reduce((sum, b) => sum + (recuentos.get(b.id)?.cerradas ?? 0), 0);
+    const totalInasistencias = barberias.reduce(
+      (sum, b) => sum + (recuentos.get(b.id)?.inasistencias ?? 0),
+      0,
+    );
+    const totalCanceladas = barberias.reduce(
+      (sum, b) => sum + (recuentos.get(b.id)?.canceladas ?? 0),
+      0,
+    );
+
+    const tasaGlobalInasistencia =
+      totalCerradas > 0 ? Number(((totalInasistencias / totalCerradas) * 100).toFixed(2)) : 0;
+    const tasaGlobalCancelacion =
+      totalCerradas > 0 ? Number(((totalCanceladas / totalCerradas) * 100).toFixed(2)) : 0;
 
     return {
       periodo: {

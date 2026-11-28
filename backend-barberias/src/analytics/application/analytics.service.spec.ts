@@ -26,6 +26,8 @@ describe('AnalyticsService', () => {
     prisma = {
       reserva: {
         findMany: vi.fn(),
+        // F8 · el overview agrega por sede en la base con `groupBy`.
+        groupBy: vi.fn(),
         count: vi.fn(),
       },
       listaEspera: {
@@ -33,6 +35,8 @@ describe('AnalyticsService', () => {
       },
       pago: {
         findMany: vi.fn(),
+        // F8 · ingresos por sede en una sola consulta.
+        groupBy: vi.fn(),
         // T-15 · el home de plataforma agrega el día con `aggregate`.
         aggregate: vi.fn(),
       },
@@ -274,11 +278,11 @@ describe('AnalyticsService', () => {
     prisma.barberia = {
       findMany: vi.fn().mockResolvedValue([{ id: 'shop-1', nombre: 'Sede 1', estado: 'ACTIVO' }]),
     };
-    prisma.reserva.findMany.mockResolvedValue([
-      { estado: 'COMPLETADA', recordatorioEnviado: true },
-      { estado: 'INASISTENCIA', recordatorioEnviado: false },
+    prisma.reserva.groupBy.mockResolvedValue([
+      { barberiaId: 'shop-1', estado: 'COMPLETADA', recordatorioEnviado: true, _count: { _all: 1 } },
+      { barberiaId: 'shop-1', estado: 'INASISTENCIA', recordatorioEnviado: false, _count: { _all: 1 } },
     ]);
-    prisma.pago.findMany.mockResolvedValue([{ monto: 200 }]);
+    prisma.pago.groupBy.mockResolvedValue([{ barberiaId: 'shop-1', _sum: { monto: 200 } }]);
     const user = { id: 'u1', roles: ['ADMIN_BARBERIA'], rolesDetallados: [] };
     const result = await service.getShopsOverview(user, '2026-10-01', '2026-10-31', false);
     expect(result.sedes.length).toBe(1);
@@ -312,10 +316,10 @@ describe('AnalyticsService', () => {
         sedes.filter((s) => where?.id?.in?.includes(s.id)),
       ),
     };
-    prisma.reserva.findMany.mockResolvedValue([
-      { estado: 'COMPLETADA', recordatorioEnviado: true },
+    prisma.reserva.groupBy.mockResolvedValue([
+      { barberiaId: 'shop-1', estado: 'COMPLETADA', recordatorioEnviado: true, _count: { _all: 1 } },
     ]);
-    prisma.pago.findMany.mockResolvedValue([{ monto: 100 }]);
+    prisma.pago.groupBy.mockResolvedValue([{ barberiaId: 'shop-1', _sum: { monto: 100 } }]);
 
     const user = { id: 'u-multi', roles: ['ADMIN_BARBERIA'], rolesDetallados: [] };
     const result = await service.getShopsOverview(user, '2026-10-01', '2026-10-31', false);
@@ -346,8 +350,8 @@ describe('AnalyticsService', () => {
         ];
       }),
     };
-    prisma.reserva.findMany.mockResolvedValue([]);
-    prisma.pago.findMany.mockResolvedValue([]);
+    prisma.reserva.groupBy.mockResolvedValue([]);
+    prisma.pago.groupBy.mockResolvedValue([]);
     const user = { id: 'admin', roles: ['ADMINISTRADOR'], rolesDetallados: [] };
     const result = await service.getShopsOverview(user, '2026-10-01', '2026-10-31', true);
 
@@ -364,8 +368,8 @@ describe('AnalyticsService', () => {
         { id: 'shop-2', nombre: 'Sede 2', estado: 'ACTIVO' },
       ]),
     };
-    prisma.reserva.findMany.mockResolvedValue([]);
-    prisma.pago.findMany.mockResolvedValue([]);
+    prisma.reserva.groupBy.mockResolvedValue([]);
+    prisma.pago.groupBy.mockResolvedValue([]);
     const user = { id: 'admin', roles: ['ADMINISTRADOR'], rolesDetallados: [] };
     const result = await service.getShopsOverview(user, '2026-10-01', '2026-10-31', true);
     expect(result.sedes.length).toBe(2);
@@ -378,8 +382,10 @@ describe('AnalyticsService', () => {
     prisma.barberia = {
       findMany: vi.fn().mockResolvedValue([{ id: 'shop-1', nombre: 'Sede 1', estado: 'ACTIVO' }]),
     };
-    prisma.reserva.findMany.mockResolvedValue([{ estado: 'COMPLETADA', recordatorioEnviado: true }]);
-    prisma.pago.findMany.mockResolvedValue([{ monto: 500 }]);
+    prisma.reserva.groupBy.mockResolvedValue([
+      { barberiaId: 'shop-1', estado: 'COMPLETADA', recordatorioEnviado: true, _count: { _all: 1 } },
+    ]);
+    prisma.pago.groupBy.mockResolvedValue([{ barberiaId: 'shop-1', _sum: { monto: 500 } }]);
 
     const user = { id: 'u1', roles: ['ADMIN_BARBERIA'], rolesDetallados: [] };
     const primero = await service.getShopsOverview(user, '2026-10-01', '2026-10-31', false);
@@ -392,14 +398,14 @@ describe('AnalyticsService', () => {
 
     prisma.usuarioRol.findMany.mockClear();
     prisma.barberia.findMany.mockClear();
-    prisma.reserva.findMany.mockClear();
-    prisma.pago.findMany.mockClear();
+    prisma.reserva.groupBy.mockClear();
+    prisma.pago.groupBy.mockClear();
 
     const segundo = await service.getShopsOverview(user, '2026-10-01', '2026-10-31', false);
 
     expect(segundo).toEqual(primero);
     expect(prisma.usuarioRol.findMany).not.toHaveBeenCalled();
-    expect(prisma.reserva.findMany).not.toHaveBeenCalled();
+    expect(prisma.reserva.groupBy).not.toHaveBeenCalled();
   });
 
   it('getShopsOverview: la clave incluye al usuario para no filtrar sedes ajenas', async () => {
@@ -407,8 +413,8 @@ describe('AnalyticsService', () => {
     prisma.barberia = {
       findMany: vi.fn().mockResolvedValue([{ id: 'shop-1', nombre: 'Sede 1', estado: 'ACTIVO' }]),
     };
-    prisma.reserva.findMany.mockResolvedValue([]);
-    prisma.pago.findMany.mockResolvedValue([]);
+    prisma.reserva.groupBy.mockResolvedValue([]);
+    prisma.pago.groupBy.mockResolvedValue([]);
 
     await service.getShopsOverview({ id: 'u1', roles: [], rolesDetallados: [] }, '2026-10-01', '2026-10-31', false);
     await service.getShopsOverview({ id: 'u2', roles: [], rolesDetallados: [] }, '2026-10-01', '2026-10-31', false);
@@ -418,5 +424,101 @@ describe('AnalyticsService', () => {
       'analytics:overview:u1:2026-10-01-2026-10-31',
       'analytics:overview:u2:2026-10-01-2026-10-31',
     ]);
+  });
+
+  /**
+   * F8 · el overview de sedes hacía 4N+2 consultas: por cada sede leía sus
+   * reservas TRES veces (totales, inasistencias y cancelaciones) y sus pagos una
+   * vez. Con 13 sedes eran 54 consultas y con 50 pasaban de 200, todas en serie
+   * dentro del bucle.
+   *
+   * La agregación tiene que ocurrir en la base con DOS `groupBy` —reservas por
+   * sede/estado/recordatorio y pagos por sede—: así el número de consultas deja
+   * de depender de cuántas sedes haya.
+   */
+  it('el overview agrega en la base: consultas constantes aunque haya 25 sedes', async () => {
+    const sedes = Array.from({ length: 25 }, (_, i) => ({
+      id: `shop-${i}`,
+      nombre: `Sede ${i}`,
+      estado: 'ACTIVO',
+    }));
+    prisma.barberia = { findMany: vi.fn().mockResolvedValue(sedes) };
+    prisma.reserva.groupBy.mockResolvedValue([]);
+    prisma.pago.groupBy.mockResolvedValue([]);
+
+    await service.getShopsOverview(
+      { id: 'admin', roles: ['ADMINISTRADOR'], rolesDetallados: [] },
+      '2026-10-01',
+      '2026-10-31',
+      true,
+    );
+
+    // Ni una lectura por sede: la base agrega y el servicio solo reparte.
+    expect(prisma.reserva.findMany).not.toHaveBeenCalled();
+    expect(prisma.pago.findMany).not.toHaveBeenCalled();
+    expect(prisma.reserva.groupBy).toHaveBeenCalledTimes(1);
+    expect(prisma.pago.groupBy).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * F8 · el arreglo de rendimiento no puede cambiar las cifras. Las tasas
+   * globales se calculan sobre los MISMOS estados cerrados que antes y un pago
+   * de una sede no se atribuye a otra.
+   */
+  it('el overview saca de los recuentos las mismas tasas y totales por sede', async () => {
+    prisma.barberia = {
+      findMany: vi.fn().mockResolvedValue([
+        { id: 'shop-1', nombre: 'Sede 1', estado: 'ACTIVO' },
+        { id: 'shop-2', nombre: 'Sede 2', estado: 'INACTIVO' },
+      ]),
+    };
+    prisma.reserva.groupBy.mockResolvedValue([
+      { barberiaId: 'shop-1', estado: 'COMPLETADA', recordatorioEnviado: true, _count: { _all: 2 } },
+      { barberiaId: 'shop-1', estado: 'INASISTENCIA', recordatorioEnviado: false, _count: { _all: 1 } },
+      { barberiaId: 'shop-1', estado: 'CANCELADA', recordatorioEnviado: false, _count: { _all: 1 } },
+      { barberiaId: 'shop-2', estado: 'PENDIENTE', recordatorioEnviado: false, _count: { _all: 3 } },
+    ]);
+    prisma.pago.groupBy.mockResolvedValue([
+      { barberiaId: 'shop-1', _sum: { monto: 150.5 } },
+      { barberiaId: 'shop-2', _sum: { monto: 20 } },
+    ]);
+
+    const result = await service.getShopsOverview(
+      { id: 'admin', roles: ['ADMINISTRADOR'], rolesDetallados: [] },
+      '2026-10-01',
+      '2026-10-31',
+      true,
+    );
+
+    expect(result.sedes).toEqual([
+      {
+        barberiaId: 'shop-1',
+        nombre: 'Sede 1',
+        activa: true,
+        ingresos: 150.5,
+        totalCitas: 4,
+        citasCompletadas: 2,
+        tasaInasistencia: 25,
+        recordatoriosEnviados: 2,
+      },
+      {
+        barberiaId: 'shop-2',
+        nombre: 'Sede 2',
+        activa: false,
+        ingresos: 20,
+        totalCitas: 3,
+        citasCompletadas: 0,
+        tasaInasistencia: 0,
+        recordatoriosEnviados: 0,
+      },
+    ]);
+    // Cerradas: 4 de shop-1 (+0 de shop-2, que solo tiene PENDIENTE).
+    // Inasistencias 1/4 y canceladas 1/4.
+    expect(result.totalesGlobales).toEqual({
+      ingresosConsolidados: 170.5,
+      totalCitas: 7,
+      tasaGlobalInasistencia: 25,
+      tasaGlobalCancelacion: 25,
+    });
   });
 });
