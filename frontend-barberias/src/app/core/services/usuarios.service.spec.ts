@@ -48,34 +48,80 @@ describe('UsuariosService · listado de plataforma', () => {
 
   afterEach(() => http.verify());
 
-  it('pide la lista a /plataforma/usuarios y la guarda en la señal', () => {
+  /**
+   * F8 / T-81 · la respuesta es un sobre paginado, no un array: el servicio
+   * guarda la página y además el `total` (páginas) y el `resumen` (KPI).
+   */
+  const sobre = {
+    datos: [ana, luis],
+    total: 61,
+    pagina: 2,
+    porPagina: 25,
+    resumen: {
+      total: 61,
+      activos: 58,
+      suspendidos: 3,
+      porRol: { ADMINISTRADOR: 2, ADMIN_BARBERIA: 5, BARBERO: 20, CLIENTE: 40 },
+    },
+  };
+
+  it('pide la página a /plataforma/usuarios y guarda el sobre completo', () => {
     let resultado: unknown = 'sin asignar';
 
-    service.obtenerUsuarios().subscribe((usuarios) => (resultado = usuarios));
+    service.obtenerUsuarios({ page: 2 }).subscribe((pagina) => (resultado = pagina));
 
-    const peticion = http.expectOne(USUARIOS_URL);
+    const peticion = http.expectOne(`${USUARIOS_URL}?page=2`);
     expect(peticion.request.method).toBe('GET');
-    peticion.flush([ana, luis]);
+    peticion.flush(sobre);
 
     // El orden es el del backend (`fecha_registro DESC`): no se reordena aquí.
-    expect(resultado).toEqual([ana, luis]);
+    expect(resultado).toEqual(sobre);
     expect(service.usuarios()).toEqual([ana, luis]);
+    expect(service.total()).toBe(61);
+    expect(service.pagina()).toBe(2);
+    expect(service.porPagina()).toBe(25);
+    expect(service.resumen().porRol['ADMIN_BARBERIA']).toBe(5);
     expect(service.isLoading()).toBe(false);
     expect(service.error()).toBeNull();
   });
 
-  it('un cuerpo ausente se pinta como lista vacía, no rompe la tabla', () => {
+  it('los filtros viajan como query params y el estado por defecto no ensucia la URL', () => {
+    service
+      .obtenerUsuarios({
+        page: 1,
+        pageSize: 25,
+        busqueda: '  ana@test.com ',
+        estado: 'SUSPENDIDO',
+        rol: 'CLIENTE',
+      })
+      .subscribe();
+
+    const peticion = http.expectOne(
+      (req) => req.url === USUARIOS_URL,
+    );
+    // `page=1` y `pageSize=25` son el defecto: no viajan.
+    expect(peticion.request.params.get('page')).toBeNull();
+    expect(peticion.request.params.get('pageSize')).toBeNull();
+    expect(peticion.request.params.get('busqueda')).toBe('ana@test.com');
+    expect(peticion.request.params.get('estado')).toBe('SUSPENDIDO');
+    expect(peticion.request.params.get('rol')).toBe('CLIENTE');
+
+    peticion.flush({ ...sobre, datos: [], total: 0, pagina: 1 });
+  });
+
+  it('un cuerpo ausente se pinta como página vacía, no rompe la tabla', () => {
     service.obtenerUsuarios().subscribe();
 
     http.expectOne(USUARIOS_URL).flush(null);
 
     expect(service.usuarios()).toEqual([]);
+    expect(service.total()).toBe(0);
     expect(service.isLoading()).toBe(false);
   });
 
-  it('un 403 deja el mensaje del contrato D40 y vacía la lista', () => {
+  it('un 403 deja el mensaje del contrato D40 y vacía la página', () => {
     service.obtenerUsuarios().subscribe();
-    http.expectOne(USUARIOS_URL).flush([ana]);
+    http.expectOne(USUARIOS_URL).flush(sobre);
 
     service.obtenerUsuarios().subscribe({ error: () => undefined });
 
