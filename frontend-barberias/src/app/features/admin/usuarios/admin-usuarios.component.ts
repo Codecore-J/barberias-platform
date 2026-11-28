@@ -1557,7 +1557,15 @@ export class AdminUsuariosComponent implements OnDestroy {
         estado: this.filtroEstado(),
         rol: this.filtroRol(),
       })
-      .subscribe({ error: () => undefined });
+      .subscribe({
+        next: () => {
+          // Borrar la última cuenta de la última página deja la vista vacía: se
+          // retrocede a la última página real en vez de enseñar una tabla en
+          // blanco que parece un fallo de carga.
+          if (this.pagina() > this.totalPaginas()) this.irAPagina(this.totalPaginas());
+        },
+        error: () => undefined,
+      });
   }
 
   limpiarFiltros(): void {
