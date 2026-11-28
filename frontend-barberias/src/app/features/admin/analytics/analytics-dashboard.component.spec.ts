@@ -256,4 +256,30 @@ describe('AnalyticsDashboardComponent — alcance visual (T-16)', () => {
     expect(texto()).toContain('No hay una sede activa seleccionada');
     expect(texto()).not.toContain('Todas las sedes');
   });
+
+  /**
+   * F8 / T-84 · QA2-08 · «Últimos 7 días» pedía 8 (hoy−7) y «Últimos 30», 31
+   * (hoy−30). Aquí se fija el rango que viaja al backend: N días son
+   * hoy−(N−1) … hoy, ambos extremos incluidos.
+   */
+  it('ROJO: «últimos 7 días» es hoy−6 .. hoy y «últimos 30», hoy−29 .. hoy', () => {
+    vi.useFakeTimers();
+
+    try {
+      vi.setSystemTime(new Date(2026, 10, 28, 10, 0, 0));
+
+      const { fixture } = montar(['ADMIN_BARBERIA'], 's1');
+      const componente = fixture.componentInstance;
+
+      componente.aplicarFiltroRapido('7');
+      expect(componente.desde).toBe('2026-11-22');
+      expect(componente.hasta).toBe('2026-11-28');
+
+      componente.aplicarFiltroRapido('30');
+      expect(componente.desde).toBe('2026-10-30');
+      expect(componente.hasta).toBe('2026-11-28');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

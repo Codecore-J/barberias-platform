@@ -10,6 +10,22 @@ import type { MetricasPlataformaHoyDto } from '../dto/metricas-plataforma-hoy.dt
 import { claveAnaliticasOverview, claveAnaliticasSede } from '../domain/cache-keys.js';
 import { construirCsvAnaliticas } from '../domain/analytics-csv.js';
 
+/**
+ * Rango ya resuelto, en las dos formas que necesitan las columnas.
+ *
+ * `inicioCalendario`/`finCalendario` son medianoches UTC (para DATE) y
+ * `inicio`/`fin` instantes reales de la sede con fin EXCLUSIVO (para TIMESTAMPTZ).
+ * `desde`/`hasta` son las etiquetas `YYYY-MM-DD` que se devuelven como periodo.
+ */
+export interface RangoAnaliticas {
+  desde: string;
+  hasta: string;
+  inicioCalendario: Date;
+  finCalendario: Date;
+  inicio: Date;
+  fin: Date;
+}
+
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
@@ -31,30 +47,30 @@ export class AnalyticsService {
     desde?: string,
     hasta?: string,
   ): Promise<AnaliticasSede> {
-    const { inicio, fin } = this.resolverRango(desde, hasta);
+    const rango = this.resolverRango(desde, hasta);
     const clave = claveAnaliticasSede(barberiaId, desde, hasta);
 
     const cacheado = await this.leerCache<AnaliticasSede>(clave);
     if (cacheado !== undefined) return cacheado;
 
-    const datos = await this.calcularShopAnalytics(barberiaId, inicio, fin);
+    const datos = await this.calcularShopAnalytics(barberiaId, rango);
     await this.escribirCache(clave, datos);
     return datos;
   }
 
   private async calcularShopAnalytics(
     barberiaId: string,
-    inicio: Date,
-    fin: Date,
+    rango: RangoAnaliticas,
   ): Promise<AnaliticasSede> {
 
-    // Reservations in period by fechaCita
+    // Reservations in period by fechaCita. `fecha_cita` es DATE: se compara con
+    // etiquetas de calendario (medianoches UTC), no con instantes de la sede.
     const reservas = await this.prisma.reserva.findMany({
       where: {
         barberiaId,
         fechaCita: {
-          gte: inicio,
-          lte: fin,
+          gte: rango.inicioCalendario,
+          lte: rango.finCalendario,
         },
       },
       select: {
@@ -87,9 +103,10 @@ export class AnalyticsService {
       where: {
         barberiaId,
         estado: 'NOTIFICADO',
+        // `actualizado_at` es TIMESTAMPTZ: ventana semiabierta de instantes.
         actualizadoAt: {
-          gte: inicio,
-          lte: fin,
+          gte: rango.inicio,
+          lt: rango.fin,
         },
       },
     });
@@ -103,9 +120,10 @@ export class AnalyticsService {
         estadoPago: {
           not: 'ANULADO',
         },
+        // El dinero se fecha en instantes reales de la sede.
         registradoAt: {
-          gte: inicio,
-          lte: fin,
+          gte: rango.inicio,
+          lt: rango.fin,
         },
       },
       select: {
@@ -163,8 +181,8 @@ export class AnalyticsService {
 
     return {
       periodo: {
-        desde: inicio.toISOString().split('T')[0],
-        hasta: fin.toISOString().split('T')[0],
+        desde: rango.desde,
+        hasta: rango.hasta,
       },
       resumenCitas: {
         total: reservas.length,
@@ -257,47 +275,71 @@ export class AnalyticsService {
     };
   }
 
-  private parseDate(s: string): Date {
-    const d = new Date(s + 'T00:00:00');
-    if (isNaN(d.getTime())) {
-      throw new BadRequestException('Formato de fecha inválido');
-    }
-    return d;
-  }
-
-  private addDays(d: Date, days: number): Date {
-    const nd = new Date(d);
-    nd.setDate(nd.getDate() + days);
-    return nd;
-  }
-
   /**
-   * Rango efectivo de la consulta, en días completos de la sede.
+   * Rango efectivo de la consulta, en días completos de la SEDE.
+   *
+   * F8 / T-84 · QA2-08: «Últimos 7 días» traía 8 y «Últimos 30», 31. La regla
+   * es N días = hoy−(N−1) … hoy, ambos extremos incluidos, y «hoy» sale de
+   * `TiempoService` en la zona de la sede: en Render (UTC) un `new Date()` con
+   * `setHours(0,0,0,0)` movía la ventana hasta 4 h y la etiqueta del periodo
+   * cambiaba de día según dónde corriera el proceso.
+   *
+   * El rango se devuelve en las DOS formas que necesitan las columnas:
+   *  - `inicioCalendario`/`finCalendario` (medianoches UTC) para las DATE
+   *    (`reservas.fecha_cita`), que no llevan zona;
+   *  - `inicio`/`fin` (instantes de la sede, fin EXCLUSIVO) para las TIMESTAMPTZ
+   *    (`pagos.registrado_at`, `lista_espera.actualizado_at`), de modo que un
+   *    cobro a las 23:59:59.999 locales no quede fuera por un milisegundo.
    *
    * Sin fechas: los últimos 30 días hasta hoy. El máximo de 366 impide que una
    * query curiosa convierta una agregación en un barrido de años.
    */
-  private resolverRango(desde?: string, hasta?: string): { inicio: Date; fin: Date } {
-    const hoy = new Date();
-    const hastaDate = hasta ? this.parseDate(hasta) : new Date(hoy);
-    const desdeDate = desde ? this.parseDate(desde) : this.addDays(new Date(hastaDate), -29);
+  private resolverRango(desde?: string, hasta?: string): RangoAnaliticas {
+    const zona = ZONA_POR_DEFECTO;
+    const hoy = this.tiempo.fechaLocal(this.tiempo.ahora(), zona);
+    const hastaEtiqueta = this.normalizarEtiqueta(hasta) ?? hoy;
+    const desdeEtiqueta =
+      this.normalizarEtiqueta(desde) ?? this.tiempo.sumarDias(hastaEtiqueta, -29);
 
-    // Normalize to start/end of day
-    const inicio = new Date(desdeDate);
-    inicio.setHours(0, 0, 0, 0);
-    const fin = new Date(hastaDate);
-    fin.setHours(23, 59, 59, 999);
-
-    if (inicio > fin) {
+    if (desdeEtiqueta > hastaEtiqueta) {
       throw new BadRequestException('El rango de fechas es inválido');
     }
 
-    const diffDays = Math.floor((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const inicioCalendario = this.tiempo.fechaDeCalendario(desdeEtiqueta);
+    const finCalendario = this.tiempo.fechaDeCalendario(hastaEtiqueta);
+
+    // Ambas son medianoches UTC, así que la resta es exacta en días enteros.
+    const diffDays =
+      Math.round((finCalendario.getTime() - inicioCalendario.getTime()) / 86_400_000) + 1;
     if (diffDays > 366) {
       throw new BadRequestException('El rango no puede superar los 366 días');
     }
 
-    return { inicio, fin };
+    return {
+      desde: desdeEtiqueta,
+      hasta: hastaEtiqueta,
+      inicioCalendario,
+      finCalendario,
+      inicio: this.tiempo.aInstante(desdeEtiqueta, '00:00', zona),
+      fin: this.tiempo.aInstante(this.tiempo.sumarDias(hastaEtiqueta, 1), '00:00', zona),
+    };
+  }
+
+  /** `YYYY-MM-DD` normalizada; `null` cuando no se pidió ese extremo. */
+  private normalizarEtiqueta(valor?: string): string | null {
+    if (!valor) return null;
+
+    const etiqueta = valor.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(etiqueta)) {
+      throw new BadRequestException('Formato de fecha inválido');
+    }
+
+    // Luxon rechaza «2026-02-31» devolviendo un `Date` inválido.
+    if (Number.isNaN(this.tiempo.fechaDeCalendario(etiqueta).getTime())) {
+      throw new BadRequestException('Formato de fecha inválido');
+    }
+
+    return etiqueta;
   }
 
   /**
@@ -350,21 +392,20 @@ export class AnalyticsService {
     hasta?: string,
     esGlobal = false,
   ): Promise<OverviewSedes> {
-    const { inicio, fin } = this.resolverRango(desde, hasta);
+    const rango = this.resolverRango(desde, hasta);
     const clave = claveAnaliticasOverview(user.id, desde, hasta, esGlobal);
 
     const cacheado = await this.leerCache<OverviewSedes>(clave);
     if (cacheado !== undefined) return cacheado;
 
-    const datos = await this.calcularOverview(user, inicio, fin, esGlobal);
+    const datos = await this.calcularOverview(user, rango, esGlobal);
     await this.escribirCache(clave, datos);
     return datos;
   }
 
   private async calcularOverview(
     user: any,
-    inicio: Date,
-    fin: Date,
+    rango: RangoAnaliticas,
     esGlobal: boolean,
   ): Promise<OverviewSedes> {
 
@@ -425,7 +466,10 @@ export class AnalyticsService {
     const [conteos, ingresosPorSede] = await Promise.all([
       this.prisma.reserva.groupBy({
         by: ['barberiaId', 'estado', 'recordatorioEnviado'],
-        where: { barberiaId: { in: idsDeSedes }, fechaCita: { gte: inicio, lte: fin } },
+        where: {
+          barberiaId: { in: idsDeSedes },
+          fechaCita: { gte: rango.inicioCalendario, lte: rango.finCalendario },
+        },
         _count: { _all: true },
       }),
       this.prisma.pago.groupBy({
@@ -437,7 +481,7 @@ export class AnalyticsService {
           // `idx_pagos_barberia_fecha`.
           reserva: { barberiaId: { in: idsDeSedes } },
           estadoPago: { not: 'ANULADO' },
-          registradoAt: { gte: inicio, lte: fin },
+          registradoAt: { gte: rango.inicio, lt: rango.fin },
         },
         _sum: { monto: true },
       }),
@@ -529,8 +573,8 @@ export class AnalyticsService {
 
     return {
       periodo: {
-        desde: inicio.toISOString().split('T')[0],
-        hasta: fin.toISOString().split('T')[0],
+        desde: rango.desde,
+        hasta: rango.hasta,
       },
       totalesGlobales: {
         ingresosConsolidados: Number(ingresosConsolidados.toFixed(2)),

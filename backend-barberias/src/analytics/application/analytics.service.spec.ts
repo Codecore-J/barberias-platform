@@ -522,3 +522,75 @@ describe('AnalyticsService', () => {
     });
   });
 });
+
+/**
+ * F8 / T-84 · QA2-08 · los rangos rápidos devolvían un día de más.
+ *
+ * «Últimos 7 días» traía 8 (hoy−7 .. hoy) y «Últimos 30», 31 (hoy−30 .. hoy).
+ * Aquí se fija el contrato: N días = hoy−(N−1) .. hoy, extremos incluidos, y el
+ * «hoy» se decide con `TiempoService` en la zona de la SEDE, no con el reloj del
+ * proceso. Las columnas DATE (`fecha_cita`) se comparan con etiquetas de
+ * calendario; las TIMESTAMPTZ (`registrado_at`) con instantes reales de la sede.
+ */
+describe('AnalyticsService · rangos exactos (F8 / T-84 · QA2-08)', () => {
+  let prisma: any;
+  let service: AnalyticsService;
+
+  /** 02:30 UTC del 28 = 22:30 del 27 en Santo Domingo: «hoy» es el 27. */
+  const RELOJ = () => new Date('2026-11-28T02:30:00.000Z');
+
+  const cacheVacia = { get: async () => undefined, set: async () => undefined };
+
+  beforeEach(() => {
+    prisma = {
+      reserva: { findMany: vi.fn(async () => []), groupBy: vi.fn(async () => []), count: vi.fn() },
+      listaEspera: { count: vi.fn(async () => 0) },
+      pago: { findMany: vi.fn(async () => []), groupBy: vi.fn(async () => []), aggregate: vi.fn() },
+      barberia: { count: vi.fn(), findMany: vi.fn(async () => []) },
+      cierreCaja: { count: vi.fn() },
+      usuario: { count: vi.fn() },
+      usuarioRol: { findMany: vi.fn(async () => []) },
+    };
+
+    service = new AnalyticsService(prisma, cacheVacia as any, new TiempoService(RELOJ));
+  });
+
+  it('ROJO: sin fechas cubre 30 días exactos de la sede (hoy−29 .. hoy)', async () => {
+    const datos = await service.getShopAnalytics('sede-1');
+
+    expect(datos.periodo).toEqual({ desde: '2026-10-29', hasta: '2026-11-27' });
+
+    // 30 días contando los dos extremos: 29 de octubre a 27 de noviembre.
+    const dias =
+      (Date.UTC(2026, 10, 27) - Date.UTC(2026, 9, 29)) / (1000 * 60 * 60 * 24) + 1;
+    expect(dias).toBe(30);
+  });
+
+  it('un rango de 7 días etiqueta 7 días, no 8', async () => {
+    const datos = await service.getShopAnalytics('sede-1', '2026-11-21', '2026-11-27');
+
+    expect(datos.periodo).toEqual({ desde: '2026-11-21', hasta: '2026-11-27' });
+
+    // `fecha_cita` es DATE: se compara con medianoches UTC del día etiquetado.
+    const reservas = prisma.reserva.findMany.mock.calls[0][0];
+    expect(reservas.where.fechaCita).toEqual({
+      gte: new Date('2026-11-21T00:00:00.000Z'),
+      lte: new Date('2026-11-27T00:00:00.000Z'),
+    });
+  });
+
+  it('el dinero se acota con instantes de la sede, no con medianoches del proceso', async () => {
+    await service.getShopAnalytics('sede-1', '2026-11-21', '2026-11-27');
+
+    const pagos = prisma.pago.findMany.mock.calls[0][0];
+    // Santo Domingo es UTC-4: el 21 local empieza a las 04:00Z y el 28 también.
+    expect(pagos.where.registradoAt.gte.toISOString()).toBe('2026-11-21T04:00:00.000Z');
+    expect(pagos.where.registradoAt.lt.toISOString()).toBe('2026-11-28T04:00:00.000Z');
+  });
+
+  it('«hoy» es el día de la SEDE aunque el proceso vaya en UTC', async () => {
+    // 02:30Z del 28 son las 22:30 del 27 en Santo Domingo.
+    const datos = await service.getShopAnalytics('sede-1', undefined, undefined);
+    expect(datos.periodo.hasta).toBe('2026-11-27');
+  });
+});

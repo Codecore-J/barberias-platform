@@ -88,15 +88,23 @@ export class AnalyticsDashboardComponent implements OnInit {
     this.aplicarFiltroRapido('30');
   }
 
+  /**
+   * Rangos rápidos del panel.
+   *
+   * F8 / T-84 · QA2-08: se restaba el número de días ENTERO, así que «Últimos 7
+   * días» pedía hoy−7 … hoy (8 días) y «Últimos 30», hoy−30 … hoy (31). El rango
+   * es inclusivo por los dos extremos, así que N días = hoy−(N−1) … hoy. «Este
+   * mes» no sufre el problema: el 1 ya es el primer día.
+   */
   aplicarFiltroRapido(dias: '7' | '30' | 'mes'): void {
     const today = new Date();
     const hastaDate = new Date(today);
     const desdeDate = new Date(today);
 
     if (dias === '7') {
-      desdeDate.setDate(today.getDate() - 7);
+      desdeDate.setDate(today.getDate() - 6);
     } else if (dias === '30') {
-      desdeDate.setDate(today.getDate() - 30);
+      desdeDate.setDate(today.getDate() - 29);
     } else if (dias === 'mes') {
       desdeDate.setDate(1);
     }
